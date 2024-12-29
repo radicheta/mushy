@@ -1,0 +1,59 @@
+<?xml version="1.0"?>
+<robot name="mushroom_incubator" xmlns:xacro="http://www.ros.org/wiki/xacro">
+    <!-- Material definitions -->
+    <material name="white">
+        <color rgba="1 1 1 1"/>
+    </material>
+    <material name="gray">
+        <color rgba="0.5 0.5 0.5 1"/>
+    </material>
+
+    <!-- Base link (incubator chamber) -->
+    <link name="base_link">
+        <visual>
+            <geometry>
+                <box size="1.0 0.8 1.5"/> <!-- Width, Depth, Height in meters -->
+            </geometry>
+            <material name="white"/>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="1.0 0.8 1.5"/>
+            </geometry>
+        </collision>
+        <inertial>
+            <mass value="50.0"/>
+            <inertia ixx="16.67" ixy="0.0" ixz="0.0" 
+                     iyy="16.67" iyz="0.0" izz="16.67"/>
+        </inertial>
+    </link>
+
+    <!-- Temperature sensor -->
+    <link name="temp_sensor">
+        <visual>
+            <geometry>
+                <cylinder radius="0.02" length="0.05"/>
+            </geometry>
+            <material name="gray"/>
+        </visual>
+    </link>
+
+    <joint name="temp_sensor_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="temp_sensor"/>
+        <origin xyz="0 0 0.5"/> <!-- Positioned in the middle of the chamber -->
+    </joint>
+
+    <!-- Gazebo plugin for thermal simulation -->
+    <gazebo>
+        <plugin name="thermal_plugin" filename="libic_thermal_plugin.so">
+            <update_rate>10.0</update_rate>
+            <temperature_topic>temperature</temperature_topic>
+            <thermal_mass>50.0</thermal_mass>
+            <thermal_conductivity>0.024</thermal_conductivity> <!-- W/(m·K) for air -->
+            <ambient_temperature>20.0</ambient_temperature>
+            <heater_power>1000.0</heater_power> <!-- Watts -->
+            <cooler_power>-1000.0</cooler_power> <!-- Watts -->
+        </plugin>
+    </gazebo>
+</robot>
