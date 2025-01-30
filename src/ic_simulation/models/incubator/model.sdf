@@ -1,0 +1,89 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <model name="mushroom_incubator">
+    <!-- Base link (incubator chamber) -->
+    <link name="base_link">
+      <visual name="visual">
+        <geometry>
+          <box>
+            <size>1.0 0.8 1.5</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>1 1 1 1</ambient>
+          <diffuse>1 1 1 1</diffuse>
+        </material>
+      </visual>
+      <collision name="collision">
+        <geometry>
+          <box>
+            <size>1.0 0.8 1.5</size>
+          </box>
+        </geometry>
+      </collision>
+      <inertial>
+        <mass>50.0</mass>
+        <inertia>
+          <ixx>16.67</ixx>
+          <ixy>0.0</ixy>
+          <ixz>0.0</ixz>
+          <iyy>16.67</iyy>
+          <iyz>0.0</iyz>
+          <izz>16.67</izz>
+        </inertia>
+      </inertial>
+    </link>
+
+    <!-- Temperature sensor -->
+    <link name="temp_sensor">
+      <pose>0 0 0.5 0 0 0</pose>
+      <visual name="visual">
+        <geometry>
+          <cylinder>
+            <radius>0.02</radius>
+            <length>0.05</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.5 0.5 0.5 1</ambient>
+          <diffuse>0.5 0.5 0.5 1</diffuse>
+        </material>
+      </visual>
+      <!-- Add thermodynamic properties for temperature sensing -->
+      <sensor name="thermometer" type="air_pressure">
+        <always_on>1</always_on>
+        <update_rate>10</update_rate>
+        <air_pressure>
+          <reference_altitude>0</reference_altitude>
+          <pressure>101325</pressure>
+        </air_pressure>
+      </sensor>
+    </link>
+
+    <joint name="temp_sensor_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>temp_sensor</child>
+    </joint>
+
+    <!-- Thermal properties for the incubator -->
+    <plugin
+      filename="gz-sim-thermodynamics-system"
+      name="gz::sim::systems::Thermodynamics">
+      <temperature_range_k>273.15 373.15</temperature_range_k>
+      <thermal_conductivity>0.024</thermal_conductivity>
+      <reference_temperature>293.15</reference_temperature>
+      <thermal_mass>50.0</thermal_mass>
+      <min_temperature>273.15</min_temperature>
+      <max_temperature>373.15</max_temperature>
+      <update_rate>10</update_rate>
+    </plugin>
+
+    <!-- Heat source (heater) -->
+    <plugin
+      filename="gz-sim-heater-system"
+      name="gz::sim::systems::Heater">
+      <max_power>1000</max_power>
+      <temperature_range>273.15 373.15</temperature_range>
+    </plugin>
+  </model>
+</sdf>
