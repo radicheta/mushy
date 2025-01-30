@@ -1,0 +1,3 @@
+- topic_name: "/temperature"
+  ros_type_name: "sensor_msgs/msg/Temperature"
+  gz_type_name: "gz.msgs.Temperature"
