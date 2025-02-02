@@ -1,3 +1,14 @@
-- topic_name: "/temperature"
+# Temperature bridge configuration
+- topic_name: "/model/mushroom_incubator/temperature"
+  ros_topic_name: "/incubator/temperature"
   ros_type_name: "sensor_msgs/msg/Temperature"
-  gz_type_name: "gz.msgs.Temperature"
+  gz_type_name: "ignition.msgs.Temperature"
+  direction: GZ_TO_ROS
+
+- topic_name: "/model/mushroom_incubator/heater/power"
+  ros_topic_name: "/incubator/heater/power"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "ignition.msgs.Float"
+  direction: ROS_TO_GZ
+
+

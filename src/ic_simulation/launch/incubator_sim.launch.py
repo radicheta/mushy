@@ -8,16 +8,16 @@ from launch_ros.actions import Node
 def generate_launch_description():
     pkg_ic_simulation = FindPackageShare('ic_simulation')
     
-    # Launch Gazebo Garden with our world
-    gz_sim = ExecuteProcess(
-        cmd=['gz', 'sim', '-r',
+    # Launch Ignition with our world
+    ign_sim = ExecuteProcess(
+        cmd=['ign', 'gazebo', '-r',
              PathJoinSubstitution([pkg_ic_simulation, 'worlds', 'incubator.sdf'])],
         output='screen'
     )
 
-    # Bridge between ROS 2 and Gazebo Garden for temperature data
+    # Bridge between ROS 2 and Ignition for temperature data
     bridge = Node(
-        package='ros_gz_bridge',
+        package='ros_ign_bridge',
         executable='parameter_bridge',
         name='temperature_bridge',
         parameters=[{
@@ -26,7 +26,17 @@ def generate_launch_description():
         output='screen'
     )
 
+    # Optional: Add a debug node to echo temperature readings
+    temp_debug = Node(
+        package='topic_tools',
+        executable='echo',
+        name='temp_debug',
+        parameters=[{'topic': '/incubator/temperature'}],
+        output='screen'
+    )
+
     return LaunchDescription([
-        gz_sim,
+        ign_sim,
         bridge,
+        temp_debug,
     ])
