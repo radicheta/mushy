@@ -55,8 +55,8 @@
 
     <!-- Enable thermal system for the world -->
     <plugin
-      filename="gz-sim-thermodynamics-system"
-      name="gz::sim::systems::Thermodynamics">
+      filename="ignition-gazebo-thermodynamics-system"
+      name="ignition::gazebo::systems::Thermodynamics">
     </plugin>
   </world>
 </sdf>

@@ -32,7 +32,50 @@
           <izz>16.67</izz>
         </inertia>
       </inertial>
+      <!-- Add thermal properties to the base_link -->
+      <thermal_properties>
+        <thermal_conductivity>0.024</thermal_conductivity>
+        <specific_heat_capacity>1200.0</specific_heat_capacity>
+        <density>50.0</density>
+        <emissivity>0.9</emissivity>
+        <temperature>293.15</temperature>
+      </thermal_properties>
     </link>
+
+    <!-- Heater element -->
+    <link name="heater">
+      <pose>0 0 -0.7 0 0 0</pose>
+      <visual name="visual">
+        <geometry>
+          <box>
+            <size>0.6 0.4 0.02</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.8 0.2 0.2 1</ambient>
+          <diffuse>0.8 0.2 0.2 1</diffuse>
+        </material>
+      </visual>
+      <collision name="collision">
+        <geometry>
+          <box>
+            <size>0.6 0.4 0.02</size>
+          </box>
+        </geometry>
+      </collision>
+      <thermal_properties>
+        <thermal_conductivity>237.0</thermal_conductivity>
+        <specific_heat_capacity>900.0</specific_heat_capacity>
+        <density>2700.0</density>
+        <emissivity>0.95</emissivity>
+        <temperature>293.15</temperature>
+      </thermal_properties>
+    </link>
+
+    <joint name="heater_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>heater</child>
+    </joint>
 
     <!-- Temperature sensor -->
     <link name="temp_sensor">
@@ -49,14 +92,12 @@
           <diffuse>0.5 0.5 0.5 1</diffuse>
         </material>
       </visual>
-      <!-- Add thermodynamic properties for temperature sensing -->
-      <sensor name="thermometer" type="air_pressure">
+      <sensor name="thermometer" type="thermal">
         <always_on>1</always_on>
         <update_rate>10</update_rate>
-        <air_pressure>
-          <reference_altitude>0</reference_altitude>
-          <pressure>101325</pressure>
-        </air_pressure>
+        <thermal>
+          <temperature>true</temperature>
+        </thermal>
       </sensor>
     </link>
 
@@ -65,25 +106,22 @@
       <child>temp_sensor</child>
     </joint>
 
-    <!-- Thermal properties for the incubator -->
+    <!-- Thermal source plugin for the heater -->
     <plugin
-      filename="gz-sim-thermodynamics-system"
-      name="gz::sim::systems::Thermodynamics">
-      <temperature_range_k>273.15 373.15</temperature_range_k>
-      <thermal_conductivity>0.024</thermal_conductivity>
-      <reference_temperature>293.15</reference_temperature>
-      <thermal_mass>50.0</thermal_mass>
-      <min_temperature>273.15</min_temperature>
-      <max_temperature>373.15</max_temperature>
-      <update_rate>10</update_rate>
+        filename="ignition-gazebo-thermal-source-system"
+        name="ignition::gazebo::systems::ThermalSource">
+      <link_name>heater</link_name>
+      <power>500.0</power>
+      <temperature_topic>/model/mushroom_incubator/heater/power</temperature_topic>
     </plugin>
 
-    <!-- Heat source (heater) -->
+    <!-- Thermal sensor plugin -->
     <plugin
-      filename="gz-sim-heater-system"
-      name="gz::sim::systems::Heater">
-      <max_power>1000</max_power>
-      <temperature_range>273.15 373.15</temperature_range>
+        filename="ignition-gazebo-thermal-sensor-system"
+        name="ignition::gazebo::systems::ThermalSensor">
+      <link_name>temp_sensor</link_name>
+      <topic>/model/mushroom_incubator/temperature</topic>
+      <update_rate>10.0</update_rate>
     </plugin>
   </model>
 </sdf>
