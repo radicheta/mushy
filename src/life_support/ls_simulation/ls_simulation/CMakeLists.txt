@@ -8,8 +8,8 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(ignition-gazebo6 REQUIRED)
-find_package(ignition-transport11 REQUIRED)
+find_package(gz-sim8 REQUIRED)
+find_package(gz-transport13 REQUIRED)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
