@@ -1,6 +1,5 @@
 from launch import LaunchDescription
-from launch.actions import ExecuteProcess, IncludeLaunchDescription
-from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.actions import ExecuteProcess
 from launch.substitutions import PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 from launch_ros.actions import Node
@@ -26,17 +25,7 @@ def generate_launch_description():
         output='screen'
     )
 
-    # Optional: Add a debug node to echo temperature readings
-    temp_debug = Node(
-        package='topic_tools',
-        executable='echo',
-        name='temp_debug',
-        parameters=[{'topic': '/incubator/temperature'}],
-        output='screen'
-    )
-
     return LaunchDescription([
         ign_sim,
         bridge,
-        temp_debug,
     ])
