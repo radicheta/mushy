@@ -39,14 +39,11 @@
         </visual>
       </link>
     </model>
-
-    <!-- Include the incubator model -->
     <include>
-      <uri>model://src/ic_simulation/models/incubator/model.sdf</uri>
+      <uri>model://incubator</uri>
       <pose>0 0 0.75 0 0 0</pose>
       <name>mushroom_incubator</name>
     </include>
-
     <!-- World-level thermal properties -->
     <atmosphere type="adiabatic">
       <temperature>293.15</temperature>

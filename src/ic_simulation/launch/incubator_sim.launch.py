@@ -9,14 +9,14 @@ def generate_launch_description():
     
     # Launch Ignition with our world
     ign_sim = ExecuteProcess(
-        cmd=['ign', 'gazebo', '-r',
+        cmd=['/usr/local/bin/gz-sim', '-r',
              PathJoinSubstitution([pkg_ic_simulation, 'worlds', 'incubator.sdf'])],
         output='screen'
     )
 
     # Bridge between ROS 2 and Ignition for temperature data
     bridge = Node(
-        package='ros_ign_bridge',
+        package='ros_gz_bridge',
         executable='parameter_bridge',
         name='temperature_bridge',
         parameters=[{
