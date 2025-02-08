@@ -1,0 +1,85 @@
+services:
+  ros-core:
+    build: 
+      context: ./ros-core
+      dockerfile: Dockerfile
+    networks:
+      - ros-net
+
+  ls-core:
+    build:
+      context: ./life-support
+      dockerfile: ls-core/Dockerfile
+    depends_on:
+      - ros-core
+    environment:
+      - ROS_DOMAIN_ID=42
+    networks:
+      - ros-net
+
+  ic-core:
+    build:
+      context: ./incubators
+      dockerfile: ic-core/Dockerfile
+    depends_on:
+      - ros-core
+    environment:
+      - ROS_DOMAIN_ID=42
+    networks:
+      - ros-net
+
+  simulation:
+      build:
+        context: ./simulation
+        dockerfile: Dockerfile
+      depends_on:
+        - ros-core
+      environment:
+        - ROS_DOMAIN_ID=42
+        - DISPLAY=${DISPLAY}
+        - QT_X11_NO_MITSHM=1
+      networks:
+        - ros-net
+      volumes:
+        - /tmp/.X11-unix:/tmp/.X11-unix
+        - /dev/dri:/dev/dri
+      privileged: true
+      group_add:  # Add this section
+        - video
+  openmct:
+    build:
+      context: ./mission-control/frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    networks:
+      - frontend-net
+
+  bridge:
+    build:
+      context: ./mission-control/bridge
+      dockerfile: Dockerfile
+    depends_on:
+      - openmct
+      - timescale
+    networks:
+      - frontend-net
+      - ros-net
+
+  timescale:
+    image: timescale/timescaledb:latest-pg14
+    environment:
+      - POSTGRES_PASSWORD=mysecretpassword
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+    networks:
+      - frontend-net
+
+networks:
+  ros-net:
+    driver: bridge
+  frontend-net:
+    driver: bridge
+
+volumes:
+  timescale-data:
