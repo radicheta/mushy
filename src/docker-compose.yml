@@ -27,25 +27,38 @@ services:
       - ROS_DOMAIN_ID=42
     networks:
       - ros-net
-
   simulation:
-      build:
-        context: ./simulation
-        dockerfile: Dockerfile
-      depends_on:
-        - ros-core
-      environment:
-        - ROS_DOMAIN_ID=42
-        - DISPLAY=${DISPLAY}
-        - QT_X11_NO_MITSHM=1
-      networks:
-        - ros-net
-      volumes:
-        - /tmp/.X11-unix:/tmp/.X11-unix
-        - /dev/dri:/dev/dri
-      privileged: true
-      group_add:  # Add this section
-        - video
+    build:
+      context: ./simulation
+      dockerfile: Dockerfile
+    depends_on:
+      - ros-core
+    environment:
+      - ROS_DOMAIN_ID=42
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - XDG_RUNTIME_DIR=/run/user/1000
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=graphics,utility,compute,video
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, utility, compute, video]
+    networks:
+      - ros-net
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${HOME}/.Xauthority:/home/ubuntu/.Xauthority:rw
+      - /run/user/1000:/run/user/1000
+      - /dev/dri:/dev/dri  # Ensure access to GPU rendering
+    group_add:
+      - "44"  # Replace with your host's video group ID
+    user: "1000:1000"
+  
   openmct:
     build:
       context: ./mission-control/frontend
