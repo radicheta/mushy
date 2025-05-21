@@ -1,3 +1,4 @@
+# Base image
 FROM ros:jazzy-ros-core
 
 # Install Gazebo and ROS2 integration packages
@@ -20,26 +21,11 @@ RUN apt-get update && apt-get install -y \
     mesa-utils \
     && rm -rf /var/lib/apt/lists/*
 
-
-RUN apt-get update && apt-get install -y \
-    git
-
-# Setup environment variables
-ENV DISPLAY=:0
-ENV QT_X11_NO_MITSHM=1
-ENV ROS_DOMAIN_ID=42
-ENV NVIDIA_VISIBLE_DEVICES=all
-ENV NVIDIA_DRIVER_CAPABILITIES=graphics,utility,compute
-ENV GAZEBO_GPU_RENDERING=1
-
-# Base image
-FROM ros:jazzy-ros-core
-
-# Install dependencies
+# Install dependencies for ROS2 build system (colcon, rosdep, etc.)
 RUN apt-get update && apt-get install -y \
     python3-rosdep \
-    python3-catkin-pkg \
-    catkin-tools \
+    python3-colcon-common-extensions \
+    python3-argcomplete \
     git
 
 # Initialize rosdep and update
@@ -53,12 +39,11 @@ RUN mkdir -p /home/ubuntu/turtlebot4_ws/src && \
 # Install dependencies using rosdep
 RUN /bin/bash -c "source /opt/ros/jazzy/setup.bash && rosdep install --from-paths /home/ubuntu/turtlebot4_ws/src --ignore-src -r -y"
 
-# Build workspace
-RUN /bin/bash -c "source /opt/ros/jazzy/setup.bash && cd /home/ubuntu/turtlebot4_ws && catkin_make"
+# Build workspace using colcon
+RUN /bin/bash -c "source /opt/ros/jazzy/setup.bash && cd /home/ubuntu/turtlebot4_ws && colcon build"
 
 # Source workspace in bashrc
-RUN echo 'source /home/ubuntu/turtlebot4_ws/devel/setup.bash' >> /home/ubuntu/.bashrc
-
+RUN echo 'source /home/ubuntu/turtlebot4_ws/install/setup.bash' >> /home/ubuntu/.bashrc
 
 # Set the working directory
 WORKDIR /home/ubuntu

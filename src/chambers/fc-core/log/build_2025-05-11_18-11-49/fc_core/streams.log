@@ -1,0 +1,34 @@
+[0.635s] Invoking command in '/home/santi/mushroom_farm_ws/src/chambers/fc-core/fc_core': PYTHONPATH=/home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/santi/mushroom_farm_ws/src/chambers/fc-core/install/fc_core/lib/python3.12/site-packages: /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../build/fc_core build --build-base /home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/build install --record /home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/install.log --single-version-externally-managed install_data
+[0.756s] running egg_info
+[0.757s] creating ../build/fc_core/fc_core.egg-info
+[0.762s] writing ../build/fc_core/fc_core.egg-info/PKG-INFO
+[0.762s] writing dependency_links to ../build/fc_core/fc_core.egg-info/dependency_links.txt
+[0.762s] writing entry points to ../build/fc_core/fc_core.egg-info/entry_points.txt
+[0.762s] writing requirements to ../build/fc_core/fc_core.egg-info/requires.txt
+[0.763s] writing top-level names to ../build/fc_core/fc_core.egg-info/top_level.txt
+[0.763s] writing manifest file '../build/fc_core/fc_core.egg-info/SOURCES.txt'
+[0.774s] reading manifest file '../build/fc_core/fc_core.egg-info/SOURCES.txt'
+[0.774s] writing manifest file '../build/fc_core/fc_core.egg-info/SOURCES.txt'
+[0.774s] running build
+[0.774s] running build_py
+[0.775s] creating /home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/build
+[0.775s] creating /home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/build/lib
+[0.775s] creating /home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/build/lib/fc_core
+[0.775s] copying fc_core/fc_display.py -> /home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/build/lib/fc_core
+[0.775s] copying fc_core/fc_controller.py -> /home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/build/lib/fc_core
+[0.775s] copying fc_core/fc_sensors.py -> /home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/build/lib/fc_core
+[0.775s] running install
+[0.779s] running install_lib
+[0.785s] creating /home/santi/mushroom_farm_ws/src/chambers/fc-core/install/fc_core/lib/python3.12/site-packages/fc_core
+[0.785s] copying /home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/build/lib/fc_core/fc_display.py -> /home/santi/mushroom_farm_ws/src/chambers/fc-core/install/fc_core/lib/python3.12/site-packages/fc_core
+[0.785s] copying /home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/build/lib/fc_core/fc_controller.py -> /home/santi/mushroom_farm_ws/src/chambers/fc-core/install/fc_core/lib/python3.12/site-packages/fc_core
+[0.785s] copying /home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/build/lib/fc_core/fc_sensors.py -> /home/santi/mushroom_farm_ws/src/chambers/fc-core/install/fc_core/lib/python3.12/site-packages/fc_core
+[0.785s] byte-compiling /home/santi/mushroom_farm_ws/src/chambers/fc-core/install/fc_core/lib/python3.12/site-packages/fc_core/fc_display.py to fc_display.cpython-312.pyc
+[0.785s] byte-compiling /home/santi/mushroom_farm_ws/src/chambers/fc-core/install/fc_core/lib/python3.12/site-packages/fc_core/fc_controller.py to fc_controller.cpython-312.pyc
+[0.786s] byte-compiling /home/santi/mushroom_farm_ws/src/chambers/fc-core/install/fc_core/lib/python3.12/site-packages/fc_core/fc_sensors.py to fc_sensors.cpython-312.pyc
+[0.787s] running install_data
+[0.787s] creating /home/santi/mushroom_farm_ws/src/chambers/fc-core/install/fc_core/share/ament_index
+[0.787s] creating /home/santi/mushroom_farm_ws/src/chambers/fc-core/install/fc_core/share/ament_index/resource_index
+[0.787s] creating /home/santi/mushroom_farm_ws/src/chambers/fc-core/install/fc_core/share/ament_index/resource_index/packages
+[0.787s] error: can't copy 'resource/fc_core': doesn't exist or not a regular file
+[0.800s] Invoked command in '/home/santi/mushroom_farm_ws/src/chambers/fc-core/fc_core' returned '1': PYTHONPATH=/home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/santi/mushroom_farm_ws/src/chambers/fc-core/install/fc_core/lib/python3.12/site-packages: /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../build/fc_core build --build-base /home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/build install --record /home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/install.log --single-version-externally-managed install_data

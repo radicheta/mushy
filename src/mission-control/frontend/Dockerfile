@@ -14,6 +14,9 @@ RUN git clone https://github.com/nasa/openmct.git && \
     cd openmct && \
     npm install
 
+# Copy our plugin
+COPY ./plugins/fruiting-chamber /opt/openmct/plugins/fruiting-chamber
+
 WORKDIR /opt/openmct
 EXPOSE 8080
 ENTRYPOINT ["npm", "start", "--", "--host", "0.0.0.0"]
