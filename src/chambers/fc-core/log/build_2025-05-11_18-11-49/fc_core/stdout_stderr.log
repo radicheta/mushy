@@ -1,0 +1,32 @@
+running egg_info
+creating ../build/fc_core/fc_core.egg-info
+writing ../build/fc_core/fc_core.egg-info/PKG-INFO
+writing dependency_links to ../build/fc_core/fc_core.egg-info/dependency_links.txt
+writing entry points to ../build/fc_core/fc_core.egg-info/entry_points.txt
+writing requirements to ../build/fc_core/fc_core.egg-info/requires.txt
+writing top-level names to ../build/fc_core/fc_core.egg-info/top_level.txt
+writing manifest file '../build/fc_core/fc_core.egg-info/SOURCES.txt'
+reading manifest file '../build/fc_core/fc_core.egg-info/SOURCES.txt'
+writing manifest file '../build/fc_core/fc_core.egg-info/SOURCES.txt'
+running build
+running build_py
+creating /home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/build
+creating /home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/build/lib
+creating /home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/build/lib/fc_core
+copying fc_core/fc_display.py -> /home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/build/lib/fc_core
+copying fc_core/fc_controller.py -> /home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/build/lib/fc_core
+copying fc_core/fc_sensors.py -> /home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/build/lib/fc_core
+running install
+running install_lib
+creating /home/santi/mushroom_farm_ws/src/chambers/fc-core/install/fc_core/lib/python3.12/site-packages/fc_core
+copying /home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/build/lib/fc_core/fc_display.py -> /home/santi/mushroom_farm_ws/src/chambers/fc-core/install/fc_core/lib/python3.12/site-packages/fc_core
+copying /home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/build/lib/fc_core/fc_controller.py -> /home/santi/mushroom_farm_ws/src/chambers/fc-core/install/fc_core/lib/python3.12/site-packages/fc_core
+copying /home/santi/mushroom_farm_ws/src/chambers/fc-core/build/fc_core/build/lib/fc_core/fc_sensors.py -> /home/santi/mushroom_farm_ws/src/chambers/fc-core/install/fc_core/lib/python3.12/site-packages/fc_core
+byte-compiling /home/santi/mushroom_farm_ws/src/chambers/fc-core/install/fc_core/lib/python3.12/site-packages/fc_core/fc_display.py to fc_display.cpython-312.pyc
+byte-compiling /home/santi/mushroom_farm_ws/src/chambers/fc-core/install/fc_core/lib/python3.12/site-packages/fc_core/fc_controller.py to fc_controller.cpython-312.pyc
+byte-compiling /home/santi/mushroom_farm_ws/src/chambers/fc-core/install/fc_core/lib/python3.12/site-packages/fc_core/fc_sensors.py to fc_sensors.cpython-312.pyc
+running install_data
+creating /home/santi/mushroom_farm_ws/src/chambers/fc-core/install/fc_core/share/ament_index
+creating /home/santi/mushroom_farm_ws/src/chambers/fc-core/install/fc_core/share/ament_index/resource_index
+creating /home/santi/mushroom_farm_ws/src/chambers/fc-core/install/fc_core/share/ament_index/resource_index/packages
+error: can't copy 'resource/fc_core': doesn't exist or not a regular file
