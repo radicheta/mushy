@@ -17,16 +17,59 @@ define([
         supportsRequest: true,
         supportsSubscribe: true,
         request: function (domainObject, options) {
-            return fetch('http://localhost:8081/telemetry')
-                .then(response => response.json());
+            return fetch('http://localhost:8081/rosbridge/topics/fc/temperature')
+                .then(response => response.json())
+                .then(data => {
+                    return {
+                        temperature: data.msg.temperature,
+                        timestamp: data.msg.header.stamp.secs * 1000
+                    };
+                });
         },
         subscribe: function (domainObject, callback) {
             const ws = new WebSocket('ws://localhost:8081');
-            ws.onmessage = function (event) {
-                callback(JSON.parse(event.data));
+            let tempSub = null;
+            let humiditySub = null;
+            
+            ws.onopen = function() {
+                // Subscribe to temperature topic
+                tempSub = {
+                    op: 'subscribe',
+                    topic: '/fc/temperature',
+                    type: 'sensor_msgs/msg/Temperature'
+                };
+                ws.send(JSON.stringify(tempSub));
+                
+                // Subscribe to humidity topic
+                humiditySub = {
+                    op: 'subscribe',
+                    topic: '/fc/humidity',
+                    type: 'sensor_msgs/msg/RelativeHumidity'
+                };
+                ws.send(JSON.stringify(humiditySub));
             };
-            return function () {
-                ws.close();
+            
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                if (data.topic === '/fc/temperature') {
+                    callback({
+                        temperature: data.msg.temperature,
+                        timestamp: data.msg.header.stamp.secs * 1000
+                    });
+                } else if (data.topic === '/fc/humidity') {
+                    callback({
+                        humidity: data.msg.relative_humidity * 100,
+                        timestamp: data.msg.header.stamp.secs * 1000
+                    });
+                }
+            };
+            
+            return function() {
+                if (ws.readyState === WebSocket.OPEN) {
+                    if (tempSub) ws.send(JSON.stringify({ op: 'unsubscribe', topic: '/fc/temperature' }));
+                    if (humiditySub) ws.send(JSON.stringify({ op: 'unsubscribe', topic: '/fc/humidity' }));
+                    ws.close();
+                }
             };
         }
     });
@@ -61,8 +104,12 @@ define([
             container.appendChild(humidityDisplay);
 
             let unsubscribe = openmct.telemetry.subscribe(domainObject, function (datum) {
-                temperatureDisplay.querySelector('.value').textContent = `${datum.temperature.toFixed(1)}°C`;
-                humidityDisplay.querySelector('.value').textContent = `${datum.humidity.toFixed(1)}%`;
+                if (datum.temperature !== undefined) {
+                    temperatureDisplay.querySelector('.value').textContent = `${datum.temperature.toFixed(1)}°C`;
+                }
+                if (datum.humidity !== undefined) {
+                    humidityDisplay.querySelector('.value').textContent = `${datum.humidity.toFixed(1)}%`;
+                }
             });
 
             return {
