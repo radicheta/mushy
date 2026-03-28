@@ -5,6 +5,13 @@
 
 ## v1 Requirements
 
+### Infrastructure
+
+- [ ] **INFRA-01**: Developer can SSH into FC-1 Pi using key-based auth (no password)
+- [ ] **INFRA-02**: WireGuard VPN configured on Pi and reachable from developer workstation on mesh network
+- [ ] **INFRA-03**: Development workflow documented — how to deploy code changes to Pi and restart nodes
+- [ ] **INFRA-04**: ROS2 nodes running on Pi are visible from workstation (`ros2 topic list` across machines, `ROS_DOMAIN_ID=69`)
+
 ### Hardware
 
 - [ ] **HW-01**: Pi OS and GPIO library compatibility confirmed before any GPIO work begins
@@ -80,6 +87,10 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| INFRA-01 | Phase 1 | Pending |
+| INFRA-02 | Phase 1 | Pending |
+| INFRA-03 | Phase 1 | Pending |
+| INFRA-04 | Phase 1 | Pending |
 | HW-01 | Phase 1 | Pending |
 | HW-02 | Phase 1 | Pending |
 | HW-03 | Phase 1 | Pending |
@@ -101,8 +112,8 @@
 | DEPL-01 | Phase 5 | Pending |
 
 **Coverage:**
-- v1 requirements: 16 total
-- Mapped to phases: 16
+- v1 requirements: 20 total
+- Mapped to phases: 20
 - Unmapped: 0 ✓
 
 ---

@@ -6,7 +6,7 @@ Starting from a 50-75% complete humidity control implementation, this roadmap de
 
 ## Phases
 
-- [ ] **Phase 1: Hardware & Environment** - Confirm Pi OS, wire MOSFET, validate DHT22 on real hardware
+- [ ] **Phase 1: Pi Integration & Environment** - SSH access, VPN/networking, dev workflow, OS confirm, MOSFET wiring, DHT22 validation
 - [ ] **Phase 2: Safety Hardening** - Fix critical bugs before any hardware test (blocking sleep, normalization, spike rejection)
 - [ ] **Phase 3: Closed-Loop Control** - Complete control algorithm with min dwell time, stale data detection, safe failure state
 - [ ] **Phase 4: Observability & Integration** - Actuator state topic, end-to-end hardware validation
@@ -14,20 +14,25 @@ Starting from a 50-75% complete humidity control implementation, this roadmap de
 
 ## Phase Details
 
-### Phase 1: Hardware & Environment
-**Goal**: All hardware is wired, OS and GPIO library path is confirmed, DHT22 reads correctly on real Pi hardware.
+### Phase 1: Pi Integration & Environment
+**Goal**: Developer can SSH into FC-1 Pi, deploy code, and run the ROS stack. All hardware is wired. DHT22 reads correctly on real hardware.
 **Depends on**: Nothing (first phase)
-**Requirements**: HW-01, HW-02, HW-03, SENS-01
+**Requirements**: INFRA-01, INFRA-02, INFRA-03, INFRA-04, HW-01, HW-02, HW-03, SENS-01
 **Success Criteria** (what must be TRUE):
-  1. Pi OS is identified and GPIO library (RPi.GPIO or rpi-lgpio) is confirmed working
-  2. MOSFET wired to humidifier with gate pull-down resistor installed
-  3. DHT22 reports valid humidity readings via `ros2 topic echo fc/humidity` on real hardware
-  4. Docker container has verified GPIO device passthrough
+  1. Developer can SSH into FC-1 Pi from workstation (with and without VPN)
+  2. WireGuard VPN config deployed and Pi is reachable on the mesh network
+  3. Code deploy workflow defined — can push and run updated nodes on Pi
+  4. ROS2 stack launches on Pi and is visible on the ROS domain from workstation
+  5. Pi OS confirmed and GPIO library (RPi.GPIO or rpi-lgpio) validated
+  6. MOSFET wired to humidifier with gate pull-down resistor installed
+  7. DHT22 reports valid humidity readings via `ros2 topic echo fc/humidity` on real hardware
 
 Plans:
-- [ ] 01-01: Confirm Pi OS, validate GPIO library compatibility, document dependency choice
-- [ ] 01-02: Wire MOSFET actuator (with gate pull-down resistor) and verify GPIO control from Pi
-- [ ] 01-03: Validate DHT22 reading on real hardware end-to-end through ROS stack
+- [ ] 01-01: SSH key setup and Pi network/VPN configuration (WireGuard)
+- [ ] 01-02: Development workflow setup (deploy, iterate, observe logs on Pi)
+- [ ] 01-03: Confirm Pi OS, validate GPIO library compatibility, document dependency choice
+- [ ] 01-04: Wire MOSFET actuator (with gate pull-down resistor) and verify GPIO control from Pi
+- [ ] 01-05: Validate DHT22 reading on real hardware end-to-end through ROS stack
 
 ### Phase 2: Safety Hardening
 **Goal**: All critical blocking bugs fixed — the codebase is safe to run on real hardware without damaging the humidifier or crashing the control loop.
@@ -95,13 +100,13 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Hardware & Environment | 0/3 | Not started | - |
+| 1. Pi Integration & Environment | 0/5 | Not started | - |
 | 2. Safety Hardening | 0/4 | Not started | - |
 | 3. Closed-Loop Control | 0/3 | Not started | - |
 | 4. Observability & Integration | 0/2 | Not started | - |
 | 5. Production Deployment | 0/1 | Not started | - |
 
-**Total:** 0/13 plans complete
+**Total:** 0/15 plans complete
 
 ---
 *Roadmap created: 2026-03-28*
