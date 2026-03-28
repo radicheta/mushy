@@ -1,4 +1,4 @@
-FROM arm64v8/ros:jazzy-ros-core
+FROM ros:jazzy-ros-core
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-RUN pip3 install \
+RUN pip3 install --break-system-packages \
     RPi.GPIO \
     rpi-hardware-pwm \
     adafruit-circuitpython-dht
@@ -26,6 +26,10 @@ COPY . /mushroom_farm_ws/src/
 WORKDIR /mushroom_farm_ws
 RUN /bin/bash -c '. /opt/ros/jazzy/setup.bash && colcon build --symlink-install'
 
+# Workaround for missing libexec and lib dirs in pure Python packages
+RUN mkdir -p /mushroom_farm_ws/install/fc_core/libexec/fc_core
+RUN mkdir -p /mushroom_farm_ws/install/fc_core/lib/fc_core
+
 # Source the workspace in .bashrc
 RUN echo "source /mushroom_farm_ws/install/setup.bash" >> /root/.bashrc
 
@@ -35,10 +39,6 @@ source /opt/ros/jazzy/setup.bash\n\
 source /mushroom_farm_ws/install/setup.bash\n\
 ros2 launch fc_core fc.launch.py\n\
 ' > /launch.sh && chmod +x /launch.sh
-
-# Set up device access
-RUN usermod -a -G gpio root
-RUN usermod -a -G i2c root
 
 # Set the entrypoint
 ENTRYPOINT ["/launch.sh"] 

@@ -26,8 +26,7 @@ def generate_launch_description():
             executable='fc_sensors',
             name='fc_sensors',
             parameters=[LaunchConfiguration('config_file')],
-            output='screen',
-            prefix=['python3']
+            output='screen'
         ),
         
         # Launch controller node
@@ -36,8 +35,7 @@ def generate_launch_description():
             executable='fc_controller',
             name='fc_controller',
             parameters=[LaunchConfiguration('config_file')],
-            output='screen',
-            prefix=['python3']
+            output='screen'
         ),
         
         # Launch display node
@@ -46,7 +44,6 @@ def generate_launch_description():
             executable='fc_display',
             name='fc_display',
             parameters=[LaunchConfiguration('config_file')],
-            output='screen',
-            prefix=['python3']
+            output='screen'
         ),
     ]) 
