@@ -10,9 +10,9 @@
   ```
   sudo apt install wireguard
   ```
-- WireGuard server public key (provided by server admin)
-- WireGuard server endpoint (public IP or hostname of the server)
-- Pi's assigned IP on the `172.16.10.0/24` mesh (e.g., `172.16.10.2` for FC-1)
+- WireGuard server public key: `FkNbdYtcfBgsYvOzv6UcnxPIhwRDEyv8jMehsOL43E0=` (tun_wg0 "mossrock" on pfSense)
+- WireGuard server endpoint: pfSense LAN `10.68.155.1:51820` (or public WAN IP for remote access)
+- Pi's assigned IP on the `172.16.10.0/24` mesh: **`172.16.10.5`** (next available — .2/.3/.4 in use)
 
 ## Generate Pi Keys
 
@@ -37,9 +37,9 @@ substituted to produce a valid `/etc/wireguard/wg0.conf`:
 | Variable              | Source                                    | Example                     |
 |-----------------------|-------------------------------------------|-----------------------------|
 | `${WG_PRIVATE_KEY}`   | Contents of `/etc/wireguard/private.key`  | `aBcD1234...` (base64)      |
-| `${WG_SERVER_PUBLIC_KEY}` | Provided by WireGuard server admin    | `xYzA5678...` (base64)      |
-| `${WG_SERVER_ENDPOINT}` | Server's public IP or hostname          | `vpn.example.com` or `1.2.3.4` |
-| `${WG_IP}`            | Pi's assigned address on `172.16.10.0/24` | `172.16.10.2`               |
+| `${WG_SERVER_PUBLIC_KEY}` | `FkNbdYtcfBgsYvOzv6UcnxPIhwRDEyv8jMehsOL43E0=` (tun_wg0 mossrock) | —              |
+| `${WG_SERVER_ENDPOINT}` | `10.68.155.1` (LAN) or pfSense WAN IP for remote | `10.68.155.1`  |
+| `${WG_IP}`            | `172.16.10.5` (assigned to FC-1)          | `172.16.10.5`               |
 
 The resulting config will look like:
 
@@ -63,9 +63,9 @@ Use the provided deployment script from your workstation (copies template, fills
 ```bash
 # Set environment variables
 export WG_PRIVATE_KEY=$(ssh fc1 "sudo cat /etc/wireguard/private.key")
-export WG_SERVER_PUBLIC_KEY="<server-public-key>"
-export WG_SERVER_ENDPOINT="<server-ip-or-hostname>"
-export WG_IP="172.16.10.2"
+export WG_SERVER_PUBLIC_KEY="FkNbdYtcfBgsYvOzv6UcnxPIhwRDEyv8jMehsOL43E0="
+export WG_SERVER_ENDPOINT="10.68.155.1"  # or pfSense WAN IP for remote access
+export WG_IP="172.16.10.5"
 
 # Run the deployment script on the Pi
 # (script must be pushed to Pi first, or run inline)
@@ -78,9 +78,9 @@ Or manually on the Pi:
 # On the Pi — fill variables and write config
 sudo bash -c "
   WG_PRIVATE_KEY=\$(cat /etc/wireguard/private.key)
-  WG_SERVER_PUBLIC_KEY='<server-public-key>'
-  WG_SERVER_ENDPOINT='<server-ip-or-hostname>'
-  WG_IP='172.16.10.2'
+  WG_SERVER_PUBLIC_KEY='FkNbdYtcfBgsYvOzv6UcnxPIhwRDEyv8jMehsOL43E0='
+  WG_SERVER_ENDPOINT='10.68.155.1'
+  WG_IP='172.16.10.5'
   envsubst < /path/to/wg0.conf.template > /etc/wireguard/wg0.conf
   chmod 600 /etc/wireguard/wg0.conf
 "
