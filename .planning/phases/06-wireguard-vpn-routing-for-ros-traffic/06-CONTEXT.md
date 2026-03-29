@@ -28,25 +28,25 @@ This phase is done when: Pi and elder-plops are auto-connected to the 172.16.10.
   - FC-1 Pi VPN IP: `172.16.10.5` (pre-assigned)
   - Elder-plops VPN IP: already registered (exact IP to confirm during implementation)
 
-- **D-04: Internet endpoint is `mossrock.space` (user-owned domain).** DNS must point to pfSense WAN. Fallback option: free DDNS service. pfSense WAN is `192.168.88.182` behind ISP router at `192.168.88.1` — requires UDP 51820 port forward on ISP router to pfSense.
+- **D-04: ~~Internet endpoint `mossrock.space`~~ DEFERRED.** Remote FC over internet access deferred to a later phase. For this phase, endpoint is `10.68.155.1` (pfSense LAN IP) — works when Pi and workstation are on the LAN. `mossrock.space` DNS and ISP port forward are out of scope here.
 
 - **D-05: Split-tunnel routing only.** AllowedIPs = `172.16.10.0/24` — only mesh traffic goes through tunnel, not default route. Pi and elder-plops keep their normal internet routing.
 
 ### WireGuard Peer Configuration
 
-- **D-06: FC-1 Pi — always-on, internet-capable endpoint.**
-  - Deploy `wg0.conf` with `Endpoint = mossrock.space:51820` (works from LAN and remote)
+- **D-06: FC-1 Pi — always-on, LAN-connected endpoint.**
+  - Deploy `wg0.conf` with `Endpoint = 10.68.155.1:51820` (LAN — remote FC deferred)
   - Enable `wg-quick@wg0` as systemd service (starts on boot, always reconnects)
   - FC-1 Pi must be added as a new peer in pfSense WireGuard config
 
 - **D-07: Elder-plops — already registered, needs auto-connect.**
-  - Currently connects manually; this phase makes it automatic (persistent connection)
-  - Exact auto-connect mechanism depends on how it's currently set up (wg-quick, NetworkManager, etc.) — researcher/planner to check
+  - Currently connects manually (NetworkManager wg0 connection, autoconnect=no); this phase makes it automatic
+  - Researcher confirmed: `nmcli connection modify wg0 connection.autoconnect yes` is the fix
 
-- **D-08: pfSense — must accept internet connections.**
+- **D-08: pfSense — add FC-1 Pi as new peer.**
   - WireGuard server already exists on pfSense (server public key: `FkNbdYtcfBgsYvOzv6UcnxPIhwRDEyv8jMehsOL43E0=`)
-  - Port forward needed: ISP router 192.168.88.1 → pfSense 192.168.88.182 UDP 51820
-  - FC-1 Pi peer entry must be added via pfSense WebGUI or CLI
+  - No port forward needed for this phase (LAN only)
+  - FC-1 Pi peer entry must be added via pfSense WebGUI: VPN > WireGuard > Peers
 
 ### ROS2 Topic Visibility (DDS Unicast)
 
