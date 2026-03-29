@@ -47,7 +47,7 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 - **Deploy pipeline working** — rsync + colcon build + systemd restart via ./scripts/pi-deploy/deploy.sh
 - **fc-core service auto-starts on boot** — systemd enabled, survives reboot
 - Sensor: SHT30 wired SDA→pin3, SCL→pin5, VCC→pin4, GND→pin6
-- Actuator: HL-52S MOSFET CH1→GPIO17 (humidifier), CH2→GPIO27 (fan, reserve). 48V DC side. Pending SSR decision for isolation.
+- Actuator: SSR-10A (3-32V DC in, 24-480V AC 10A) switches zapatilla (power strip) on GPIO17. Humidifier + fans plug into strip — trigger together. HL-52S MOSFET reserved for independent fan control (Phase 3, GPIO27).
 - Pi libs installed: adafruit-blinka, adafruit-circuitpython-sht31d, RPi.GPIO 0.7.1. ubuntu in gpio+i2c groups.
 - SSH to FC-1 confirmed working: `ssh fc1` (HostName 10.68.155.53, User ubuntu)
 
@@ -68,6 +68,7 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 - [Phase 01-03]: ubuntu user in gpio+i2c groups — no sudoers changes required for GPIO pin access
 - [Phase 01-pi-integration-environment]: HL-52S MOSFET CH1 uses on-board pull-down — no external 10k resistor needed on FC-1 build
 - [Phase 01-05]: Plan adapted from DHT22 (adafruit_dht/GPIO4) to SHT30 (adafruit_sht31d/I2C 0x44) — fc_sensors.py uses SHT30, test scripts updated accordingly
+- **[Phase 01-04]: SSR-10A chosen over MOSFET for humidifier** — switches 220V AC zapatilla, humidifier+fans share one circuit. GPIO17 unchanged. HL-52S MOSFET freed for Phase 3 independent fan control.
 - [Phase 01-05]: SENS-01 satisfied: SHT30 live at 22.6C/88.5% humidity confirmed via journalctl (ros2 topic echo DDS discovery timeout is a CLI quirk, not node failure)
 
 ## Performance Metrics

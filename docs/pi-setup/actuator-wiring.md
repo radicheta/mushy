@@ -1,11 +1,12 @@
 # Actuator Wiring Guide — FC-1
 
-Two actuators controlled via Pi GPIO:
+One SSR-10A switches a power strip (zapatilla). Humidifier and fans plug into the strip
+and trigger together. GPIO 17 = everything on/off.
 
-| Actuator | Control | GPIO | Hardware |
-|----------|---------|------|----------|
-| Humidifier | 220V AC mains (SSR cuts AC supply) | BCM 17 (pin 11) | SSR-10A |
-| Fan | DC (reserved, Phase 3) | BCM 27 (pin 13) | HL-52S CH1 |
+| What | GPIO | Hardware |
+|------|------|----------|
+| Power strip (humidifier + fans) | BCM 17 (pin 11) | SSR-10A spliced into strip Live |
+| Fan independent (reserved, Phase 3) | BCM 27 (pin 13) | HL-52S CH1 — unused for MVP |
 
 ---
 
@@ -29,19 +30,25 @@ Pi GPIO 17 at 3.3V is within the control input range — drives directly, no lev
 
 ### SSR-10A Circuit Diagram
 
+The SSR is spliced into the power strip's supply cable Live wire.
+Everything plugged into the strip (humidifier, fans) goes on/off together.
+
 ```
     LOW VOLTAGE SIDE (DC)          HIGH VOLTAGE SIDE (AC)
-    ─────────────────────          ──────────────────────
+    ─────────────────────          ──────────────────────────────────────────
 
-    Pi GPIO 17 (3.3V) ──── SSR IN+    SSR OUT1 ──── 220V AC Live (from supply)
-    Pi GND ──────────────── SSR IN-    SSR OUT2 ──── Humidifier Live in
+    Pi GPIO 17 (3.3V) ──── SSR IN+    SSR OUT1 ──── 220V Live (from wall)
+    Pi GND ──────────────── SSR IN-    SSR OUT2 ──── Live → zapatilla internal bus
+                                                           ├── humidifier outlet
+                                                           ├── fan outlet 1
+                                                           └── fan outlet 2
 
-                                       220V AC Neutral ─────── Humidifier Neutral in
-                                       (Neutral bypasses SSR — SSR only switches Live)
+                                       220V Neutral ──────── Neutral → zapatilla
+                                       (Neutral bypasses SSR — splice direct)
 ```
 
-The SSR switches the Live wire of the humidifier's AC supply.
-Neutral goes directly to the humidifier — this is standard AC switching practice.
+Splice point: cut the zapatilla's supply cable, insert SSR into the **Live** wire only.
+Neutral wire gets rejoined with a connector — it does not pass through the SSR.
 
 ### Pin Assignment
 
@@ -60,28 +67,36 @@ Neutral goes directly to the humidifier — this is standard AC switching practi
 
 **Step 1: Kill mains power at the breaker. Verify dead with multimeter.**
 
-**Step 2: Wire the low-voltage DC control side**
-1. Connect Pi GPIO 17 (physical pin 11) to SSR **IN+**
-2. Connect Pi GND (physical pin 6) to SSR **IN-**
+**Step 2: Prepare the zapatilla supply cable**
+1. Cut the supply cable at a convenient point before the strip's body
+2. Identify Live and Neutral wires (typically: Live = brown or red, Neutral = blue or black — verify with multimeter before cutting)
+3. Cut only the **Live** wire — leave Neutral intact or rejoin with a wire connector
 
-**Step 3: Wire the high-voltage AC output side**
-1. Connect 220V AC **Live** wire to SSR **OUT1**
-2. Connect SSR **OUT2** to humidifier **Live in**
-3. Connect 220V AC **Neutral** directly to humidifier **Neutral in** (bypass SSR)
+**Step 3: Wire the high-voltage AC side of the SSR**
+1. Wall-side Live cut end → SSR **OUT1**
+2. Strip-side Live cut end → SSR **OUT2**
+3. Neutral wire: rejoin both ends with a wire connector (does not go through SSR)
 
-**Step 4: Verify before restoring power** — complete the checklist below.
+**Step 4: Wire the low-voltage DC control side**
+1. Pi GPIO 17 (physical pin 11) → SSR **IN+**
+2. Pi GND (physical pin 6) → SSR **IN-**
+
+**Step 5: Plug humidifier and fans into the zapatilla**
+
+**Step 6: Verify before restoring power** — complete the checklist below.
 
 ### Verification Checklist (before restoring mains)
 
 - [ ] Mains supply is OFF and verified dead with multimeter
 - [ ] Pi GPIO 17 (pin 11) → SSR IN+
 - [ ] Pi GND (pin 6) → SSR IN-
-- [ ] 220V Live → SSR OUT1
-- [ ] SSR OUT2 → Humidifier Live
-- [ ] 220V Neutral → Humidifier Neutral (direct, NOT through SSR)
-- [ ] All AC connections are insulated — no exposed conductors
-- [ ] SSR is mounted to a heat sink or metal surface (SSRs get hot under load)
-- [ ] Low-voltage wiring is physically separated from AC wiring
+- [ ] Wall-side Live → SSR OUT1
+- [ ] SSR OUT2 → zapatilla Live (strip-side)
+- [ ] Neutral rejoined directly — does NOT pass through SSR
+- [ ] All AC splice points are insulated — no exposed conductors
+- [ ] SSR mounted to metal surface or heatsink (gets warm under load)
+- [ ] DC control wiring physically separated from AC wiring
+- [ ] Humidifier and fans plugged into zapatilla
 
 ### Power-On Test Sequence
 
