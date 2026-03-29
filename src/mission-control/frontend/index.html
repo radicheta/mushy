@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Mushroom Farm | Mission Control</title>
+  <!-- Espresso = dark theme; swap to dist/snowTheme.css for light -->
+  <link rel="stylesheet" href="dist/espressoTheme.css">
+  <style>
+    body, #app { margin: 0; width: 100%; height: 100vh; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <!-- OpenMCT core bundle -->
+  <script src="dist/openmct.js"></script>
+
+  <!-- Fruiting chamber telemetry plugin -->
+  <script src="plugins/fruiting-chamber/plugin.js"></script>
+
+  <script>
+    var ONE_MINUTE    = 60 * 1000;
+    var FIVE_MINUTES  = 5  * ONE_MINUTE;
+    var THIRTY_MINUTES = 30 * ONE_MINUTE;
+    var ONE_HOUR      = 60 * ONE_MINUTE;
+    var TWO_HOURS     = 2  * ONE_HOUR;
+
+    // Helper: install a plugin but don't crash if it doesn't exist in this build
+    function tryInstall(pluginFactory) {
+        try {
+            if (typeof pluginFactory === 'function') openmct.install(pluginFactory());
+        } catch (e) {
+            console.warn('[mc] optional plugin skipped:', e.message);
+        }
+    }
+
+    // ── Required plugins ────────────────────────────────────────────────────
+    openmct.install(openmct.plugins.LocalStorage());
+    openmct.install(openmct.plugins.UTCTimeSystem());
+    openmct.install(openmct.plugins.Clock({ enabled: false, periodicRefresh: 1 }));
+    openmct.install(openmct.plugins.Conductor({
+        menuOptions: [
+            // Realtime first = default mode on load
+            {
+                name: '5m Realtime',
+                timeSystem: 'utc',
+                clock: 'local',
+                clockOffsets: { start: -FIVE_MINUTES, end: 0 }
+            },
+            {
+                name: '30m Realtime',
+                timeSystem: 'utc',
+                clock: 'local',
+                clockOffsets: { start: -THIRTY_MINUTES, end: 0 }
+            },
+            {
+                name: '1h Realtime',
+                timeSystem: 'utc',
+                clock: 'local',
+                clockOffsets: { start: -ONE_HOUR, end: 0 }
+            },
+            {
+                name: '2h Realtime',
+                timeSystem: 'utc',
+                clock: 'local',
+                clockOffsets: { start: -TWO_HOURS, end: 0 }
+            },
+            {
+                name: 'Fixed',
+                timeSystem: 'utc',
+                bounds: { start: Date.now() - THIRTY_MINUTES, end: Date.now() }
+            }
+        ]
+    }));
+
+    // ── Optional UI/layout plugins ──────────────────────────────────────────
+    tryInstall(function() { return openmct.plugins.Espresso(); });
+    tryInstall(function() { return openmct.plugins.DisplayLayout(); });
+    tryInstall(function() { return openmct.plugins.FlexibleLayout(); });
+    tryInstall(function() { return openmct.plugins.Tabs(); });
+    tryInstall(function() { return openmct.plugins.Notebook(); });
+    tryInstall(function() { return openmct.plugins.LADTable(); });
+    tryInstall(function() { return openmct.plugins.SummaryWidget(); });
+    tryInstall(function() { return openmct.plugins.Timeline(); });
+    tryInstall(function() { return openmct.plugins.BarChart(); });
+    tryInstall(function() { return openmct.plugins.ScatterPlot(); });
+
+    // ── Fruiting chamber telemetry ──────────────────────────────────────────
+    openmct.install(FruitingChamberPlugin());
+
+    // ── Start ───────────────────────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', function () {
+        openmct.start(document.getElementById('app'));
+    });
+  </script>
+</body>
+</html>

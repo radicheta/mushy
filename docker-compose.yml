@@ -2,17 +2,16 @@ version: '3.8'
 
 services:
   openmct:
-    build: .
-    # ports:  # Removed - using host networking in override
-    #   - "8080:8080"
-    environment:
-      - ROS_DOMAIN_ID=69
-      - ROS_LOCALHOST_ONLY=0
-
-  life_support:
     build:
-      context: ./src/chambers/fc-core
+      context: ./src/mission-control/frontend
+      dockerfile: Dockerfile
+
+  bridge:
+    build:
+      context: ./src/mission-control/bridge
+      dockerfile: Dockerfile
     environment:
       - ROS_DOMAIN_ID=69
       - ROS_LOCALHOST_ONLY=0
-    entrypoint: ["/bin/bash"] 
+      # Set FAKE_SENSORS=1 to publish simulated data (testing without Pi)
+      - FAKE_SENSORS=${FAKE_SENSORS:-0}
