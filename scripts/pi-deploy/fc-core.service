@@ -8,6 +8,8 @@ Type=simple
 User=ubuntu
 Environment="ROS_DOMAIN_ID=69"
 Environment="ROS_LOCALHOST_ONLY=0"
+Environment="RMW_IMPLEMENTATION=rmw_cyclonedds_cpp"
+Environment="CYCLONEDDS_URI=file:///etc/cyclonedds.xml"
 Environment="HOME=/home/ubuntu"
 ExecStart=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && source /home/ubuntu/mushroom_farm_ws/install/setup.bash && ros2 launch fc_core fc.launch.py'
 Restart=on-failure
