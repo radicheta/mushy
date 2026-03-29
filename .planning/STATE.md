@@ -51,6 +51,11 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 - Pi libs installed: adafruit-blinka, adafruit-circuitpython-sht31d, RPi.GPIO 0.7.1. ubuntu in gpio+i2c groups.
 - SSH to FC-1 confirmed working: `ssh fc1` (HostName 10.68.155.53, User ubuntu)
 
+## Accumulated Context
+
+### Roadmap Evolution
+- Phase 6 added: WireGuard VPN routing for ROS traffic
+
 ## Decisions
 
 - **[01-01] Pi LAN is 10.68.155.0/24** (not planned 192.168.88.x). Static IP 10.68.155.53 set via `/etc/netplan/99-static.yaml`.
