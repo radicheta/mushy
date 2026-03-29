@@ -3,12 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-last_updated: "2026-03-29T15:34:10Z"
+stopped_at: "Checkpoint: 01-02 Task 2 awaiting hardware deploy verification"
+last_updated: "2026-03-29T15:40:28.767Z"
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 5
-  completed_plans: 1
+  completed_plans: 2
+  percent: 20
 ---
 
 # Project State
@@ -50,17 +52,20 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 - **[01-01] Pi LAN is 10.68.155.0/24** (not planned 192.168.88.x). Static IP 10.68.155.53 set via `/etc/netplan/99-static.yaml`.
 - **[01-01] VPN not a Phase 1 blocker** — WireGuard config prepared and documented; proceeds over LAN SSH per D-07/D-08.
 - **[01-01] Pi confirmed RPi 4 on Ubuntu 24.04 Noble** — RPi.GPIO compatible, no migration needed (D-01, D-02 validated).
+- [Phase 01-02]: Deploy pattern is rsync to Pi + colcon rebuild on Pi per D-04; systemd service with Restart=on-failure per D-05
+- [Phase 01-02]: ROS_DOMAIN_ID=69 and ROS_LOCALHOST_ONLY=0 set in systemd unit for cross-machine ROS topic visibility
 
 ## Performance Metrics
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 01-pi-integration-environment | 01 | 15min | 2 | 3 |
+| Phase 01-pi-integration-environment P02 | 1min | 1 tasks | 3 files |
 
 ## Session
 
-**Last session:** 2026-03-29
-**Stopped at:** Completed 01-01-PLAN.md (SSH + WireGuard)
+**Last session:** 2026-03-29T15:40:28.765Z
+**Stopped at:** Checkpoint: 01-02 Task 2 awaiting hardware deploy verification
 
 ---
 *Initialized: 2026-03-28*
