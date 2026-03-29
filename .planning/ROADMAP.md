@@ -108,6 +108,16 @@ Plans:
 
 **Total:** 0/15 plans complete
 
+### Phase 6: WireGuard VPN routing for ROS traffic
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 5
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 6 to break down)
+
 ---
 *Roadmap created: 2026-03-28*
 *Milestone: MVP — FC-1 Humidity Control*
