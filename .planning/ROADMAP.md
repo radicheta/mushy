@@ -113,12 +113,12 @@ Plans:
 **Goal:** FC-1 Pi and elder-plops on an always-on WireGuard mesh (172.16.10.0/24) with ROS2 topic visibility over the VPN tunnel via CycloneDDS unicast peer discovery.
 **Requirements**: INFRA-02, INFRA-04
 **Depends on:** Phase 1 (Pi must be accessible via SSH; independent of Phases 2-5)
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 - [x] 06-01-PLAN.md — Install WireGuard on FC-1 Pi, generate keys, deploy wg0.conf, enable service
 - [ ] 06-02-PLAN.md — Register Pi peer in pfSense, enable elder-plops autoconnect, verify mesh connectivity
-- [ ] 06-03-PLAN.md — Install ROS2 + CycloneDDS on elder-plops, deploy unicast XML config, verify E2E topic visibility
+- [x] 06-03-PLAN.md — Install ROS2 + CycloneDDS on elder-plops, deploy unicast XML config, verify E2E topic visibility
 
 ---
 *Roadmap created: 2026-03-28*
