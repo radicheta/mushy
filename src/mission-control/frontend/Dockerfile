@@ -1,22 +1,19 @@
-FROM ros:jazzy-ros-core
+FROM node:20-slim
 
+WORKDIR /app
 
-ENV NPM_CONFIG_LOGLEVEL=info
+# Install OpenMCT (includes dist/ with JS, CSS, fonts, images) and static file server
+COPY package.json ./
+RUN npm install
 
-WORKDIR /opt
+# Expose the full dist/ tree so CSS, fonts, and workers resolve correctly
+RUN cp -r node_modules/openmct/dist ./dist
 
-RUN apt-get update && apt-get install -y \
-    git \
-    npm \
-    && rm -rf /var/lib/apt/lists/*
+# Copy plugin and custom dashboard
+COPY plugins/ ./plugins/
+COPY index.html ./
 
-RUN git clone https://github.com/nasa/openmct.git && \
-    cd openmct && \
-    npm install
-
-# Copy our plugin
-COPY ./plugins/fruiting-chamber /opt/openmct/plugins/fruiting-chamber
-
-WORKDIR /opt/openmct
 EXPOSE 8080
-ENTRYPOINT ["npm", "start", "--", "--host", "0.0.0.0"]
+
+# -s: single-page app mode (rewrites 404 to index.html for OpenMCT routing)
+CMD ["node_modules/.bin/serve", "-s", "-l", "8080", "."]

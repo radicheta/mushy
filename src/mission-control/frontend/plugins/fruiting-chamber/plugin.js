@@ -1,125 +1,207 @@
-define([
-    'openmct'
-], function (openmct) {
-    // Define a new object type
-    openmct.types.addType('fruiting-chamber', {
-        name: 'Fruiting Chamber',
-        description: 'A fruiting chamber for mushroom cultivation',
-        creatable: true,
-        cssClass: 'icon-fruiting-chamber'
-    });
+/**
+ * FruitingChamberPlugin — OpenMCT telemetry plugin for fc1.
+ *
+ * Provides live humidity and temperature telemetry from the mushroom
+ * fruiting chamber via rosbridge WebSocket (port 8081).
+ *
+ * Usage: openmct.install(FruitingChamberPlugin())
+ *        openmct.install(FruitingChamberPlugin({ bridgeUrl: 'ws://myhost:8081' }))
+ */
+(function () {
+    'use strict';
 
-    // Add telemetry provider
-    openmct.telemetry.addProvider({
-        key: 'fruiting-chamber',
-        name: 'Fruiting Chamber Telemetry',
-        description: 'Telemetry from the fruiting chamber',
-        supportsRequest: true,
-        supportsSubscribe: true,
-        request: function (domainObject, options) {
-            return fetch('http://localhost:8081/rosbridge/topics/fc/temperature')
-                .then(response => response.json())
-                .then(data => {
-                    return {
-                        temperature: data.msg.temperature,
-                        timestamp: data.msg.header.stamp.secs * 1000
-                    };
-                });
+    var ROOT_ID = { namespace: 'fruiting-chamber', key: 'root' };
+
+    var SENSORS = [
+        {
+            identifier: { namespace: 'fruiting-chamber', key: 'fc.humidity' },
+            name: 'Humidity',
+            unit: '%',
+            topic: '/fc/humidity',
+            msgType: 'sensor_msgs/msg/RelativeHumidity',
+            extract: function (msg) { return msg.relative_humidity * 100; },
+            min: 50,
+            max: 100
         },
-        subscribe: function (domainObject, callback) {
-            const ws = new WebSocket('ws://localhost:8081');
-            let tempSub = null;
-            let humiditySub = null;
-            
-            ws.onopen = function() {
-                // Subscribe to temperature topic
-                tempSub = {
-                    op: 'subscribe',
-                    topic: '/fc/temperature',
-                    type: 'sensor_msgs/msg/Temperature'
-                };
-                ws.send(JSON.stringify(tempSub));
-                
-                // Subscribe to humidity topic
-                humiditySub = {
-                    op: 'subscribe',
-                    topic: '/fc/humidity',
-                    type: 'sensor_msgs/msg/RelativeHumidity'
-                };
-                ws.send(JSON.stringify(humiditySub));
-            };
-            
-            ws.onmessage = function(event) {
-                const data = JSON.parse(event.data);
-                if (data.topic === '/fc/temperature') {
-                    callback({
-                        temperature: data.msg.temperature,
-                        timestamp: data.msg.header.stamp.secs * 1000
-                    });
-                } else if (data.topic === '/fc/humidity') {
-                    callback({
-                        humidity: data.msg.relative_humidity * 100,
-                        timestamp: data.msg.header.stamp.secs * 1000
-                    });
-                }
-            };
-            
-            return function() {
-                if (ws.readyState === WebSocket.OPEN) {
-                    if (tempSub) ws.send(JSON.stringify({ op: 'unsubscribe', topic: '/fc/temperature' }));
-                    if (humiditySub) ws.send(JSON.stringify({ op: 'unsubscribe', topic: '/fc/humidity' }));
-                    ws.close();
-                }
-            };
+        {
+            identifier: { namespace: 'fruiting-chamber', key: 'fc.temperature' },
+            name: 'Temperature',
+            unit: '°C',
+            topic: '/fc/temperature',
+            msgType: 'sensor_msgs/msg/Temperature',
+            extract: function (msg) { return msg.temperature; },
+            min: 10,
+            max: 35
         }
-    });
+    ];
 
-    // Add view provider
-    openmct.objectViews.addProvider({
-        name: 'Fruiting Chamber View',
-        key: 'fruiting-chamber-view',
-        cssClass: 'icon-fruiting-chamber',
-        canView: function (domainObject) {
-            return domainObject.type === 'fruiting-chamber';
-        },
-        view: function (domainObject) {
-            let container = document.createElement('div');
-            container.className = 'fruiting-chamber-view';
+    function getTimestamp(msg) {
+        if (msg.header && msg.header.stamp) {
+            var s = msg.header.stamp;
+            var sec = s.sec !== undefined ? s.sec : (s.secs || 0);
+            var nanosec = s.nanosec !== undefined ? s.nanosec : (s.nsecs || 0);
+            if (sec > 0) return sec * 1000 + Math.floor(nanosec / 1e6);
+        }
+        return Date.now();
+    }
 
-            let temperatureDisplay = document.createElement('div');
-            temperatureDisplay.className = 'temperature-display';
-            temperatureDisplay.innerHTML = `
-                <h3>Temperature</h3>
-                <div class="value">--°C</div>
-            `;
+    function FruitingChamberPlugin(options) {
+        var bridgeUrl = (options && options.bridgeUrl) || 'ws://localhost:8081';
 
-            let humidityDisplay = document.createElement('div');
-            humidityDisplay.className = 'humidity-display';
-            humidityDisplay.innerHTML = `
-                <h3>Humidity</h3>
-                <div class="value">--%</div>
-            `;
+        return function install(openmct) {
 
-            container.appendChild(temperatureDisplay);
-            container.appendChild(humidityDisplay);
+            // ── Object type ──────────────────────────────────────────────────
+            openmct.types.addType('fruiting-chamber.sensor', {
+                name: 'Chamber Sensor',
+                description: 'Live sensor telemetry from the mushroom fruiting chamber',
+                cssClass: 'icon-telemetry',
+                creatable: false
+            });
 
-            let unsubscribe = openmct.telemetry.subscribe(domainObject, function (datum) {
-                if (datum.temperature !== undefined) {
-                    temperatureDisplay.querySelector('.value').textContent = `${datum.temperature.toFixed(1)}°C`;
-                }
-                if (datum.humidity !== undefined) {
-                    humidityDisplay.querySelector('.value').textContent = `${datum.humidity.toFixed(1)}%`;
+            // ── Object provider ──────────────────────────────────────────────
+            openmct.objects.addProvider('fruiting-chamber', {
+                get: function (identifier) {
+                    if (identifier.key === 'root') {
+                        return Promise.resolve({
+                            identifier: ROOT_ID,
+                            name: 'Fruiting Chamber FC-1',
+                            type: 'folder',
+                            location: 'ROOT',
+                            composition: SENSORS.map(function (s) { return s.identifier; })
+                        });
+                    }
+                    var sensor = SENSORS.find(function (s) {
+                        return s.identifier.key === identifier.key;
+                    });
+                    if (!sensor) return Promise.resolve(null);
+                    return Promise.resolve({
+                        identifier: sensor.identifier,
+                        name: sensor.name,
+                        type: 'fruiting-chamber.sensor',
+                        location: openmct.objects.makeKeyString(ROOT_ID),
+                        telemetry: {
+                            values: [
+                                {
+                                    key: 'value',
+                                    name: sensor.name,
+                                    unit: sensor.unit,
+                                    min: sensor.min,
+                                    max: sensor.max,
+                                    hints: { range: 1 }
+                                },
+                                {
+                                    key: 'utc',
+                                    name: 'Timestamp',
+                                    format: 'utc',
+                                    hints: { domain: 1 }
+                                }
+                            ]
+                        }
+                    });
                 }
             });
 
-            return {
-                show: function (container) {
-                    container.appendChild(container);
-                },
-                destroy: function () {
-                    unsubscribe();
+            // ── Root entry ───────────────────────────────────────────────────
+            openmct.objects.addRoot(ROOT_ID);
+
+            // ── Shared WebSocket (rosbridge protocol) ────────────────────────
+            var ws = null;
+            var subs = {}; // topic -> Set<handler>
+
+            function sendIfOpen(msg) {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify(msg));
                 }
-            };
-        }
-    });
-}); 
+            }
+
+            function connect() {
+                ws = new WebSocket(bridgeUrl);
+
+                ws.onopen = function () {
+                    // Re-subscribe active topics after reconnect
+                    Object.keys(subs).forEach(function (topic) {
+                        if (subs[topic] && subs[topic].size > 0) {
+                            var sensor = SENSORS.find(function (s) { return s.topic === topic; });
+                            if (sensor) {
+                                sendIfOpen({ op: 'subscribe', topic: topic, type: sensor.msgType });
+                            }
+                        }
+                    });
+                };
+
+                ws.onmessage = function (event) {
+                    var data;
+                    try { data = JSON.parse(event.data); } catch (e) { return; }
+                    if (data.op === 'publish' && data.topic && subs[data.topic]) {
+                        subs[data.topic].forEach(function (cb) {
+                            try { cb(data.msg); } catch (e) { /* swallow per-handler errors */ }
+                        });
+                    }
+                };
+
+                ws.onclose = function () {
+                    ws = null;
+                    var hasActive = Object.values(subs).some(function (s) { return s && s.size > 0; });
+                    if (hasActive) {
+                        setTimeout(connect, 3000);
+                    }
+                };
+            }
+
+            function addSub(sensor, handler) {
+                if (!subs[sensor.topic]) subs[sensor.topic] = new Set();
+                subs[sensor.topic].add(handler);
+                if (!ws) {
+                    connect();
+                } else if (ws.readyState === WebSocket.OPEN) {
+                    sendIfOpen({ op: 'subscribe', topic: sensor.topic, type: sensor.msgType });
+                }
+                // If readyState === CONNECTING, onopen will re-subscribe
+            }
+
+            function removeSub(sensor, handler) {
+                if (!subs[sensor.topic]) return;
+                subs[sensor.topic].delete(handler);
+                if (subs[sensor.topic].size === 0) {
+                    sendIfOpen({ op: 'unsubscribe', topic: sensor.topic });
+                }
+            }
+
+            // ── Telemetry provider ───────────────────────────────────────────
+            openmct.telemetry.addProvider({
+                supportsRequest: function (domainObject) {
+                    return domainObject.type === 'fruiting-chamber.sensor';
+                },
+                supportsSubscribe: function (domainObject) {
+                    return domainObject.type === 'fruiting-chamber.sensor';
+                },
+                // No history source yet — return empty array.
+                request: function (domainObject, options) {
+                    return Promise.resolve([]);
+                },
+                subscribe: function (domainObject, callback) {
+                    var sensor = SENSORS.find(function (s) {
+                        return s.identifier.key === domainObject.identifier.key;
+                    });
+                    if (!sensor) return function () {};
+
+                    var handler = function (msg) {
+                        callback({
+                            value: sensor.extract(msg),
+                            utc: getTimestamp(msg)
+                        });
+                    };
+
+                    addSub(sensor, handler);
+
+                    return function unsubscribe() {
+                        removeSub(sensor, handler);
+                    };
+                }
+            });
+        };
+    }
+
+    window.FruitingChamberPlugin = FruitingChamberPlugin;
+
+})();
