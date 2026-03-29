@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 1
-stopped_at: Completed 01-03-PLAN.md — GPIO compatibility confirmed, gpio-compatibility.md created
-last_updated: "2026-03-29T20:15:57.454Z"
+stopped_at: "01-04 checkpoint: MOSFET wiring docs created, awaiting physical wiring by user"
+last_updated: "2026-03-29T20:19:15.972Z"
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 8
-  completed_plans: 3
+  completed_plans: 4
   percent: 38
 ---
 
@@ -66,6 +66,7 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 - [Phase 01-02]: ROS_DOMAIN_ID=69 and ROS_LOCALHOST_ONLY=0 set in systemd unit for cross-machine ROS topic visibility
 - [Phase 01-03]: RPi.GPIO 0.7.1 confirmed functional on Pi 4 / Ubuntu 24.04.4 / kernel 6.8.0-1047-raspi — no migration to rpi-lgpio needed
 - [Phase 01-03]: ubuntu user in gpio+i2c groups — no sudoers changes required for GPIO pin access
+- [Phase 01-pi-integration-environment]: HL-52S MOSFET CH1 uses on-board pull-down — no external 10k resistor needed on FC-1 build
 
 ## Performance Metrics
 
@@ -74,11 +75,12 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 | 01-pi-integration-environment | 01 | 15min | 2 | 3 |
 | Phase 01-pi-integration-environment P02 | 1min | 1 tasks | 3 files |
 | Phase 01-pi-integration-environment P03 | 8min | 1 tasks | 1 files |
+| Phase 01-pi-integration-environment P04 | 3min | 1 tasks | 2 files |
 
 ## Session
 
-**Last session:** 2026-03-29T20:15:57.452Z
-**Stopped at:** Completed 01-03-PLAN.md — GPIO compatibility confirmed, gpio-compatibility.md created
+**Last session:** 2026-03-29T20:19:09.008Z
+**Stopped at:** 01-04 checkpoint: MOSFET wiring docs created, awaiting physical wiring by user
 
 ---
 *Initialized: 2026-03-28*
