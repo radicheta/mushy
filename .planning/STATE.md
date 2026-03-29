@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 1
-stopped_at: Completed 01-05-PLAN.md — SHT30 sensor validated, test-sht30-raw.py and test-sht30-ros.sh created
-last_updated: "2026-03-29T20:21:00.261Z"
+stopped_at: "Completed 06-01-PLAN.md — WireGuard installed on FC-1 Pi, wg-quick@wg0 active, Pi public key: wVYbIBYfptP0uVpAbtk43xLVi75QIGL0yQwgTbMcATA="
+last_updated: "2026-03-29T21:04:34.756Z"
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 8
-  completed_plans: 5
-  percent: 63
+  completed_plans: 6
+  percent: 75
 ---
 
 # Project State
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 ## Status
 
 **Milestone:** MVP — FC-1 Humidity Control
-**Progress:** [██████░░░░] 63%
+**Progress:** [████████░░] 75%
 **Phase:** 1 of 5 (in progress — plans 01-01 through 01-04 complete)
 **Last action:** SHT30 sensor live — 22.6°C, 84.7% real readings on /fc/humidity
 
@@ -70,6 +70,8 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 - [Phase 01-05]: Plan adapted from DHT22 (adafruit_dht/GPIO4) to SHT30 (adafruit_sht31d/I2C 0x44) — fc_sensors.py uses SHT30, test scripts updated accordingly
 - **[Phase 01-04]: SSR-10A chosen over MOSFET for humidifier** — switches 220V AC zapatilla, humidifier+fans share one circuit. GPIO17 unchanged. HL-52S MOSFET freed for Phase 3 independent fan control.
 - [Phase 01-05]: SENS-01 satisfied: SHT30 live at 22.6C/88.5% humidity confirmed via journalctl (ros2 topic echo DDS discovery timeout is a CLI quirk, not node failure)
+- [Phase 06-01]: Endpoint is 10.68.155.1:51820 (pfSense LAN) — mossrock.space DNS deferred per D-04
+- [Phase 06-01]: wg-setup.sh redesigned as on-Pi idempotent script (sudo bash) — hardcodes values, no envsubst
 
 ## Performance Metrics
 
@@ -80,11 +82,12 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 | Phase 01-pi-integration-environment P03 | 8min | 1 tasks | 1 files |
 | Phase 01-pi-integration-environment P04 | 3min | 1 tasks | 2 files |
 | Phase 01-pi-integration-environment P05 | 5min | 2 tasks | 2 files |
+| Phase 06-wireguard-vpn-routing-for-ros-traffic P01 | 3min | 2 tasks | 2 files |
 
 ## Session
 
-**Last session:** 2026-03-29T20:21:00.258Z
-**Stopped at:** Completed 01-05-PLAN.md — SHT30 sensor validated, test-sht30-raw.py and test-sht30-ros.sh created
+**Last session:** 2026-03-29T21:04:34.754Z
+**Stopped at:** Completed 06-01-PLAN.md — WireGuard installed on FC-1 Pi, wg-quick@wg0 active, Pi public key: wVYbIBYfptP0uVpAbtk43xLVi75QIGL0yQwgTbMcATA=
 
 ---
 *Initialized: 2026-03-28*
