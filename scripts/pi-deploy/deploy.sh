@@ -28,7 +28,7 @@ rsync -avz \
 
 # Step 3: Build on Pi
 echo "[3/4] Building on Pi..."
-ssh "${PI_HOST}" "cd ${PI_WS} && source /opt/ros/jazzy/setup.bash && colcon build --packages-select fc_core --symlink-install"
+ssh "${PI_HOST}" "cd ${PI_WS} && source /opt/ros/jazzy/setup.bash && colcon build --packages-select fc_core"
 
 # Step 4: Restart service
 echo "[4/4] Restarting fc-core service..."

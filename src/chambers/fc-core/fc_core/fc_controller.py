@@ -13,7 +13,7 @@ class FruitingChamberController(Node):
         self.declare_parameters(
             namespace='',
             parameters=[
-                ('simulation_mode', True),
+                ('actuator_simulation_mode', True),
                 ('dht_pin', 4),
                 ('light_pin', 18),
                 ('target_temp', 23.0),
@@ -31,7 +31,7 @@ class FruitingChamberController(Node):
         )
         
         # Initialize hardware or simulation
-        if not self.get_parameter('simulation_mode').value:
+        if not self.get_parameter('actuator_simulation_mode').value:
             import RPi.GPIO as GPIO
             import rpi_hardware_pwm as hw_pwm
             
@@ -61,7 +61,7 @@ class FruitingChamberController(Node):
             self.fan_speed = 0
             self.humidifier_state = False
             self.light_state = False
-            self.get_logger().info('Running in simulation mode')
+            self.get_logger().info('Actuators in simulation mode')
         
         # Create subscribers
         self.temp_sub = self.create_subscription(
@@ -108,35 +108,35 @@ class FruitingChamberController(Node):
             return current_hour >= start_hour or current_hour < end_hour
 
     def set_fan_speed(self, speed):
-        if not self.get_parameter('simulation_mode').value:
+        if not self.get_parameter('actuator_simulation_mode').value:
             self.fan_pwm.change_duty_cycle(speed)
         else:
             self.fan_speed = speed
 
     def set_humidifier(self, state):
-        if not self.get_parameter('simulation_mode').value:
+        if not self.get_parameter('actuator_simulation_mode').value:
             self.GPIO.output(self.humidifier_pin, self.GPIO.HIGH if state else self.GPIO.LOW)
         else:
             self.humidifier_state = state
 
     def set_light(self, state):
-        if not self.get_parameter('simulation_mode').value:
+        if not self.get_parameter('actuator_simulation_mode').value:
             self.GPIO.output(self.light_pin, self.GPIO.HIGH if state else self.GPIO.LOW)
         else:
             self.light_state = state
 
     def get_fan_speed(self):
-        if not self.get_parameter('simulation_mode').value:
+        if not self.get_parameter('actuator_simulation_mode').value:
             return self.fan_pwm.get_duty_cycle()
         return self.fan_speed
 
     def get_humidifier_state(self):
-        if not self.get_parameter('simulation_mode').value:
+        if not self.get_parameter('actuator_simulation_mode').value:
             return self.GPIO.input(self.humidifier_pin) == self.GPIO.HIGH
         return self.humidifier_state
 
     def get_light_state(self):
-        if not self.get_parameter('simulation_mode').value:
+        if not self.get_parameter('actuator_simulation_mode').value:
             return self.GPIO.input(self.light_pin) == self.GPIO.HIGH
         return self.light_state
 

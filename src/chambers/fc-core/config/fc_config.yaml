@@ -1,7 +1,8 @@
-fc_core:
+/**:
   ros__parameters:
-    # Simulation mode
-    simulation_mode: true  # Set to false on real hardware
+    # Simulation mode (can be set independently per subsystem)
+    sensor_simulation_mode: false   # false = read real DHT22 hardware
+    actuator_simulation_mode: true  # true = no GPIO/PWM until actuators are wired
     
     # Sensor pins
     dht_pin: 4  # GPIO4 for DHT22

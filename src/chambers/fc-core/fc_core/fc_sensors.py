@@ -13,17 +13,19 @@ class FruitingChamberSensors(Node):
         self.declare_parameters(
             namespace='',
             parameters=[
-                ('simulation_mode', True),
+                ('sensor_simulation_mode', True),
                 ('dht_pin', 4),
                 ('sensor_read_interval', 2.0),
             ]
         )
-        
+
         # Initialize hardware or simulation
-        if not self.get_parameter('simulation_mode').value:
+        if not self.get_parameter('sensor_simulation_mode').value:
             import adafruit_dht
             import board
-            self.dht = adafruit_dht.DHT22(board.D4)  # GPIO4
+            pin_num = self.get_parameter('dht_pin').value
+            dht_pin = getattr(board, f'D{pin_num}')
+            self.dht = adafruit_dht.DHT22(dht_pin, use_pulseio=False)
         else:
             self.get_logger().info('Running in simulation mode')
             # Simulated values
@@ -44,7 +46,7 @@ class FruitingChamberSensors(Node):
 
     def read_sensors(self):
         try:
-            if not self.get_parameter('simulation_mode').value:
+            if not self.get_parameter('sensor_simulation_mode').value:
                 # Read from actual hardware
                 temperature = self.dht.temperature
                 humidity = self.dht.humidity
@@ -67,10 +69,15 @@ class FruitingChamberSensors(Node):
             # Publish humidity
             humidity_msg = RelativeHumidity()
             humidity_msg.header.stamp = self.get_clock().now().to_msg()
-            humidity_msg.relative_humidity = float(humidity) / 100.0 if not self.get_parameter('simulation_mode').value else float(humidity)
+            # DHT22 returns 0-100; RelativeHumidity msg expects 0.0-1.0
+            if not self.get_parameter('sensor_simulation_mode').value:
+                humidity_msg.relative_humidity = float(humidity) / 100.0
+            else:
+                humidity_msg.relative_humidity = float(humidity)  # sim already 0.0-1.0
             self.humidity_pub.publish(humidity_msg)
-            
-            self.get_logger().debug(f'Temperature: {temperature}°C, Humidity: {humidity*100:.1f}%')
+
+            display_humidity = humidity if self.get_parameter('sensor_simulation_mode').value else humidity / 100.0
+            self.get_logger().debug(f'Temperature: {temperature}°C, Humidity: {display_humidity*100:.1f}%')
             
         except RuntimeError as e:
             self.get_logger().error(f'Failed to read sensor: {e}')
