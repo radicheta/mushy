@@ -1,78 +1,95 @@
 #!/usr/bin/env bash
-# wg-setup.sh — Deploy WireGuard config to FC-1 Pi from template
+# wg-setup.sh — Idempotent WireGuard setup script for FC-1 Pi
 #
-# Usage:
-#   WG_PRIVATE_KEY=<key> \
-#   WG_SERVER_PUBLIC_KEY=<key> \
-#   WG_SERVER_ENDPOINT=<ip-or-host> \
-#   WG_IP=<172.16.10.x> \
-#   bash scripts/pi-deploy/wg-setup.sh
+# Run ON the Pi (not from the workstation):
+#   scp scripts/pi-deploy/wg-setup.sh fc1:/tmp/wg-setup.sh
+#   ssh fc1 "sudo bash /tmp/wg-setup.sh"
 #
-# Requires: envsubst (gettext-base package), sudo access on the Pi
-# Template: wg0.conf.template in repo root
+# What this does:
+#   1. Installs wireguard-tools if not already installed
+#   2. Generates a WireGuard keypair if not already present
+#   3. Writes /etc/wireguard/wg0.conf with hardcoded LAN endpoint (10.68.155.1:51820)
+#   4. Enables and starts the wg-quick@wg0 systemd service
+#   5. Prints the public key for pfSense peer registration
+#
+# VPN mesh: 172.16.10.0/24
+#   pfSense server (igb5): 172.16.10.1
+#   FC-1 Pi (this device):  172.16.10.5
+#   elder-plops workstation: 172.16.10.3
+#
+# NOTE: Endpoint is 10.68.155.1 (pfSense LAN IP).
+#   Remote access via mossrock.space DNS is deferred to a later phase.
+#   This setup works when Pi and pfSense are on the same LAN (10.68.155.0/24).
 
 set -euo pipefail
 
-# Determine repo root (script is at scripts/pi-deploy/wg-setup.sh)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-TEMPLATE="${REPO_ROOT}/wg0.conf.template"
-OUTPUT="/etc/wireguard/wg0.conf"
+WG_SERVER_PUBLIC_KEY="FkNbdYtcfBgsYvOzv6UcnxPIhwRDEyv8jMehsOL43E0="
+WG_SERVER_ENDPOINT="10.68.155.1"
+WG_IP="172.16.10.5"
+WG_CONF="/etc/wireguard/wg0.conf"
+WG_PRIVKEY="/etc/wireguard/private.key"
+WG_PUBKEY="/etc/wireguard/public.key"
 
-# Validate required environment variables
-MISSING=()
-[[ -z "${WG_PRIVATE_KEY:-}" ]] && MISSING+=("WG_PRIVATE_KEY")
-[[ -z "${WG_SERVER_PUBLIC_KEY:-}" ]] && MISSING+=("WG_SERVER_PUBLIC_KEY")
-[[ -z "${WG_SERVER_ENDPOINT:-}" ]] && MISSING+=("WG_SERVER_ENDPOINT")
-[[ -z "${WG_IP:-}" ]] && MISSING+=("WG_IP")
-
-if [[ ${#MISSING[@]} -gt 0 ]]; then
-  echo "ERROR: The following required environment variables are not set:" >&2
-  for var in "${MISSING[@]}"; do
-    echo "  - ${var}" >&2
-  done
-  echo "" >&2
-  echo "Usage:" >&2
-  echo "  WG_PRIVATE_KEY=<key> \\" >&2
-  echo "  WG_SERVER_PUBLIC_KEY=<key> \\" >&2
-  echo "  WG_SERVER_ENDPOINT=<ip-or-host> \\" >&2
-  echo "  WG_IP=<172.16.10.x> \\" >&2
-  echo "  bash ${BASH_SOURCE[0]}" >&2
-  exit 1
+# Step 1: Install wireguard-tools if not present
+if ! dpkg -l wireguard-tools 2>/dev/null | grep -q '^ii'; then
+    echo "==> Installing wireguard-tools..."
+    apt-get update -q
+    apt-get install -y wireguard
+else
+    echo "==> wireguard-tools already installed — skipping"
 fi
 
-# Check template exists
-if [[ ! -f "${TEMPLATE}" ]]; then
-  echo "ERROR: Template not found at ${TEMPLATE}" >&2
-  echo "Run this script from the repo root or ensure wg0.conf.template is present." >&2
-  exit 1
+# Step 2: Generate keypair if not already present
+if [ ! -f "${WG_PRIVKEY}" ]; then
+    echo "==> Generating WireGuard keypair..."
+    mkdir -p /etc/wireguard
+    wg genkey | tee "${WG_PRIVKEY}" | wg pubkey | tee "${WG_PUBKEY}"
+    chmod 600 "${WG_PRIVKEY}"
+    echo "==> Keypair generated"
+else
+    echo "==> WireGuard keypair already present — skipping key generation"
+    # Ensure public key exists even if it was somehow lost
+    if [ ! -f "${WG_PUBKEY}" ]; then
+        echo "==> Public key missing — regenerating from private key..."
+        wg pubkey < "${WG_PRIVKEY}" | tee "${WG_PUBKEY}"
+    fi
 fi
 
-# Check envsubst is available
-if ! command -v envsubst &>/dev/null; then
-  echo "ERROR: envsubst not found. Install gettext-base:" >&2
-  echo "  sudo apt install gettext-base" >&2
-  exit 1
-fi
+# Step 3: Write wg0.conf (always overwrite to ensure correct values)
+echo "==> Writing ${WG_CONF}..."
+WG_PRIVATE_KEY=$(cat "${WG_PRIVKEY}")
+cat > "${WG_CONF}" <<EOF
+[Interface]
+PrivateKey = ${WG_PRIVATE_KEY}
+Address = ${WG_IP}/24
+ListenPort = 51820
 
-echo "==> Filling WireGuard config template..."
-FILLED=$(envsubst < "${TEMPLATE}")
+[Peer]
+PublicKey = ${WG_SERVER_PUBLIC_KEY}
+AllowedIPs = 172.16.10.0/24
+Endpoint = ${WG_SERVER_ENDPOINT}:51820
+PersistentKeepalive = 25
+EOF
+chmod 600 "${WG_CONF}"
+echo "==> wg0.conf written with correct LAN endpoint"
 
-echo "==> Writing config to ${OUTPUT} (requires sudo)..."
-echo "${FILLED}" | sudo tee "${OUTPUT}" > /dev/null
-sudo chmod 600 "${OUTPUT}"
+# Step 4: Enable and start wg-quick@wg0
+echo "==> Enabling and starting wg-quick@wg0..."
+systemctl enable --now wg-quick@wg0
+echo "==> Service status: $(systemctl is-active wg-quick@wg0)"
 
-echo "==> Enabling wg-quick@wg0 service..."
-sudo systemctl enable wg-quick@wg0
-
-echo "==> Starting wg-quick@wg0 service..."
-sudo systemctl start wg-quick@wg0
-
+# Step 5: Print public key for pfSense peer registration
 echo ""
-echo "==> WireGuard status:"
-sudo wg show
-
+echo "=== Pi WireGuard public key (add to pfSense as FC-1 peer) ==="
+cat "${WG_PUBKEY}"
+echo "==="
 echo ""
-echo "Done. If 'wg show' shows a peer with a recent handshake, the tunnel is up."
-echo "If no handshake yet, the server may be temporarily unreachable — this is normal per D-08."
-echo "Phase 1 proceeds over LAN SSH regardless of VPN status."
+echo "pfSense peer registration (VPN > WireGuard > Peers > Add):"
+echo "  Tunnel:           tun_wg0 (mossrock)"
+echo "  Description:      FC-1 Pi"
+echo "  Public Key:       $(cat ${WG_PUBKEY})"
+echo "  Allowed IPs:      ${WG_IP}/32"
+echo "  Dynamic Endpoint: checked"
+echo ""
+echo "NOTE: Tunnel handshake will not succeed until pfSense peer is added (Plan 02)."
+echo "Done."
