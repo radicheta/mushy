@@ -32,7 +32,10 @@ decisions:
   - ROS2 Jazzy native install on elder-plops BLOCKED: Linux Mint 21.2 (Jammy) lacks libpython3.12t64 and libstdc++6>=13.1
   - Docker approach for ros2 CLI documented as recommended path; ros:jazzy image pulled and confirmed topic list works over VPN
   - install-ros2-jazzy.sh updated with OS detection guard plus Docker and SSH fallback documentation
-  - wg0 on elder-plops: interface UP/LOWER_UP but NO IP assigned — NM wg0 connection missing from nmcli; VPN routing incomplete
+  - wg0 on elder-plops: brought up via wg-quick with /home/santi/Desktop/wg0.conf (not NetworkManager)
+  - elder-plops uses Docker image ros2-mushy:jazzy (ros:jazzy base + ros-jazzy-rmw-cyclonedds-cpp pre-installed) for ros2 CLI — Mint 21/Jammy cannot install Jazzy natively; this is the permanent solution
+  - ros2 alias in ~/.bashrc points to ros2-mushy:jazzy container so `ros2` works transparently from the terminal
+  - End-to-end verified: `ros2 topic echo /fc/humidity --once` returned `relative_humidity: 0.8462195773250935` over WireGuard VPN
 metrics:
   duration: 15min
   completed: "2026-03-29"
@@ -42,7 +45,7 @@ metrics:
 
 # Phase 6 Plan 03: CycloneDDS Unicast DDS Config Summary
 
-**One-liner:** CycloneDDS RMW installed on Pi, unicast XML configs deployed to Pi and elder-plops, fc-core.service updated with RMW env vars — ROS2 DDS traffic can traverse the WireGuard tunnel once VPN mesh is active.
+**One-liner:** CycloneDDS unicast over wg0 verified end-to-end — `ros2 topic echo /fc/humidity --once` returns `relative_humidity: 0.8462` from FC-1 Pi on elder-plops via WireGuard VPN, using Docker ros2-mushy:jazzy as the permanent ros2 CLI on Mint 21/Jammy.
 
 ## What Was Done
 
@@ -103,97 +106,31 @@ export CYCLONEDDS_URI=file:///home/santi/.config/cyclonedds.xml
 
 Created `scripts/workstation-setup/install-ros2-jazzy.sh` — sudo-requiring commands extracted to a standalone script the user runs once. Does NOT require Claude to have local sudo.
 
-## What Was NOT Done (requires user action)
+## End-to-End Verification (CONFIRMED)
 
-### 1. Register FC-1 Pi peer in pfSense WireGuard (Plan 06-02, Task 1)
+Phase 6 goal achieved. From elder-plops, after wg0 was brought up via wg-quick and the Docker ros2-mushy:jazzy image was used:
 
-The Pi is running wg-quick@wg0 with its generated public key:
 ```
-wVYbIBYfptP0uVpAbtk43xLVi75QIGL0yQwgTbMcATA=
-```
-This key must be added to pfSense → VPN → WireGuard → Peers before the VPN tunnel will establish.
-
-**Steps:**
-1. Open pfSense WebGUI at https://10.68.155.1
-2. VPN → WireGuard → Peers → + Add Peer
-   - Tunnel: tun_wg0 (mossrock)
-   - Description: FC-1 Pi
-   - Public Key: `wVYbIBYfptP0uVpAbtk43xLVi75QIGL0yQwgTbMcATA=`
-   - Allowed IPs: `172.16.10.5/32`
-   - Dynamic Endpoint: checked
-3. Save → Apply Changes
-4. Verify: `ssh fc1 "sudo wg show wg0"` should show "latest handshake:" with timestamp
-5. Test: `ssh fc1 "ping -c 2 172.16.10.1"` should return 0% loss
-
-### 2. Get ros2 CLI on elder-plops (three options)
-
-**IMPORTANT:** Elder-plops is Linux Mint 21.2 (Ubuntu 22.04 Jammy base). ROS2 Jazzy requires Ubuntu 24.04 Noble system libraries (libpython3.12t64, libstdc++6 >= 13.1) that are NOT available on Jammy. Native apt install WILL FAIL.
-
-**Option A — Docker (recommended, already working):**
-```bash
-docker pull ros:jazzy  # already pulled, cached locally
-docker run --rm --network host \
-  -e ROS_DOMAIN_ID=69 \
-  -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
-  -e CYCLONEDDS_URI=/cyclonedds.xml \
-  -v ~/.config/cyclonedds.xml:/cyclonedds.xml:ro \
-  ros:jazzy \
-  bash -c "apt-get update -qq && apt-get install -y -qq ros-jazzy-rmw-cyclonedds-cpp && source /opt/ros/jazzy/setup.bash && ros2 topic echo /fc/humidity --once"
-```
-
-This was tested and shows `/fc/humidity` and `/fc/temperature` in `ros2 topic list`. BUT — the container currently fails to bind to wg0 because **wg0 has no IP address** (see blocker below).
-
-**Option B — SSH to Pi:**
-```bash
-ssh fc1 "source /opt/ros/jazzy/setup.bash && source /home/ubuntu/mushroom_farm_ws/install/setup.bash && ROS_DOMAIN_ID=69 ros2 topic echo /fc/humidity --once"
-```
-
-**Option C — Native on Ubuntu Noble only:**
-```bash
-sudo bash scripts/workstation-setup/install-ros2-jazzy.sh  # exits with error on Mint, prints Docker instructions
-```
-
-### 3. Fix wg0 IP address on elder-plops (BLOCKER for Docker-based verification)
-
-**Problem found:** wg0 interface is UP (kernel shows `POINTOPOINT,NOARP,UP,LOWER_UP`) but has NO IP address. The NM wg0 connection that RESEARCH.md confirmed working (`nmcli connection show wg0`) is now GONE from NetworkManager. Without an IP on wg0, the CycloneDDS config (`NetworkInterface name="wg0"`) cannot bind.
-
-**Fix (requires sudo, run from terminal):**
-```bash
-# Option 1: Re-add NM WireGuard connection
-# First check what WireGuard keys elder-plops has:
-sudo wg show  # shows private key and public key
-
-# Option 2: Use wg-quick with a config file
-# Check if /etc/wireguard/wg0.conf exists:
-sudo ls /etc/wireguard/
-```
-
-Ping to 172.16.10.1 succeeds through LAN routing (pfSense answers its LAN IP), but 172.16.10.5 (Pi) is unreachable. The wg0 interface just needs its IP (172.16.10.3) reassigned.
-
-### 4. Verify end-to-end ROS2 topic visibility over VPN
-
-After completing steps 1-3, run from elder-plops (using Docker):
-```bash
-docker run --rm --network host \
-  -e ROS_DOMAIN_ID=69 \
-  -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
-  -e CYCLONEDDS_URI=/cyclonedds.xml \
-  -v ~/.config/cyclonedds.xml:/cyclonedds.xml:ro \
-  ros:jazzy \
-  bash -c "apt-get update -qq && apt-get install -y -qq ros-jazzy-rmw-cyclonedds-cpp 2>/dev/null && source /opt/ros/jazzy/setup.bash && ros2 topic echo /fc/humidity --once"
-```
-
-Or once wg0 IP is fixed and ROS2 is installed natively:
-```bash
-source /opt/ros/jazzy/setup.bash
-ros2 node list
-ros2 topic list
 ros2 topic echo /fc/humidity --once
 ```
 
-Expected: live `float64` humidity reading from FC-1 Pi, delivered over the WireGuard tunnel.
+Returned:
+```
+relative_humidity: 0.8462195773250935
+---
+```
 
-If `ros2 node list` returns empty: check `wg0` has IP 172.16.10.3 (`sudo wg show`), verify fc-core is running (`ssh fc1 "systemctl is-active fc-core"`), and wait 30 seconds for CycloneDDS peer discovery.
+This confirms:
+- WireGuard tunnel active: Pi (172.16.10.5) <-> pfSense <-> elder-plops (172.16.10.3)
+- CycloneDDS unicast peer discovery working over wg0
+- fc-core on Pi publishing live SHT30 sensor data
+- ros2-mushy:jazzy Docker image receives topic data with correct RMW
+
+### Docker-based ros2 CLI (permanent solution)
+
+Elder-plops is Linux Mint 21.2 (Ubuntu 22.04 Jammy base). ROS2 Jazzy requires Ubuntu 24.04 Noble system libraries that are not available on Jammy. Docker is the permanent solution.
+
+A custom image `ros2-mushy:jazzy` was built from `ros:jazzy` with `ros-jazzy-rmw-cyclonedds-cpp` pre-installed. A `ros2` alias in `~/.bashrc` wraps this container so `ros2 topic echo ...` works transparently from the terminal without typing the full Docker command each time.
 
 ## Deviations from Plan
 
@@ -227,7 +164,7 @@ If `ros2 node list` returns empty: check `wg0` has IP 172.16.10.3 (`sudo wg show
 
 None — all config files are fully wired. The ROS2 end-to-end verify step is deferred not because of a stub but because it requires two user actions (pfSense peer + local sudo) first.
 
-## Self-Check: PASSED (with known blockers)
+## Self-Check: PASSED
 
 - scripts/pi-deploy/cyclonedds.xml: EXISTS (correct content, 1 NetworkInterface, AllowMulticast=false)
 - scripts/pi-deploy/fc-core.service: MODIFIED (contains RMW_IMPLEMENTATION and CYCLONEDDS_URI lines)
@@ -235,7 +172,7 @@ None — all config files are fully wired. The ROS2 end-to-end verify step is de
 - /home/santi/.config/cyclonedds.xml: EXISTS (deployed locally)
 - Pi /etc/cyclonedds.xml: EXISTS and CORRECT (confirmed via SSH)
 - Pi fc-core.service: DEPLOYED and ACTIVE (confirmed via SSH, CycloneDDS env vars present)
-- ~/.bashrc ROS2 env vars: PRESENT (ROS_DOMAIN_ID=69, RMW_IMPLEMENTATION, CYCLONEDDS_URI)
+- ~/.bashrc ROS2 env vars and ros2 alias: PRESENT (ros2-mushy:jazzy Docker alias)
 - git commits b1fcf36, b30cbb6, 1cd5642: PRESENT in log
-- BLOCKER: wg0 on elder-plops has no IP — NM wg0 connection missing from `nmcli connection show`
-- BLOCKER: ros2 CLI on elder-plops requires Docker (ros:jazzy pulled locally at 880MB)
+- End-to-end verification: CONFIRMED — `ros2 topic echo /fc/humidity --once` returned `relative_humidity: 0.8462195773250935`
+- Phase 6 goal: COMPLETE
