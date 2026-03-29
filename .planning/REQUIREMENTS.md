@@ -14,7 +14,7 @@
 
 ### Hardware
 
-- [ ] **HW-01**: Pi OS and GPIO library compatibility confirmed before any GPIO work begins
+- [x] **HW-01**: Pi OS and GPIO library compatibility confirmed before any GPIO work begins
 - [ ] **HW-02**: MOSFET actuator wired to humidifier system on FC-1
 - [ ] **HW-03**: MOSFET gate pull-down resistor installed (humidifier defaults OFF on Pi boot/crash)
 
@@ -91,7 +91,7 @@
 | INFRA-02 | Phase 1 | Complete |
 | INFRA-03 | Phase 1 | Pending |
 | INFRA-04 | Phase 1 | Pending |
-| HW-01 | Phase 1 | Pending |
+| HW-01 | Phase 1 | Complete |
 | HW-02 | Phase 1 | Pending |
 | HW-03 | Phase 1 | Pending |
 | SENS-01 | Phase 1 | Pending |
