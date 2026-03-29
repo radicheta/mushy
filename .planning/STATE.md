@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 1
-stopped_at: "Completed 06-03-PLAN.md — CycloneDDS configs deployed, Pi updated, awaiting: pfSense peer + user sudo for ROS2 install"
-last_updated: "2026-03-29T21:18:25.144Z"
+stopped_at: Completed 06-03-PLAN.md (checkpoint) — CycloneDDS deployed, Pi active; wg0 IP and pfSense peer pending
+last_updated: "2026-03-29T21:26:53.484Z"
 progress:
   total_phases: 6
   completed_phases: 1
@@ -73,6 +73,8 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 - [Phase 06-01]: Endpoint is 10.68.155.1:51820 (pfSense LAN) — mossrock.space DNS deferred per D-04
 - [Phase 06-01]: wg-setup.sh redesigned as on-Pi idempotent script (sudo bash) — hardcodes values, no envsubst
 - [Phase 06-03]: CycloneDDS RMW installed on Pi via SSH; fc-core.service updated with RMW_IMPLEMENTATION + CYCLONEDDS_URI; After=wg-quick NOT added (D-11); install-ros2-jazzy.sh defers local sudo to user
+- [Phase 06-wireguard-vpn-routing-for-ros-traffic]: ROS2 Jazzy native install blocked on Mint 21.x; Docker ros:jazzy is the workstation ros2 CLI path
+- [Phase 06-wireguard-vpn-routing-for-ros-traffic]: wg0 on elder-plops has no IP address — NM wg0 connection lost; needs restore before end-to-end VPN test
 
 ## Performance Metrics
 
@@ -85,11 +87,12 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 | Phase 01-pi-integration-environment P05 | 5min | 2 tasks | 2 files |
 | Phase 06-wireguard-vpn-routing-for-ros-traffic P01 | 3min | 2 tasks | 2 files |
 | Phase 06-wireguard-vpn-routing-for-ros-traffic P03 | 6min | 7 tasks | 5 files |
+| Phase 06-wireguard-vpn-routing-for-ros-traffic P03 | 20min | 9 tasks | 4 files |
 
 ## Session
 
-**Last session:** 2026-03-29T21:18:25.142Z
-**Stopped at:** Completed 06-03-PLAN.md — CycloneDDS configs deployed, Pi updated, awaiting: pfSense peer + user sudo for ROS2 install
+**Last session:** 2026-03-29T21:26:53.482Z
+**Stopped at:** Completed 06-03-PLAN.md (checkpoint) — CycloneDDS deployed, Pi active; wg0 IP and pfSense peer pending
 
 ---
 *Initialized: 2026-03-28*
