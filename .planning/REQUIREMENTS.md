@@ -7,8 +7,8 @@
 
 ### Infrastructure
 
-- [ ] **INFRA-01**: Developer can SSH into FC-1 Pi using key-based auth (no password)
-- [ ] **INFRA-02**: WireGuard VPN configured on Pi and reachable from developer workstation on mesh network
+- [x] **INFRA-01**: Developer can SSH into FC-1 Pi using key-based auth (no password)
+- [x] **INFRA-02**: WireGuard VPN configured on Pi and reachable from developer workstation on mesh network
 - [ ] **INFRA-03**: Development workflow documented — how to deploy code changes to Pi and restart nodes
 - [ ] **INFRA-04**: ROS2 nodes running on Pi are visible from workstation (`ros2 topic list` across machines, `ROS_DOMAIN_ID=69`)
 
@@ -87,8 +87,8 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFRA-01 | Phase 1 | Pending |
-| INFRA-02 | Phase 1 | Pending |
+| INFRA-01 | Phase 1 | Complete |
+| INFRA-02 | Phase 1 | Complete |
 | INFRA-03 | Phase 1 | Pending |
 | INFRA-04 | Phase 1 | Pending |
 | HW-01 | Phase 1 | Pending |

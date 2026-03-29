@@ -28,7 +28,7 @@ Starting from a 50-75% complete humidity control implementation, this roadmap de
   7. DHT22 reports valid humidity readings via `ros2 topic echo fc/humidity` on real hardware
 
 Plans:
-- [ ] 01-01: SSH key setup and Pi network/VPN configuration (WireGuard)
+- [x] 01-01: SSH key setup and Pi network/VPN configuration (WireGuard)
 - [ ] 01-02: Development workflow setup (deploy, iterate, observe logs on Pi)
 - [ ] 01-03: Confirm Pi OS, validate GPIO library compatibility, document dependency choice
 - [ ] 01-04: Wire MOSFET actuator (with gate pull-down resistor) and verify GPIO control from Pi
@@ -100,7 +100,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Pi Integration & Environment | 0/5 | Not started | - |
+| 1. Pi Integration & Environment | 1/5 | In Progress|  |
 | 2. Safety Hardening | 0/4 | Not started | - |
 | 3. Closed-Loop Control | 0/3 | Not started | - |
 | 4. Observability & Integration | 0/2 | Not started | - |
