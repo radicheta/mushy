@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: in-progress
-stopped_at: "Actuator wiring pending — awaiting SSR for 48V humidifier control"
-last_updated: "2026-03-29T18:10:00.000Z"
+status: Executing Phase 1
+stopped_at: Completed 01-03-PLAN.md — GPIO compatibility confirmed, gpio-compatibility.md created
+last_updated: "2026-03-29T20:15:57.454Z"
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 0
-  total_plans: 5
-  completed_plans: 4
-  percent: 60
+  total_plans: 8
+  completed_plans: 3
+  percent: 38
 ---
 
 # Project State
@@ -20,12 +20,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 01 — pi-integration-environment, Plan 05 (actuator wiring)
+**Current focus:** Phase 1 — pi-integration-environment
 
 ## Status
 
 **Milestone:** MVP — FC-1 Humidity Control
-**Progress:** [██████░░░░] 60% (4/5 plans complete)
+**Progress:** [████░░░░░░] 38%
 **Phase:** 1 of 5 (in progress — plans 01-01 through 01-04 complete)
 **Last action:** SHT30 sensor live — 22.6°C, 84.7% real readings on /fc/humidity
 
@@ -54,6 +54,7 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 ## Accumulated Context
 
 ### Roadmap Evolution
+
 - Phase 6 added: WireGuard VPN routing for ROS traffic
 
 ## Decisions
@@ -63,6 +64,8 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 - **[01-01] Pi confirmed RPi 4 on Ubuntu 24.04 Noble** — RPi.GPIO compatible, no migration needed (D-01, D-02 validated).
 - [Phase 01-02]: Deploy pattern is rsync to Pi + colcon rebuild on Pi per D-04; systemd service with Restart=on-failure per D-05
 - [Phase 01-02]: ROS_DOMAIN_ID=69 and ROS_LOCALHOST_ONLY=0 set in systemd unit for cross-machine ROS topic visibility
+- [Phase 01-03]: RPi.GPIO 0.7.1 confirmed functional on Pi 4 / Ubuntu 24.04.4 / kernel 6.8.0-1047-raspi — no migration to rpi-lgpio needed
+- [Phase 01-03]: ubuntu user in gpio+i2c groups — no sudoers changes required for GPIO pin access
 
 ## Performance Metrics
 
@@ -70,11 +73,12 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 |-------|------|----------|-------|-------|
 | 01-pi-integration-environment | 01 | 15min | 2 | 3 |
 | Phase 01-pi-integration-environment P02 | 1min | 1 tasks | 3 files |
+| Phase 01-pi-integration-environment P03 | 8min | 1 tasks | 1 files |
 
 ## Session
 
-**Last session:** 2026-03-29T18:10:00.000Z
-**Stopped at:** Actuator wiring pending — user checking for SSR for 48V humidifier isolation
+**Last session:** 2026-03-29T20:15:57.452Z
+**Stopped at:** Completed 01-03-PLAN.md — GPIO compatibility confirmed, gpio-compatibility.md created
 
 ---
 *Initialized: 2026-03-28*
