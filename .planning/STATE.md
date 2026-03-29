@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-stopped_at: "Checkpoint: 01-02 Task 2 awaiting hardware deploy verification"
-last_updated: "2026-03-29T15:40:28.767Z"
+stopped_at: "Actuator wiring pending — awaiting SSR for 48V humidifier control"
+last_updated: "2026-03-29T18:10:00.000Z"
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 5
-  completed_plans: 2
-  percent: 20
+  completed_plans: 4
+  percent: 60
 ---
 
 # Project State
@@ -20,18 +20,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 01 — pi-integration-environment, Plan 02
+**Current focus:** Phase 01 — pi-integration-environment, Plan 05 (actuator wiring)
 
 ## Status
 
 **Milestone:** MVP — FC-1 Humidity Control
-**Progress:** [██░░░░░░░░] 20% (1/5 plans complete)
-**Phase:** 1 of 5 (in progress — plan 01-01 complete)
-**Last action:** Completed plan 01-01: SSH + WireGuard setup
+**Progress:** [██████░░░░] 60% (4/5 plans complete)
+**Phase:** 1 of 5 (in progress — plans 01-01 through 01-04 complete)
+**Last action:** SHT30 sensor live — 22.6°C, 84.7% real readings on /fc/humidity
 
 ## Phase Progress
 
-- [~] Phase 1: Hardware & Environment (1/3 plans)
+- [~] Phase 1: Hardware & Environment (4/5 plans — actuator wiring pending)
 - [ ] Phase 2: Safety Hardening (0/4 plans)
 - [ ] Phase 3: Closed-Loop Control (0/3 plans)
 - [ ] Phase 4: Observability & Integration (0/2 plans)
@@ -43,9 +43,13 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 - DHT22 sensors already wired on FC-1
 - MOSFET actuator needs wiring (component available)
 - **Pi OS confirmed: Ubuntu 24.04.4 LTS (Noble), kernel 6.8.0-1047-raspi — gates Phase 1 cleared**
-- Critical bugs identified by research: blocking sleep in sensor callback, sensor normalization mismatch, no min dwell time
+- **SHT30 I2C sensor live at 0x44** — real readings on /fc/humidity and /fc/temperature
+- **Deploy pipeline working** — rsync + colcon build + systemd restart via ./scripts/pi-deploy/deploy.sh
+- **fc-core service auto-starts on boot** — systemd enabled, survives reboot
+- Sensor: SHT30 wired SDA→pin3, SCL→pin5, VCC→pin4, GND→pin6
+- Actuator: HL-52S MOSFET CH1→GPIO17 (humidifier), CH2→GPIO27 (fan, reserve). 48V DC side. Pending SSR decision for isolation.
+- Pi libs installed: adafruit-blinka, adafruit-circuitpython-sht31d, RPi.GPIO 0.7.1. ubuntu in gpio+i2c groups.
 - SSH to FC-1 confirmed working: `ssh fc1` (HostName 10.68.155.53, User ubuntu)
-- Pi static IP: 10.68.155.53 / 10.68.155.0/24 — configured via /etc/netplan/99-static.yaml
 
 ## Decisions
 
@@ -64,8 +68,8 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 
 ## Session
 
-**Last session:** 2026-03-29T15:40:28.765Z
-**Stopped at:** Checkpoint: 01-02 Task 2 awaiting hardware deploy verification
+**Last session:** 2026-03-29T18:10:00.000Z
+**Stopped at:** Actuator wiring pending — user checking for SSR for 48V humidifier isolation
 
 ---
 *Initialized: 2026-03-28*
