@@ -23,7 +23,11 @@ echo "[2/4] Adding ROS2 apt repository..."
 curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
   -o /usr/share/keyrings/ros-archive-keyring.gpg
 
-UBUNTU_CODENAME=$(. /etc/os-release && echo "$UBUNTU_CODENAME")
+# ROS2 Jazzy requires Ubuntu Noble (24.04). Linux Mint 21.x reports UBUNTU_CODENAME=jammy
+# but we must use 'noble' to get Jazzy packages. This is the standard Mint workaround.
+# Note: Jazzy noble packages require libstdc++6 >= 13.1 — install from Ubuntu Toolchain PPA
+# if apt dependency resolution fails (see: ppa:ubuntu-toolchain-r/test).
+UBUNTU_CODENAME=noble
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] \
 http://packages.ros.org/ros2/ubuntu ${UBUNTU_CODENAME} main" \
   > /etc/apt/sources.list.d/ros2.list
