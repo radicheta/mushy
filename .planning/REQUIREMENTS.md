@@ -20,7 +20,7 @@
 
 ### Sensing
 
-- [ ] **SENS-01**: DHT22 humidity reading works reliably on real hardware (not just simulation)
+- [x] **SENS-01**: DHT22 humidity reading works reliably on real hardware (not just simulation)
 - [ ] **SENS-02**: Humidity published to `fc/humidity` ROS topic in consistent 0.0–1.0 range
 - [ ] **SENS-03**: Non-blocking sensor error handling (remove `time.sleep()` from sensor callback)
 - [ ] **SENS-04**: Sensor normalization is consistent between real hardware and simulation paths
@@ -94,7 +94,7 @@
 | HW-01 | Phase 1 | Complete |
 | HW-02 | Phase 1 | Pending |
 | HW-03 | Phase 1 | Pending |
-| SENS-01 | Phase 1 | Pending |
+| SENS-01 | Phase 1 | Complete |
 | SENS-03 | Phase 2 | Pending |
 | SENS-04 | Phase 2 | Pending |
 | SENS-05 | Phase 2 | Pending |

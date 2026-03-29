@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 1
-stopped_at: "01-04 checkpoint: MOSFET wiring docs created, awaiting physical wiring by user"
-last_updated: "2026-03-29T20:19:15.972Z"
+stopped_at: Completed 01-05-PLAN.md — SHT30 sensor validated, test-sht30-raw.py and test-sht30-ros.sh created
+last_updated: "2026-03-29T20:21:00.261Z"
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 8
-  completed_plans: 4
-  percent: 38
+  completed_plans: 5
+  percent: 63
 ---
 
 # Project State
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 ## Status
 
 **Milestone:** MVP — FC-1 Humidity Control
-**Progress:** [████░░░░░░] 38%
+**Progress:** [██████░░░░] 63%
 **Phase:** 1 of 5 (in progress — plans 01-01 through 01-04 complete)
 **Last action:** SHT30 sensor live — 22.6°C, 84.7% real readings on /fc/humidity
 
@@ -67,6 +67,8 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 - [Phase 01-03]: RPi.GPIO 0.7.1 confirmed functional on Pi 4 / Ubuntu 24.04.4 / kernel 6.8.0-1047-raspi — no migration to rpi-lgpio needed
 - [Phase 01-03]: ubuntu user in gpio+i2c groups — no sudoers changes required for GPIO pin access
 - [Phase 01-pi-integration-environment]: HL-52S MOSFET CH1 uses on-board pull-down — no external 10k resistor needed on FC-1 build
+- [Phase 01-05]: Plan adapted from DHT22 (adafruit_dht/GPIO4) to SHT30 (adafruit_sht31d/I2C 0x44) — fc_sensors.py uses SHT30, test scripts updated accordingly
+- [Phase 01-05]: SENS-01 satisfied: SHT30 live at 22.6C/88.5% humidity confirmed via journalctl (ros2 topic echo DDS discovery timeout is a CLI quirk, not node failure)
 
 ## Performance Metrics
 
@@ -76,11 +78,12 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 | Phase 01-pi-integration-environment P02 | 1min | 1 tasks | 3 files |
 | Phase 01-pi-integration-environment P03 | 8min | 1 tasks | 1 files |
 | Phase 01-pi-integration-environment P04 | 3min | 1 tasks | 2 files |
+| Phase 01-pi-integration-environment P05 | 5min | 2 tasks | 2 files |
 
 ## Session
 
-**Last session:** 2026-03-29T20:19:09.008Z
-**Stopped at:** 01-04 checkpoint: MOSFET wiring docs created, awaiting physical wiring by user
+**Last session:** 2026-03-29T20:21:00.258Z
+**Stopped at:** Completed 01-05-PLAN.md — SHT30 sensor validated, test-sht30-raw.py and test-sht30-ros.sh created
 
 ---
 *Initialized: 2026-03-28*
