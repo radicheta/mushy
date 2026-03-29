@@ -1,3 +1,12 @@
+# Actuator Wiring — FC-1 (superseded)
+
+> **This file is superseded.** The humidifier now uses an SSR-10A (220V AC switching)
+> instead of the MOSFET for mains isolation. Fan control uses the HL-52S MOSFET.
+>
+> See: [docs/pi-setup/actuator-wiring.md](actuator-wiring.md)
+
+<!-- original MOSFET-only content below, kept for reference -->
+
 # MOSFET Wiring Guide — FC-1 Humidifier
 
 ## Safety First
