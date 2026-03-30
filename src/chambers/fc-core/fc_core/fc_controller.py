@@ -3,7 +3,9 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Temperature, RelativeHumidity
 import time
+from collections import deque
 from datetime import datetime
+from statistics import median
 
 class FruitingChamberController(Node):
     def __init__(self):
@@ -79,6 +81,7 @@ class FruitingChamberController(Node):
         # Current values
         self.current_temp = None
         self.current_humidity = None
+        self._humidity_buffer = deque(maxlen=5)
         
         # Control timer
         self.timer = self.create_timer(
@@ -92,7 +95,8 @@ class FruitingChamberController(Node):
         self.current_temp = msg.temperature
 
     def humidity_callback(self, msg):
-        self.current_humidity = msg.relative_humidity
+        self._humidity_buffer.append(msg.relative_humidity)
+        self.current_humidity = median(self._humidity_buffer)
 
     def should_light_be_on(self):
         current_hour = datetime.now().hour
