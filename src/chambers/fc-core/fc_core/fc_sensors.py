@@ -69,6 +69,7 @@ class FruitingChamberSensors(Node):
 
             self.get_logger().info(f'Temperature: {temperature:.1f}°C, Humidity: {humidity:.1f}%')
 
+        # Non-blocking: log error and skip sample. Next timer tick retries automatically.
         except Exception as e:
             self.get_logger().error(f'Failed to read sensor: {e}')
 
