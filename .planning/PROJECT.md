@@ -21,14 +21,26 @@ Existing codebase provides:
 - ✓ Configuration system (fc_config.yaml)
 - ✓ GPIO and hardware abstraction layer
 
+### Validated in Phase 01 (Hardware & Environment)
+
+- ✓ Humidity/temperature sensor reading from SHT30 on FC-1 (I2C 0x44)
+- ✓ Publish sensor data to ROS topics `fc/humidity` and `fc/temperature`
+- ✓ SSR-10A actuator wiring (GPIO17) + humidifier actuator state control via ROS
+- ✓ Deploy pipeline: rsync + colcon build + systemd auto-restart
+- ✓ Live telemetry visible on OpenMCT dashboard
+
+### Validated in Phase 02 (Safety Hardening)
+
+- ✓ Non-blocking sensor error handling (SENS-03)
+- ✓ Config cleaned up for SHT30/SSR-10A hardware (SENS-04)
+- ✓ Rolling median spike rejection in humidity_callback (SENS-05)
+- ✓ Humidifier GPIO pin configurable from fc_config.yaml (ACTR-02)
+- ✓ Test assertions fixed and passing (TEST-01)
+
 ### Active
 
-MVP scope for this milestone:
+MVP scope remaining:
 
-- [ ] Humidity sensor reading from DHT22 on FC-1
-- [ ] Publish humidity data to ROS topic `fc/humidity`
-- [ ] MOSFET actuator wiring and GPIO control
-- [ ] Humidifier actuator state control via ROS
 - [ ] Closed-loop control algorithm (maintain setpoint)
 - [ ] Test on real hardware (Raspberry Pi + sensors + actuator)
 - [ ] Production deployment readiness
@@ -44,10 +56,9 @@ MVP scope for this milestone:
 ## Context
 
 **Current State:**
-- 50-75% of humidity control logic already implemented
-- Core ROS/Docker infrastructure established
-- DHT22 sensors wired and functional
-- MOSFET actuator component available, needs wiring during development
+- Phase 01 complete: SHT30 live, SSR-10A wired, deploy pipeline working
+- Phase 02 complete: sensor hardened, config clean, spike rejection active, GPIO configurable
+- Remaining: closed-loop PID/setpoint control (Phase 03), observability (Phase 04), production deploy (Phase 05)
 
 **Hardware Setup:**
 - Fruiting chamber 1 (FC-1) with Raspberry Pi
@@ -103,4 +114,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-03-28 after project initialization*
+*Last updated: 2026-03-30 after Phase 02 completion*
