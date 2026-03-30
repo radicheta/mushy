@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Executing Phase 1
-stopped_at: Phase 6 complete — ros2 topic echo /fc/humidity working over WireGuard VPN (relative_humidity: 0.8462)
-last_updated: "2026-03-29T22:00:00.000Z"
+status: Executing Phase 02
+stopped_at: Phase 02 plan 01 complete — SENS-03 verified, fc_sensors.py non-blocking exception handler confirmed
+last_updated: "2026-03-30T18:05:38.409Z"
 progress:
   total_phases: 6
-  completed_phases: 1
-  total_plans: 8
-  completed_plans: 7
-  percent: 88
+  completed_phases: 2
+  total_plans: 12
+  completed_plans: 10
+  percent: 83
 ---
 
 # Project State
@@ -20,12 +20,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 1 — pi-integration-environment
+**Current focus:** Phase 02 — safety-hardening
 
 ## Status
 
 **Milestone:** MVP — FC-1 Humidity Control
-**Progress:** [█████████░] 88%
+**Progress:** [████████░░] 83%
 **Phase:** 1 of 5 (in progress — plans 01-01 through 01-04 complete)
 **Last action:** SHT30 sensor live — 22.6°C, 84.7% real readings on /fc/humidity
 
@@ -76,6 +76,7 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 - [Phase 06-wireguard-vpn-routing-for-ros-traffic]: elder-plops uses Docker ros2-mushy:jazzy for ROS2 CLI — Linux Mint 21.2 (Jammy) cannot install ROS2 Jazzy natively; Docker is the permanent solution; ros2 alias in ~/.bashrc points to ros2-mushy:jazzy
 - [Phase 06-wireguard-vpn-routing-for-ros-traffic]: elder-plops wg0 brought up via wg-quick with /home/santi/Desktop/wg0.conf — NetworkManager wg0 connection was absent; wg-quick is the working approach
 - [Phase 06-wireguard-vpn-routing-for-ros-traffic]: Phase 6 complete — ros2 topic echo /fc/humidity --once returned relative_humidity: 0.8462195773250935 over WireGuard VPN
+- [Phase 02-01]: D-05 confirmed: fc_sensors.py exception handler has no time.sleep() — SENS-03 is verification-only, no code change needed
 
 ## Performance Metrics
 
@@ -89,11 +90,12 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 | Phase 06-wireguard-vpn-routing-for-ros-traffic P01 | 3min | 2 tasks | 2 files |
 | Phase 06-wireguard-vpn-routing-for-ros-traffic P03 | 6min | 7 tasks | 5 files |
 | Phase 06-wireguard-vpn-routing-for-ros-traffic P03 | 20min | 9 tasks | 4 files |
+| Phase 02-safety-hardening P01 | 1min | 1 tasks | 1 files |
 
 ## Session
 
-**Last session:** 2026-03-29T21:26:53.482Z
-**Stopped at:** Phase 6 complete — ros2 topic echo /fc/humidity working over WireGuard VPN
+**Last session:** 2026-03-30T18:05:29.319Z
+**Stopped at:** Phase 02 plan 01 complete — SENS-03 verified, fc_sensors.py non-blocking exception handler confirmed
 
 ---
 *Initialized: 2026-03-28*

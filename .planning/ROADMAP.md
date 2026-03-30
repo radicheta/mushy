@@ -46,8 +46,8 @@ Plans:
   5. `test_humidity_control` tests actuator state (on/off), not pin number
 
 Plans:
-- [ ] 02-01: Fix `time.sleep()` blocking call in `fc_sensors.py` exception handler
-- [ ] 02-02: Fix sensor normalization inconsistency between real hardware and simulation paths
+- [x] 02-01: Fix `time.sleep()` blocking call in `fc_sensors.py` exception handler
+- [x] 02-02: Fix sensor normalization inconsistency between real hardware and simulation paths
 - [ ] 02-03: Add DHT22 spike rejection to sensor reading pipeline
 - [ ] 02-04: Make humidifier pin configurable in config + fix broken test assertions
 
