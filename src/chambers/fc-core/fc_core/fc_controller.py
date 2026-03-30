@@ -15,6 +15,7 @@ class FruitingChamberController(Node):
             parameters=[
                 ('actuator_simulation_mode', True),
                 ('dht_pin', 4),
+                ('humidifier_pin', 17),
                 ('light_pin', 18),
                 ('target_temp', 23.0),
                 ('target_humidity', 0.85),
@@ -46,7 +47,7 @@ class FruitingChamberController(Node):
             self.fan_pwm.start(0)
             
             # Humidifier control (GPIO)
-            self.humidifier_pin = 17  # GPIO17
+            self.humidifier_pin = self.get_parameter('humidifier_pin').value
             GPIO.setup(self.humidifier_pin, GPIO.OUT)
             GPIO.output(self.humidifier_pin, GPIO.LOW)
             

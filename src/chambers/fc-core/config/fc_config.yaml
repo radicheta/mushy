@@ -6,6 +6,9 @@
 
     # Sensor config
     sht30_i2c_address: 0x44  # SHT30 I2C address (bus auto-detected by adafruit_blinka)
+
+    # Actuator pins
+    humidifier_pin: 17  # GPIO17 for humidifier SSR
     light_pin: 18  # GPIO18 for light control
     
     # Target values

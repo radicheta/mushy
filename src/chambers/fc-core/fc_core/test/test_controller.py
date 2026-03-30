@@ -63,7 +63,7 @@ def test_humidity_control(ros_context):
     node.control_loop()
     
     # Humidifier should be ON
-    assert node.humidifier_pin == 1
+    assert node.humidifier_state == True
     
     # Test humidity above target
     humidity_msg.relative_humidity = node.get_parameter('target_humidity').value + 0.1
@@ -71,7 +71,7 @@ def test_humidity_control(ros_context):
     node.control_loop()
     
     # Humidifier should be OFF
-    assert node.humidifier_pin == 0
+    assert node.humidifier_state == False
     
     node.destroy_node()
 
