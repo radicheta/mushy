@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 02
-stopped_at: Phase 02 plan 01 complete — SENS-03 verified, fc_sensors.py non-blocking exception handler confirmed
-last_updated: "2026-03-30T18:05:38.409Z"
+stopped_at: "Completed 02-02: config cleanup — SHT30 config, normalization verified"
+last_updated: "2026-03-30T18:05:51.308Z"
 progress:
   total_phases: 6
   completed_phases: 2
@@ -77,6 +77,7 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 - [Phase 06-wireguard-vpn-routing-for-ros-traffic]: elder-plops wg0 brought up via wg-quick with /home/santi/Desktop/wg0.conf — NetworkManager wg0 connection was absent; wg-quick is the working approach
 - [Phase 06-wireguard-vpn-routing-for-ros-traffic]: Phase 6 complete — ros2 topic echo /fc/humidity --once returned relative_humidity: 0.8462195773250935 over WireGuard VPN
 - [Phase 02-01]: D-05 confirmed: fc_sensors.py exception handler has no time.sleep() — SENS-03 is verification-only, no code change needed
+- [Phase 02-02]: Config reflects actual hardware (SHT30 over I2C 0x44, not DHT22 on GPIO4) — sht30_i2c_address made tunable from config
 
 ## Performance Metrics
 
@@ -91,11 +92,12 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 | Phase 06-wireguard-vpn-routing-for-ros-traffic P03 | 6min | 7 tasks | 5 files |
 | Phase 06-wireguard-vpn-routing-for-ros-traffic P03 | 20min | 9 tasks | 4 files |
 | Phase 02-safety-hardening P01 | 1min | 1 tasks | 1 files |
+| Phase 02-safety-hardening P02 | 5min | 1 tasks | 1 files |
 
 ## Session
 
-**Last session:** 2026-03-30T18:05:29.319Z
-**Stopped at:** Phase 02 plan 01 complete — SENS-03 verified, fc_sensors.py non-blocking exception handler confirmed
+**Last session:** 2026-03-30T18:05:51.305Z
+**Stopped at:** Completed 02-02: config cleanup — SHT30 config, normalization verified
 
 ---
 *Initialized: 2026-03-28*
