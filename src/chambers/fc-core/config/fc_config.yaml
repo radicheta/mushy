@@ -1,11 +1,11 @@
 /**:
   ros__parameters:
     # Simulation mode (can be set independently per subsystem)
-    sensor_simulation_mode: false   # false = read real DHT22 hardware
+    sensor_simulation_mode: false   # false = read real SHT30 hardware (I2C)
     actuator_simulation_mode: true  # true = no GPIO/PWM until actuators are wired
-    
-    # Sensor pins
-    dht_pin: 4  # GPIO4 for DHT22
+
+    # Sensor config
+    sht30_i2c_address: 0x44  # SHT30 I2C address (bus auto-detected by adafruit_blinka)
     light_pin: 18  # GPIO18 for light control
     
     # Target values
