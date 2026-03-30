@@ -77,19 +77,65 @@ def test_humidity_control(ros_context):
 
 def test_light_control(ros_context):
     node = FruitingChamberController()
-    
+
     # Test during light hours
     node.set_parameter('light_start_hour', 6)
     node.set_parameter('target_light_hours', 12)
-    
+
     # Mock current hour to 10 AM
     with patch('datetime.datetime') as mock_datetime:
         mock_datetime.now.return_value.hour = 10
         assert node.should_light_be_on() == True
-    
+
     # Test outside light hours
     with patch('datetime.datetime') as mock_datetime:
         mock_datetime.now.return_value.hour = 2
         assert node.should_light_be_on() == False
-    
-    node.destroy_node() 
+
+    node.destroy_node()
+
+
+def _send_humidity(node, value):
+    msg = RelativeHumidity()
+    msg.relative_humidity = value
+    node.humidity_callback(msg)
+
+
+def test_humidity_spike_rejection(ros_context):
+    """After 5 readings [0.80, 0.82, 0.81, 0.99, 0.83], median (0.82) replaces spike (0.99)."""
+    node = FruitingChamberController()
+
+    for v in [0.80, 0.82, 0.81, 0.99, 0.83]:
+        _send_humidity(node, v)
+
+    # sorted: [0.80, 0.81, 0.82, 0.83, 0.99] -> median = 0.82
+    assert node.current_humidity == pytest.approx(0.82)
+
+    node.destroy_node()
+
+
+def test_humidity_median_partial_buffer(ros_context):
+    """With only 3 readings [0.80, 0.82, 0.81], median of available samples is used."""
+    node = FruitingChamberController()
+
+    for v in [0.80, 0.82, 0.81]:
+        _send_humidity(node, v)
+
+    # sorted: [0.80, 0.81, 0.82] -> median = 0.81
+    assert node.current_humidity == pytest.approx(0.81)
+
+    node.destroy_node()
+
+
+def test_humidity_buffer_fifo(ros_context):
+    """After 7 readings, buffer retains only the last 5 (FIFO deque maxlen=5)."""
+    node = FruitingChamberController()
+
+    for v in [0.80, 0.82, 0.81, 0.99, 0.83, 0.84, 0.85]:
+        _send_humidity(node, v)
+
+    # deque(maxlen=5) after all 7 pushes: [0.81, 0.99, 0.83, 0.84, 0.85]
+    # sorted: [0.81, 0.83, 0.84, 0.85, 0.99] -> median = 0.84
+    assert node.current_humidity == pytest.approx(0.84)
+
+    node.destroy_node()
