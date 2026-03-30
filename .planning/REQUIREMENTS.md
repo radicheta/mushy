@@ -37,12 +37,12 @@
 ### Actuator
 
 - [ ] **ACTR-01**: Humidifier controlled via MOSFET GPIO pin (on/off)
-- [ ] **ACTR-02**: Humidifier GPIO pin is configurable in `fc_config.yaml` (not hardcoded)
+- [x] **ACTR-02**: Humidifier GPIO pin is configurable in `fc_config.yaml` (not hardcoded)
 - [ ] **ACTR-03**: Actuator state published to `fc/actuators/humidifier` (`std_msgs/Bool`, `TRANSIENT_LOCAL`)
 
 ### Testing & Deployment
 
-- [ ] **TEST-01**: Test assertions fixed — `test_humidity_control` tests actuator state, not pin number
+- [x] **TEST-01**: Test assertions fixed — `test_humidity_control` tests actuator state, not pin number
 - [ ] **TEST-02**: Full control loop verified on real FC-1 hardware (sensor → control → actuator)
 - [ ] **DEPL-01**: System runs stably on Pi and is suitable for grower handoff (better than timer)
 
@@ -103,8 +103,8 @@
 | CTRL-03 | Phase 3 | Pending |
 | CTRL-04 | Phase 3 | Pending |
 | CTRL-05 | Phase 3 | Pending |
-| ACTR-02 | Phase 2 | Pending |
-| TEST-01 | Phase 2 | Pending |
+| ACTR-02 | Phase 2 | Complete |
+| TEST-01 | Phase 2 | Complete |
 | SENS-02 | Phase 4 | Pending |
 | ACTR-01 | Phase 4 | Pending |
 | ACTR-03 | Phase 4 | Pending |

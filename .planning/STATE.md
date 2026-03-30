@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 02
-stopped_at: "Completed 02-02: config cleanup — SHT30 config, normalization verified"
-last_updated: "2026-03-30T18:05:51.308Z"
+stopped_at: "Completed 02-04: humidifier_pin configurable, test assertions fixed"
+last_updated: "2026-03-30T18:13:09.780Z"
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 12
-  completed_plans: 10
-  percent: 83
+  completed_plans: 11
+  percent: 92
 ---
 
 # Project State
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 ## Status
 
 **Milestone:** MVP — FC-1 Humidity Control
-**Progress:** [████████░░] 83%
+**Progress:** [█████████░] 92%
 **Phase:** 1 of 5 (in progress — plans 01-01 through 01-04 complete)
 **Last action:** SHT30 sensor live — 22.6°C, 84.7% real readings on /fc/humidity
 
@@ -78,6 +78,7 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 - [Phase 06-wireguard-vpn-routing-for-ros-traffic]: Phase 6 complete — ros2 topic echo /fc/humidity --once returned relative_humidity: 0.8462195773250935 over WireGuard VPN
 - [Phase 02-01]: D-05 confirmed: fc_sensors.py exception handler has no time.sleep() — SENS-03 is verification-only, no code change needed
 - [Phase 02-02]: Config reflects actual hardware (SHT30 over I2C 0x44, not DHT22 on GPIO4) — sht30_i2c_address made tunable from config
+- [Phase 02-04]: humidifier_pin defaults to 17, configurable from fc_config.yaml via ROS2 get_parameter — same pattern as light_pin (ACTR-02 satisfied)
 
 ## Performance Metrics
 
@@ -93,11 +94,12 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 | Phase 06-wireguard-vpn-routing-for-ros-traffic P03 | 20min | 9 tasks | 4 files |
 | Phase 02-safety-hardening P01 | 1min | 1 tasks | 1 files |
 | Phase 02-safety-hardening P02 | 5min | 1 tasks | 1 files |
+| Phase 02-safety-hardening P04 | 5min | 1 tasks | 3 files |
 
 ## Session
 
-**Last session:** 2026-03-30T18:05:51.305Z
-**Stopped at:** Completed 02-02: config cleanup — SHT30 config, normalization verified
+**Last session:** 2026-03-30T18:13:09.778Z
+**Stopped at:** Completed 02-04: humidifier_pin configurable, test assertions fixed
 
 ---
 *Initialized: 2026-03-28*
