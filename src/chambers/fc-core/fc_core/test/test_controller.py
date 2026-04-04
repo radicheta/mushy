@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 import pytest
 import rclpy
+import rclpy.time
 from sensor_msgs.msg import Temperature, RelativeHumidity
 from fc_core.fc_controller import FruitingChamberController
 import time
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
+
+
+def _mock_clock_at(nanoseconds):
+    """Return a mock clock whose .now() returns the given ROS time."""
+    mock_clock = MagicMock()
+    mock_clock.now.return_value = rclpy.time.Time(nanoseconds=nanoseconds)
+    return mock_clock
 
 @pytest.fixture
 def ros_context():
@@ -168,4 +176,83 @@ def test_none_temp_safe_state(ros_context):
     node.current_temp = None     # temp missing
     node.control_loop()
     assert node.humidifier_state == False
+    node.destroy_node()
+
+
+def test_dwell_time_blocks_toggle(ros_context):
+    """Humidifier stays ON when dwell time has not elapsed since last toggle."""
+    node = FruitingChamberController()
+    node.current_temp = 23.0
+
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(0))):
+        for _ in range(5):
+            _send_humidity(node, 0.70)  # fill buffer well below threshold -> humidifier ON
+        node.control_loop()
+        assert node.humidifier_state == True
+
+    # 10 seconds later (way under 300s dwell time)
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(10e9))):
+        for _ in range(5):
+            _send_humidity(node, 0.95)  # fill buffer well above threshold -> wants OFF
+        node.control_loop()
+        assert node.humidifier_state == True  # blocked by dwell time
+
+    node.destroy_node()
+
+
+def test_dwell_time_allows_toggle_after_wait(ros_context):
+    """Humidifier can toggle after min_dwell_time has elapsed."""
+    node = FruitingChamberController()
+    node.current_temp = 23.0
+
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(0))):
+        for _ in range(5):
+            _send_humidity(node, 0.70)
+        node.control_loop()
+        assert node.humidifier_state == True
+
+    # 301 seconds later (past 300s dwell time)
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(301e9))):
+        for _ in range(5):
+            _send_humidity(node, 0.95)
+        node.control_loop()
+        assert node.humidifier_state == False  # toggle permitted
+
+    node.destroy_node()
+
+
+def test_dwell_time_first_toggle_always_allowed(ros_context):
+    """First toggle is always allowed when _last_humidifier_toggle is None."""
+    node = FruitingChamberController()
+    node.current_temp = 23.0
+    assert node._last_humidifier_toggle is None
+
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(0))):
+        for _ in range(5):
+            _send_humidity(node, 0.70)
+        node.control_loop()
+        assert node.humidifier_state == True  # first toggle always allowed
+
+    node.destroy_node()
+
+
+def test_dwell_time_applies_both_directions(ros_context):
+    """Dwell guard blocks OFF->ON toggle the same as ON->OFF when time has not elapsed."""
+    node = FruitingChamberController()
+    node.current_temp = 23.0
+
+    # Turn OFF first (send humidity above threshold)
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(0))):
+        for _ in range(5):
+            _send_humidity(node, 0.95)
+        node.control_loop()
+        assert node.humidifier_state == False
+
+    # Try to turn ON 10s later (under dwell time)
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(10e9))):
+        for _ in range(5):
+            _send_humidity(node, 0.70)
+        node.control_loop()
+        assert node.humidifier_state == False  # blocked
+
     node.destroy_node()
