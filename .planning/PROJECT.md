@@ -37,11 +37,18 @@ Existing codebase provides:
 - ✓ Humidifier GPIO pin configurable from fc_config.yaml (ACTR-02)
 - ✓ Test assertions fixed and passing (TEST-01)
 
+### Validated in Phase 03 (Closed-Loop Control)
+
+- ✓ Closed-loop bang-bang control with hysteresis (CTRL-01)
+- ✓ Configurable setpoint, deadband, dwell time, staleness timeout (CTRL-02)
+- ✓ Minimum dwell time guard prevents rapid actuator cycling (CTRL-03)
+- ✓ Stale sensor data detection triggers safe state (CTRL-04)
+- ✓ Sensor failure drives humidifier OFF, not frozen last state (CTRL-05)
+
 ### Active
 
 MVP scope remaining:
 
-- [ ] Closed-loop control algorithm (maintain setpoint)
 - [ ] Test on real hardware (Raspberry Pi + sensors + actuator)
 - [ ] Production deployment readiness
 
@@ -58,7 +65,8 @@ MVP scope remaining:
 **Current State:**
 - Phase 01 complete: SHT30 live, SSR-10A wired, deploy pipeline working
 - Phase 02 complete: sensor hardened, config clean, spike rejection active, GPIO configurable
-- Remaining: closed-loop PID/setpoint control (Phase 03), observability (Phase 04), production deploy (Phase 05)
+- Phase 03 complete: bang-bang control with dwell time guard, staleness detection, safe failure state
+- Remaining: observability (Phase 04), production deploy (Phase 05)
 
 **Hardware Setup:**
 - Fruiting chamber 1 (FC-1) with Raspberry Pi
@@ -114,4 +122,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-03-30 after Phase 02 completion*
+*Last updated: 2026-04-04 after Phase 03 completion*
