@@ -38,28 +38,33 @@ class FruitingChamberController(Node):
         # Initialize hardware or simulation
         if not self.get_parameter('actuator_simulation_mode').value:
             import RPi.GPIO as GPIO
-            import rpi_hardware_pwm as hw_pwm
-            
+
             # GPIO Setup
             GPIO.setmode(GPIO.BCM)
-            
-            # Fan control (PWM)
-            self.fan_pwm = hw_pwm.HardwarePWM(
-                pwm_channel=self.get_parameter('fan_pwm_channel').value,
-                hz=self.get_parameter('fan_pwm_freq').value
-            )
-            self.fan_pwm.start(0)
-            
+
+            # Fan control (PWM) — optional, skip if no hardware PWM library
+            self.fan_pwm = None
+            try:
+                import rpi_hardware_pwm as hw_pwm
+                self.fan_pwm = hw_pwm.HardwarePWM(
+                    pwm_channel=self.get_parameter('fan_pwm_channel').value,
+                    hz=self.get_parameter('fan_pwm_freq').value
+                )
+                self.fan_pwm.start(0)
+                self.get_logger().info('Hardware PWM fan initialized')
+            except Exception as e:
+                self.get_logger().warn(f'Hardware PWM not available, fan disabled: {e}')
+
             # Humidifier control (GPIO)
             self.humidifier_pin = self.get_parameter('humidifier_pin').value
             GPIO.setup(self.humidifier_pin, GPIO.OUT)
             GPIO.output(self.humidifier_pin, GPIO.LOW)
-            
+
             # Light control (GPIO)
             self.light_pin = self.get_parameter('light_pin').value
             GPIO.setup(self.light_pin, GPIO.OUT)
             GPIO.output(self.light_pin, GPIO.LOW)
-            
+
             self.GPIO = GPIO
         else:
             # Simulation mode
@@ -120,7 +125,8 @@ class FruitingChamberController(Node):
 
     def set_fan_speed(self, speed):
         if not self.get_parameter('actuator_simulation_mode').value:
-            self.fan_pwm.change_duty_cycle(speed)
+            if self.fan_pwm is not None:
+                self.fan_pwm.change_duty_cycle(speed)
         else:
             self.fan_speed = speed
 
@@ -160,7 +166,9 @@ class FruitingChamberController(Node):
 
     def get_fan_speed(self):
         if not self.get_parameter('actuator_simulation_mode').value:
-            return self.fan_pwm.get_duty_cycle()
+            if self.fan_pwm is not None:
+                return self.fan_pwm.get_duty_cycle()
+            return 0
         return self.fan_speed
 
     def get_humidifier_state(self):
@@ -238,9 +246,9 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
-        if not node.get_parameter('simulation_mode').value:
-            # Cleanup hardware
-            node.fan_pwm.stop()
+        if not node.get_parameter('actuator_simulation_mode').value:
+            if node.fan_pwm is not None:
+                node.fan_pwm.stop()
             node.GPIO.cleanup()
         node.destroy_node()
         rclpy.shutdown()
