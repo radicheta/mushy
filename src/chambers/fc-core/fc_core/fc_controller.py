@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy, HistoryPolicy
 from sensor_msgs.msg import Temperature, RelativeHumidity
+from std_msgs.msg import Bool
 import time
 from collections import deque
 from datetime import datetime
@@ -84,7 +86,18 @@ class FruitingChamberController(Node):
             'fc/humidity',
             self.humidity_callback,
             10)
-        
+
+        # Actuator state publisher — TRANSIENT_LOCAL so late-joiners get last value (D-01, ACTR-03)
+        actuator_qos = QoSProfile(
+            depth=1,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST,
+        )
+        self.humidifier_state_pub = self.create_publisher(
+            Bool, 'fc/actuators/humidifier', actuator_qos
+        )
+
         # Current values
         self.current_temp = None
         self.current_humidity = None
@@ -229,6 +242,11 @@ class FruitingChamberController(Node):
 
         # Light control — runs regardless of staleness (D-13)
         self.set_light(self.should_light_be_on())
+
+        # Publish actuator state every tick (ACTR-03)
+        state_msg = Bool()
+        state_msg.data = self.get_humidifier_state()
+        self.humidifier_state_pub.publish(state_msg)
 
         self.get_logger().debug(
             f'Temp: {self.current_temp:.1f}°C, '
