@@ -40,17 +40,17 @@ def test_temperature_control(ros_context):
     
     # Run control loop
     node.control_loop()
-    
+
     # Fan should be at minimum speed
-    assert node.fan_pwm.get_duty_cycle() == node.get_parameter('min_fan_speed').value
-    
+    assert node.fan_speed == node.get_parameter('min_fan_speed').value
+
     # Test temperature above target
     temp_msg.temperature = node.get_parameter('target_temp').value + 2.0
     node.temperature_callback(temp_msg)
     node.control_loop()
-    
+
     # Fan should be at higher speed
-    assert node.fan_pwm.get_duty_cycle() > node.get_parameter('min_fan_speed').value
+    assert node.fan_speed > node.get_parameter('min_fan_speed').value
     
     node.destroy_node()
 
