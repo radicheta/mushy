@@ -352,3 +352,22 @@ def test_fresh_data_not_stale(ros_context):
     assert node._safe_state_active == False
     assert node.humidifier_state == True  # below threshold -> ON
     node.destroy_node()
+
+
+def test_humidifier_state_published(ros_context):
+    """control_loop publishes current humidifier state on fc/actuators/humidifier."""
+    node = FruitingChamberController()
+    node.current_temp = 23.0
+
+    published = []
+    node.humidifier_state_pub.publish = lambda msg: published.append(msg.data)
+
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(0))):
+        for _ in range(5):
+            _send_humidity(node, 0.70)  # below threshold -> humidifier ON
+        node.control_loop()
+
+    assert len(published) == 1
+    assert published[0] == True
+
+    node.destroy_node()
