@@ -255,3 +255,100 @@ def test_dwell_time_applies_both_directions(ros_context):
         assert node.humidifier_state == False  # blocked by dwell time
 
     node.destroy_node()
+
+
+def test_sensor_staleness(ros_context):
+    """Stale sensor data (>sensor_stale_timeout) drives humidifier OFF and sets _safe_state_active."""
+    node = FruitingChamberController()
+    node.current_temp = 23.0
+
+    # Humidity arrives at t=0
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(0))):
+        _send_humidity(node, 0.70)  # below threshold -> would turn ON
+
+    # 15 seconds later (> 10s stale timeout), run control
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(15e9))):
+        node.control_loop()
+
+    assert node.humidifier_state == False  # safe state, not ON
+    assert node._safe_state_active == True
+    node.destroy_node()
+
+
+def test_safe_state_recovery(ros_context):
+    """After stale state, fresh data auto-recovers control without restart."""
+    node = FruitingChamberController()
+    node.current_temp = 23.0
+
+    # Enter stale state
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(0))):
+        _send_humidity(node, 0.70)
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(15e9))):
+        node.control_loop()
+    assert node._safe_state_active == True
+
+    # Fresh data arrives at t=20s, humidity below threshold
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(20e9))):
+        _send_humidity(node, 0.70)
+        node.control_loop()
+
+    assert node._safe_state_active == False  # recovered
+    # Note: humidifier may or may not be ON depending on dwell time from safe-state OFF.
+    # The key assertion is _safe_state_active == False (control resumed).
+    node.destroy_node()
+
+
+def test_staleness_log_deduplication(ros_context):
+    """WARN is logged only once on stale entry, not on every subsequent stale tick."""
+    node = FruitingChamberController()
+    node.current_temp = 23.0
+
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(0))):
+        _send_humidity(node, 0.82)
+
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(15e9))):
+        with patch.object(node.get_logger(), 'warn') as mock_warn:
+            node.control_loop()  # first stale tick -> logs WARN
+            node.control_loop()  # second stale tick -> no additional WARN
+            assert mock_warn.call_count == 1
+    node.destroy_node()
+
+
+def test_safe_state_updates_dwell_toggle(ros_context):
+    """Safe-state forced OFF updates _last_humidifier_toggle (dwell timer resets)."""
+    node = FruitingChamberController()
+    node.current_temp = 23.0
+
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(0))):
+        for _ in range(5):
+            _send_humidity(node, 0.70)
+        node.control_loop()  # humidifier ON
+
+    # Go stale at t=15s
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(15e9))):
+        node.control_loop()  # safe state OFF
+
+    # _last_humidifier_toggle should be updated to t=15s
+    assert node._last_humidifier_toggle is not None
+    assert node._last_humidifier_toggle == rclpy.time.Time(nanoseconds=int(15e9))
+    node.destroy_node()
+
+
+def test_fresh_data_not_stale(ros_context):
+    """Data 5 seconds old (under 10s threshold) is not stale — normal control runs."""
+    node = FruitingChamberController()
+    node.current_temp = 23.0
+
+    # Humidity arrives at t=0
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(0))):
+        for _ in range(5):
+            _send_humidity(node, 0.70)
+
+    # Only 5 seconds later (under 10s threshold)
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(5e9))):
+        node.control_loop()
+
+    # Not stale — normal control should apply (humidifier ON for low humidity)
+    assert node._safe_state_active == False
+    assert node.humidifier_state == True  # below threshold -> ON
+    node.destroy_node()
