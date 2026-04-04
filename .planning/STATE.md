@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Ready to plan
-stopped_at: Phase 3 context gathered
-last_updated: "2026-04-04T18:32:59.660Z"
+status: Executing Phase 03
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-04-04T18:56:20.467Z"
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 12
-  completed_plans: 12
-  percent: 100
+  total_plans: 15
+  completed_plans: 13
+  percent: 87
 ---
 
 # Project State
@@ -20,12 +20,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 02 — safety-hardening
+**Current focus:** Phase 03 — closed-loop-control
 
 ## Status
 
 **Milestone:** MVP — FC-1 Humidity Control
-**Progress:** [██████████] 100%
+**Progress:** [█████████░] 87%
 **Phase:** 06 of 5 (wireguard vpn routing for ros traffic)
 **Last action:** SHT30 sensor live — 22.6°C, 84.7% real readings on /fc/humidity
 
@@ -81,6 +81,7 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 - [Phase 02-04]: humidifier_pin defaults to 17, configurable from fc_config.yaml via ROS2 get_parameter — same pattern as light_pin (ACTR-02 satisfied)
 - [Phase 02-03]: Filter lives in controller receive side (D-02): sensors publish raw truth, controller applies rolling median before acting
 - [Phase 02-03]: SENS-05: deque(maxlen=5) + statistics.median chosen for spike rejection — stdlib, no extra dependency, handles odd/even lengths
+- [Phase 03-01]: D-12 fix: set_humidifier(False) on None sensor data instead of silent return — prevents humidifier freezing in last state on sensor failure
 
 ## Performance Metrics
 
@@ -98,11 +99,12 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 | Phase 02-safety-hardening P02 | 5min | 1 tasks | 1 files |
 | Phase 02-safety-hardening P04 | 5min | 1 tasks | 3 files |
 | Phase 02-safety-hardening P03 | 3min | 1 tasks | 2 files |
+| Phase 03-closed-loop-control P01 | 7min | 1 tasks | 3 files |
 
 ## Session
 
-**Last session:** 2026-04-04T18:32:59.658Z
-**Stopped at:** Phase 3 context gathered
+**Last session:** 2026-04-04T18:56:20.464Z
+**Stopped at:** Completed 03-01-PLAN.md
 
 ---
 *Initialized: 2026-03-28*
