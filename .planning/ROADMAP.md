@@ -63,7 +63,7 @@ Plans:
   5. Sensor failure drives humidifier to OFF, not frozen last state
 
 Plans:
-- [ ] 03-01: Implement/complete bang-bang hysteresis control with configurable setpoint and deadband
+- [x] 03-01: Implement/complete bang-bang hysteresis control with configurable setpoint and deadband
 - [ ] 03-02: Add minimum dwell time guard to prevent rapid actuator cycling
 - [ ] 03-03: Add sensor staleness detection and safe failure state logic
 
