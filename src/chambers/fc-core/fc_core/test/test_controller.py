@@ -56,31 +56,28 @@ def test_temperature_control(ros_context):
 
 def test_humidity_control(ros_context):
     node = FruitingChamberController()
-    
-    # Test humidity below target
-    humidity_msg = RelativeHumidity()
-    humidity_msg.relative_humidity = node.get_parameter('target_humidity').value - 0.1
-    node.humidity_callback(humidity_msg)
-    
+
     # Test temperature at target
     temp_msg = Temperature()
     temp_msg.temperature = node.get_parameter('target_temp').value
     node.temperature_callback(temp_msg)
-    
-    # Run control loop
-    node.control_loop()
-    
-    # Humidifier should be ON
-    assert node.humidifier_state == True
-    
-    # Test humidity above target
-    humidity_msg.relative_humidity = node.get_parameter('target_humidity').value + 0.1
-    node.humidity_callback(humidity_msg)
-    node.control_loop()
-    
-    # Humidifier should be OFF
-    assert node.humidifier_state == False
-    
+
+    # Test humidity below target — advance clock to t=0 for first toggle
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(0))):
+        for _ in range(5):
+            _send_humidity(node, node.get_parameter('target_humidity').value - 0.1)
+        node.control_loop()
+        # Humidifier should be ON
+        assert node.humidifier_state == True
+
+    # Test humidity above target — advance clock 301s past dwell time
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(301e9))):
+        for _ in range(5):
+            _send_humidity(node, node.get_parameter('target_humidity').value + 0.1)
+        node.control_loop()
+        # Humidifier should be OFF
+        assert node.humidifier_state == False
+
     node.destroy_node()
 
 def test_light_control(ros_context):
@@ -240,19 +237,21 @@ def test_dwell_time_applies_both_directions(ros_context):
     """Dwell guard blocks OFF->ON toggle the same as ON->OFF when time has not elapsed."""
     node = FruitingChamberController()
     node.current_temp = 23.0
+    # Pre-set humidifier ON so the first control_loop has a real ON->OFF transition
+    node.humidifier_state = True
 
-    # Turn OFF first (send humidity above threshold)
+    # Turn OFF first (send humidity above threshold, humidifier was ON -> transitions to OFF)
     with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(0))):
         for _ in range(5):
             _send_humidity(node, 0.95)
         node.control_loop()
-        assert node.humidifier_state == False
+        assert node.humidifier_state == False  # turned OFF, _last_toggle recorded at t=0
 
-    # Try to turn ON 10s later (under dwell time)
+    # Try to turn ON 10s later (under 300s dwell time)
     with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(10e9))):
         for _ in range(5):
             _send_humidity(node, 0.70)
         node.control_loop()
-        assert node.humidifier_state == False  # blocked
+        assert node.humidifier_state == False  # blocked by dwell time
 
     node.destroy_node()
