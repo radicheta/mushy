@@ -102,6 +102,7 @@ class FruitingChamberController(Node):
     def humidity_callback(self, msg):
         self._humidity_buffer.append(msg.relative_humidity)
         self.current_humidity = median(self._humidity_buffer)
+        self._last_humidity_timestamp = self.get_clock().now()
 
     def should_light_be_on(self):
         current_hour = datetime.now().hour
@@ -176,8 +177,16 @@ class FruitingChamberController(Node):
         if self.current_temp is None or self.current_humidity is None:
             self.set_humidifier(False)
             return
-            
-        # Temperature control (fan speed)
+
+        # Staleness guard (D-09): check if humidity data is too old
+        stale = False
+        if self._last_humidity_timestamp is not None:
+            elapsed_sec = (
+                self.get_clock().now() - self._last_humidity_timestamp
+            ).nanoseconds / 1e9
+            stale = elapsed_sec > self.get_parameter('sensor_stale_timeout').value
+
+        # Temperature control (fan speed) — runs regardless of staleness (D-13)
         temp_diff = self.current_temp - self.get_parameter('target_temp').value
         if abs(temp_diff) > self.get_parameter('temp_tolerance').value:
             # Adjust fan speed based on temperature difference
@@ -188,16 +197,31 @@ class FruitingChamberController(Node):
             self.set_fan_speed(fan_speed)
         else:
             self.set_fan_speed(self.get_parameter('min_fan_speed').value)
-            
-        # Humidity control (humidifier) — routed through dwell guard
-        if self.current_humidity < (self.get_parameter('target_humidity').value - self.get_parameter('humidity_tolerance').value):
-            self._set_humidifier_with_dwell(True)
-        elif self.current_humidity > (self.get_parameter('target_humidity').value + self.get_parameter('humidity_tolerance').value):
-            self._set_humidifier_with_dwell(False)
-            
-        # Light control
+
+        if stale:
+            # Safe state: drive humidifier OFF, log on transition only (D-10, D-11)
+            if not self._safe_state_active:
+                self._safe_state_active = True
+                self.get_logger().warn(
+                    'Sensor data stale — humidifier OFF for safety'
+                )
+            self.set_humidifier(False)
+            self._last_humidifier_toggle = self.get_clock().now()
+        else:
+            # Recovery: log on transition back to fresh data (D-11)
+            if self._safe_state_active:
+                self._safe_state_active = False
+                self.get_logger().info('Fresh sensor data received — resuming control')
+
+            # Humidity control (humidifier) — routed through dwell guard
+            if self.current_humidity < (self.get_parameter('target_humidity').value - self.get_parameter('humidity_tolerance').value):
+                self._set_humidifier_with_dwell(True)
+            elif self.current_humidity > (self.get_parameter('target_humidity').value + self.get_parameter('humidity_tolerance').value):
+                self._set_humidifier_with_dwell(False)
+
+        # Light control — runs regardless of staleness (D-13)
         self.set_light(self.should_light_be_on())
-            
+
         self.get_logger().debug(
             f'Temp: {self.current_temp:.1f}°C, '
             f'Humidity: {self.current_humidity*100:.1f}%, '
