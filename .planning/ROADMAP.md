@@ -79,8 +79,8 @@ Plans:
   4. Full control loop verified on FC-1: sensor reads → control decision → humidifier actuates
 
 Plans:
-- [ ] 04-01-PLAN.md — Actuator state publisher (ACTR-03) + OpenMCT dashboard extension (CO2 + humidifier charts)
-- [ ] 04-02-PLAN.md — Deploy to FC-1, restore production config, end-to-end hardware soak test (TEST-02)
+- [x] 04-01-PLAN.md — Actuator state publisher (ACTR-03) + OpenMCT dashboard extension (CO2 + humidifier charts)
+- [x] 04-02-PLAN.md — Deploy to FC-1, restore production config, end-to-end hardware soak test (TEST-02)
 
 ### Phase 5: Production Deployment
 **Goal**: System is running on FC-1 in production, replacing the timer, and is stable enough for grower operation.
