@@ -71,6 +71,7 @@ Plans:
 **Goal**: System is fully integrated — actuator state is visible in ROS, and the complete control loop is verified working end-to-end on FC-1 hardware.
 **Depends on**: Phase 3
 **Requirements**: SENS-02, ACTR-01, ACTR-03, TEST-02
+**Plans:** 2 plans
 **Success Criteria** (what must be TRUE):
   1. `fc/humidity` topic publishes correct readings visible via `ros2 topic echo`
   2. Humidifier activates and deactivates via GPIO on control commands
@@ -78,8 +79,8 @@ Plans:
   4. Full control loop verified on FC-1: sensor reads → control decision → humidifier actuates
 
 Plans:
-- [ ] 04-01: Add actuator state publishing to `fc/actuators/humidifier`
-- [ ] 04-02: End-to-end hardware validation on FC-1 (sensor → controller → humidifier)
+- [ ] 04-01-PLAN.md — Actuator state publisher (ACTR-03) + OpenMCT dashboard extension (CO2 + humidifier charts)
+- [ ] 04-02-PLAN.md — Deploy to FC-1, restore production config, end-to-end hardware soak test (TEST-02)
 
 ### Phase 5: Production Deployment
 **Goal**: System is running on FC-1 in production, replacing the timer, and is stable enough for grower operation.
