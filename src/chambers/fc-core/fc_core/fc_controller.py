@@ -30,6 +30,8 @@ class FruitingChamberController(Node):
                 ('fan_pwm_channel', 0),
                 ('fan_pwm_freq', 25000),
                 ('control_interval', 1.0),
+                ('min_dwell_time', 300.0),
+                ('sensor_stale_timeout', 10.0),
             ]
         )
         
@@ -82,6 +84,9 @@ class FruitingChamberController(Node):
         self.current_temp = None
         self.current_humidity = None
         self._humidity_buffer = deque(maxlen=5)
+        self._last_humidity_timestamp = None   # rclpy.time.Time, set in humidity_callback
+        self._last_humidifier_toggle = None    # rclpy.time.Time, set on state change
+        self._safe_state_active = False        # log deduplication flag
         
         # Control timer
         self.timer = self.create_timer(
@@ -147,6 +152,7 @@ class FruitingChamberController(Node):
 
     def control_loop(self):
         if self.current_temp is None or self.current_humidity is None:
+            self.set_humidifier(False)
             return
             
         # Temperature control (fan speed)
