@@ -32,6 +32,26 @@
             extract: function (msg) { return msg.temperature; },
             min: 10,
             max: 35
+        },
+        {
+            identifier: { namespace: 'fruiting-chamber', key: 'fc.co2' },
+            name: 'CO2',
+            unit: 'ppm',
+            topic: '/fc/co2',
+            msgType: 'std_msgs/msg/Float32',
+            extract: function (msg) { return msg.data; },
+            min: 300,
+            max: 5000
+        },
+        {
+            identifier: { namespace: 'fruiting-chamber', key: 'fc.humidifier' },
+            name: 'Humidifier',
+            unit: '',
+            topic: '/fc/actuators/humidifier',
+            msgType: 'std_msgs/msg/Bool',
+            extract: function (msg) { return msg.data ? 1 : 0; },
+            min: 0,
+            max: 1
         }
     ];
 
