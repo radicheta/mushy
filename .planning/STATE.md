@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 03
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-04-04T18:56:20.467Z"
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-04-04T19:03:49.941Z"
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 15
-  completed_plans: 13
-  percent: 87
+  completed_plans: 14
+  percent: 93
 ---
 
 # Project State
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 ## Status
 
 **Milestone:** MVP — FC-1 Humidity Control
-**Progress:** [█████████░] 87%
+**Progress:** [█████████░] 93%
 **Phase:** 06 of 5 (wireguard vpn routing for ros traffic)
 **Last action:** SHT30 sensor live — 22.6°C, 84.7% real readings on /fc/humidity
 
@@ -82,6 +82,8 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 - [Phase 02-03]: Filter lives in controller receive side (D-02): sensors publish raw truth, controller applies rolling median before acting
 - [Phase 02-03]: SENS-05: deque(maxlen=5) + statistics.median chosen for spike rejection — stdlib, no extra dependency, handles odd/even lengths
 - [Phase 03-01]: D-12 fix: set_humidifier(False) on None sensor data instead of silent return — prevents humidifier freezing in last state on sensor failure
+- [Phase 03-02]: Dwell guard as _set_humidifier_with_dwell method (not inside set_humidifier) — keeps hardware abstraction thin, makes call sites explicit
+- [Phase 03-02]: test_humidity_control updated with clock mocking to fix pre-existing failure caused by dwell guard interaction
 
 ## Performance Metrics
 
@@ -100,11 +102,12 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 | Phase 02-safety-hardening P04 | 5min | 1 tasks | 3 files |
 | Phase 02-safety-hardening P03 | 3min | 1 tasks | 2 files |
 | Phase 03-closed-loop-control P01 | 7min | 1 tasks | 3 files |
+| Phase 03-closed-loop-control P02 | 5min | 1 tasks | 2 files |
 
 ## Session
 
-**Last session:** 2026-04-04T18:56:20.464Z
-**Stopped at:** Completed 03-01-PLAN.md
+**Last session:** 2026-04-04T19:03:49.938Z
+**Stopped at:** Completed 03-02-PLAN.md
 
 ---
 *Initialized: 2026-03-28*

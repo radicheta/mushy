@@ -64,7 +64,7 @@ Plans:
 
 Plans:
 - [x] 03-01: Implement/complete bang-bang hysteresis control with configurable setpoint and deadband
-- [ ] 03-02: Add minimum dwell time guard to prevent rapid actuator cycling
+- [x] 03-02: Add minimum dwell time guard to prevent rapid actuator cycling
 - [ ] 03-03: Add sensor staleness detection and safe failure state logic
 
 ### Phase 4: Observability & Integration
@@ -102,7 +102,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Pi Integration & Environment | 5/5 | Complete   | 2026-03-29 |
 | 2. Safety Hardening | 4/4 | Complete   | 2026-03-30 |
-| 3. Closed-Loop Control | 0/3 | Not started | - |
+| 3. Closed-Loop Control | 2/3 | In Progress|  |
 | 4. Observability & Integration | 0/2 | Not started | - |
 | 5. Production Deployment | 0/1 | Not started | - |
 
@@ -113,7 +113,7 @@ Plans:
 **Goal:** FC-1 Pi and elder-plops on an always-on WireGuard mesh (172.16.10.0/24) with ROS2 topic visibility over the VPN tunnel via CycloneDDS unicast peer discovery.
 **Requirements**: INFRA-02, INFRA-04
 **Depends on:** Phase 1 (Pi must be accessible via SSH; independent of Phases 2-5)
-**Plans:** 4/4 plans complete
+**Plans:** 2/3 plans executed
 
 Plans:
 - [x] 06-01-PLAN.md — Install WireGuard on FC-1 Pi, generate keys, deploy wg0.conf, enable service
