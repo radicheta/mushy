@@ -65,7 +65,7 @@ Plans:
 Plans:
 - [x] 03-01: Implement/complete bang-bang hysteresis control with configurable setpoint and deadband
 - [x] 03-02: Add minimum dwell time guard to prevent rapid actuator cycling
-- [ ] 03-03: Add sensor staleness detection and safe failure state logic
+- [x] 03-03: Add sensor staleness detection and safe failure state logic
 
 ### Phase 4: Observability & Integration
 **Goal**: System is fully integrated — actuator state is visible in ROS, and the complete control loop is verified working end-to-end on FC-1 hardware.
