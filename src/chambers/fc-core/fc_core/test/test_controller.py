@@ -139,3 +139,33 @@ def test_humidity_buffer_fifo(ros_context):
     assert node.current_humidity == pytest.approx(0.84)
 
     node.destroy_node()
+
+
+def test_new_params_declared(ros_context):
+    """min_dwell_time (300.0) and sensor_stale_timeout (10.0) are declared parameters."""
+    node = FruitingChamberController()
+    assert node.get_parameter('min_dwell_time').value == 300.0
+    assert node.get_parameter('sensor_stale_timeout').value == 10.0
+    node.destroy_node()
+
+
+def test_none_humidity_safe_state(ros_context):
+    """When current_humidity is None and temp is set, control_loop drives humidifier OFF."""
+    node = FruitingChamberController()
+    node.humidifier_state = True   # simulate humidifier was ON
+    node.current_temp = 23.0       # temp is present
+    # current_humidity is None (default)
+    node.control_loop()
+    assert node.humidifier_state == False  # driven OFF, not frozen
+    node.destroy_node()
+
+
+def test_none_temp_safe_state(ros_context):
+    """When current_temp is None and humidity is set, control_loop drives humidifier OFF."""
+    node = FruitingChamberController()
+    node.humidifier_state = True
+    _send_humidity(node, 0.80)   # humidity present
+    node.current_temp = None     # temp missing
+    node.control_loop()
+    assert node.humidifier_state == False
+    node.destroy_node()
