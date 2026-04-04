@@ -129,6 +129,28 @@ class FruitingChamberController(Node):
         else:
             self.humidifier_state = state
 
+    def _set_humidifier_with_dwell(self, state):
+        """Set humidifier state, gated by minimum dwell time (D-05, D-06).
+
+        Only used by bang-bang control. Safe-state calls bypass this
+        and call set_humidifier() directly.
+        """
+        current_state = self.get_humidifier_state()
+        if state == current_state:
+            return  # no transition needed
+        if self._last_humidifier_toggle is not None:
+            elapsed_sec = (
+                self.get_clock().now() - self._last_humidifier_toggle
+            ).nanoseconds / 1e9
+            if elapsed_sec < self.get_parameter('min_dwell_time').value:
+                self.get_logger().debug(
+                    f'Dwell time not elapsed ({elapsed_sec:.1f}s < '
+                    f'{self.get_parameter("min_dwell_time").value}s), skipping toggle'
+                )
+                return
+        self.set_humidifier(state)
+        self._last_humidifier_toggle = self.get_clock().now()
+
     def set_light(self, state):
         if not self.get_parameter('actuator_simulation_mode').value:
             self.GPIO.output(self.light_pin, self.GPIO.HIGH if state else self.GPIO.LOW)
@@ -167,11 +189,11 @@ class FruitingChamberController(Node):
         else:
             self.set_fan_speed(self.get_parameter('min_fan_speed').value)
             
-        # Humidity control (humidifier)
+        # Humidity control (humidifier) — routed through dwell guard
         if self.current_humidity < (self.get_parameter('target_humidity').value - self.get_parameter('humidity_tolerance').value):
-            self.set_humidifier(True)
+            self._set_humidifier_with_dwell(True)
         elif self.current_humidity > (self.get_parameter('target_humidity').value + self.get_parameter('humidity_tolerance').value):
-            self.set_humidifier(False)
+            self._set_humidifier_with_dwell(False)
             
         # Light control
         self.set_light(self.should_light_be_on())
