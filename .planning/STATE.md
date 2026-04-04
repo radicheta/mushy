@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 03
-stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-04-04T19:03:49.941Z"
+stopped_at: Completed 03-03-PLAN.md
+last_updated: "2026-04-04T19:10:29.838Z"
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 15
-  completed_plans: 14
-  percent: 93
+  completed_plans: 15
+  percent: 100
 ---
 
 # Project State
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 ## Status
 
 **Milestone:** MVP — FC-1 Humidity Control
-**Progress:** [█████████░] 93%
+**Progress:** [██████████] 100%
 **Phase:** 06 of 5 (wireguard vpn routing for ros traffic)
 **Last action:** SHT30 sensor live — 22.6°C, 84.7% real readings on /fc/humidity
 
@@ -84,6 +84,8 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 - [Phase 03-01]: D-12 fix: set_humidifier(False) on None sensor data instead of silent return — prevents humidifier freezing in last state on sensor failure
 - [Phase 03-02]: Dwell guard as _set_humidifier_with_dwell method (not inside set_humidifier) — keeps hardware abstraction thin, makes call sites explicit
 - [Phase 03-02]: test_humidity_control updated with clock mocking to fix pre-existing failure caused by dwell guard interaction
+- [Phase 03-03]: Staleness check in control_loop (not callback) — check happens on every tick so recovery is immediate when fresh data arrives
+- [Phase 03-03]: Safe-state OFF bypasses dwell guard and updates _last_humidifier_toggle — prevents post-recovery rapid cycling (Pitfall 5)
 
 ## Performance Metrics
 
@@ -103,11 +105,12 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 | Phase 02-safety-hardening P03 | 3min | 1 tasks | 2 files |
 | Phase 03-closed-loop-control P01 | 7min | 1 tasks | 3 files |
 | Phase 03-closed-loop-control P02 | 5min | 1 tasks | 2 files |
+| Phase 03-closed-loop-control P03 | 4min | 1 tasks | 2 files |
 
 ## Session
 
-**Last session:** 2026-04-04T19:03:49.938Z
-**Stopped at:** Completed 03-02-PLAN.md
+**Last session:** 2026-04-04T19:10:29.836Z
+**Stopped at:** Completed 03-03-PLAN.md
 
 ---
 *Initialized: 2026-03-28*
