@@ -45,11 +45,19 @@ Existing codebase provides:
 - ✓ Stale sensor data detection triggers safe state (CTRL-04)
 - ✓ Sensor failure drives humidifier OFF, not frozen last state (CTRL-05)
 
+### Validated in Phase 04 (Observability & Integration)
+
+- ✓ Actuator state published on `fc/actuators/humidifier` with TRANSIENT_LOCAL QoS (ACTR-03)
+- ✓ Humidifier GPIO activates/deactivates via control loop on FC-1 (ACTR-01)
+- ✓ Humidity published correctly on `fc/humidity` in 0.0-1.0 range (SENS-02)
+- ✓ OpenMCT dashboard extended with CO2 and humidifier state charts (D-04, D-05)
+- ✓ SCD41 CO2 sensor integrated, publishing on `fc/co2`
+- ⏳ Full soak test pending Pi relocation to farm (TEST-02 partial — tracked in 04-HUMAN-UAT.md)
+
 ### Active
 
 MVP scope remaining:
 
-- [ ] Test on real hardware (Raspberry Pi + sensors + actuator)
 - [ ] Production deployment readiness
 
 ### Out of Scope
@@ -66,7 +74,8 @@ MVP scope remaining:
 - Phase 01 complete: SHT30 live, SSR-10A wired, deploy pipeline working
 - Phase 02 complete: sensor hardened, config clean, spike rejection active, GPIO configurable
 - Phase 03 complete: bang-bang control with dwell time guard, staleness detection, safe failure state
-- Remaining: observability (Phase 04), production deploy (Phase 05)
+- Phase 04 complete: actuator state topic, OpenMCT CO2/humidifier charts, FC-1 hardware verified
+- Remaining: production deploy (Phase 05)
 
 **Hardware Setup:**
 - Fruiting chamber 1 (FC-1) with Raspberry Pi
@@ -122,4 +131,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-04-04 after Phase 03 completion*
+*Last updated: 2026-04-04 after Phase 04 completion*
