@@ -30,7 +30,7 @@
 
 - [x] **CTRL-01**: Closed-loop bang-bang control maintains humidity setpoint with hysteresis
 - [x] **CTRL-02**: Setpoint and deadband (on/off thresholds) configurable via `fc_config.yaml`
-- [ ] **CTRL-03**: Minimum dwell time enforced — humidifier cannot cycle faster than configurable interval
+- [x] **CTRL-03**: Minimum dwell time enforced — humidifier cannot cycle faster than configurable interval
 - [ ] **CTRL-04**: Stale sensor data detected — control loop does not act on data older than threshold
 - [x] **CTRL-05**: Sensor failure drives humidifier to safe state (OFF), not frozen last state
 
@@ -100,7 +100,7 @@
 | SENS-05 | Phase 2 | Complete |
 | CTRL-01 | Phase 3 | Complete |
 | CTRL-02 | Phase 3 | Complete |
-| CTRL-03 | Phase 3 | Pending |
+| CTRL-03 | Phase 3 | Complete |
 | CTRL-04 | Phase 3 | Pending |
 | CTRL-05 | Phase 3 | Complete |
 | ACTR-02 | Phase 2 | Complete |
