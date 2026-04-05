@@ -3,6 +3,7 @@ FROM ros:jazzy-ros-core
 # Install dependencies
 RUN apt-get update && apt-get install -y \
     ros-jazzy-rosbridge-suite \
+    ros-jazzy-rmw-cyclonedds-cpp \
     python3-colcon-common-extensions \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
