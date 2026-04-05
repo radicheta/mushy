@@ -81,19 +81,19 @@ def test_humidity_control(ros_context):
     node.destroy_node()
 
 def test_light_control(ros_context):
+    from rclpy.parameter import Parameter
     node = FruitingChamberController()
 
-    # Test during light hours
-    node.set_parameter('light_start_hour', 6)
-    node.set_parameter('target_light_hours', 12)
+    # Test during light hours — parameters already declared at init with defaults
+    # (light_start_hour=6, target_light_hours=12), no override needed for the mock test
 
-    # Mock current hour to 10 AM
-    with patch('datetime.datetime') as mock_datetime:
+    # Mock current hour to 10 AM — patch at the import site in fc_controller
+    with patch('fc_core.fc_controller.datetime') as mock_datetime:
         mock_datetime.now.return_value.hour = 10
         assert node.should_light_be_on() == True
 
     # Test outside light hours
-    with patch('datetime.datetime') as mock_datetime:
+    with patch('fc_core.fc_controller.datetime') as mock_datetime:
         mock_datetime.now.return_value.hour = 2
         assert node.should_light_be_on() == False
 
