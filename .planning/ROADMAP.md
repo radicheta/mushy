@@ -94,7 +94,7 @@ Plans:
   4. Known constraints documented (Pi 4 only, GPIO library deprecation path)
 
 Plans:
-- [ ] 05-01-PLAN.md — Update config (target_humidity 0.80), create OPERATIONS.md and grower checklist
+- [x] 05-01-PLAN.md — Update config (target_humidity 0.80), create OPERATIONS.md and grower checklist
 - [ ] 05-02-PLAN.md — Deploy to FC-1, 24-hour soak test, production declaration
 
 ## Progress
