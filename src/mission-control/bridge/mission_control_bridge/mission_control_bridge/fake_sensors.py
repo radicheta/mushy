@@ -10,8 +10,8 @@ class FakeSensors(Node):
         super().__init__('fake_sensors')
         
         # Create publishers
-        self.temp_pub = self.create_publisher(Temperature, 'fc/temperature', 10)
-        self.humidity_pub = self.create_publisher(RelativeHumidity, 'fc/humidity', 10)
+        self.temp_pub = self.create_publisher(Temperature, 'fc1/temperature', 10)
+        self.humidity_pub = self.create_publisher(RelativeHumidity, 'fc1/humidity', 10)
         
         # Create timer for publishing
         self.timer = self.create_timer(1.0, self.publish_data)

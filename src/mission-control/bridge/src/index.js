@@ -14,7 +14,7 @@ rclnodejs.init().then(() => {
     // Subscribe to ROS topics
     const tempSub = node.createSubscription(
         'sensor_msgs/msg/Temperature',
-        'fc/temperature',
+        'fc1/temperature',
         (msg) => {
             // Broadcast to all connected clients
             const data = {
@@ -27,7 +27,7 @@ rclnodejs.init().then(() => {
     
     const humiditySub = node.createSubscription(
         'sensor_msgs/msg/RelativeHumidity',
-        'fc/humidity',
+        'fc1/humidity',
         (msg) => {
             // Broadcast to all connected clients
             const data = {

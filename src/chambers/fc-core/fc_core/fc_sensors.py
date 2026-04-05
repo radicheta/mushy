@@ -53,9 +53,9 @@ class FruitingChamberSensors(Node):
             self.sim_co2 = 400.0
 
         # Create publishers
-        self.temp_pub = self.create_publisher(Temperature, 'fc/temperature', 10)
-        self.humidity_pub = self.create_publisher(RelativeHumidity, 'fc/humidity', 10)
-        self.co2_pub = self.create_publisher(Float32, 'fc/co2', 10)
+        self.temp_pub = self.create_publisher(Temperature, 'fc1/temperature', 10)
+        self.humidity_pub = self.create_publisher(RelativeHumidity, 'fc1/humidity', 10)
+        self.co2_pub = self.create_publisher(Float32, 'fc1/co2', 10)
 
         self.timer = self.create_timer(
             self.get_parameter('sensor_read_interval').value,
