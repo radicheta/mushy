@@ -198,10 +198,10 @@
             // ── Telemetry provider ───────────────────────────────────────────
             openmct.telemetry.addProvider({
                 supportsRequest: function (domainObject) {
-                    return domainObject.type === 'fruiting-chamber.sensor';
+                    return domainObject.type === 'fruiting-chamber.sensor' || domainObject.type === 'fruiting-chamber.actuator';
                 },
                 supportsSubscribe: function (domainObject) {
-                    return domainObject.type === 'fruiting-chamber.sensor';
+                    return domainObject.type === 'fruiting-chamber.sensor' || domainObject.type === 'fruiting-chamber.actuator';
                 },
                 // No history source yet — return empty array.
                 request: function (domainObject, options) {
