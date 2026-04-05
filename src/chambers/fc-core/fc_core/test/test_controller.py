@@ -355,7 +355,7 @@ def test_fresh_data_not_stale(ros_context):
 
 
 def test_humidifier_state_published(ros_context):
-    """control_loop publishes current humidifier state on fc/actuators/humidifier."""
+    """control_loop publishes current humidifier state on fc1/actuators/humidifier."""
     node = FruitingChamberController()
     node.current_temp = 23.0
 

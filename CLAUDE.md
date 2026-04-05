@@ -102,8 +102,10 @@ Primary configuration in `src/chambers/fc-core/config/fc_config.yaml`:
 ### Network Architecture
 
 ROS2 topics for fruiting chamber:
-- `fc/temperature` - Temperature sensor data
-- `fc/humidity` - Humidity sensor data
+- `fc1/temperature` - Temperature sensor data
+- `fc1/humidity` - Humidity sensor data
+- `fc1/co2` - CO2 sensor data
+- `fc1/actuators/humidifier` - Humidifier state
 - Internal control loop handles actuator commands
 
 Docker networks:

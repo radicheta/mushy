@@ -11,12 +11,12 @@ class FruitingChamberDisplay(Node):
         # Create subscribers
         self.temp_sub = self.create_subscription(
             Temperature,
-            'fc/temperature',
+            'fc1/temperature',
             self.temperature_callback,
             10)
         self.humidity_sub = self.create_subscription(
             RelativeHumidity,
-            'fc/humidity',
+            'fc1/humidity',
             self.humidity_callback,
             10)
         
