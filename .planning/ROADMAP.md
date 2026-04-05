@@ -86,14 +86,16 @@ Plans:
 **Goal**: System is running on FC-1 in production, replacing the timer, and is stable enough for grower operation.
 **Depends on**: Phase 4
 **Requirements**: DEPL-01
+**Plans:** 2 plans
 **Success Criteria** (what must be TRUE):
   1. System runs continuously on FC-1 Pi without crashes
-  2. Humidity maintains target range (85–95%) demonstrably better than the timer did
+  2. Humidity maintains target range (75–85%) demonstrably better than the timer did
   3. Grower can observe system state (humidity reading + humidifier on/off)
   4. Known constraints documented (Pi 4 only, GPIO library deprecation path)
 
 Plans:
-- [ ] 05-01: Production configuration, deployment to FC-1, stability validation
+- [ ] 05-01-PLAN.md — Update config (target_humidity 0.80), create OPERATIONS.md and grower checklist
+- [ ] 05-02-PLAN.md — Deploy to FC-1, 24-hour soak test, production declaration
 
 ## Progress
 
@@ -105,9 +107,9 @@ Plans:
 | 2. Safety Hardening | 4/4 | Complete   | 2026-03-30 |
 | 3. Closed-Loop Control | 2/3 | In Progress|  |
 | 4. Observability & Integration | 0/2 | Not started | - |
-| 5. Production Deployment | 0/1 | Not started | - |
+| 5. Production Deployment | 0/2 | Not started | - |
 
-**Total:** 0/15 plans complete
+**Total:** 0/17 plans complete
 
 ### Phase 6: WireGuard VPN routing for ROS traffic
 
