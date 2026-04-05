@@ -38,6 +38,7 @@
 
     // ── Required plugins ────────────────────────────────────────────────────
     openmct.install(openmct.plugins.LocalStorage());
+    tryInstall(function() { return openmct.plugins.MyItems(); });
     openmct.install(openmct.plugins.UTCTimeSystem());
     openmct.install(openmct.plugins.Clock({ enabled: false, periodicRefresh: 1 }));
     openmct.install(openmct.plugins.Conductor({
