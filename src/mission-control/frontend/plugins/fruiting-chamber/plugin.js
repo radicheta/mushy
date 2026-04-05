@@ -51,7 +51,8 @@
             msgType: 'std_msgs/msg/Bool',
             extract: function (msg) { return msg.data ? 1 : 0; },
             min: 0,
-            max: 1
+            max: 1,
+            type: 'actuator'
         }
     ];
 
@@ -78,6 +79,13 @@
                 creatable: false
             });
 
+            openmct.types.addType('fruiting-chamber.actuator', {
+                name: 'Chamber Actuator',
+                description: 'Live actuator state from the mushroom fruiting chamber',
+                cssClass: 'icon-telemetry',
+                creatable: false
+            });
+
             // ── Object provider ──────────────────────────────────────────────
             openmct.objects.addProvider('fruiting-chamber', {
                 get: function (identifier) {
@@ -97,7 +105,7 @@
                     return Promise.resolve({
                         identifier: sensor.identifier,
                         name: sensor.name,
-                        type: 'fruiting-chamber.sensor',
+                        type: sensor.type === 'actuator' ? 'fruiting-chamber.actuator' : 'fruiting-chamber.sensor',
                         location: openmct.objects.makeKeyString(ROOT_ID),
                         telemetry: {
                             values: [
