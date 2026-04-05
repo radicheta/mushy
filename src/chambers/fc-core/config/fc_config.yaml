@@ -14,7 +14,7 @@
     
     # Target values
     target_temp: 23.0  # °C
-    target_humidity: 0.75  # 75%
+    target_humidity: 0.80  # 80% — per D-01: 80% setpoint, ±5% tolerance = 75-85% band
     target_light_hours: 12  # Hours of light per day
     light_start_hour: 6  # Start light at 6 AM
     
