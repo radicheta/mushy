@@ -8,3 +8,8 @@ services:
 
   bridge:
     network_mode: "host"
+    environment:
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - CYCLONEDDS_URI=file:///etc/cyclonedds-tailscale.xml
+    volumes:
+      - /home/santi/.config/cyclonedds-tailscale.xml:/etc/cyclonedds-tailscale.xml:ro
