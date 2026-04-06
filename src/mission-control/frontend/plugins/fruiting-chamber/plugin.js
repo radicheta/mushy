@@ -119,8 +119,15 @@
                                 },
                                 {
                                     key: 'utc',
-                                    name: 'Timestamp',
+                                    name: 'Timestamp (UTC)',
                                     format: 'utc',
+                                    hints: { domain: 2 }
+                                },
+                                {
+                                    key: 'uyt',
+                                    source: 'utc',
+                                    name: 'Timestamp (UYT)',
+                                    format: 'uyt',
                                     hints: { domain: 1 }
                                 }
                             ]
