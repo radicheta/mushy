@@ -5,9 +5,11 @@ version: '3.8'
 services:
   openmct:
     network_mode: "host"
+    restart: always
 
   bridge:
     network_mode: "host"
+    restart: always
     environment:
       - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
       - CYCLONEDDS_URI=file:///etc/cyclonedds-tailscale.xml

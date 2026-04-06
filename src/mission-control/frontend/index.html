@@ -17,6 +17,9 @@
   <!-- OpenMCT core bundle -->
   <script src="dist/openmct.js"></script>
 
+  <!-- UYT (UTC-3) time system for the time conductor -->
+  <script src="plugins/timezone/plugin.js"></script>
+
   <!-- Fruiting chamber telemetry plugin -->
   <script src="plugins/fruiting-chamber/plugin.js"></script>
 
@@ -40,38 +43,33 @@
     openmct.install(openmct.plugins.LocalStorage());
     tryInstall(function() { return openmct.plugins.MyItems(); });
     openmct.install(openmct.plugins.UTCTimeSystem());
+    openmct.install(TimezonePlugin());
     openmct.install(openmct.plugins.Clock({ enabled: false, periodicRefresh: 1 }));
     openmct.install(openmct.plugins.Conductor({
         menuOptions: [
-            // Realtime first = default mode on load
             {
                 name: '5m Realtime',
-                timeSystem: 'utc',
+                timeSystem: 'uyt',
                 clock: 'local',
                 clockOffsets: { start: -FIVE_MINUTES, end: 0 }
             },
             {
                 name: '30m Realtime',
-                timeSystem: 'utc',
+                timeSystem: 'uyt',
                 clock: 'local',
                 clockOffsets: { start: -THIRTY_MINUTES, end: 0 }
             },
             {
                 name: '1h Realtime',
-                timeSystem: 'utc',
+                timeSystem: 'uyt',
                 clock: 'local',
                 clockOffsets: { start: -ONE_HOUR, end: 0 }
             },
             {
                 name: '2h Realtime',
-                timeSystem: 'utc',
+                timeSystem: 'uyt',
                 clock: 'local',
                 clockOffsets: { start: -TWO_HOURS, end: 0 }
-            },
-            {
-                name: 'Fixed',
-                timeSystem: 'utc',
-                bounds: { start: Date.now() - THIRTY_MINUTES, end: Date.now() }
             }
         ]
     }));
