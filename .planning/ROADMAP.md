@@ -123,6 +123,26 @@ Plans:
 - [x] 06-02-PLAN.md — Register Pi peer in pfSense, enable elder-plops autoconnect, verify mesh connectivity
 - [x] 06-03-PLAN.md — Install ROS2 + CycloneDDS on elder-plops, deploy unicast XML config, verify E2E topic visibility
 
+### Phase 7: Historical data storage and OpenMCT time-series visualization
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 6
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 7 to break down)
+
+### Phase 8: FarmOS integration
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 7
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 8 to break down)
+
 ---
 *Roadmap created: 2026-03-28*
 *Milestone: MVP — FC-1 Humidity Control*
