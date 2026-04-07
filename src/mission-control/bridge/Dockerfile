@@ -1,30 +1,28 @@
 FROM ros:jazzy-ros-core
 
-# Install dependencies
+# Install ROS2 dependencies (CycloneDDS for VPN peer discovery)
 RUN apt-get update && apt-get install -y \
-    ros-jazzy-rosbridge-suite \
     ros-jazzy-rmw-cyclonedds-cpp \
-    python3-colcon-common-extensions \
-    python3-pip \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Create workspace
+# Install Node.js 20 LTS
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
 WORKDIR /opt/bridge
 
-# Copy package files
-COPY . .
+# Copy package files first for Docker layer caching
+COPY package.json package-lock.json* ./
+RUN npm install --production
 
-# Clean build/install/log and build the package
-RUN rm -rf build install log && \
-    . /opt/ros/jazzy/setup.sh && \
-    colcon build --symlink-install && \
-    pip install . --break-system-packages
+# Copy remaining source
+COPY . .
 
 # Make entrypoint executable
 RUN chmod +x /opt/bridge/entrypoint.sh
 
-# Expose WebSocket port
 EXPOSE 8081
 
-# Use entrypoint
 ENTRYPOINT ["/opt/bridge/entrypoint.sh"]
