@@ -46,6 +46,15 @@
 - [ ] **TEST-02**: Full control loop verified on real FC-1 hardware (sensor → control → actuator)
 - [ ] **DEPL-01**: System runs stably on Pi and is suitable for grower handoff (better than timer)
 
+### Historical Data & Visualization
+
+- [ ] **HIST-01**: Bridge service ingests all 4 ROS topics (humidity, temperature, CO2, humidifier) into TimescaleDB with every reading stored at full resolution
+- [ ] **HIST-02**: TimescaleDB schema auto-initialized on bridge startup (CREATE TABLE IF NOT EXISTS + hypertable), no manual migration required
+- [ ] **HIST-03**: Database credentials managed via .env file, not hardcoded in docker-compose.yml
+- [ ] **HIST-04**: REST history endpoint (GET /history/:topic) serves time-bucketed downsampled data from TimescaleDB
+- [ ] **HIST-05**: OpenMCT time conductor defaults to last 24 hours and charts display historical sensor/actuator data via the plugin request() method
+- [ ] **HIST-06**: Bridge container runs Node.js entrypoint (replacing rosbridge Python) and continues live WebSocket broadcast even when DB is unavailable
+
 ## v2 Requirements
 
 ### Temperature Control
@@ -110,12 +119,18 @@
 | ACTR-03 | Phase 4 | Pending |
 | TEST-02 | Phase 4 | Pending |
 | DEPL-01 | Phase 5 | Pending |
+| HIST-01 | Phase 7 | Pending |
+| HIST-02 | Phase 7 | Pending |
+| HIST-03 | Phase 7 | Pending |
+| HIST-04 | Phase 7 | Pending |
+| HIST-05 | Phase 7 | Pending |
+| HIST-06 | Phase 7 | Pending |
 
 **Coverage:**
-- v1 requirements: 20 total
-- Mapped to phases: 20
-- Unmapped: 0 ✓
+- v1 requirements: 26 total
+- Mapped to phases: 26
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-28*
-*Last updated: 2026-03-28 after initial definition from research synthesis*
+*Last updated: 2026-04-07 after adding HIST-01 to HIST-06 for Phase 7*
