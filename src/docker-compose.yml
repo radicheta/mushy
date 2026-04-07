@@ -75,6 +75,12 @@ services:
     depends_on:
       - openmct
       - timescale
+    environment:
+      - TIMESCALE_HOST=timescale
+      - TIMESCALE_DB=postgres
+      - TIMESCALE_USER=postgres
+      - TIMESCALE_PASSWORD=${TIMESCALE_PASSWORD}
+      - ROS_DOMAIN_ID=69
     networks:
       - frontend-net
       - ros-net
@@ -82,7 +88,7 @@ services:
   timescale:
     image: timescale/timescaledb:latest-pg14
     environment:
-      - POSTGRES_PASSWORD=mysecretpassword
+      - POSTGRES_PASSWORD=${TIMESCALE_PASSWORD}
     volumes:
       - timescale-data:/var/lib/postgresql/data
     networks:
