@@ -24,11 +24,12 @@
   <script src="plugins/fruiting-chamber/plugin.js"></script>
 
   <script>
-    var ONE_MINUTE    = 60 * 1000;
-    var FIVE_MINUTES  = 5  * ONE_MINUTE;
-    var THIRTY_MINUTES = 30 * ONE_MINUTE;
-    var ONE_HOUR      = 60 * ONE_MINUTE;
-    var TWO_HOURS     = 2  * ONE_HOUR;
+    var ONE_MINUTE      = 60 * 1000;
+    var FIVE_MINUTES    = 5  * ONE_MINUTE;
+    var THIRTY_MINUTES  = 30 * ONE_MINUTE;
+    var ONE_HOUR        = 60 * ONE_MINUTE;
+    var TWO_HOURS       = 2  * ONE_HOUR;
+    var TWENTY_FOUR_HOURS = 24 * ONE_HOUR;
 
     // Helper: install a plugin but don't crash if it doesn't exist in this build
     function tryInstall(pluginFactory) {
@@ -47,6 +48,14 @@
     openmct.install(openmct.plugins.Clock({ enabled: false, periodicRefresh: 1 }));
     openmct.install(openmct.plugins.Conductor({
         menuOptions: [
+            {
+                name: '24h Fixed',
+                timeSystem: 'uyt',
+                bounds: {
+                    start: Date.now() - TWENTY_FOUR_HOURS,
+                    end: Date.now()
+                }
+            },
             {
                 name: '5m Realtime',
                 timeSystem: 'uyt',
