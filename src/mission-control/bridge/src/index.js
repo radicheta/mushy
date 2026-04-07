@@ -59,6 +59,69 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', db: dbReady });
 });
 
+// Allowlist for history endpoint topics — prevents SQL injection via topic param (T-07-04)
+const ALLOWED_TOPICS = ['fc.humidity', 'fc.temperature', 'fc.co2', 'fc.humidifier'];
+
+// Server-side downsampling: choose bucket interval based on requested time range (D-06)
+// <=2h -> ~120 points at 1min; <=12h -> ~144 points at 5min; >12h -> ~96/day at 15min
+function bucketInterval(rangeMs) {
+    const ONE_HOUR = 3600000;
+    if (rangeMs <= 2 * ONE_HOUR)  return '1 minute';
+    if (rangeMs <= 12 * ONE_HOUR) return '5 minutes';
+    return '15 minutes';
+}
+
+// History endpoint — returns downsampled time-series for OpenMCT request() (D-04)
+app.get('/history/:topic', async (req, res) => {
+    const { topic } = req.params;
+
+    // Validate topic against allowlist (prevents SQL injection via topic — T-07-04)
+    if (!ALLOWED_TOPICS.includes(topic)) {
+        return res.status(400).json({ error: 'Invalid topic' });
+    }
+
+    const start = parseInt(req.query.start, 10);
+    const end   = parseInt(req.query.end,   10);
+    if (!start || !end || isNaN(start) || isNaN(end)) {
+        return res.status(400).json({ error: 'start and end query params required (ms epoch)' });
+    }
+
+    // Cap max range at 30 days to prevent unbounded queries (T-07-05 mitigation)
+    const MAX_RANGE = 30 * 24 * 3600000;
+    if (end - start > MAX_RANGE) {
+        return res.status(400).json({ error: 'Max range is 30 days' });
+    }
+
+    if (!dbReady) {
+        return res.status(503).json({ error: 'Database not available' });
+    }
+
+    const rangeMs  = end - start;
+    const interval = bucketInterval(rangeMs);
+
+    try {
+        const result = await pool.query(
+            `SELECT time_bucket($1::interval, time) AS bucket,
+                    AVG(value) AS value
+             FROM telemetry
+             WHERE topic = $2
+               AND time >= $3
+               AND time <= $4
+             GROUP BY bucket
+             ORDER BY bucket ASC`,
+            [interval, topic, new Date(start), new Date(end)]
+        );
+        const datums = result.rows.map(row => ({
+            value: parseFloat(row.value),
+            utc:   new Date(row.bucket).getTime()
+        }));
+        res.json(datums);
+    } catch (err) {
+        console.error('[db] history query failed:', err.message);
+        res.status(500).json({ error: 'Query failed' });
+    }
+});
+
 // Store connected WebSocket clients
 const clients = new Set();
 
