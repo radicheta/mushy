@@ -125,13 +125,14 @@ Plans:
 
 ### Phase 7: Historical data storage and OpenMCT time-series visualization
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Wire up the existing TimescaleDB container to ingest ROS telemetry from the bridge service and serve historical data to OpenMCT, enabling time-series charts of past sensor/actuator readings.
+**Requirements**: HIST-01, HIST-02, HIST-03, HIST-04, HIST-05, HIST-06
 **Depends on:** Phase 6
-**Plans:** 0 plans
+**Plans:** 2 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 7 to break down)
+- [ ] 07-01-PLAN.md — Switch bridge to Node.js entrypoint, add TimescaleDB ingestion for all 4 topics, migrate credentials to .env
+- [ ] 07-02-PLAN.md — Add REST history endpoint with time_bucket downsampling, wire OpenMCT plugin request() and WebSocket handler
 
 ### Phase 8: FarmOS integration
 
