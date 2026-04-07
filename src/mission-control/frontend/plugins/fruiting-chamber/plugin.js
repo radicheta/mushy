@@ -68,6 +68,7 @@
 
     function FruitingChamberPlugin(options) {
         var bridgeUrl = (options && options.bridgeUrl) || 'ws://localhost:8081';
+        var historyUrl = (options && options.historyUrl) || 'http://localhost:8081/history';
 
         return function install(openmct) {
 
@@ -167,11 +168,38 @@
                 ws.onmessage = function (event) {
                     var data;
                     try { data = JSON.parse(event.data); } catch (e) { return; }
-                    if (data.op === 'publish' && data.topic && subs[data.topic]) {
-                        subs[data.topic].forEach(function (cb) {
-                            try { cb(data.msg); } catch (e) { /* swallow per-handler errors */ }
-                        });
-                    }
+
+                    // Map raw broadcast field names to sensor keys for dispatch
+                    // index.js broadcasts {humidity, temperature, co2, humidifier, timestamp}
+                    var fieldToKey = {
+                        humidity:    'fc.humidity',
+                        temperature: 'fc.temperature',
+                        co2:         'fc.co2',
+                        humidifier:  'fc.humidifier'
+                    };
+
+                    Object.keys(fieldToKey).forEach(function (field) {
+                        if (data[field] !== undefined) {
+                            var key = fieldToKey[field];
+                            var sensor = SENSORS.find(function (s) { return s.identifier.key === key; });
+                            if (!sensor) return;
+
+                            // Build datum directly — broadcast values are already in display units
+                            // (bridge sends humidity*100, temperature in C, co2 as float, humidifier as 0/1)
+                            // Do NOT reconstruct a synthetic ROS msg and pass through sensor.extract()
+                            // — that would cause a double-transform (e.g. humidity already multiplied by 100)
+                            var datum = {
+                                value: data[field],
+                                utc: data.timestamp
+                            };
+
+                            if (subs[sensor.topic]) {
+                                subs[sensor.topic].forEach(function (cb) {
+                                    try { cb(datum); } catch (e) { /* swallow per-handler errors */ }
+                                });
+                            }
+                        }
+                    });
                 };
 
                 ws.onclose = function () {
@@ -210,9 +238,23 @@
                 supportsSubscribe: function (domainObject) {
                     return domainObject.type === 'fruiting-chamber.sensor' || domainObject.type === 'fruiting-chamber.actuator';
                 },
-                // No history source yet — return empty array.
                 request: function (domainObject, options) {
-                    return Promise.resolve([]);
+                    var sensor = SENSORS.find(function (s) {
+                        return s.identifier.key === domainObject.identifier.key;
+                    });
+                    if (!sensor) return Promise.resolve([]);
+
+                    var url = historyUrl
+                        + '/' + encodeURIComponent(sensor.identifier.key)
+                        + '?start=' + options.start
+                        + '&end='   + options.end;
+
+                    return fetch(url)
+                        .then(function (resp) {
+                            if (!resp.ok) return [];
+                            return resp.json();
+                        })
+                        .catch(function () { return []; });
                 },
                 subscribe: function (domainObject, callback) {
                     var sensor = SENSORS.find(function (s) {
@@ -220,11 +262,17 @@
                     });
                     if (!sensor) return function () {};
 
-                    var handler = function (msg) {
-                        callback({
-                            value: sensor.extract(msg),
-                            utc: getTimestamp(msg)
-                        });
+                    var handler = function (msgOrDatum) {
+                        if (msgOrDatum.utc !== undefined && msgOrDatum.value !== undefined) {
+                            // Already a datum from the new onmessage handler
+                            callback(msgOrDatum);
+                        } else {
+                            // Legacy ROS msg — extract value and timestamp
+                            callback({
+                                value: sensor.extract(msgOrDatum),
+                                utc: getTimestamp(msgOrDatum)
+                            });
+                        }
                     };
 
                     addSub(sensor, handler);
