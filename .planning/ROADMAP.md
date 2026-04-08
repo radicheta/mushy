@@ -134,9 +134,9 @@ Plans:
 - [x] 07-01-PLAN.md — Switch bridge to Node.js entrypoint, add TimescaleDB ingestion for all 4 topics, migrate credentials to .env
 - [x] 07-02-PLAN.md — Add REST history endpoint with time_bucket downsampling, wire OpenMCT plugin request() and WebSocket handler
 
-### Phase 8: FarmOS integration
+### Phase 8: Pi Camera Feed in Mission Control
 
-**Goal:** [To be planned]
+**Goal:** USB webcam on fc1 Pi streams live video accessible from Mission Control (OpenMCT). Foundation for future vision features (time-lapse, contamination detection, growth monitoring).
 **Requirements**: TBD
 **Depends on:** Phase 7
 **Plans:** 0 plans
@@ -149,6 +149,15 @@ Plans:
 ### Phase 999.1: Edge buffering — local telemetry on Pi with store-and-forward sync (BACKLOG)
 
 **Goal:** Local SQLite/TimescaleDB buffer on fc1 Pi stores telemetry readings regardless of connectivity. A sync agent forwards buffered data to elder-plops when Tailscale/internet reconnects. Prevents data gaps during network outages at the farm.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.2: FarmOS Integration (BACKLOG)
+
+**Goal:** Integrate with farm-wide FarmOS instance for mushroom production tracking. Contribute fungi schema, build ROS→FarmOS API bridge for automated observations, configure farmer data entry workflows. Blocked on farm team completing schema design and production instance setup.
 **Requirements:** TBD
 **Plans:** 0 plans
 
