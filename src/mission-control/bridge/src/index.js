@@ -54,9 +54,13 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// CORS — allow OpenMCT frontend (port 8080) to call history endpoint
+// CORS — restrict to known OpenMCT origin
 app.use((req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    const origin = req.headers.origin;
+    const allowed = process.env.CORS_ORIGIN || 'http://localhost:8080';
+    if (origin === allowed) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+    }
     next();
 });
 
