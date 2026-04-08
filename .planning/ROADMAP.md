@@ -131,8 +131,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 07-01-PLAN.md — Switch bridge to Node.js entrypoint, add TimescaleDB ingestion for all 4 topics, migrate credentials to .env
-- [ ] 07-02-PLAN.md — Add REST history endpoint with time_bucket downsampling, wire OpenMCT plugin request() and WebSocket handler
+- [x] 07-01-PLAN.md — Switch bridge to Node.js entrypoint, add TimescaleDB ingestion for all 4 topics, migrate credentials to .env
+- [x] 07-02-PLAN.md — Add REST history endpoint with time_bucket downsampling, wire OpenMCT plugin request() and WebSocket handler
 
 ### Phase 8: FarmOS integration
 
@@ -143,6 +143,17 @@ Plans:
 
 Plans:
 - [ ] TBD (run /gsd-plan-phase 8 to break down)
+
+## Backlog
+
+### Phase 999.1: Edge buffering — local telemetry on Pi with store-and-forward sync (BACKLOG)
+
+**Goal:** Local SQLite/TimescaleDB buffer on fc1 Pi stores telemetry readings regardless of connectivity. A sync agent forwards buffered data to elder-plops when Tailscale/internet reconnects. Prevents data gaps during network outages at the farm.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
 
 ---
 *Roadmap created: 2026-03-28*
