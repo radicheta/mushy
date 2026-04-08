@@ -55,6 +55,14 @@
 - [ ] **HIST-05**: OpenMCT time conductor defaults to last 24 hours and charts display historical sensor/actuator data via the plugin request() method
 - [ ] **HIST-06**: Bridge container runs Node.js entrypoint (replacing rosbridge Python) and continues live WebSocket broadcast even when DB is unavailable
 
+### Camera & Visual Monitoring
+
+- [ ] **CAM-01**: Camera node publishes `sensor_msgs/CompressedImage` on `fc1/camera/compressed` ROS2 topic from USB webcam via OpenCV
+- [ ] **CAM-02**: Camera parameters (device, resolution, fps, JPEG quality) configurable in `fc_config.yaml` with simulation mode default
+- [ ] **CAM-03**: Bridge serves MJPEG stream at `/camera/mjpeg` by subscribing to the ROS2 CompressedImage topic and re-serving frames via HTTP multipart
+- [ ] **CAM-04**: Bridge captures periodic snapshots (configurable interval) to date-organized directory on elder-plops filesystem with metadata logging
+- [ ] **CAM-05**: OpenMCT displays camera feed as a dedicated view (custom view provider with `<img>` tag, not chart) in the Fruiting Chamber FC-1 tree
+
 ## v2 Requirements
 
 ### Temperature Control
@@ -125,12 +133,17 @@
 | HIST-04 | Phase 7 | Pending |
 | HIST-05 | Phase 7 | Pending |
 | HIST-06 | Phase 7 | Pending |
+| CAM-01 | Phase 8 | Pending |
+| CAM-02 | Phase 8 | Pending |
+| CAM-03 | Phase 8 | Pending |
+| CAM-04 | Phase 8 | Pending |
+| CAM-05 | Phase 8 | Pending |
 
 **Coverage:**
-- v1 requirements: 26 total
-- Mapped to phases: 26
+- v1 requirements: 31 total
+- Mapped to phases: 31
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-28*
-*Last updated: 2026-04-07 after adding HIST-01 to HIST-06 for Phase 7*
+*Last updated: 2026-04-08 after adding CAM-01 to CAM-05 for Phase 8*
