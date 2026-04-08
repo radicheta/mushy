@@ -88,7 +88,7 @@ app.get('/history/:topic', async (req, res) => {
 
     const start = parseInt(req.query.start, 10);
     const end   = parseInt(req.query.end,   10);
-    if (!start || !end || isNaN(start) || isNaN(end)) {
+    if (isNaN(start) || isNaN(end)) {
         return res.status(400).json({ error: 'start and end query params required (ms epoch)' });
     }
 
