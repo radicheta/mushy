@@ -173,7 +173,7 @@ rclnodejs.init().then(async () => {
     // Subscribe: fc1/humidity -> fc.humidity
     node.createSubscription(
         'sensor_msgs/msg/RelativeHumidity',
-        'fc1/humidity',
+        '/fc1/humidity',
         async (msg) => {
             const value = msg.relative_humidity * 100;
             broadcast({ humidity: value, timestamp: Date.now() });
@@ -184,7 +184,7 @@ rclnodejs.init().then(async () => {
     // Subscribe: fc1/temperature -> fc.temperature
     node.createSubscription(
         'sensor_msgs/msg/Temperature',
-        'fc1/temperature',
+        '/fc1/temperature',
         async (msg) => {
             const value = msg.temperature;
             broadcast({ temperature: value, timestamp: Date.now() });
@@ -195,7 +195,7 @@ rclnodejs.init().then(async () => {
     // Subscribe: fc1/co2 -> fc.co2
     node.createSubscription(
         'std_msgs/msg/Float32',
-        'fc1/co2',
+        '/fc1/co2',
         async (msg) => {
             const value = msg.data;
             broadcast({ co2: value, timestamp: Date.now() });
@@ -206,7 +206,7 @@ rclnodejs.init().then(async () => {
     // Subscribe: fc1/actuators/humidifier -> fc.humidifier
     node.createSubscription(
         'std_msgs/msg/Bool',
-        'fc1/actuators/humidifier',
+        '/fc1/actuators/humidifier',
         async (msg) => {
             const value = msg.data ? 1 : 0;
             broadcast({ humidifier: value, timestamp: Date.now() });

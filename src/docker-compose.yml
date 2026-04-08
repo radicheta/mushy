@@ -72,23 +72,27 @@ services:
     build:
       context: ./mission-control/bridge
       dockerfile: Dockerfile
+    network_mode: host
     depends_on:
       - openmct
       - timescale
     environment:
-      - TIMESCALE_HOST=timescale
+      - TIMESCALE_HOST=localhost
       - TIMESCALE_DB=postgres
       - TIMESCALE_USER=postgres
       - TIMESCALE_PASSWORD=${TIMESCALE_PASSWORD}
       - ROS_DOMAIN_ID=69
-    networks:
-      - frontend-net
-      - ros-net
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - CYCLONEDDS_URI=file:///opt/bridge/cyclonedds.xml
+    volumes:
+      - ./mission-control/bridge/cyclonedds.xml:/opt/bridge/cyclonedds.xml:ro
 
   timescale:
     image: timescale/timescaledb:latest-pg14
     environment:
       - POSTGRES_PASSWORD=${TIMESCALE_PASSWORD}
+    ports:
+      - "5432:5432"
     volumes:
       - timescale-data:/var/lib/postgresql/data
     networks:
