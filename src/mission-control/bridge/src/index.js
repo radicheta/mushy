@@ -4,12 +4,18 @@ const WebSocket = require('ws');
 const rclnodejs = require('rclnodejs');
 const { Pool } = require('pg');
 
+// Fail fast if database password is not configured
+if (!process.env.TIMESCALE_PASSWORD) {
+    console.error('[db] TIMESCALE_PASSWORD env var is required');
+    process.exit(1);
+}
+
 // PostgreSQL connection pool
 const pool = new Pool({
     host: process.env.TIMESCALE_HOST || 'timescale',
     database: process.env.TIMESCALE_DB || 'postgres',
     user: process.env.TIMESCALE_USER || 'postgres',
-    password: process.env.TIMESCALE_PASSWORD || 'mysecretpassword',
+    password: process.env.TIMESCALE_PASSWORD,
     port: 5432
 });
 
