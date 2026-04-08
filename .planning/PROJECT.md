@@ -75,7 +75,8 @@ MVP scope remaining:
 - Phase 02 complete: sensor hardened, config clean, spike rejection active, GPIO configurable
 - Phase 03 complete: bang-bang control with dwell time guard, staleness detection, safe failure state
 - Phase 04 complete: actuator state topic, OpenMCT CO2/humidifier charts, FC-1 hardware verified
-- Remaining: production deploy (Phase 05)
+- Phase 07 complete: bridge migrated to Node.js, TimescaleDB ingestion for all 4 topics, REST history endpoint with time_bucket downsampling, OpenMCT historical charts with 24h Fixed default
+- Remaining: production deploy (Phase 05), FarmOS integration (Phase 08)
 
 **Hardware Setup:**
 - Fruiting chamber 1 (FC-1) with Raspberry Pi
