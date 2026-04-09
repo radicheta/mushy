@@ -48,7 +48,7 @@ created: 2026-04-08
 
 ## Wave 0 Requirements
 
-- [ ] `src/chambers/fc-core/fc_core/test/test_fc_camera.py` — stub for camera node config and topic tests
+- [ ] `src/chambers/fc-core/fc_core/test/test_camera.py` — stub for camera node config and topic tests
 - [ ] Verify USB webcam accessible via v4l2 on fc1 Pi (`ls /dev/video*`)
 
 *Existing pytest infrastructure covers framework requirements.*

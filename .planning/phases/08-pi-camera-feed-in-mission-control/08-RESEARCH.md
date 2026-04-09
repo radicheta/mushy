@@ -602,27 +602,31 @@ environment:
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Topic prefix: `fc/camera/compressed` vs `fc1/camera/compressed`**
    - What we know: All existing topics are `/fc1/humidity`, `/fc1/temperature`, `/fc1/co2`, `/fc1/actuators/humidifier`. CONTEXT.md D-09 says `fc/camera/compressed`.
    - What's unclear: Is `fc/` intentional (future-proofing for multi-chamber where camera might be shared) or a typo in CONTEXT.md?
    - Recommendation: Use `fc1/camera/compressed` to match all existing topics. This is consistent with the current single-chamber deployment and avoids a namespace anomaly.
+   - RESOLVED: User confirmed `fc1/camera/compressed`. Matches existing topic prefix convention. D-09 in CONTEXT.md updated to reflect this.
 
 2. **opencv-python availability on Pi**
    - What we know: Pi is Ubuntu 24.04, Python 3.12+. `opencv-python-headless` is available via pip. `python3-opencv` is available via apt.
    - What's unclear: Which install method is correct for the ROS2 venv/system Python context. fc_sensors.py imports adafruit libs via system Python (not a venv).
    - Recommendation: Use `apt install python3-opencv` for system Python consistency; check apt version satisfies cv2 >= 4.x.
+   - RESOLVED: Use `sudo apt install python3-opencv` on the Pi (system Python, no venv). Consistent with how adafruit libs are installed for fc_sensors.py.
 
 3. **Snapshot volume persistence for bridge container**
    - What we know: Bridge runs `network_mode: host`. Docker named volumes don't persist to a predictable host path.
    - What's unclear: Is `/data/snapshots` a pre-existing directory on elder-plops or should it be created by the plan?
    - Recommendation: Plan should include a Wave 0 task to `mkdir -p /data/snapshots/fc1` on elder-plops and add the bind mount to docker-compose.yml.
+   - RESOLVED: Directory must be created. Plan 08-02 Task 2 includes `mkdir -p /data/snapshots/fc1` as part of docker-compose update.
 
 4. **CORS for MJPEG endpoint**
    - What we know: The bridge CORS middleware restricts headers to `CORS_ORIGIN` (defaults to `http://localhost:8080`). Image tags don't trigger CORS for display, but if the plugin ever needs to fetch the image as a blob (e.g., for snapshots page), it would.
    - What's unclear: Whether future snapshot history view needs fetch() access.
    - Recommendation: For Phase 8 scope (just `<img>` tag), no CORS change needed for the MJPEG endpoint. Document for future.
+   - RESOLVED: `<img>` tags do not trigger CORS preflight. No CORS change needed for this phase. If future phases need `fetch()` access to the MJPEG endpoint, CORS can be added then.
 
 ---
 
