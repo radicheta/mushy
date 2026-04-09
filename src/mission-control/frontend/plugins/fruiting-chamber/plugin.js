@@ -112,7 +112,7 @@
                     if (identifier.key === 'fc.camera') {
                         return Promise.resolve({
                             identifier: CAMERA_ID,
-                            name: 'FC-1 Camera',
+                            name: 'Camera',
                             type: 'fruiting-chamber.camera',
                             location: openmct.objects.makeKeyString(ROOT_ID)
                         });
