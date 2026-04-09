@@ -56,6 +56,8 @@
         }
     ];
 
+    var CAMERA_ID = { namespace: 'fruiting-chamber', key: 'fc.camera' };
+
     function getTimestamp(msg) {
         if (msg.header && msg.header.stamp) {
             var s = msg.header.stamp;
@@ -69,6 +71,7 @@
     function FruitingChamberPlugin(options) {
         var bridgeUrl = (options && options.bridgeUrl) || 'ws://localhost:8081';
         var historyUrl = (options && options.historyUrl) || 'http://localhost:8081/history';
+        var cameraUrl = (options && options.cameraUrl) || 'http://localhost:8081/camera/mjpeg';
 
         return function install(openmct) {
 
@@ -87,6 +90,13 @@
                 creatable: false
             });
 
+            openmct.types.addType('fruiting-chamber.camera', {
+                name: 'Chamber Camera',
+                description: 'Live camera feed from the mushroom fruiting chamber',
+                cssClass: 'icon-image',
+                creatable: false
+            });
+
             // ── Object provider ──────────────────────────────────────────────
             openmct.objects.addProvider('fruiting-chamber', {
                 get: function (identifier) {
@@ -96,7 +106,15 @@
                             name: 'Fruiting Chamber FC-1',
                             type: 'folder',
                             location: 'ROOT',
-                            composition: SENSORS.map(function (s) { return s.identifier; })
+                            composition: SENSORS.map(function (s) { return s.identifier; }).concat([CAMERA_ID])
+                        });
+                    }
+                    if (identifier.key === 'fc.camera') {
+                        return Promise.resolve({
+                            identifier: CAMERA_ID,
+                            name: 'FC-1 Camera',
+                            type: 'fruiting-chamber.camera',
+                            location: openmct.objects.makeKeyString(ROOT_ID)
                         });
                     }
                     var sensor = SENSORS.find(function (s) {
@@ -279,6 +297,35 @@
 
                     return function unsubscribe() {
                         removeSub(sensor, handler);
+                    };
+                }
+            });
+            // ── Camera view provider (D-13, D-14) ──────────────────────────
+            openmct.objectViews.addProvider({
+                key: 'fruiting-chamber.camera-view',
+                name: 'Camera Feed',
+                canView: function (domainObject) {
+                    return domainObject.type === 'fruiting-chamber.camera';
+                },
+                view: function (domainObject) {
+                    var container;
+                    return {
+                        show: function (el) {
+                            container = el;
+                            container.innerHTML = ''
+                                + '<div style="display:flex;flex-direction:column;align-items:center;height:100%;background:#000;">'
+                                + '  <img src="' + cameraUrl + '"'
+                                + '       style="max-width:100%;max-height:100%;object-fit:contain;"'
+                                + '       alt="FC-1 Camera Feed"'
+                                + '       onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\';" />'
+                                + '  <p style="display:none;color:#888;padding:2em;text-align:center;">'
+                                + '    Camera feed unavailable. Check that the bridge is running and the camera is connected.'
+                                + '  </p>'
+                                + '</div>';
+                        },
+                        destroy: function () {
+                            if (container) container.innerHTML = '';
+                        }
                     };
                 }
             });
