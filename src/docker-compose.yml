@@ -84,8 +84,13 @@ services:
       - ROS_DOMAIN_ID=69
       - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
       - CYCLONEDDS_URI=file:///opt/bridge/cyclonedds.xml
+      - SNAPSHOT_DIR=/data/snapshots
+      - SNAPSHOT_INTERVAL_MIN=15
+      - CAMERA_ID=fc1
     volumes:
       - ./mission-control/bridge/cyclonedds.xml:/opt/bridge/cyclonedds.xml:ro
+      # NOTE: Run `mkdir -p /data/snapshots/fc1` on elder-plops host before starting bridge
+      - /data/snapshots:/data/snapshots
 
   timescale:
     image: timescale/timescaledb:latest-pg14
