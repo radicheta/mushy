@@ -36,3 +36,11 @@
     # Safety guards
     min_dwell_time: 180.0  # Seconds — 3 minute minimum between humidifier toggles
     sensor_stale_timeout: 10.0  # Seconds — sensor data older than this triggers safe state (humidifier OFF)
+
+    # Camera parameters (Phase 08)
+    camera_simulation_mode: true    # true = no USB webcam needed; false = capture from /dev/videoN
+    camera_device: 0                # /dev/video0
+    camera_width: 640               # pixels (D-05: 640x480 default)
+    camera_height: 480              # pixels
+    camera_fps: 1                   # frames per second (D-04: 1-2 FPS for cellular bandwidth)
+    camera_jpeg_quality: 65         # 0-100 (D-06: 60-70% default)

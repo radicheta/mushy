@@ -46,4 +46,13 @@ def generate_launch_description():
             parameters=[LaunchConfiguration('config_file')],
             output='screen'
         ),
-    ]) 
+
+        # Launch camera node
+        Node(
+            package='fc_core',
+            executable='fc_camera',
+            name='fc_camera',
+            parameters=[LaunchConfiguration('config_file')],
+            output='screen'
+        ),
+    ])

@@ -37,6 +37,7 @@ setup(
             'fc_sensors = fc_core.fc_sensors:main',
             'fc_display = fc_core.fc_display:main',
             'fc_telemetry = fc_core.fc_telemetry:main',
+            'fc_camera = fc_core.fc_camera:main',
         ],
     },
 )
