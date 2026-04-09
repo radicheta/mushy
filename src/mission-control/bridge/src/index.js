@@ -3,6 +3,8 @@ const express = require('express');
 const WebSocket = require('ws');
 const rclnodejs = require('rclnodejs');
 const { Pool } = require('pg');
+const fs = require('fs');
+const path = require('path');
 
 // Fail fast if database password is not configured
 if (!process.env.TIMESCALE_PASSWORD) {
@@ -21,6 +23,57 @@ const pool = new Pool({
 
 // Track DB availability — live WS continues even if DB is down
 let dbReady = false;
+
+// Camera MJPEG streaming state
+const BOUNDARY = 'frameboundary';
+const mjpegClients = new Set();
+let latestFrame = null;
+let lastFrameTime = null;
+
+// Snapshot config from environment
+const SNAPSHOT_DIR = process.env.SNAPSHOT_DIR || '/data/snapshots';
+const SNAPSHOT_INTERVAL_MS = parseInt(process.env.SNAPSHOT_INTERVAL_MIN || '15', 10) * 60 * 1000;
+const CAMERA_ID = process.env.CAMERA_ID || 'fc1';
+
+function pushFrame(jpegBuffer) {
+    latestFrame = jpegBuffer;
+    lastFrameTime = Date.now();
+    const header = [
+        `--${BOUNDARY}`,
+        'Content-Type: image/jpeg',
+        `Content-Length: ${jpegBuffer.length}`,
+        '',
+        ''
+    ].join('\r\n');
+
+    mjpegClients.forEach(res => {
+        if (!res.writable) {
+            mjpegClients.delete(res);
+            return;
+        }
+        try {
+            res.write(header, 'ascii');
+            res.write(jpegBuffer);
+            res.write('\r\n', 'ascii');
+        } catch (e) {
+            mjpegClients.delete(res);
+        }
+    });
+}
+
+function saveSnapshot() {
+    if (!latestFrame) return;
+    const now = new Date();
+    const dateDir = now.toISOString().slice(0, 10); // YYYY-MM-DD
+    const dir = path.join(SNAPSHOT_DIR, CAMERA_ID, dateDir);
+    fs.mkdirSync(dir, { recursive: true });
+    const filename = `${now.toISOString().replace(/[:.]/g, '-')}.jpg`;
+    const filepath = path.join(dir, filename);
+    fs.writeFile(filepath, latestFrame, (err) => {
+        if (err) console.error('[camera] snapshot write failed:', err.message);
+        else console.log(`[camera] snapshot saved: ${filepath} (${CAMERA_ID}, ${latestFrame.length} bytes)`);
+    });
+}
 
 // Schema init: create telemetry hypertable on startup
 async function initDb() {
@@ -66,7 +119,14 @@ app.use((req, res, next) => {
 
 // Health check route
 app.get('/health', (req, res) => {
-    res.json({ status: 'ok', db: dbReady });
+    res.json({
+        status: 'ok',
+        db: dbReady,
+        camera: {
+            lastFrame: lastFrameTime,
+            clients: mjpegClients.size
+        }
+    });
 });
 
 // Allowlist for history endpoint topics — prevents SQL injection via topic param (T-07-04)
@@ -130,6 +190,35 @@ app.get('/history/:topic', async (req, res) => {
         console.error('[db] history query failed:', err.message);
         res.status(500).json({ error: 'Query failed' });
     }
+});
+
+// Camera MJPEG stream endpoint (D-03)
+app.get('/camera/mjpeg', (req, res) => {
+    res.writeHead(200, {
+        'Content-Type': `multipart/x-mixed-replace; boundary="${BOUNDARY}"`,
+        'Cache-Control': 'no-cache, no-store',
+        'Connection': 'close',
+        'Pragma': 'no-cache'
+    });
+    mjpegClients.add(res);
+    console.log(`[camera] MJPEG client connected (${mjpegClients.size} total)`);
+    req.on('close', () => {
+        mjpegClients.delete(res);
+        console.log(`[camera] MJPEG client disconnected (${mjpegClients.size} total)`);
+    });
+});
+
+// Camera latest frame endpoint (single JPEG for testing)
+app.get('/camera/snapshot', (req, res) => {
+    if (!latestFrame) {
+        return res.status(503).json({ error: 'No camera frame available' });
+    }
+    res.writeHead(200, {
+        'Content-Type': 'image/jpeg',
+        'Content-Length': latestFrame.length,
+        'Cache-Control': 'no-cache'
+    });
+    res.end(latestFrame);
 });
 
 // Store connected WebSocket clients
@@ -223,6 +312,20 @@ rclnodejs.init().then(async () => {
             await insertTelemetry('fc.humidifier', value);
         }
     );
+
+    // Subscribe: fc1/camera/compressed -> MJPEG stream (D-03)
+    node.createSubscription(
+        'sensor_msgs/msg/CompressedImage',
+        '/fc1/camera/compressed',
+        (msg) => {
+            const buf = Buffer.from(msg.data);
+            pushFrame(buf);
+        }
+    );
+
+    // Start snapshot timer (D-10: periodic snapshots, default 15 min)
+    setInterval(saveSnapshot, SNAPSHOT_INTERVAL_MS);
+    console.log(`[camera] Snapshot timer started: every ${SNAPSHOT_INTERVAL_MS / 60000} min to ${SNAPSHOT_DIR}/${CAMERA_ID}/`);
 
     // Start HTTP + WebSocket server
     server.listen(8081, () => {
