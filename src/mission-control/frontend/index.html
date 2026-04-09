@@ -96,7 +96,11 @@
     tryInstall(function() { return openmct.plugins.ScatterPlot(); });
 
     // ── Fruiting chamber telemetry ──────────────────────────────────────────
-    openmct.install(FruitingChamberPlugin());
+    openmct.install(FruitingChamberPlugin({
+        bridgeUrl:  'ws://10.68.155.50:8081',
+        historyUrl: 'http://10.68.155.50:8081/history',
+        cameraUrl:  'http://10.68.155.50:8081/camera/mjpeg'
+    }));
 
     // ── Start ───────────────────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', function () {
