@@ -28,7 +28,7 @@ No image analysis, no ML inference, no multi-camera support in this phase.
 ### Camera on the Pi
 - **D-07:** USB webcam accessed via v4l2 (Video4Linux2). Standard Linux camera interface, works with any USB webcam.
 - **D-08:** Camera node is a ROS2 Python node in `fc_core` package, launched alongside sensor/controller nodes. Auto-starts with the systemd service.
-- **D-09:** Topic naming follows existing pattern: `fc/camera/compressed` for frames, `fc/camera/info` for camera metadata.
+- **D-09:** Topic naming follows existing pattern: `fc1/camera/compressed` for frames, `fc1/camera/info` for camera metadata.
 
 ### Snapshot Storage
 - **D-10:** Bridge captures periodic snapshots (configurable interval, default every 15 minutes) and saves to elder-plops filesystem.
