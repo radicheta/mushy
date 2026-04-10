@@ -192,9 +192,9 @@ Plans:
 
 ### Phase 999.5: Vision — Time-lapse & Growth Monitoring (BACKLOG)
 
-**Goal:** Turn the camera snapshot archive into actionable growth intelligence. Auto-compose daily time-lapses from snapshots (already saving JPEG every 15 min to /data/snapshots/fc1/YYYY-MM-DD/). Serve time-lapse videos in Mission Control. Add growth stage classification — detect pinning, primordia, fruiting body maturity from camera frames. Flag contamination (green/black mold, cobweb) with visual alerts.
-**Foundation:** fc_camera.py captures 640x480 JPEG at 1 FPS. Bridge stores snapshots to date-organized dirs. MJPEG stream and OpenMCT camera view both working. ~96 snapshots/day at 15-min intervals.
-**Needs:** FFmpeg time-lapse composition, video serving endpoint, ML inference pipeline (likely lightweight — MobileNet or YOLO on elder-plops, not Pi), training data collection, contamination alert integration with Phase 999.3.
+**Goal:** Turn the camera snapshot archive into actionable growth intelligence. Auto-compose daily time-lapses from snapshots (already saving JPEG every 15 min to /data/snapshots/fc1/YYYY-MM-DD/). Serve time-lapse videos in Mission Control. Add growth stage classification — detect pinning, primordia, fruiting body maturity from camera frames. Flag contamination (green/black mold, cobweb) with visual alerts. **Grower-facing alerts:** notify when pinning blocks are detected (time to increase FAE) and when fruit bodies are approaching harvest size ("almost ready to pick" — reduces missed flushes and over-mature harvests).
+**Foundation:** fc_camera.py captures 640x480 JPEG at 1 FPS. Bridge stores snapshots to date-organized dirs. MJPEG stream and OpenMCT camera view both working. ~96 snapshots/day at 15-min intervals. Alerts integration via Phase 999.3 (Telegram).
+**Needs:** FFmpeg time-lapse composition, video serving endpoint, ML inference pipeline (likely lightweight — MobileNet or YOLO on elder-plops, not Pi), training data collection, growth stage labeled dataset (pinning → primordia → mature → overmature), contamination alert integration with Phase 999.3.
 **Requirements:** TBD
 **Plans:** 0 plans
 
