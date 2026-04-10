@@ -142,9 +142,9 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 08-01-PLAN.md — Create ROS2 camera node (fc_camera.py) with OpenCV capture, config, launch, and unit tests
-- [ ] 08-02-PLAN.md — Add MJPEG streaming endpoint and snapshot storage to bridge, update docker-compose
-- [ ] 08-03-PLAN.md — Add camera view to OpenMCT plugin with custom view provider, human verify
+- [x] 08-01-PLAN.md — Create ROS2 camera node (fc_camera.py) with OpenCV capture, config, launch, and unit tests
+- [x] 08-02-PLAN.md — Add MJPEG streaming endpoint and snapshot storage to bridge, update docker-compose
+- [x] 08-03-PLAN.md — Add camera view to OpenMCT plugin with custom view provider, human verify
 
 ## Backlog
 
