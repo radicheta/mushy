@@ -168,6 +168,50 @@ Plans:
 Plans:
 - [ ] TBD (promote with /gsd-review-backlog when ready)
 
+### Phase 999.3: Alerts & Notifications (BACKLOG)
+
+**Goal:** Proactive alerts when things go wrong — sensor failures, humidity/CO2 out of range, Pi offline, actuator stuck. Telegram bot for mobile notifications (free, simple, works on farm). Alert deduplication so you don't get spammed. Alert history in TimescaleDB.
+**Foundation:** Bridge `/health` endpoint exists. All sensor values already flow through bridge to DB. WebSocket broadcast infrastructure in place.
+**Builds from scratch:** Threshold engine, alert state machine, Telegram integration, alert persistence.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.4: Environmental Expansion — Fan & Light Telemetry (BACKLOG)
+
+**Goal:** Complete the environmental control picture. Wire HL-52S MOSFET (GPIO27) for independent fan speed control, publish fan PWM duty cycle and light on/off state to ROS topics, ingest both into TimescaleDB, add charts to Mission Control. Fan control already has partial logic (temp-triggered ramp in fc_controller.py) but no configured GPIO pin and no telemetry. Light scheduling already works (GPIO18) but state isn't published.
+**Foundation:** HW PWM code exists in fc_controller.py (25kHz, min 50% duty). Light schedule logic exists (6AM start, 12h duration). HL-52S MOSFET physically available, reserved for GPIO27 since Phase 1.
+**Needs:** GPIO27 config for fan, fan/light state ROS publishers, bridge subscriptions, DB ingestion, Mission Control charts.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.5: Vision — Time-lapse & Growth Monitoring (BACKLOG)
+
+**Goal:** Turn the camera snapshot archive into actionable growth intelligence. Auto-compose daily time-lapses from snapshots (already saving JPEG every 15 min to /data/snapshots/fc1/YYYY-MM-DD/). Serve time-lapse videos in Mission Control. Add growth stage classification — detect pinning, primordia, fruiting body maturity from camera frames. Flag contamination (green/black mold, cobweb) with visual alerts.
+**Foundation:** fc_camera.py captures 640x480 JPEG at 1 FPS. Bridge stores snapshots to date-organized dirs. MJPEG stream and OpenMCT camera view both working. ~96 snapshots/day at 15-min intervals.
+**Needs:** FFmpeg time-lapse composition, video serving endpoint, ML inference pipeline (likely lightweight — MobileNet or YOLO on elder-plops, not Pi), training data collection, contamination alert integration with Phase 999.3.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.6: Multi-Chamber Scaling (BACKLOG)
+
+**Goal:** Replicate the system to FC-2, FC-3, etc. Parameterize chamber ID throughout the stack so a second Pi can run the same code with different config. Multi-chamber views in Mission Control — side-by-side comparison, aggregate dashboard.
+**Foundation:** Currently hard-coded to "fc1" in ~15 locations across fc_sensors.py, fc_controller.py, fc_camera.py, bridge index.js, plugin.js, and docker-compose.yml. No chamber_id config parameter exists.
+**Effort:** 20-30% refactor. Add chamber_id to fc_config.yaml and ROS2 launch params. Parameterize all topic names. Bridge needs multi-chamber subscription loop. Plugin needs per-chamber folder generation in UI tree. Docker compose needs templating or per-chamber overrides.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
 ---
 *Roadmap created: 2026-03-28*
 *Milestone: MVP — FC-1 Humidity Control*
