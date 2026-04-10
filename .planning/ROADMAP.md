@@ -139,12 +139,14 @@ Plans:
 **Goal:** USB webcam on fc1 Pi streams live video accessible from Mission Control (OpenMCT). Foundation for future vision features (time-lapse, contamination detection, growth monitoring).
 **Requirements**: CAM-01, CAM-02, CAM-03, CAM-04, CAM-05
 **Depends on:** Phase 7
-**Plans:** 3 plans
+**Plans:** 4 plans
+**Status:** Blocked — all code committed, Pi deploy + human verification pending (fc1 offline, awaiting 4G hotspot)
 
 Plans:
 - [x] 08-01-PLAN.md — Create ROS2 camera node (fc_camera.py) with OpenCV capture, config, launch, and unit tests
 - [x] 08-02-PLAN.md — Add MJPEG streaming endpoint and snapshot storage to bridge, update docker-compose
 - [x] 08-03-PLAN.md — Add camera view to OpenMCT plugin with custom view provider, human verify
+- [~] 08-04-PLAN.md — Gap closure: camera name fix, production URLs, disable simulation mode (code done, deploy blocked)
 
 ## Backlog
 

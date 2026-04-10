@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Ready to execute
-stopped_at: Phase 8 context gathered
+status: Blocked on Pi connectivity
+stopped_at: Phase 08-04 code done, deploy blocked — fc1 offline, awaiting 4G hotspot
 last_updated: "2026-04-09T02:28:01.143Z"
 progress:
   total_phases: 10
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 **Milestone:** MVP — FC-1 Humidity Control
 **Progress:** [██████████] 100%
 **Phase:** 08 of 5 (farmos integration)
-**Last action:** SHT30 sensor live — 22.6°C, 84.7% real readings on /fc/humidity
+**Last action:** Phase 08-04 gap closure code committed (camera name fix, production URLs, sim mode off). Deploy to fc1 blocked — Pi offline, awaiting 4G hotspot setup.
 
 ## Phase Progress
 
