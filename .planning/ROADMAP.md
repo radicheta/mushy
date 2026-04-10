@@ -212,6 +212,23 @@ Plans:
 Plans:
 - [ ] TBD (promote with /gsd-review-backlog when ready)
 
+### Phase 999.7: Farm Rover — Mobile Inspection & Actuation (BACKLOG)
+
+**Goal:** Autonomous or tele-operated rover that patrols fruiting chambers with onboard camera, airgun (contamination removal / FAE boost), and humidifier nozzle. Extends the static per-chamber system into a mobile platform that can service multiple chambers, get close-up views of individual blocks, and intervene physically. ROS2-native — same stack as the chamber nodes.
+**Concept:**
+- **Camera:** Onboard USB or CSI camera publishes to `/rover/camera/compressed`. Close-up block inspection, feeds into 999.5 vision pipeline for per-block growth stage classification. Pan/tilt or gimbal for aiming.
+- **Airgun actuator:** Compressed air nozzle for blasting contamination off blocks (trich, cobweb) and targeted FAE bursts. GPIO-triggered solenoid valve. Published on `/rover/actuators/airgun`.
+- **Humidifier actuator:** Onboard misting nozzle for spot-humidification of dry zones. Pump or solenoid-fed from reservoir. Published on `/rover/actuators/humidifier`.
+- **Navigation:** Start with tele-op via Mission Control (joystick widget in OpenMCT). Graduate to waypoint-based autonomous patrol using ROS2 Nav2 stack if chamber layout is mapped.
+- **Hardware candidates:** Modified RC chassis with Pi or Jetson Nano, motor driver (L298N or similar), battery + charging dock.
+**Foundation:** ROS2 Jazzy stack, CycloneDDS unicast over WireGuard, Mission Control plugin architecture, camera/MJPEG infrastructure from Phase 8, alerting from 999.3.
+**Depends on:** 999.5 (vision pipeline for block-level classification), 999.3 (alerts for autonomous intervention triggers), 999.6 (multi-chamber parameterization for rover to move between chambers).
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
 ---
 *Roadmap created: 2026-03-28*
 *Milestone: MVP — FC-1 Humidity Control*
