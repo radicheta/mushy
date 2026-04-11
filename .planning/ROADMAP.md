@@ -78,6 +78,7 @@ milestone. Promote with `/gsd:review-backlog` when ready.
 - **Phase 999.5: Vision — time-lapse & growth monitoring** — ffmpeg time-lapse composition, pinning/maturity detection, contamination alerts. Feeds Phase 999.3 for grower-facing pinning and "ready to pick" notifications.
 - **Phase 999.6: Multi-chamber scaling** — parameterize chamber_id, enable FC-2/FC-3.
 - **Phase 999.7: Farm rover** — mobile inspection/actuation platform (camera + airgun + misting nozzle) on a ROS2 rover. Depends on 999.5, 999.3, 999.6.
+- **Phase 999.8: Sensor warm-up grace period** — delay bang-bang actuator control at fc-core startup until sensors stabilize. Observed 2026-04-11 (farmer calibration session): every restart produces a ~30s spike on first sensor read (e.g. 18.7°C/77.2% → 21.8°C/64.4% → settled 21.4°C/66%). Contaminates tick-gain/bounce measurements and can trigger unwanted humidifier ON that gets dwell-locked for 3min. Suggested: `control_loop` early-return until `_humidity_buffer` is full AND ≥20s wall-clock elapsed since boot; new `startup_grace_period` param. Touches `fc_controller.py`, `fc_config.yaml`, `test_controller.py`. Not a v1.0 blocker — workaround is "ignore first minute after restart".
 
 ---
 *Roadmap created 2026-03-28. v1.1 phases added 2026-04-11.*
