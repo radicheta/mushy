@@ -59,18 +59,20 @@ Existing codebase provides:
 **v1.0 MVP shipped 2026-04-11.** Grower attested "better than the timer" —
 passes. See `.planning/MILESTONES.md` and `.planning/milestones/v1.0-*`.
 
-### Next Milestone Goals (v1.1 — to be scoped)
+## Current Milestone: v1.1 Tech Debt & Connectivity
 
-Candidate themes, to be refined during `/gsd:new-milestone`:
+**Goal:** Close v1.0 tech debt bugs and get reliable farm connectivity to fc1.
 
-- **CO2-first features** — the farmer's unexpected favorite was live CO2 visibility. Weight the next milestone toward CO2 alerts, trend reports, and CO2-triggered ventilation control. Memory: `project_co2_unexpected_win.md`.
-- **v1.0 tech debt closure:**
-  - ACTR-03 QoS alignment (bridge → `durability: transient_local` to match publisher)
-  - CAM-03 CycloneDDS stale-subscriber cleanup (live MJPEG stalls because fc_camera retries writes to a phantom peer at 192.168.1.193)
-  - Boot-time CycloneDDS `tailscale0` interface race causing ~4 restarts of `fc-core.service` on each Pi cold boot (self-heals within minutes)
-  - SHT30 physical reinstall (currently running on SCD41 fallback — works but lose primary sensor redundancy)
-- **Farm connectivity** — 4G hotspot for reliable fc1 access (memory: `project_4g_hotspot.md`).
-- **Backlog promotion candidates** from Phase 999.x: edge buffering, Signal alerts, fan/light telemetry.
+**Target scope:**
+- ACTR-03 bridge QoS alignment (`transient_local`) so last-state replays on bridge restart
+- CAM-03 phantom CycloneDDS subscriber at `192.168.1.193` stalling live MJPEG delivery
+- fc-core boot race on `tailscale0` interface (~4 restarts on each Pi cold boot)
+- 4G hotspot for reliable fc1 farm connectivity (unblocks stalled Phase 08-04 deploy)
+
+**Explicitly deferred from v1.1:**
+- SHT30 physical reinstall — sensor redundancy is nice-to-have; SCD41 fallback works
+- CO2-first features — routed to a separate `/gsd:explore` session for v2.0 themes
+- Backlog 999.x promotions (edge buffering, Signal alerts, fan/light telemetry) — v2.0+
 
 ### Out of Scope
 
@@ -149,4 +151,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-04-11 during v1.0 milestone audit paperwork closure*
+*Last updated: 2026-04-11 at start of v1.1 milestone*
