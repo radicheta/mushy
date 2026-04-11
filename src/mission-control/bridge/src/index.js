@@ -107,12 +107,18 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// CORS — restrict to known OpenMCT origin
+// CORS — restrict to the configured OpenMCT origin(s). Accepts either a
+// single origin or a comma-separated list (T-07-04 — still an allowlist,
+// no wildcards, no reflection of arbitrary origins).
+const CORS_ALLOWED = (process.env.CORS_ORIGIN || 'http://localhost:8080')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
 app.use((req, res, next) => {
     const origin = req.headers.origin;
-    const allowed = process.env.CORS_ORIGIN || 'http://localhost:8080';
-    if (origin === allowed) {
+    if (origin && CORS_ALLOWED.includes(origin)) {
         res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Vary', 'Origin');
     }
     next();
 });
