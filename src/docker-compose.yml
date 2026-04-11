@@ -1,0 +1,118 @@
+# DEPRECATED — the live Mission Control stack lives at /docker-compose.yml
+# (repo root) + /docker-compose.override.yml. This file is kept only for its
+# sim / dev service definitions (ros-core, ls-core, ic-core, simulation).
+# Do NOT use this for deploying the bridge / openmct / timescale stack.
+
+services:
+  ros-core:
+    build: 
+      context: ./ros-core
+      dockerfile: Dockerfile
+    networks:
+      - ros-net
+
+  ls-core:
+    build:
+      context: ./life-support
+      dockerfile: ls-core/Dockerfile
+    depends_on:
+      - ros-core
+    environment:
+      - ROS_DOMAIN_ID=42
+    networks:
+      - ros-net
+
+  ic-core:
+    build:
+      context: ./incubators
+      dockerfile: ic-core/Dockerfile
+    depends_on:
+      - ros-core
+    environment:
+      - ROS_DOMAIN_ID=42
+    networks:
+      - ros-net
+  simulation:
+    build:
+      context: ./simulation
+      dockerfile: Dockerfile
+    depends_on:
+      - ros-core
+    environment:
+      - ROS_DOMAIN_ID=42
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - XDG_RUNTIME_DIR=/run/user/1000
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=graphics,utility,compute,video
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, utility, compute, video]
+    networks:
+      - ros-net
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${HOME}/.Xauthority:/home/ubuntu/.Xauthority:rw
+      - /run/user/1000:/run/user/1000
+      - /dev/dri:/dev/dri  # Ensure access to GPU rendering
+    group_add:
+      - "44"  # Replace with your host's video group ID
+    user: "1000:1000"
+  
+  openmct:
+    build:
+      context: ./mission-control/frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    networks:
+      - frontend-net
+
+  bridge:
+    build:
+      context: ./mission-control/bridge
+      dockerfile: Dockerfile
+    network_mode: host
+    depends_on:
+      - openmct
+      - timescale
+    environment:
+      - TIMESCALE_HOST=localhost
+      - TIMESCALE_DB=postgres
+      - TIMESCALE_USER=postgres
+      - TIMESCALE_PASSWORD=${TIMESCALE_PASSWORD}
+      - ROS_DOMAIN_ID=69
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - CYCLONEDDS_URI=file:///opt/bridge/cyclonedds.xml
+      - SNAPSHOT_DIR=/data/snapshots
+      - SNAPSHOT_INTERVAL_MIN=15
+      - CAMERA_ID=fc1
+    volumes:
+      - ./mission-control/bridge/cyclonedds.xml:/opt/bridge/cyclonedds.xml:ro
+      # NOTE: Run `mkdir -p /data/snapshots/fc1` on elder-plops host before starting bridge
+      - /data/snapshots:/data/snapshots
+
+  timescale:
+    image: timescale/timescaledb:latest-pg14
+    environment:
+      - POSTGRES_PASSWORD=${TIMESCALE_PASSWORD}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+    networks:
+      - frontend-net
+
+networks:
+  ros-net:
+    driver: bridge
+  frontend-net:
+    driver: bridge
+
+volumes:
+  timescale-data:

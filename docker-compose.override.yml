@@ -1,0 +1,17 @@
+version: '3.8'
+
+# Host networking: bridge reaches Pi's DDS via WireGuard (wg0, domain 69)
+# With host networking, port mappings are ignored — services bind directly.
+services:
+  openmct:
+    network_mode: "host"
+    restart: always
+
+  bridge:
+    network_mode: "host"
+    restart: always
+    environment:
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - CYCLONEDDS_URI=file:///etc/cyclonedds-tailscale.xml
+    volumes:
+      - /home/santi/.config/cyclonedds-tailscale.xml:/etc/cyclonedds-tailscale.xml:ro

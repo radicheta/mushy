@@ -1,0 +1,46 @@
+/**:
+  ros__parameters:
+    # Simulation mode (can be set independently per subsystem)
+    sensor_simulation_mode: false   # false = read real SHT30 hardware (I2C)
+    actuator_simulation_mode: false  # false = real GPIO for SSR + PWM
+
+    # Sensor config
+    sht30_i2c_address: 0x44  # SHT30 I2C address (bus auto-detected by adafruit_blinka)
+    scd41_enabled: true       # SCD41 CO2/temp/humidity sensor on I2C 0x62
+
+    # Actuator pins
+    humidifier_pin: 27  # GPIO27 (pin 13) for humidifier SSR — pin 14 (GND) adjacent
+    light_pin: 18  # GPIO18 for light control
+    
+    # Target values
+    target_temp: 23.0  # °C
+    target_humidity: 0.80  # 80% — per D-01: 80% setpoint, ±5% tolerance = 75-85% band
+    target_light_hours: 12  # Hours of light per day
+    light_start_hour: 6  # Start light at 6 AM
+    
+    # Tolerances
+    temp_tolerance: 1.0  # °C
+    humidity_tolerance: 0.05  # 5%
+    
+    # Control parameters
+    min_fan_speed: 50  # Minimum fan speed percentage
+    fan_temp_scale: 20  # Fan speed scaling factor
+    fan_pwm_channel: 0  # Hardware PWM channel for fan
+    fan_pwm_freq: 25000  # Fan PWM frequency in Hz
+    
+    # Timing
+    sensor_read_interval: 2.0  # Seconds between sensor reads
+    control_interval: 1.0  # Seconds between control updates
+    display_interval: 1.0  # Seconds between display updates
+
+    # Safety guards
+    min_dwell_time: 180.0  # Seconds — 3 minute minimum between humidifier toggles
+    sensor_stale_timeout: 10.0  # Seconds — sensor data older than this triggers safe state (humidifier OFF)
+
+    # Camera parameters (Phase 08)
+    camera_simulation_mode: false   # true = no USB webcam needed; false = capture from /dev/videoN
+    camera_device: 0                # /dev/video0
+    camera_width: 640               # pixels (D-05: 640x480 default)
+    camera_height: 480              # pixels
+    camera_fps: 1                   # frames per second (D-04: 1-2 FPS for cellular bandwidth)
+    camera_jpeg_quality: 65         # 0-100 (D-06: 60-70% default)

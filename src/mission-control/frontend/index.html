@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Mushroom Farm | Mission Control</title>
+  <!-- Espresso = dark theme; swap to dist/snowTheme.css for light -->
+  <link rel="stylesheet" href="dist/espressoTheme.css">
+  <style>
+    body, #app { margin: 0; width: 100%; height: 100vh; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <!-- OpenMCT core bundle -->
+  <script src="dist/openmct.js"></script>
+
+  <!-- UYT (UTC-3) time system for the time conductor -->
+  <script src="plugins/timezone/plugin.js"></script>
+
+  <!-- Fruiting chamber telemetry plugin -->
+  <script src="plugins/fruiting-chamber/plugin.js"></script>
+
+  <script>
+    var ONE_MINUTE      = 60 * 1000;
+    var FIVE_MINUTES    = 5  * ONE_MINUTE;
+    var THIRTY_MINUTES  = 30 * ONE_MINUTE;
+    var ONE_HOUR        = 60 * ONE_MINUTE;
+    var TWO_HOURS       = 2  * ONE_HOUR;
+    var TWENTY_FOUR_HOURS = 24 * ONE_HOUR;
+
+    // Helper: install a plugin but don't crash if it doesn't exist in this build
+    function tryInstall(pluginFactory) {
+        try {
+            if (typeof pluginFactory === 'function') openmct.install(pluginFactory());
+        } catch (e) {
+            console.warn('[mc] optional plugin skipped:', e.message);
+        }
+    }
+
+    // ── Required plugins ────────────────────────────────────────────────────
+    openmct.install(openmct.plugins.LocalStorage());
+    tryInstall(function() { return openmct.plugins.MyItems(); });
+    openmct.install(openmct.plugins.UTCTimeSystem());
+    openmct.install(TimezonePlugin());
+    openmct.install(openmct.plugins.Clock({ enabled: false, periodicRefresh: 1 }));
+    openmct.install(openmct.plugins.Conductor({
+        menuOptions: [
+            {
+                name: '24h Fixed',
+                timeSystem: 'uyt',
+                bounds: {
+                    start: Date.now() - TWENTY_FOUR_HOURS,
+                    end: Date.now()
+                }
+            },
+            {
+                name: '5m Realtime',
+                timeSystem: 'uyt',
+                clock: 'local',
+                clockOffsets: { start: -FIVE_MINUTES, end: 0 }
+            },
+            {
+                name: '30m Realtime',
+                timeSystem: 'uyt',
+                clock: 'local',
+                clockOffsets: { start: -THIRTY_MINUTES, end: 0 }
+            },
+            {
+                name: '1h Realtime',
+                timeSystem: 'uyt',
+                clock: 'local',
+                clockOffsets: { start: -ONE_HOUR, end: 0 }
+            },
+            {
+                name: '2h Realtime',
+                timeSystem: 'uyt',
+                clock: 'local',
+                clockOffsets: { start: -TWO_HOURS, end: 0 }
+            }
+        ]
+    }));
+
+    // ── Optional UI/layout plugins ──────────────────────────────────────────
+    tryInstall(function() { return openmct.plugins.Espresso(); });
+    tryInstall(function() { return openmct.plugins.DisplayLayout(); });
+    tryInstall(function() { return openmct.plugins.FlexibleLayout(); });
+    tryInstall(function() { return openmct.plugins.Tabs(); });
+    tryInstall(function() { return openmct.plugins.Notebook(); });
+    tryInstall(function() { return openmct.plugins.LADTable(); });
+    tryInstall(function() { return openmct.plugins.SummaryWidget(); });
+    tryInstall(function() { return openmct.plugins.Timeline(); });
+    tryInstall(function() { return openmct.plugins.BarChart(); });
+    tryInstall(function() { return openmct.plugins.ScatterPlot(); });
+
+    // ── Fruiting chamber telemetry ──────────────────────────────────────────
+    // Resolve the bridge against whatever host served this page so OpenMCT
+    // works from localhost, LAN IP, tailscale, etc. without a rebuild.
+    var __mcHost = window.location.hostname || 'localhost';
+    openmct.install(FruitingChamberPlugin({
+        bridgeUrl:  'ws://'  + __mcHost + ':8081',
+        historyUrl: 'http://' + __mcHost + ':8081/history',
+        cameraUrl:  'http://' + __mcHost + ':8081/camera/mjpeg'
+    }));
+
+    // ── Start ───────────────────────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', function () {
+        openmct.start(document.getElementById('app'));
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+.fruiting-chamber-view {
+    padding: 20px;
+    display: flex;
+    gap: 20px;
+}
+
+.temperature-display,
+.humidity-display {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 20px;
+    min-width: 200px;
+    text-align: center;
+}
+
+.temperature-display h3,
+.humidity-display h3 {
+    margin: 0 0 10px 0;
+    color: #999;
+    font-size: 14px;
+    text-transform: uppercase;
+}
+
+.temperature-display .value,
+.humidity-display .value {
+    font-size: 36px;
+    font-weight: bold;
+    color: #fff;
+}
+
+.temperature-display .value {
+    color: #ff6b6b;
+}
+
+.humidity-display .value {
+    color: #4ecdc4;
+} 
