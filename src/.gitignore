@@ -6,9 +6,5 @@
 # Timescale data
 timescale-data/
 
-# Python
-__pycache__/
-*.pyc
-
 # Misc
 .DS_Store

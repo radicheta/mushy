@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  openmct:
+    build:
+      context: ./src/mission-control/frontend
+      dockerfile: Dockerfile
+
+  bridge:
+    build:
+      context: ./src/mission-control/bridge
+      dockerfile: Dockerfile
+    depends_on:
+      - timescale
+    environment:
+      - ROS_DOMAIN_ID=69
+      - ROS_LOCALHOST_ONLY=0
+      # Set FAKE_SENSORS=1 to publish simulated data (testing without Pi)
+      - FAKE_SENSORS=${FAKE_SENSORS:-0}
+      - TIMESCALE_HOST=localhost
+      - TIMESCALE_DB=postgres
+      - TIMESCALE_USER=postgres
+      - TIMESCALE_PASSWORD=${TIMESCALE_PASSWORD}
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://10.68.155.50:8080}
+      - SNAPSHOT_DIR=/data/snapshots
+      - SNAPSHOT_INTERVAL_MIN=15
+      - CAMERA_ID=fc1
+    volumes:
+      - /data/snapshots:/data/snapshots
+
+  timescale:
+    image: timescale/timescaledb:latest-pg14
+    restart: always
+    environment:
+      - POSTGRES_PASSWORD=${TIMESCALE_PASSWORD}
+    # Bind to localhost so the bridge (host networking) can reach it at
+    # localhost:5432 without exposing Postgres to the LAN.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+
+volumes:
+  timescale-data:

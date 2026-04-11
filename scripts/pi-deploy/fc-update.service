@@ -1,0 +1,19 @@
+[Unit]
+Description=FC-1 Auto-update from git before fc-core starts
+After=network-online.target
+Wants=network-online.target
+Before=fc-core.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+ExecStart=/bin/bash -c '\
+  cd /home/ubuntu/mushroom_farm_ws/mushy-repo && \
+  git pull --ff-only origin fc1/prod 2>&1 || echo "git pull failed — running on current code"; \
+  cd /home/ubuntu/mushroom_farm_ws && \
+  source /opt/ros/jazzy/setup.bash && \
+  colcon build --packages-select fc_core 2>&1 || echo "build failed — running on last good build"'
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

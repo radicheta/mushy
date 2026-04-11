@@ -1,0 +1,10 @@
+[Interface]
+PrivateKey = ${WG_PRIVATE_KEY}
+Address = ${WG_IP}/24
+ListenPort = 51820
+
+[Peer]
+PublicKey = ${WG_SERVER_PUBLIC_KEY}
+AllowedIPs = 172.16.10.0/24
+Endpoint = ${WG_SERVER_ENDPOINT}:51820
+PersistentKeepalive = 25 

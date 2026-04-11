@@ -1,0 +1,8 @@
+RPi.GPIO
+adafruit-circuitpython-dht
+rclpy
+rpi_hardware_pwm
+sensor_msgs
+setuptools
+std_msgs
+websockets
