@@ -3,11 +3,12 @@
 ## Milestones
 
 - ✅ **v1.0 MVP — FC-1 Humidity Control** — Phases 1–8 (shipped 2026-04-11). See `.planning/milestones/v1.0-ROADMAP.md` for full details.
-- 📋 **v1.1 (planned)** — tech debt closure + farm-driven priorities. To be scoped via `/gsd:new-milestone`.
+- 🔧 **v1.1 Tech Debt & Connectivity** — Phases 9–10 (active). Closes v1.0 carryover bugs and establishes reliable farm connectivity.
 
-## Current Phases
+## Phases
 
-_No active phases. v1.0 shipped 2026-04-11. Run `/gsd:new-milestone` to scope v1.1._
+- [ ] **Phase 09: Connectivity & Boot Stability** - 4G hotspot for reliable farm access; fc-core.service cold-boot fix
+- [ ] **Phase 10: Bridge QoS & MJPEG Delivery** - Humidifier last-state replay on bridge restart; live MJPEG stream free of phantom-peer stalls
 
 <details>
 <summary>✅ v1.0 MVP (Phases 1-8) — SHIPPED 2026-04-11</summary>
@@ -30,6 +31,37 @@ reinstall. See `.planning/milestones/v1.0-MILESTONE-AUDIT.md`.
 
 </details>
 
+## Phase Details
+
+### Phase 09: Connectivity & Boot Stability
+**Goal**: fc1 Pi is reliably reachable from elder-plops at the farm via 4G hotspot, and fc-core.service starts cleanly on every cold boot without restart loops
+**Depends on**: Nothing (first v1.1 phase; also unblocks Phase 10 verification)
+**Requirements**: CONN-01, TDEBT-03
+**Success Criteria** (what must be TRUE):
+  1. `ros2 topic echo /fc1/humidity` on elder-plops returns a reading within 5 seconds after the Pi's WAN connection is via 4G hotspot
+  2. Pi recovers and Tailscale mesh reconnects automatically after a simulated WAN blip (hotspot toggled off then on), without manual intervention on either host
+  3. `journalctl -u fc-core.service` on a fresh Pi cold boot shows zero automatic restarts — service reaches `active (running)` state on the first attempt
+  4. Mission Control dashboard (elder-plops browser) is reachable and shows live telemetry within 30 seconds of the Pi completing boot at the farm
+**Plans**: TBD
+
+### Phase 10: Bridge QoS & MJPEG Delivery
+**Goal**: Mission Control accurately replays the last humidifier state on bridge restart, and the live camera feed delivers continuous frames without phantom-peer stalls
+**Depends on**: Phase 09 (Pi must be reachable to verify MJPEG and DDS delivery end-to-end)
+**Requirements**: TDEBT-01, TDEBT-02
+**Success Criteria** (what must be TRUE):
+  1. Restarting the bridge container (`docker compose restart bridge`) causes the Mission Control humidifier-state chart to immediately show the correct last-known state — no blank gap or stale pre-restart value
+  2. The `/camera/mjpeg` endpoint delivers a continuous stream (visible frame updates every ~1 second) for at least 60 seconds without stalling during normal operation
+  3. `journalctl -u fc-core.service` on the Pi shows no repeated write-retry or peer-unreachable log lines referencing `192.168.1.193` after the CycloneDDS peer cleanup is deployed
+**Plans**: TBD
+**UI hint**: yes
+
+## Progress Table
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 09. Connectivity & Boot Stability | 0/? | Not started | - |
+| 10. Bridge QoS & MJPEG Delivery | 0/? | Not started | - |
+
 ## Backlog (parking lot)
 
 These are ideas captured during v1.0 execution but not yet scoped into a
@@ -44,4 +76,4 @@ milestone. Promote with `/gsd:review-backlog` when ready.
 - **Phase 999.7: Farm rover** — mobile inspection/actuation platform (camera + airgun + misting nozzle) on a ROS2 rover. Depends on 999.5, 999.3, 999.6.
 
 ---
-*Roadmap created 2026-03-28. Collapsed at v1.0 completion 2026-04-11.*
+*Roadmap created 2026-03-28. v1.1 phases added 2026-04-11.*

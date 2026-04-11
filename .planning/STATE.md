@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Tech Debt & Connectivity
-status: Defining requirements
-stopped_at: Milestone v1.1 started
-last_updated: "2026-04-11T16:00:00.000Z"
+status: Roadmap created
+stopped_at: Phase 09 ready to plan
+last_updated: "2026-04-11T16:30:00.000Z"
 progress:
-  total_phases: 0
+  total_phases: 2
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,28 +20,33 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-11)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** v1.1 — defining requirements
+**Current focus:** v1.1 — Phase 09: Connectivity & Boot Stability
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-04-11 — Milestone v1.1 Tech Debt & Connectivity started
+Phase: 09 — Connectivity & Boot Stability
+Plan: Not started
+Status: Roadmap created, ready to plan Phase 09
+Last activity: 2026-04-11 — v1.1 roadmap created (2 phases, 4 requirements)
+
+Progress: [░░░░░░░░░░] 0% (0/2 phases complete)
+
+## Phase List (v1.1)
+
+| Phase | Name | Requirements | Status |
+|-------|------|--------------|--------|
+| 09 | Connectivity & Boot Stability | CONN-01, TDEBT-03 | Not started |
+| 10 | Bridge QoS & MJPEG Delivery | TDEBT-01, TDEBT-02 | Not started |
 
 ## Key Context
 
-- Existing implementation is 50-75% complete
-- DHT22 sensors already wired on FC-1
-- MOSFET actuator needs wiring (component available)
-- **Pi OS confirmed: Ubuntu 24.04.4 LTS (Noble), kernel 6.8.0-1047-raspi — gates Phase 1 cleared**
-- **SHT30 I2C sensor live at 0x44** — real readings on /fc/humidity and /fc/temperature
-- **Deploy pipeline working** — rsync + colcon build + systemd restart via ./scripts/pi-deploy/deploy.sh
-- **fc-core service auto-starts on boot** — systemd enabled, survives reboot
-- Sensor: SHT30 wired SDA→pin3, SCL→pin5, VCC→pin4, GND→pin6
-- Actuator: SSR-10A (3-32V DC in, 24-480V AC 10A) switches zapatilla (power strip) on GPIO17. Humidifier + fans plug into strip — trigger together. HL-52S MOSFET reserved for independent fan control (Phase 3, GPIO27).
-- Pi libs installed: adafruit-blinka, adafruit-circuitpython-sht31d, RPi.GPIO 0.7.1. ubuntu in gpio+i2c groups.
-- SSH to FC-1 confirmed working: `ssh fc1` (HostName 10.68.155.53, User ubuntu)
+- v1.0 shipped 2026-04-11. Grower-attested. fc-core running continuously on Pi.
+- fc1 Pi offline at farm (no 4G yet) — Phase 09 unblocks all other verification
+- TDEBT-03 (cold-boot race on tailscale0) is a systemd `After=`/`Requires=` change; deploy via deploy.sh to fc1/prod branch
+- TDEBT-01: bridge subscribes humidifier topic with VOLATILE QoS against TRANSIENT_LOCAL publisher — fix is bridge-side, requires `--build` on docker compose
+- TDEBT-02: phantom peer at 192.168.1.193 in CycloneDDS config consuming delivery slots — fix is Pi-side config change (`/etc/cyclonedds/config.xml` or equivalent)
+- Always verify against live compose at repo root (`/docker-compose.yml`), not `src/docker-compose.yml`
+- Bridge rebuilds require `docker compose up -d --build bridge` — bare `up -d` reuses stale image
 
 ## Accumulated Context
 
@@ -49,7 +54,9 @@ Last activity: 2026-04-11 — Milestone v1.1 Tech Debt & Connectivity started
 
 - Phase 6 added: WireGuard VPN routing for ROS traffic
 - Phase 7 added: Historical data storage and OpenMCT time-series visualization
-- Phase 8 added: FarmOS integration
+- Phase 8 added: Pi Camera Feed in Mission Control
+- Phase 9 added (v1.1): Connectivity & Boot Stability
+- Phase 10 added (v1.1): Bridge QoS & MJPEG Delivery
 
 ## Decisions
 
@@ -103,9 +110,9 @@ Last activity: 2026-04-11 — Milestone v1.1 Tech Debt & Connectivity started
 
 ## Session
 
-**Last session:** 2026-04-08T23:19:00.822Z
-**Stopped at:** Phase 8 context gathered
+**Last session:** 2026-04-11
+**Stopped at:** v1.1 roadmap created — Phase 09 ready to plan
 
 ---
 *Initialized: 2026-03-28*
-*Last updated: 2026-03-29*
+*Last updated: 2026-04-11*

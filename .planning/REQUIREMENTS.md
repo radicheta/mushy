@@ -48,20 +48,18 @@ Explicitly excluded from v1.1.
 
 ## Traceability
 
-Populated by the roadmapper.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TDEBT-01 | TBD | Pending |
-| TDEBT-02 | TBD | Pending |
-| TDEBT-03 | TBD | Pending |
-| CONN-01 | TBD | Pending |
+| CONN-01 | Phase 09 | Pending |
+| TDEBT-03 | Phase 09 | Pending |
+| TDEBT-01 | Phase 10 | Pending |
+| TDEBT-02 | Phase 10 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 4 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 4 ⚠️ (expected — roadmap not yet created)
+- Mapped to phases: 4 (100%)
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-11*
-*Last updated: 2026-04-11 at v1.1 milestone start*
+*Last updated: 2026-04-11 — traceability populated by roadmapper*
