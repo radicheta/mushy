@@ -3,11 +3,17 @@ phase: 05-production-deployment
 verified: 2026-04-11T15:10:00-03:00
 status: passed
 score: 4/4 must-haves verified
-verification_method: runtime-on-pi
-human_verification:
-  - test: "Grower attestation that system holds humidity better than prior timer solution"
-    expected: "Grower confirms subjective improvement (fruit quality, uptime, trust) over the timer baseline"
-    why_human: "'Better than timer' is a qualitative judgment by the person running the farm — not measurable from telemetry alone"
+verification_method: runtime-on-pi + grower-attestation
+human_verification: []
+grower_attestation:
+  date: 2026-04-11
+  verdict: "Passes — system is better than the timer"
+  unexpected_value: >
+    The farmer is thrilled to have live CO2 readings. The farm uses
+    manual thermometers and humidity meters but has never had any CO2
+    measurement at all. Phase 04's SCD41 integration — originally a
+    side-effect of using SCD41 for its temp/humidity fallback — turned
+    out to be the most impactful new capability delivered in v1.0.
 ---
 
 # Phase 05: Production Deployment — Verification Report
@@ -42,11 +48,11 @@ Both individual run windows exceed the 24-hour threshold. No crashes. No "humidi
 
 | Requirement | Status | Evidence |
 |-------------|--------|----------|
-| DEPL-01 System runs stably, grower-ready | SATISFIED | Truths #1–4; soak test result above. The qualitative "better than timer" comparison is the single remaining `human_verification` item — not a blocker, the growers will report on this via normal farm operations. |
+| DEPL-01 System runs stably, grower-ready | SATISFIED | Truths #1–4; soak test result above; grower attestation 2026-04-11 — "better than the timer", passes with enthusiasm. Bonus: the live CO2 reading (SCD41, originally scoped as a temp/humidity fallback sensor) is the farm's first-ever CO2 visibility and their highest-impact v1.0 deliverable. |
 
 ## Gaps
 
-None at the runtime/code level. The only open item is the grower's subjective "better than timer" verdict, which is captured as `human_verification` and does not block the milestone.
+None. Grower attestation received 2026-04-11 and captured in frontmatter — "better than the timer", passes. No open items.
 
 ## Drift Notes
 

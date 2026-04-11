@@ -44,7 +44,7 @@
 
 - [x] **TEST-01**: Test assertions fixed — `test_humidity_control` tests actuator state, not pin number
 - [x] **TEST-02**: Full control loop verified on real FC-1 hardware (sensor → control → actuator)
-- [x] **DEPL-01**: System runs stably on Pi and is suitable for grower handoff (better than timer) — *qualitative "better than timer" grower attestation pending, not blocking*
+- [x] **DEPL-01**: System runs stably on Pi and is suitable for grower handoff (better than timer) — *grower attested 2026-04-11: "better than the timer", passes with enthusiasm. Bonus: live CO2 from the SCD41 is the farm's first-ever CO2 visibility and the highest-impact v1.0 deliverable.*
 
 ### Historical Data & Visualization
 
@@ -126,7 +126,7 @@
 | ACTR-01 | Phase 4 | Complete | Humidifier GPIO toggles on state changes (~2235 events in 50 min DB sample) |
 | ACTR-03 | Phase 4 | Complete (tech debt) | `/fc1/actuators/humidifier` published TRANSIENT_LOCAL; bridge subscribes VOLATILE (QoS mismatch, data flows but last-state replay on restart is missed — tech debt) |
 | TEST-02 | Phase 4 | Complete | E2E hardware verified — sensor→control→actuator→bridge→DB→chart |
-| DEPL-01 | Phase 5 | Complete | Pi continuous uptime >24h on current boot; ~5 days operation since deploy; qualitative "better than timer" attestation captured as pending human confirmation, not blocking |
+| DEPL-01 | Phase 5 | Complete | Pi continuous uptime >24h on current boot; ~5 days operation since deploy; grower attested 2026-04-11: "better than the timer". Unexpected win: live CO2 readings (no prior CO2 instrumentation on the farm at all). |
 | HIST-01 | Phase 7 | Complete | Bridge ingests 4 ROS topics to TimescaleDB |
 | HIST-02 | Phase 7 | Complete | Schema auto-init on bridge startup (hypertable + index) |
 | HIST-03 | Phase 7 | Complete | `TIMESCALE_PASSWORD` via root `.env`, fail-fast if missing |
