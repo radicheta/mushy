@@ -20,7 +20,7 @@
     
     # Tolerances
     temp_tolerance: 1.0  # °C
-    humidity_tolerance: 0.01  # 1% — narrow band for bounce testing / tick calibration (2026-04-11)
+    humidity_tolerance: 0.005  # 0.5% — tighter band to stress dwell guard (2026-04-11 calibration)
     
     # Control parameters
     min_fan_speed: 50  # Minimum fan speed percentage
