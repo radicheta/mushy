@@ -44,9 +44,9 @@ reinstall. See `.planning/milestones/v1.0-MILESTONE-AUDIT.md`.
   4. Mission Control dashboard (elder-plops browser) is reachable and shows live telemetry within 30 seconds of the Pi completing boot at the farm
 **Plans**: 3 plans
 Plans:
-- [ ] 09-01-PLAN.md — Systemd boot race fix (TDEBT-03): add tailscaled ordering + ExecStartPre poll to fc-core.service, deploy to fc1/prod
-- [ ] 09-02-PLAN.md — 4G WAN path bring-up (CONN-01): associate Pi wlan0 with MiFi, verify Tailscale over cellular, WAN-blip test, runbook doc
-- [ ] 09-03-PLAN.md — Physical verification (CONN-01 + TDEBT-03): cold-boot plug-pull, dual-location ROS test, Mission Control 30s criterion, write 09-VERIFICATION.md
+- [x] 09-01-PLAN.md — Systemd boot race fix (TDEBT-03): add tailscaled ordering + ExecStartPre poll to fc-core.service, deploy to fc1/prod
+- [x] 09-02-PLAN.md — 4G WAN path bring-up (CONN-01): associate Pi wlan0 with MiFi, verify Tailscale over cellular, WAN-blip test, runbook doc
+- [x] 09-03-PLAN.md — Physical verification (CONN-01 + TDEBT-03): cold-boot plug-pull, dual-location ROS test, Mission Control 30s criterion, write 09-VERIFICATION.md
 
 ### Phase 10: Bridge QoS & MJPEG Delivery
 **Goal**: Mission Control accurately replays the last humidifier state on bridge restart, and the live camera feed delivers continuous frames without phantom-peer stalls
@@ -63,7 +63,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 09. Connectivity & Boot Stability | 0/3 | Not started | - |
+| 09. Connectivity & Boot Stability | 4/4 | Complete    | 2026-04-11 |
 | 10. Bridge QoS & MJPEG Delivery | 0/? | Not started | - |
 
 ## Backlog (parking lot)
