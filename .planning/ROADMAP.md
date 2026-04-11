@@ -42,7 +42,11 @@ reinstall. See `.planning/milestones/v1.0-MILESTONE-AUDIT.md`.
   2. Pi recovers and Tailscale mesh reconnects automatically after a simulated WAN blip (hotspot toggled off then on), without manual intervention on either host
   3. `journalctl -u fc-core.service` on a fresh Pi cold boot shows zero automatic restarts — service reaches `active (running)` state on the first attempt
   4. Mission Control dashboard (elder-plops browser) is reachable and shows live telemetry within 30 seconds of the Pi completing boot at the farm
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 09-01-PLAN.md — Systemd boot race fix (TDEBT-03): add tailscaled ordering + ExecStartPre poll to fc-core.service, deploy to fc1/prod
+- [ ] 09-02-PLAN.md — 4G WAN path bring-up (CONN-01): associate Pi wlan0 with MiFi, verify Tailscale over cellular, WAN-blip test, runbook doc
+- [ ] 09-03-PLAN.md — Physical verification (CONN-01 + TDEBT-03): cold-boot plug-pull, dual-location ROS test, Mission Control 30s criterion, write 09-VERIFICATION.md
 
 ### Phase 10: Bridge QoS & MJPEG Delivery
 **Goal**: Mission Control accurately replays the last humidifier state on bridge restart, and the live camera feed delivers continuous frames without phantom-peer stalls
@@ -59,7 +63,7 @@ reinstall. See `.planning/milestones/v1.0-MILESTONE-AUDIT.md`.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 09. Connectivity & Boot Stability | 0/? | Not started | - |
+| 09. Connectivity & Boot Stability | 0/3 | Not started | - |
 | 10. Bridge QoS & MJPEG Delivery | 0/? | Not started | - |
 
 ## Backlog (parking lot)
