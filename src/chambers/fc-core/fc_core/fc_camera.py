@@ -27,7 +27,7 @@ class FcCamera(Node):
                 ('camera_device', 0),
                 ('camera_width', 640),    # D-05: 640x480 default
                 ('camera_height', 480),
-                ('camera_fps', 1),        # D-04: 1-2 FPS for cellular bandwidth
+                ('camera_fps', 1.0),      # D-04: float — supports sub-1 for cellular thrift (e.g. 0.0167 ≈ 1 frame/min)
                 ('camera_jpeg_quality', 65),  # D-06: 60-70% default
             ]
         )

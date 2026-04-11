@@ -42,5 +42,5 @@
     camera_device: 0                # /dev/video0
     camera_width: 640               # pixels (D-05: 640x480 default)
     camera_height: 480              # pixels
-    camera_fps: 1                   # frames per second (D-04: 1-2 FPS for cellular bandwidth)
+    camera_fps: 0.0167              # ~1 frame/minute — 4G credit thrift (2026-04-11). See backlog 999.10 for on-demand streaming.
     camera_jpeg_quality: 65         # 0-100 (D-06: 60-70% default)
