@@ -16,23 +16,23 @@ Existing codebase provides:
 
 - ✓ ROS2 Jazzy node framework for fruiting chamber control
 - ✓ Docker containerization and orchestration
-- ✓ DHT22 sensor integration (temperature/humidity reading)
-- ✓ OpenMCT mission control bridge
+- ✓ I2C humidity/temperature sensing (SHT30 on 0x44 originally, with documented SCD41 fallback on 0x62 when SHT30 is absent — currently in fallback mode)
+- ✓ OpenMCT Mission Control bridge (Node.js, historical + live)
 - ✓ Configuration system (fc_config.yaml)
 - ✓ GPIO and hardware abstraction layer
 
 ### Validated in Phase 01 (Hardware & Environment)
 
-- ✓ Humidity/temperature sensor reading from SHT30 on FC-1 (I2C 0x44)
-- ✓ Publish sensor data to ROS topics `fc/humidity` and `fc/temperature`
-- ✓ SSR-10A actuator wiring (GPIO17) + humidifier actuator state control via ROS
-- ✓ Deploy pipeline: rsync + colcon build + systemd auto-restart
-- ✓ Live telemetry visible on OpenMCT dashboard
+- ✓ Humidity/temperature sensor reading on FC-1 (SHT30 on I2C 0x44 when plugged, SCD41 on 0x62 as documented fallback — currently fallback)
+- ✓ Publish sensor data to ROS topics `fc1/humidity` and `fc1/temperature`
+- ✓ Humidifier actuator via MOSFET on GPIO27 with pull-down for safe-default-OFF
+- ✓ Deploy pipeline: `scripts/pi-deploy/deploy.sh` fast-forwards `fc1/prod` on the Pi's `~/mushroom_farm_ws/mushy-repo/` checkout, runs colcon build, restarts `fc-core.service`. `fc-update.service` systemd oneshot also pulls `fc1/prod` on every boot.
+- ✓ Live telemetry visible on Mission Control dashboard
 
 ### Validated in Phase 02 (Safety Hardening)
 
 - ✓ Non-blocking sensor error handling (SENS-03)
-- ✓ Config cleaned up for SHT30/SSR-10A hardware (SENS-04)
+- ✓ Config cleaned up for I2C sensors + MOSFET hardware (SENS-04)
 - ✓ Rolling median spike rejection in humidity_callback (SENS-05)
 - ✓ Humidifier GPIO pin configurable from fc_config.yaml (ACTR-02)
 - ✓ Test assertions fixed and passing (TEST-01)
@@ -47,18 +47,20 @@ Existing codebase provides:
 
 ### Validated in Phase 04 (Observability & Integration)
 
-- ✓ Actuator state published on `fc/actuators/humidifier` with TRANSIENT_LOCAL QoS (ACTR-03)
+- ✓ Actuator state published on `fc1/actuators/humidifier` with TRANSIENT_LOCAL QoS (ACTR-03) — bridge subscribes with default VOLATILE QoS; data flows but last-state replay on restart is a tech-debt item deferred to v1.1
 - ✓ Humidifier GPIO activates/deactivates via control loop on FC-1 (ACTR-01)
-- ✓ Humidity published correctly on `fc/humidity` in 0.0-1.0 range (SENS-02)
-- ✓ OpenMCT dashboard extended with CO2 and humidifier state charts (D-04, D-05)
-- ✓ SCD41 CO2 sensor integrated, publishing on `fc/co2`
-- ⏳ Full soak test pending Pi relocation to farm (TEST-02 partial — tracked in 04-HUMAN-UAT.md)
+- ✓ Humidity published correctly on `fc1/humidity` in 0.0–1.0 range (SENS-02)
+- ✓ Mission Control dashboard extended with CO2 and humidifier state charts (D-04, D-05)
+- ✓ SCD41 CO2 sensor integrated, publishing on `fc1/co2`
+- ✓ Full soak test — Pi ran continuously for ~24h on current boot and ~5 days across the deploy window (TEST-02, DEPL-01 verified 2026-04-11)
 
 ### Active
 
-MVP scope remaining:
+MVP scope complete as of 2026-04-11. Tech debt tracked for v1.1:
 
-- [ ] Production deployment readiness
+- ACTR-03 QoS alignment (bridge → `durability: transient_local` to match publisher)
+- CAM-03 CycloneDDS stale-subscriber cleanup (live MJPEG occasionally stalls because fc_camera on the Pi retries writes to a phantom peer at 192.168.1.193)
+- Boot-time CycloneDDS `tailscale0` interface race causing ~4 restarts of `fc-core.service` on each Pi cold boot (self-heals within minutes)
 
 ### Out of Scope
 
@@ -71,18 +73,23 @@ MVP scope remaining:
 ## Context
 
 **Current State:**
-- Phase 01 complete: SHT30 live, SSR-10A wired, deploy pipeline working
-- Phase 02 complete: sensor hardened, config clean, spike rejection active, GPIO configurable
-- Phase 03 complete: bang-bang control with dwell time guard, staleness detection, safe failure state
-- Phase 04 complete: actuator state topic, OpenMCT CO2/humidifier charts, FC-1 hardware verified
-- Phase 07 complete: bridge migrated to Node.js, TimescaleDB ingestion for all 4 topics, REST history endpoint with time_bucket downsampling, OpenMCT historical charts with 24h Fixed default
-- Remaining: production deploy (Phase 05), FarmOS integration (Phase 08)
+- Phases 01–08 complete. v1.0 milestone achieved 2026-04-11.
+- Phase 01: I2C humidity/temp sensing live, humidifier MOSFET wired, git-based deploy pipeline
+- Phase 02: sensor hardened, config clean, spike rejection, GPIO configurable
+- Phase 03: bang-bang control with dwell time guard, staleness detection, safe failure state
+- Phase 04: actuator state topic, Mission Control CO2/humidifier charts, E2E hardware verified
+- Phase 05: production deployed to FC-1, multi-day soak test passed
+- Phase 06: WireGuard + Tailscale mesh, CycloneDDS unicast for ROS DDS over VPN
+- Phase 07: Node.js bridge with TimescaleDB ingestion and `/history/:topic` REST (Mission Control historical data was silently broken for weeks due to compose-file drift — fixed during audit closure 2026-04-11)
+- Phase 08: fc_camera ROS2 node, MJPEG bridge endpoint, snapshot archive, Mission Control camera view (live MJPEG delivery carries tech debt — see Active)
 
 **Hardware Setup:**
-- Fruiting chamber 1 (FC-1) with Raspberry Pi
-- DHT22 humidity sensor (wired)
-- MOSFET for humidifier control (component available, wiring TBD)
-- No temperature or CO2 sensors in scope for MVP
+- Fruiting chamber 1 (FC-1) with Raspberry Pi 4 (Ubuntu 24.04 aarch64)
+- SHT30 humidity/temperature sensor on I2C 0x44 (physically disconnected as of 2026-04-11 — fc_sensors falls back to SCD41 for humidity when SHT30 is absent)
+- SCD41 CO2/temp/humidity sensor on I2C 0x62 (currently the active humidity source)
+- MOSFET for humidifier control on GPIO27 with pull-down resistor
+- USB webcam at /dev/video0 (640x480 @ 1fps)
+- No dedicated temperature or ventilation actuator in v1 scope
 
 **Production Pressure:**
 - Current solution: timer-based humidification (no feedback)
@@ -132,4 +139,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-04-04 after Phase 04 completion*
+*Last updated: 2026-04-11 during v1.0 milestone audit paperwork closure*
