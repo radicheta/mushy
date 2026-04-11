@@ -54,13 +54,23 @@ Existing codebase provides:
 - ✓ SCD41 CO2 sensor integrated, publishing on `fc1/co2`
 - ✓ Full soak test — Pi ran continuously for ~24h on current boot and ~5 days across the deploy window (TEST-02, DEPL-01 verified 2026-04-11)
 
-### Active
+### Current State
 
-MVP scope complete as of 2026-04-11. Tech debt tracked for v1.1:
+**v1.0 MVP shipped 2026-04-11.** Grower attested "better than the timer" —
+passes. See `.planning/MILESTONES.md` and `.planning/milestones/v1.0-*`.
 
-- ACTR-03 QoS alignment (bridge → `durability: transient_local` to match publisher)
-- CAM-03 CycloneDDS stale-subscriber cleanup (live MJPEG occasionally stalls because fc_camera on the Pi retries writes to a phantom peer at 192.168.1.193)
-- Boot-time CycloneDDS `tailscale0` interface race causing ~4 restarts of `fc-core.service` on each Pi cold boot (self-heals within minutes)
+### Next Milestone Goals (v1.1 — to be scoped)
+
+Candidate themes, to be refined during `/gsd:new-milestone`:
+
+- **CO2-first features** — the farmer's unexpected favorite was live CO2 visibility. Weight the next milestone toward CO2 alerts, trend reports, and CO2-triggered ventilation control. Memory: `project_co2_unexpected_win.md`.
+- **v1.0 tech debt closure:**
+  - ACTR-03 QoS alignment (bridge → `durability: transient_local` to match publisher)
+  - CAM-03 CycloneDDS stale-subscriber cleanup (live MJPEG stalls because fc_camera retries writes to a phantom peer at 192.168.1.193)
+  - Boot-time CycloneDDS `tailscale0` interface race causing ~4 restarts of `fc-core.service` on each Pi cold boot (self-heals within minutes)
+  - SHT30 physical reinstall (currently running on SCD41 fallback — works but lose primary sensor redundancy)
+- **Farm connectivity** — 4G hotspot for reliable fc1 access (memory: `project_4g_hotspot.md`).
+- **Backlog promotion candidates** from Phase 999.x: edge buffering, Signal alerts, fan/light telemetry.
 
 ### Out of Scope
 
