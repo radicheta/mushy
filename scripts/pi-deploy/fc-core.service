@@ -9,7 +9,7 @@ User=ubuntu
 Environment="ROS_DOMAIN_ID=69"
 Environment="ROS_LOCALHOST_ONLY=0"
 Environment="RMW_IMPLEMENTATION=rmw_cyclonedds_cpp"
-Environment="CYCLONEDDS_URI=file:///etc/cyclonedds.xml"
+Environment="CYCLONEDDS_URI=file:///etc/cyclonedds-tailscale.xml"
 Environment="HOME=/home/ubuntu"
 ExecStartPre=/bin/bash -c '\
   echo "fc-core: waiting for tailscale0 interface..."; \
