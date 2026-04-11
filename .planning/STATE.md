@@ -1,41 +1,33 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: v1.0 milestone complete
-stopped_at: Phase 8 context gathered
-last_updated: "2026-04-11T15:11:17.737Z"
+milestone: v1.1
+milestone_name: Tech Debt & Connectivity
+status: Defining requirements
+stopped_at: Milestone v1.1 started
+last_updated: "2026-04-11T16:00:00.000Z"
 progress:
-  total_phases: 15
-  completed_phases: 8
-  total_plans: 25
-  completed_plans: 25
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-28)
+See: .planning/PROJECT.md (updated 2026-04-11)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 05 — production-deployment
+**Current focus:** v1.1 — defining requirements
 
-## Status
+## Current Position
 
-**Milestone:** MVP — FC-1 Humidity Control
-**Progress:** [██████████] 100%
-**Phase:** 08 of 5 (farmos integration)
-**Last action:** Phase 08-04 gap closure code committed (camera name fix, production URLs, sim mode off). Deploy to fc1 blocked — Pi offline, awaiting 4G hotspot setup.
-
-## Phase Progress
-
-- [~] Phase 1: Hardware & Environment (4/5 plans — actuator wiring pending)
-- [ ] Phase 2: Safety Hardening (0/4 plans)
-- [ ] Phase 3: Closed-Loop Control (0/3 plans)
-- [ ] Phase 4: Observability & Integration (0/2 plans)
-- [ ] Phase 5: Production Deployment (0/1 plans)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-11 — Milestone v1.1 Tech Debt & Connectivity started
 
 ## Key Context
 
