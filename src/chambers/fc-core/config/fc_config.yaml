@@ -20,7 +20,7 @@
     
     # Tolerances
     temp_tolerance: 1.0  # °C
-    humidity_tolerance: 0.005  # 0.5% — tighter band to stress dwell guard (2026-04-11 calibration)
+    humidity_tolerance: 0.01  # 1% — operating band post-calibration 2026-04-11 (±0.5% hit dwell-forced 2% overshoot; see backlog 999.9)
     
     # Control parameters
     min_fan_speed: 50  # Minimum fan speed percentage
