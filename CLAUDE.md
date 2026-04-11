@@ -57,10 +57,20 @@ ros2 run fc_core fc_controller
 ros2 run fc_core fc_sensors
 ros2 run fc_core fc_display
 
-# Docker services
-docker-compose up -d
-docker-compose up simulation  # For simulation with GUI
+# Mission Control stack (from repo root)
+docker-compose up -d                    # timescale + bridge + openmct
+docker-compose up -d --build bridge     # after changing bridge source
 ```
+
+Live compose is `/docker-compose.yml` + `/docker-compose.override.yml` at
+the repo root. The override applies host networking and mounts the
+CycloneDDS tailscale config for the bridge. `src/docker-compose.yml` is
+deprecated (only kept for sim service definitions — do not deploy from it).
+
+Required `.env` at repo root: `TIMESCALE_PASSWORD`, `CORS_ORIGIN`
+(defaults to `http://10.68.155.50:8080`). When rebuilding the bridge,
+always pass `--build` — the compose file pins the build context but not
+the image tag, and `up -d` alone will reuse the cached image.
 
 ## Architecture Overview
 

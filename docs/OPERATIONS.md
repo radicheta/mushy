@@ -44,20 +44,33 @@ All runtime parameters live in `src/chambers/fc-core/config/fc_config.yaml`. Cur
 | target_temp | 23.0 | °C | Temperature setpoint |
 | target_humidity | 0.80 | 0.0–1.0 | Humidity setpoint (80%) |
 | humidity_tolerance | 0.05 | 0.0–1.0 | Deadband (±5%) |
-| min_dwell_time | 300.0 | seconds | Min time between humidifier toggles |
+| min_dwell_time | 180.0 | seconds | Min time between humidifier toggles (3 min) |
 | sensor_stale_timeout | 10.0 | seconds | Stale data triggers safe state (OFF) |
 | sensor_read_interval | 2.0 | seconds | Time between sensor reads |
 | control_interval | 1.0 | seconds | Time between control updates |
 
-> **Note:** To change configuration, edit `fc_config.yaml` in the repo and run `deploy.sh`. Never edit config directly on the Pi — `deploy.sh` rsync overwrites Pi files on every deploy.
+> **Note:** To change configuration, edit `fc_config.yaml` in the repo, commit to the `fc1/prod` branch, and run `deploy.sh` (or let the `fc-update` systemd oneshot pull it on the next boot). Never edit config directly on the Pi — the Pi's `mushy-repo/` clone is a fast-forward-only checkout of `fc1/prod` and will be reset on every deploy.
 
 ## Deploy Procedure
 
+Deploy is git-based. The Pi keeps a clone at `~/mushroom_farm_ws/mushy-repo/` that tracks the `fc1/prod` branch. `deploy.sh` fast-forwards that checkout, rebuilds, and restarts the service.
+
 1. Edit `src/chambers/fc-core/config/fc_config.yaml` on your workstation.
-2. Run `./scripts/pi-deploy/deploy.sh` from the repo root.
-3. Verify the service restarted: `ssh fc1 'sudo systemctl is-active fc-core'` — must return `active`.
-4. Spot-check recent logs: `ssh fc1 'sudo journalctl -u fc-core -n 10 --no-pager'`
-5. Verify config is deployed: `ssh fc1 'grep target_humidity ~/mushroom_farm_ws/src/chambers/fc-core/config/fc_config.yaml'`
+2. Commit and push to `fc1/prod`:
+   ```bash
+   git checkout fc1/prod
+   git merge --ff-only milestone/fc1-humidity-mvp   # or cherry-pick
+   git push origin fc1/prod
+   ```
+3. Run `./scripts/pi-deploy/deploy.sh` from the repo root. The script ssh'es into the Pi, runs `git fetch && git checkout fc1/prod && git pull`, rebuilds `fc_core`, and restarts `fc-core.service`.
+4. Verify the service restarted: `ssh fc1 'sudo systemctl is-active fc-core'` — must return `active`.
+5. Spot-check recent logs: `ssh fc1 'sudo journalctl -u fc-core -n 10 --no-pager'`
+6. Verify config is deployed:
+   ```bash
+   ssh fc1 'grep target_humidity ~/mushroom_farm_ws/mushy-repo/src/chambers/fc-core/config/fc_config.yaml'
+   ```
+
+Override the branch for staging with `BRANCH=milestone/fc1-humidity-mvp ./scripts/pi-deploy/deploy.sh` — but anything run on the physical chamber should come from `fc1/prod`.
 
 ## Recovery Procedures
 
@@ -104,7 +117,7 @@ Device should appear at address `0x44`. If missing, check SHT30 wiring: SDA → 
 ssh fc1 'sudo journalctl -u fc-core --since "5 min ago" --no-pager | grep "Humidifier"'
 ```
 
-**Check:** The dwell guard may be active — the system enforces a 300-second (5-minute) minimum between humidifier toggles. Wait 5 minutes and check again.
+**Check:** The dwell guard may be active — the system enforces a 180-second (3-minute) minimum between humidifier toggles. Wait 3 minutes and check again.
 
 **Check:** Confirm the power strip is plugged in and that the green LED on the SSR relay is visible when the humidifier should be ON.
 

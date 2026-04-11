@@ -15,11 +15,21 @@ sudo apt install -y ros-jazzy-ros-base python3-colcon-common-extensions
 echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc
 ```
 
-Create workspace:
+The Pi owns a clone of the main repo at `~/mushroom_farm_ws/mushy-repo/`
+that tracks the `fc1/prod` branch — deploys fast-forward this checkout
+rather than rsync'ing source trees. The colcon workspace is
+`~/mushroom_farm_ws/`, and `~/mushroom_farm_ws/src` is a symlink into
+`mushy-repo/src`, so a single `colcon build` from the workspace root
+picks up all packages from the live checkout.
+
+Bootstrap a replacement Pi:
 
 ```bash
-mkdir -p ~/mushroom_farm_ws/src
+mkdir -p ~/mushroom_farm_ws
 cd ~/mushroom_farm_ws
+git clone <repo-url> mushy-repo
+( cd mushy-repo && git checkout fc1/prod )
+ln -s mushy-repo/src src
 source /opt/ros/jazzy/setup.bash
 colcon build
 ```
@@ -35,22 +45,31 @@ ssh fc1 "sudo cp /tmp/fc-core.service /etc/systemd/system/ && sudo systemctl dae
 
 ## Deploy Cycle
 
-One command from workstation repo root:
+Deploy is git-based. Commit and push to `fc1/prod`, then run one command
+from the workstation:
 
 ```bash
+git checkout fc1/prod
+git merge --ff-only milestone/fc1-humidity-mvp   # or cherry-pick
+git push origin fc1/prod
 ./scripts/pi-deploy/deploy.sh
 ```
 
-This will:
+`deploy.sh` ssh'es into the Pi and:
 
-1. rsync source code to Pi (`~/mushroom_farm_ws/src/`)
-2. Rebuild the `fc_core` package on Pi using colcon
-3. Restart the `fc-core` systemd service
+1. `git fetch && git checkout fc1/prod && git pull origin fc1/prod` in `~/mushroom_farm_ws/mushy-repo/`
+2. Rebuilds the `fc_core` package on the Pi with colcon
+3. Restarts the `fc-core` systemd service
+
+The Pi also runs an `fc-update.service` systemd oneshot (see
+`scripts/pi-deploy/fc-update.service`) that pulls `fc1/prod` before
+`fc-core.service` starts at boot — so a reboot is an alternative way to
+pick up the latest committed-and-pushed code, no ssh required.
 
 Override defaults with environment variables if needed:
 
 ```bash
-PI_HOST=fc1 PI_USER=ubuntu ./scripts/pi-deploy/deploy.sh
+PI_HOST=fc1 PI_USER=ubuntu BRANCH=fc1/prod ./scripts/pi-deploy/deploy.sh
 ```
 
 ## Observe Logs
@@ -107,9 +126,14 @@ ssh fc1 "cd ~/mushroom_farm_ws && source /opt/ros/jazzy/setup.bash && colcon bui
 
 The primary config file is `src/chambers/fc-core/config/fc_config.yaml`. Key settings:
 
-- `simulation_mode: false` — must be set to `false` for real hardware operation
-- `dht_pin: 4` — GPIO pin for DHT22 sensor (GPIO4)
-- `target_humidity: 0.85` — 85% humidity setpoint
+- `sensor_simulation_mode: false` — must be `false` for real hardware (SHT30 over I2C)
+- `actuator_simulation_mode: false` — must be `false` to drive GPIO for the humidifier SSR
+- `sht30_i2c_address: 0x44` — SHT30 humidity/temperature sensor
+- `humidifier_pin: 27` — GPIO27 for the humidifier SSR
+- `target_humidity: 0.80` — 80% setpoint
+- `humidity_tolerance: 0.05` — ±5% deadband (humidifier on <75%, off >85%)
+- `min_dwell_time: 180.0` — seconds, minimum between humidifier toggles (3 min)
 - `ROS_DOMAIN_ID=69` — set in the systemd service; must match workstation
 
-The deploy script syncs this config file to the Pi automatically.
+Edit, commit to `fc1/prod`, push, and run `deploy.sh` — the config file
+is part of the git checkout the Pi pulls, so it ships with the code.
