@@ -75,7 +75,7 @@ completed: 2026-04-11
 4. **Task 4 (SSH install)** — no source commit; state change lives on fc1 in `/etc/systemd/system/`
 5. **Task 5 (health check)** — no commit; verified via `wpa_cli status`, `systemctl show fc-core`, Timescale query
 
-**Followup fix (first-boot race):** `<PENDING_COMMIT>` — added `Before=netplan-wpa-wlan0.service`, `wpa_cli reconfigure` on change, and `cmp`-based idempotency
+**Followup fix (first-boot race):** `b8ed990` — added `Before=netplan-wpa-wlan0.service`, `wpa_cli reconfigure` on change, and `cmp`-based idempotency
 
 ## Files Created/Modified
 
