@@ -1,3 +1,8 @@
+# DEPRECATED — the live Mission Control stack lives at /docker-compose.yml
+# (repo root) + /docker-compose.override.yml. This file is kept only for its
+# sim / dev service definitions (ros-core, ls-core, ic-core, simulation).
+# Do NOT use this for deploying the bridge / openmct / timescale stack.
+
 services:
   ros-core:
     build: 

@@ -96,10 +96,13 @@
     tryInstall(function() { return openmct.plugins.ScatterPlot(); });
 
     // ── Fruiting chamber telemetry ──────────────────────────────────────────
+    // Resolve the bridge against whatever host served this page so OpenMCT
+    // works from localhost, LAN IP, tailscale, etc. without a rebuild.
+    var __mcHost = window.location.hostname || 'localhost';
     openmct.install(FruitingChamberPlugin({
-        bridgeUrl:  'ws://10.68.155.50:8081',
-        historyUrl: 'http://10.68.155.50:8081/history',
-        cameraUrl:  'http://10.68.155.50:8081/camera/mjpeg'
+        bridgeUrl:  'ws://'  + __mcHost + ':8081',
+        historyUrl: 'http://' + __mcHost + ':8081/history',
+        cameraUrl:  'http://' + __mcHost + ':8081/camera/mjpeg'
     }));
 
     // ── Start ───────────────────────────────────────────────────────────────
