@@ -47,7 +47,7 @@ Existing codebase provides:
 
 ### Validated in Phase 04 (Observability & Integration)
 
-- ✓ Actuator state published on `fc1/actuators/humidifier` with TRANSIENT_LOCAL QoS (ACTR-03) — bridge subscribes with default VOLATILE QoS; data flows but last-state replay on restart is a tech-debt item deferred to v1.1
+- ✓ Actuator state published on `fc1/actuators/humidifier` with TRANSIENT_LOCAL QoS (ACTR-03) — bridge now also subscribes with TRANSIENT_LOCAL QoS (fixed in Phase 10, TDEBT-01)
 - ✓ Humidifier GPIO activates/deactivates via control loop on FC-1 (ACTR-01)
 - ✓ Humidity published correctly on `fc1/humidity` in 0.0–1.0 range (SENS-02)
 - ✓ Mission Control dashboard extended with CO2 and humidifier state charts (D-04, D-05)
@@ -94,6 +94,7 @@ passes. See `.planning/MILESTONES.md` and `.planning/milestones/v1.0-*`.
 - Phase 06: WireGuard + Tailscale mesh, CycloneDDS unicast for ROS DDS over VPN
 - Phase 07: Node.js bridge with TimescaleDB ingestion and `/history/:topic` REST (Mission Control historical data was silently broken for weeks due to compose-file drift — fixed during audit closure 2026-04-11)
 - Phase 08: fc_camera ROS2 node, MJPEG bridge endpoint, snapshot archive, Mission Control camera view (live MJPEG delivery carries tech debt — see Active)
+- Phase 10: Bridge QoS aligned (TRANSIENT_LOCAL on humidifier subscription), Pi-side CycloneDDS config synced to Tailscale with LeaseDuration 5s (TDEBT-01, TDEBT-02 closed)
 
 **Hardware Setup:**
 - Fruiting chamber 1 (FC-1) with Raspberry Pi 4 (Ubuntu 24.04 aarch64)
@@ -151,4 +152,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-04-11 at start of v1.1 milestone*
+*Last updated: 2026-04-12 — Phase 10 complete (TDEBT-01, TDEBT-02 closed)*
