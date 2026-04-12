@@ -105,6 +105,7 @@ class FruitingChamberController(Node):
         self._last_humidity_timestamp = None   # rclpy.time.Time, set in humidity_callback
         self._last_humidifier_toggle = None    # rclpy.time.Time, set on state change
         self._safe_state_active = False        # log deduplication flag
+        self._dwell_blocked_desired = None     # dedupe DWELL-BLOCK logs per blocked window
         
         # Control timer
         self.timer = self.create_timer(
@@ -157,19 +158,27 @@ class FruitingChamberController(Node):
         """
         current_state = self.get_humidifier_state()
         if state == current_state:
+            self._dwell_blocked_desired = None
             return  # no transition needed
         if self._last_humidifier_toggle is not None:
+            min_dwell = self.get_parameter('min_dwell_time').value
             elapsed_sec = (
                 self.get_clock().now() - self._last_humidifier_toggle
             ).nanoseconds / 1e9
-            if elapsed_sec < self.get_parameter('min_dwell_time').value:
-                self.get_logger().debug(
-                    f'Dwell time not elapsed ({elapsed_sec:.1f}s < '
-                    f'{self.get_parameter("min_dwell_time").value}s), skipping toggle'
-                )
+            if elapsed_sec < min_dwell:
+                if self._dwell_blocked_desired != state:
+                    remaining = min_dwell - elapsed_sec
+                    self.get_logger().info(
+                        f'DWELL-BLOCK: humidifier {"ON" if current_state else "OFF"}->'
+                        f'{"ON" if state else "OFF"} delayed by dwell '
+                        f'(elapsed {elapsed_sec:.1f}s < {min_dwell:.0f}s, '
+                        f'{remaining:.1f}s remaining) | RH={self.current_humidity * 100:.2f}%'
+                    )
+                    self._dwell_blocked_desired = state
                 return
         self.set_humidifier(state)
         self._last_humidifier_toggle = self.get_clock().now()
+        self._dwell_blocked_desired = None
 
     def set_light(self, state):
         if not self.get_parameter('actuator_simulation_mode').value:

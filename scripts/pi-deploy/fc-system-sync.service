@@ -1,0 +1,46 @@
+[Unit]
+Description=FC-1 stage repo configs into /etc before networking/fc-core
+DefaultDependencies=no
+After=local-fs.target
+Before=systemd-networkd.service network-pre.target netplan-wpa-wlan0.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash -c '\
+  set -e; \
+  REPO=/home/ubuntu/mushroom_farm_ws/mushy-repo/scripts/pi-deploy; \
+  if [ ! -d "$REPO" ]; then \
+    echo "fc-system-sync: repo not found at $REPO, skipping"; \
+    exit 0; \
+  fi; \
+  CHANGED=0; \
+  if [ -f "$REPO/etc/netplan/60-wifi.yaml" ]; then \
+    if ! cmp -s "$REPO/etc/netplan/60-wifi.yaml" /etc/netplan/60-wifi.yaml 2>/dev/null; then \
+      install -m 600 -o root -g root "$REPO/etc/netplan/60-wifi.yaml" /etc/netplan/60-wifi.yaml; \
+      echo "fc-system-sync: installed /etc/netplan/60-wifi.yaml"; \
+      CHANGED=1; \
+    fi; \
+  fi; \
+  if [ -f "$REPO/fc-core.service" ]; then \
+    if ! cmp -s "$REPO/fc-core.service" /etc/systemd/system/fc-core.service 2>/dev/null; then \
+      install -m 644 -o root -g root "$REPO/fc-core.service" /etc/systemd/system/fc-core.service; \
+      echo "fc-system-sync: installed /etc/systemd/system/fc-core.service"; \
+      CHANGED=1; \
+    fi; \
+  fi; \
+  if [ "$CHANGED" = "0" ]; then \
+    echo "fc-system-sync: nothing changed, skipping reload"; \
+    exit 0; \
+  fi; \
+  netplan generate 2>&1 || echo "fc-system-sync: netplan generate failed (continuing)"; \
+  systemctl daemon-reload 2>&1 || echo "fc-system-sync: daemon-reload failed (continuing)"; \
+  if pgrep -f "wpa_supplicant.*wlan0" >/dev/null 2>&1; then \
+    wpa_cli -i wlan0 reconfigure 2>&1 || echo "fc-system-sync: wpa_cli reconfigure failed (continuing)"; \
+    echo "fc-system-sync: told wpa_supplicant to re-read config"; \
+  else \
+    echo "fc-system-sync: wpa_supplicant not running yet — fresh /run/netplan/wpa-wlan0.conf will be used on its first start"; \
+  fi'
+
+[Install]
+WantedBy=multi-user.target

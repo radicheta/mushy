@@ -1,5 +1,42 @@
 # Milestones
 
+## v1.1 Tech Debt & Connectivity (Shipped: 2026-04-12)
+
+**Phases completed:** 2 phases, 6 plans, 13 tasks
+**Timeline:** 2026-04-11 → 2026-04-12 (2 days)
+**Git range:** 39 commits (2 feat, 4 fix)
+**Tag:** `v1.1`
+
+### Delivered
+
+Closed all four v1.0 carryover tech debt items and established reliable 4G
+cellular connectivity to fc1 at the farm. The Pi is now reachable from
+elder-plops over Tailscale via a 4G MiFi hotspot, boots cleanly without
+restart loops, and Mission Control accurately replays humidifier state on
+bridge restart.
+
+### Key Accomplishments
+
+- **fc-core boot race eliminated** — ExecStartPre polls for `tailscale0` interface with 30s timeout; `NRestarts=0` confirmed on real cold boot at the farm. Repo-to-`/etc` drift caught and hotfixed in the same session.
+- **4G cellular path for fc1** — Pi associates with mossrock-lab MiFi at -25 dBm; ROS telemetry flows end-to-end over cellular via Tailscale. Dual-location verification: operator phone at farm + elder-plops at main infra, both seeing live data simultaneously.
+- **fc-system-sync early-boot service** — root oneshot that stages `scripts/pi-deploy/*` into `/etc/` on every boot. Future wifi/systemd config changes ship via `git push fc1/prod` with no SSH or physical access. Includes `cmp`-based idempotency and `wpa_cli reconfigure` for same-boot reload.
+- **Bridge QoS aligned** — Humidifier subscription upgraded to TRANSIENT_LOCAL QoS matching fc_controller publisher. Last-known state replays on bridge restart with no blank gap in Mission Control.
+- **CycloneDDS phantom peer cleaned** — Repo config synced from WireGuard/wg0 to Tailscale/tailscale0; LeaseDuration 5s added as proactive guard against future phantom peer stalls.
+
+### Requirements Outcome
+
+4/4 v1.1 requirements fully satisfied:
+- TDEBT-01 ✅, TDEBT-02 ✅, TDEBT-03 ✅, CONN-01 ✅
+
+Deferred to future: SHT30 physical reinstall (sensor redundancy, SCD41 fallback works).
+
+### Archive
+
+- Full roadmap: `.planning/milestones/v1.1-ROADMAP.md`
+- Requirements with final status: `.planning/milestones/v1.1-REQUIREMENTS.md`
+
+---
+
 ## v1.0 MVP — FC-1 Humidity Control (Shipped: 2026-04-11)
 
 **Phases completed:** 8 phases, 25 plans

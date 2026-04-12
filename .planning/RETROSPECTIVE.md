@@ -54,6 +54,52 @@
 
 ---
 
+## Milestone: v1.1 — Tech Debt & Connectivity
+
+**Shipped:** 2026-04-12
+**Phases:** 2 | **Plans:** 6 | **Timeline:** 2 days (2026-04-11 → 2026-04-12)
+
+### What Was Built
+
+- fc-core boot race fix — ExecStartPre polls tailscale0, NRestarts=0 on cold boot
+- 4G cellular path for fc1 — MiFi at farm, ROS-over-cellular via Tailscale, dual-location verified
+- fc-system-sync early-boot service — root oneshot syncing `scripts/pi-deploy/*` → `/etc/` on boot, with cmp-based idempotency and same-boot wpa_cli reconfigure
+- Bridge QoS aligned — TRANSIENT_LOCAL on humidifier subscription closes ACTR-03 from v1.0
+- CycloneDDS phantom peer eliminated — repo config synced to Tailscale, LeaseDuration 5s guard
+
+### What Worked
+
+- **Tight scope.** 4 requirements, 2 phases, 2 days. Zero scope creep. The cleanest milestone so far — the v1.0 audit pre-identified exactly what needed fixing.
+- **Phase 09 emerged a bonus plan (09-04).** The fc-system-sync mechanism wasn't in the original 3-plan phase but was necessary to safely cut over wifi without risking SSH access. It became the most valuable v1.1 deliverable — future config changes ship via `git push` with no SSH or physical access.
+- **Repo/runtime drift caught early this time.** The v1.0 lesson about verifying runtime state (not plan targets) paid off immediately: 09-01 caught a stale CYCLONEDDS_URI in the repo during deploy and hotfixed it before the farm cold boot.
+- **TDEBT-02 was already resolved by Phase 09.** The phantom peer at 192.168.1.193 disappeared when Phase 09 restarted fc-core with the Tailscale CycloneDDS config. Plan 10-02 only needed to sync the repo and add a proactive LeaseDuration guard — saved significant debugging time.
+
+### What Was Inefficient
+
+- **09-03 physical verification items deferred.** WAN-blip recovery test and <30s dashboard timing require another farm visit. These are regression checks — the underlying mechanisms work — but they leave acceptance criteria formally open.
+- **REQUIREMENTS.md traceability never updated during execution.** All four requirements still showed "Pending" in the traceability table despite all being satisfied per SUMMARY.md files. The archival step had to fix this retroactively.
+- **STATE.md drifted.** Progress bar showed 0%, milestone showed v1.0, current focus showed Phase 09 — all stale. The CLI's STATE.md update only patched `last_activity` because the field format didn't match expectations.
+
+### Patterns Established
+
+- **fc-system-sync git-ops pattern.** For single-link Pis: commit config → boot pulls → fc-system-sync stages → netplan generate → wpa_cli reconfigure. Never drops the current link (additive merge + auto-fallback). Reusable for any Pi where SSH is the only access path.
+- **Interface-wait pattern in systemd.** ExecStartPre inline bash loop polling `ip link show <iface>` with 1s cadence and 30s timeout. Generic for any ROS2 service binding to a VPN interface.
+- **QoS-aware rclnodejs subscription.** Construct `rclnodejs.QoS` inside `main()` (after `init()`), pass as `{ qos: obj }` 3rd arg before callback. Required for any DDS topic with non-default QoS.
+
+### Key Lessons
+
+1. **The best debugging is prevention by earlier phases.** TDEBT-02 (phantom peer) was resolved as a side effect of Phase 09's fc-core restart, not by 10-02's explicit fix. When a later phase discovers its bug is already fixed, that's a signal the dependency graph is working.
+2. **An emergent plan (09-04) can be the milestone's highest-value deliverable.** fc-system-sync wasn't scoped until mid-execution but became the mechanism that makes all future Pi config changes safe and remote. Don't resist scope additions when they solve a real problem cleanly.
+3. **STATE.md is fragile to format drift.** The GSD CLI's field-matching is brittle — any manual edits to STATE.md format cause partial update failures. Keep STATE.md machine-written; edit other docs manually.
+
+### Cost Observations
+
+- Model mix: Opus for both sessions (discuss/plan and execute for each phase)
+- Sessions: 2 main sessions (Phase 09 on 2026-04-11, Phase 10 on 2026-04-12)
+- Notable: Phase 10 plans executed in ~3 minutes total — the smallest plans in the project so far. The research phase correctly identified that TDEBT-02 was already resolved and scoped accordingly.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -61,10 +107,13 @@
 | Milestone | Phases | Plans | Key Change |
 |-----------|--------|-------|------------|
 | v1.0 | 8 | 25 | Initial project; established GSD workflow, git-based Pi deploy, Mission Control stack |
+| v1.1 | 2 | 6 | Tech debt closure; fc-system-sync git-ops pattern; tight scope from audit-driven requirements |
 
 ### Top Lessons (Verified Across Milestones)
 
-1. *(pending v1.1)* — verify whether the "two compose files is a trap" and "`--build` is an invisible trap" lessons hold when v1.1 touches different infra.
+1. **Verify against the runtime, not the plan target.** v1.0: compose-file drift broke historical data for weeks. v1.1: CYCLONEDDS_URI drift caught during deploy and hotfixed before cold boot. The lesson held and saved time the second time.
+2. **Retroactive verification catches cross-phase integration gaps.** v1.0: audit found ACTR-03 QoS mismatch and CAM-03 phantom peer. v1.1: these became the entire milestone scope, proving the audit was worth the effort.
+3. **Side-effect fixes accumulate.** v1.0: SCD41 CO2 was a side-effect win. v1.1: Phase 09's fc-core restart resolved TDEBT-02 as a side-effect, saving Phase 10 debugging time.
 
 ---
-*Last updated: 2026-04-11 at v1.0 milestone completion.*
+*Last updated: 2026-04-12 at v1.1 milestone completion.*

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- CycloneDDS unicast config for ROS2 over Tailscale VPN (tailscale0) -->
-<!-- Deployed to: /etc/cyclonedds.xml (Pi) and ~/.config/cyclonedds.xml (elder-plops) -->
-<!-- Temporary config for wet test — switch back to cyclonedds.xml (wg0) for production -->
+<!-- Deployed to: /etc/cyclonedds-tailscale.xml on Pi (CYCLONEDDS_URI in fc-core.service) -->
+<!-- Production config — Tailscale replaced WireGuard in Phase 09 -->
 <!-- IMPORTANT: Only ONE <NetworkInterface> entry — multiple entries break unicast SPDP -->
 <CycloneDDS xmlns="https://cdds.io/config"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
