@@ -58,15 +58,15 @@ Plans:
   3. `journalctl -u fc-core.service` on the Pi shows no repeated write-retry or peer-unreachable log lines referencing `192.168.1.193` after the CycloneDDS peer cleanup is deployed
 **Plans**: 2 plans
 Plans:
-- [ ] 10-01-PLAN.md — Bridge QoS fix (TDEBT-01): add TRANSIENT_LOCAL durability to humidifier subscription in index.js, rebuild bridge container
-- [ ] 10-02-PLAN.md — Phantom CycloneDDS peer cleanup (TDEBT-02): diagnose and eliminate 192.168.1.193 from Pi DDS state, verify MJPEG delivery
+- [x] 10-01-PLAN.md — Bridge QoS fix (TDEBT-01): add TRANSIENT_LOCAL durability to humidifier subscription in index.js, rebuild bridge container
+- [x] 10-02-PLAN.md — Phantom CycloneDDS peer cleanup (TDEBT-02): diagnose and eliminate 192.168.1.193 from Pi DDS state, verify MJPEG delivery
 
 ## Progress Table
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 09. Connectivity & Boot Stability | 4/4 | Complete    | 2026-04-11 |
-| 10. Bridge QoS & MJPEG Delivery | 0/2 | Not started | - |
+| 10. Bridge QoS & MJPEG Delivery | 2/2 | Complete    | 2026-04-12 |
 
 ## Backlog (parking lot)
 
