@@ -58,8 +58,8 @@ ros2 run fc_core fc_sensors
 ros2 run fc_core fc_display
 
 # Mission Control stack (from repo root)
-docker-compose up -d                    # timescale + bridge + openmct
-docker-compose up -d --build bridge     # after changing bridge source
+docker compose up -d                     # timescale + bridge + openmct
+docker compose up -d --build bridge      # after changing bridge source
 ```
 
 Live compose is `/docker-compose.yml` + `/docker-compose.override.yml` at
@@ -126,5 +126,5 @@ Docker networks:
 
 1. **Local Development:** Use simulation mode for testing without hardware
 2. **Package Testing:** Build and test individual ROS packages with colcon
-3. **Integration Testing:** Use docker-compose for full system testing
+3. **Integration Testing:** Use docker compose for full system testing
 4. **Hardware Deployment:** Switch simulation_mode to false in config
