@@ -142,6 +142,36 @@ closed; fc1 reliably reachable over 4G cellular. See `.planning/MILESTONES.md`.
 | fc-system-sync git-ops deploy | Ship /etc config via git, no SSH needed for wifi/systemd changes | ✓ Good — v1.1 pattern; proven on 4G cutover |
 | SCD41 as primary sensor (SHT30 fallback offline) | SCD41 provides humidity + CO2; SHT30 physically disconnected | ⚠️ Revisit — single sensor SPOF, but CO2 is high-value |
 
+## Vision
+
+Mushy started as a humidity controller for FC-1. It's growing into the automation and observability layer for the mushroom operation, with three concurrent threads:
+
+### 1. Chamber Automation
+
+The fruiting chamber robot — expanding control beyond humidity into the full environment. FC-1 is the proving ground; multi-chamber comes after the single-chamber system is mature.
+
+**Near-term:** Venting actuators for fresh air exchange (FAE), driven by CO2 readings. Decouple humidifier fans from the humidifier itself so tubes can be purged independently. These are the next physical actuators after the SSR-10A humidifier.
+
+**Later:** PID control to replace bang-bang (structural ±2% RH ceiling already documented in 999.9 calibration data). More sensor inputs. Multi-chamber parameterization (FC-2, FC-3). Temperature control when hardware allows.
+
+### 2. Production Tracking
+
+Bridge the physical mushroom pipeline into digital records. FarmOS is the farm-wide system of record (shared with greenhouse, orchard, animals); mushy's job is to get chamber data and production events into it.
+
+**Near-term:** Telemetry snapshots and daily camera reports pushed to FarmOS as observation logs. QR codes on bags — scan to log stage transitions, observations, and harvest data directly into FarmOS from the field.
+
+**Later:** Batch traceability from culture source through to harvest. Integration between the automated chamber data and manual production logging. Vision-based pinning detection and growth monitoring come after the manual tracking foundation is solid.
+
+### 3. Pragmatic QoL
+
+No grand narrative — ship what helps the farmer most. Alerts via Signal when conditions go wrong. On-demand camera to conserve 4G. Boot stability. Infrastructure housekeeping. These compound and build trust in the system.
+
+**Relationship between systems:**
+- **Mushy (ROS2 on Pi)** — sensors, actuators, the physical world
+- **Mission Control (OpenMCT on elder-plops)** — real-time engineer/operator dashboard
+- **FarmOS (Drupal + Flask on elder-plops)** — system of record for the whole farm, production tracking
+- **Farmer app (future)** — grower-facing mobile surface, sits on top of FarmOS and mushy data
+
 ## Evolution
 
 This document evolves at phase transitions and milestone boundaries.
