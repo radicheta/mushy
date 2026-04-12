@@ -62,6 +62,19 @@ Existing codebase provides:
 - ✓ 4G cellular connectivity — fc1 on mossrock-lab MiFi, ROS-over-cellular via Tailscale, dual-location verified (CONN-01) — v1.1
 - ✓ fc-system-sync early-boot service — git-shipped /etc config with netplan + wpa_cli reload, future wifi changes via `git push fc1/prod` — v1.1
 
+### Active
+
+## Current Milestone: v1.2 FarmOS Integration & QoL
+
+**Goal:** Connect the fruiting chamber's automated telemetry to FarmOS as the farm's system of record, plus quick wins that improve daily operation.
+
+**Target features:**
+- Periodic environment snapshots (humidity, CO2, temp) pushed to FarmOS as observation logs on the FC-1 asset
+- Daily camera snapshot + environment summary posted as a FarmOS observation entry
+- Sensor warm-up grace period at fc-core boot
+- Subscriber-aware on-demand camera streaming to conserve 4G
+- Docker compose v1 → v2 upgrade on elder-plops
+
 ### Current State
 
 **v1.0 MVP shipped 2026-04-11.** Grower attested "better than the timer".
@@ -148,4 +161,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-04-12 after v1.1 milestone*
+*Last updated: 2026-04-12 after v1.2 milestone start*
