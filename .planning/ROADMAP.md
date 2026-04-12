@@ -55,7 +55,9 @@ cellular connectivity (CONN-01). fc-system-sync ships /etc config via git.
   2. `docker compose up -d` starts bridge, openmct, and timescale without errors and all containers reach healthy/running state
   3. Live telemetry flows end-to-end: Mission Control shows current fc1 humidity, CO2, and humidifier state after a fresh `up -d`
   4. No hardcoded container names break — any scripts or bridge code that referenced v1 underscore names (`mushy_bridge_1`) are updated to v2 hyphen names or made name-independent
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 11-01-PLAN.md — Install compose v2, recreate stack, update docs with v2 names/commands
 
 ### Phase 12: Subscriber-Aware Camera
 **Goal**: fc_camera conserves 4G bandwidth by idling when no viewers are watching; Mission Control gets full-rate feed the moment someone connects
@@ -94,7 +96,7 @@ cellular connectivity (CONN-01). fc-system-sync ships /etc config via git.
 | 8. Pi Camera Feed in Mission Control | v1.0 | 4/4 | Complete | 2026-04-09 |
 | 9. Connectivity & Boot Stability | v1.1 | 4/4 | Complete | 2026-04-11 |
 | 10. Bridge QoS & MJPEG Delivery | v1.1 | 2/2 | Complete | 2026-04-12 |
-| 11. Compose v2 Upgrade | v1.2 | 0/? | Not started | - |
+| 11. Compose v2 Upgrade | v1.2 | 0/1 | Planned | - |
 | 12. Subscriber-Aware Camera | v1.2 | 0/? | Not started | - |
 | 13. FarmOS Daily Report | v1.2 | 0/? | Not started | - |
 
