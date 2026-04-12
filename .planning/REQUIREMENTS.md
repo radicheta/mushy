@@ -1,0 +1,75 @@
+# Requirements: Mushroom Farm — FC-1
+
+**Defined:** 2026-04-12
+**Core Value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
+
+## v1.2 Requirements
+
+Requirements for milestone v1.2: FarmOS Integration & QoL. Each maps to roadmap phases.
+
+### FarmOS Integration
+
+- [ ] **FMOS-01**: FC-1 exists as a structure asset in FarmOS with correct location and metadata — may be created manually or by script; prerequisite for FMOS-02/03
+- [ ] **FMOS-02**: Daily camera snapshot from fc_camera is posted to FarmOS as an observation log attached to FC-1
+- [ ] **FMOS-03**: Daily environment summary (avg/min/max humidity, CO2, temp, humidifier duty cycle, anomalies) is included as notes on the daily observation
+
+### Camera & 4G
+
+- [ ] **CAM-01**: fc_camera publishes at full configured rate only when subscribers are present on `/fc1/camera/compressed`
+- [ ] **CAM-02**: fc_camera drops to idle rate (e.g. 1 frame/min or less) when no subscribers are connected
+- [ ] **CAM-03**: Transition between idle and active is automatic and transparent to the bridge/Mission Control
+
+### Infrastructure
+
+- [ ] **INFRA-01**: elder-plops runs docker compose v2 (`docker compose` plugin) instead of docker-compose v1
+- [ ] **INFRA-02**: All existing services (bridge, openmct, timescale) start correctly under compose v2
+- [ ] **INFRA-03**: Container name format change (underscores → hyphens) accounted for — no hardcoded references break
+
+## Future Requirements
+
+Deferred to future milestones. Tracked but not in current roadmap.
+
+### Telemetry Streaming
+
+- **TEL-01**: Periodic environment snapshots (humidity, CO2, temp) pushed to FarmOS as observation logs
+- **TEL-02**: Actuator event logs (humidifier on/off transitions) posted as activity logs in FarmOS
+
+### Sensor Stability
+
+- **SENS-01**: Sensor warm-up grace period at fc-core boot to avoid false actuation from SCD41 settling (backlog 999.8)
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| Continuous telemetry → FarmOS | Daily digest proves the path first; streaming is v1.3+ if needed |
+| QR bag scanning → FarmOS | Production tracking thread — needs FarmOS beachhead established first |
+| Signal alerts | Bigger scope (999.3), deferred to future milestone |
+| Farmer app | Separate UI surface (999.11), depends on FarmOS and alerts foundations |
+| PID humidity control | Control refinement (999.9), not QoL |
+| Sensor warm-up grace | Dropped from v1.2 scope — workaround ("ignore first minute") holds |
+
+## Traceability
+
+Which phases cover which requirements. Updated during roadmap creation.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| FMOS-01 | — | Pending |
+| FMOS-02 | — | Pending |
+| FMOS-03 | — | Pending |
+| CAM-01 | — | Pending |
+| CAM-02 | — | Pending |
+| CAM-03 | — | Pending |
+| INFRA-01 | — | Pending |
+| INFRA-02 | — | Pending |
+| INFRA-03 | — | Pending |
+
+**Coverage:**
+- v1.2 requirements: 9 total
+- Mapped to phases: 0
+- Unmapped: 9 ⚠️
+
+---
+*Requirements defined: 2026-04-12*
+*Last updated: 2026-04-12 after initial definition*
