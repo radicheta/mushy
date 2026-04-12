@@ -54,47 +54,40 @@ Existing codebase provides:
 - ✓ SCD41 CO2 sensor integrated, publishing on `fc1/co2`
 - ✓ Full soak test — Pi ran continuously for ~24h on current boot and ~5 days across the deploy window (TEST-02, DEPL-01 verified 2026-04-11)
 
+### Validated in v1.1 (Tech Debt & Connectivity)
+
+- ✓ Bridge QoS aligned — humidifier subscription TRANSIENT_LOCAL, last-state replays on bridge restart (TDEBT-01) — v1.1
+- ✓ Phantom CycloneDDS peer eliminated — repo config synced to Tailscale, LeaseDuration 5s guard (TDEBT-02) — v1.1
+- ✓ fc-core cold boot clean — ExecStartPre polls tailscale0, NRestarts=0 confirmed at farm (TDEBT-03) — v1.1
+- ✓ 4G cellular connectivity — fc1 on mossrock-lab MiFi, ROS-over-cellular via Tailscale, dual-location verified (CONN-01) — v1.1
+- ✓ fc-system-sync early-boot service — git-shipped /etc config with netplan + wpa_cli reload, future wifi changes via `git push fc1/prod` — v1.1
+
 ### Current State
 
-**v1.0 MVP shipped 2026-04-11.** Grower attested "better than the timer" —
-passes. See `.planning/MILESTONES.md` and `.planning/milestones/v1.0-*`.
-
-## Current Milestone: v1.1 Tech Debt & Connectivity
-
-**Goal:** Close v1.0 tech debt bugs and get reliable farm connectivity to fc1.
-
-**Target scope:**
-- ACTR-03 bridge QoS alignment (`transient_local`) so last-state replays on bridge restart
-- CAM-03 phantom CycloneDDS subscriber at `192.168.1.193` stalling live MJPEG delivery
-- fc-core boot race on `tailscale0` interface (~4 restarts on each Pi cold boot)
-- 4G hotspot for reliable fc1 farm connectivity (unblocks stalled Phase 08-04 deploy)
-
-**Explicitly deferred from v1.1:**
-- SHT30 physical reinstall — sensor redundancy is nice-to-have; SCD41 fallback works
-- CO2-first features — routed to a separate `/gsd:explore` session for v2.0 themes
-- Backlog 999.x promotions (edge buffering, Signal alerts, fan/light telemetry) — v2.0+
+**v1.0 MVP shipped 2026-04-11.** Grower attested "better than the timer".
+**v1.1 Tech Debt & Connectivity shipped 2026-04-12.** All carryover tech debt
+closed; fc1 reliably reachable over 4G cellular. See `.planning/MILESTONES.md`.
 
 ### Out of Scope
 
-- Temperature control — defer to Phase 2 (framework ready, logic pending)
-- CO2 monitoring and control — defer to Phase 2+
-- Multi-chamber scaling / FC-2 integration — open question for roadmap
-- Advanced features: tuning, optimization, safety interlocks — Phase 2+
-- OpenMCT UI enhancements — display existing topics first, UI polish later
+- Temperature control — no actuator in v1 scope; revisit when hardware changes
+- CO2-triggered ventilation — routed to `/gsd:explore` for v2.0 themes
+- Multi-chamber scaling / FC-2 — single-chamber until v2.0+
+- PID humidity control — bang-bang with ±1% band is the interim; 999.9 has calibration data
+- SHT30 physical reinstall — SCD41 fallback works; sensor redundancy is nice-to-have
+- OpenMCT UI enhancements — Mission Control functional; farmer app (999.11) is the next UI surface
 
 ## Context
 
 **Current State:**
-- Phases 01–08 complete. v1.0 milestone achieved 2026-04-11.
-- Phase 01: I2C humidity/temp sensing live, humidifier MOSFET wired, git-based deploy pipeline
-- Phase 02: sensor hardened, config clean, spike rejection, GPIO configurable
-- Phase 03: bang-bang control with dwell time guard, staleness detection, safe failure state
-- Phase 04: actuator state topic, Mission Control CO2/humidifier charts, E2E hardware verified
-- Phase 05: production deployed to FC-1, multi-day soak test passed
-- Phase 06: WireGuard + Tailscale mesh, CycloneDDS unicast for ROS DDS over VPN
-- Phase 07: Node.js bridge with TimescaleDB ingestion and `/history/:topic` REST (Mission Control historical data was silently broken for weeks due to compose-file drift — fixed during audit closure 2026-04-11)
-- Phase 08: fc_camera ROS2 node, MJPEG bridge endpoint, snapshot archive, Mission Control camera view (live MJPEG delivery carries tech debt — see Active)
-- Phase 10: Bridge QoS aligned (TRANSIENT_LOCAL on humidifier subscription), Pi-side CycloneDDS config synced to Tailscale with LeaseDuration 5s (TDEBT-01, TDEBT-02 closed)
+- v1.0 shipped 2026-04-11 (Phases 01–08). v1.1 shipped 2026-04-12 (Phases 09–10).
+- fc-core running continuously on fc1 Pi at the farm over 4G cellular (mossrock-lab MiFi)
+- Bang-bang humidity control with ±1% RH operating band, 180s dwell, SCD41 as active sensor
+- Mission Control (OpenMCT) stack on elder-plops: bridge + TimescaleDB + camera feed
+- Bridge QoS aligned, CycloneDDS config synced to Tailscale, no phantom peers
+- fc-system-sync ships /etc config via git — wifi/systemd changes need only `git push fc1/prod`
+- Camera at 1 frame/min (4G credit conservation workaround; proper fix is 999.10)
+- SHT30 physically disconnected — SCD41 on 0x62 is the sole humidity/temp/CO2 source
 
 **Hardware Setup:**
 - Fruiting chamber 1 (FC-1) with Raspberry Pi 4 (Ubuntu 24.04 aarch64)
@@ -128,10 +121,13 @@ passes. See `.planning/MILESTONES.md` and `.planning/milestones/v1.0-*`.
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Single-chamber MVP (FC-1 only) | Keep scope manageable for quick delivery; multi-chamber scaling is separate concern | — Pending |
-| Use existing ROS infrastructure | Avoid reinventing; integrate with proven system | — Pending |
-| MOSFET for humidifier control | Existing hardware choice; simple, reliable | — Pending |
-| Closed-loop setpoint control | Better than timer; proportional control insufficient, need feedback | — Pending |
+| Single-chamber MVP (FC-1 only) | Keep scope manageable for quick delivery; multi-chamber scaling is separate concern | ✓ Good — shipped in 14 days |
+| Use existing ROS infrastructure | Avoid reinventing; integrate with proven system | ✓ Good — CycloneDDS over Tailscale works well |
+| SSR-10A for humidifier (not MOSFET) | Switches 220V AC zapatilla; MOSFET freed for fan | ✓ Good — reliable, GPIO17 |
+| Bang-bang with dwell guard | Better than timer; PID deferred to 999.9 | ⚠️ Revisit — ±2% RH structural ceiling; PID needed for tighter control |
+| Tailscale over WireGuard | Simpler mesh, survives farm connectivity instability | ✓ Good — 4G cutover was seamless |
+| fc-system-sync git-ops deploy | Ship /etc config via git, no SSH needed for wifi/systemd changes | ✓ Good — v1.1 pattern; proven on 4G cutover |
+| SCD41 as primary sensor (SHT30 fallback offline) | SCD41 provides humidity + CO2; SHT30 physically disconnected | ⚠️ Revisit — single sensor SPOF, but CO2 is high-value |
 
 ## Evolution
 
@@ -152,4 +148,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-04-12 — Phase 10 complete (TDEBT-01, TDEBT-02 closed)*
+*Last updated: 2026-04-12 after v1.1 milestone*
