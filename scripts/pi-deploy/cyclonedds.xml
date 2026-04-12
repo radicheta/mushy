@@ -1,22 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- CycloneDDS unicast config for ROS2 over WireGuard VPN (wg0) -->
-<!-- Deployed to: /etc/cyclonedds.xml (Pi) and ~/.config/cyclonedds.xml (elder-plops) -->
+<!-- CycloneDDS unicast config for ROS2 over Tailscale VPN (tailscale0) -->
+<!-- Deployed to: /etc/cyclonedds-tailscale.xml on Pi (CYCLONEDDS_URI in fc-core.service) -->
 <!-- Source: https://github.com/ros2/ros2_dds_profiles_examples/tree/main/cyclonedds -->
 <!-- IMPORTANT: Only ONE <NetworkInterface> entry — multiple entries break unicast SPDP -->
+<!-- Updated Phase 10: WireGuard replaced by Tailscale in Phase 09; wg0/172.16.10.x retired -->
 <CycloneDDS xmlns="https://cdds.io/config"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:schemaLocation="https://cdds.io/config https://raw.githubusercontent.com/eclipse-cyclonedds/cyclonedds/master/etc/cyclonedds.xsd">
     <Domain Id="any">
         <General>
             <Interfaces>
-                <NetworkInterface name="wg0" multicast="false" />
+                <NetworkInterface name="tailscale0" multicast="false" />
             </Interfaces>
             <AllowMulticast>false</AllowMulticast>
         </General>
         <Discovery>
+            <LeaseDuration>5 s</LeaseDuration>
             <Peers>
-                <Peer address="172.16.10.3"/>  <!-- elder-plops VPN IP -->
-                <Peer address="172.16.10.5"/>  <!-- FC-1 Pi VPN IP -->
+                <Peer address="100.96.10.66"/>  <!-- elder-plops Tailscale IP -->
+                <Peer address="100.96.239.75"/> <!-- FC-1 Pi Tailscale IP -->
             </Peers>
         </Discovery>
     </Domain>
