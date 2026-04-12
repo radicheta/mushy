@@ -6,7 +6,7 @@ status: active
 last_updated: "2026-04-12T22:00:00.000Z"
 last_activity: 2026-04-12
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,22 +20,54 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-12)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** v1.2 FarmOS Integration & QoL
+**Current focus:** Phase 11 — Compose v2 Upgrade (v1.2 start)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-04-12 — Milestone v1.2 started
+Phase: 11 of 13 in v1.2 (Compose v2 Upgrade)
+Plan: 0 of ? in current phase
+Status: Ready to plan
+Last activity: 2026-04-12 — v1.2 roadmap created; phases 11–13 defined
+
+Progress: [░░░░░░░░░░] 0% (v1.2 phases only)
+
+## Performance Metrics
+
+**Velocity:**
+- Total plans completed: 37 (v1.0 + v1.1)
+- Average duration: ~25 min/plan (estimated)
+- v1.2 plans completed: 0
+
+**Recent Trend:**
+- v1.1: 6 plans in 2 days
+- Trend: Stable
+
+*Updated after each plan completion*
 
 ## Accumulated Context
 
-### Roadmap Evolution
+### Decisions
 
-- Phases 1-8: v1.0 MVP (shipped 2026-04-11)
-- Phases 9-10: v1.1 Tech Debt & Connectivity (shipped 2026-04-12)
+- [v1.1] fc-system-sync ships /etc config via git — wifi/systemd changes need only `git push fc1/prod`
+- [v1.2] Compose v2 first — independent, unblocks FarmOS work on a clean stack
+- [v1.2] Camera phase before FarmOS — daily snapshot depends on fc_camera; idle-rate trickle provides scheduled capture
+- [v1.2] FarmOS daily report runs on elder-plops (not Pi) — pulls from TimescaleDB + Flask on 8765
+
+### Pending Todos
+
+None yet.
+
+### Blockers/Concerns
+
+- Phase 11: grep hardcoded container names (underscores → hyphens) before cutting over to compose v2
+- Phase 13: FMOS-01 (FC-1 asset) may need manual creation — confirm approach at planning time
+
+## Session Continuity
+
+Last session: 2026-04-12
+Stopped at: v1.2 roadmap created — Phase 11 ready to plan
+Resume file: None
 
 ---
-*Initialized: 2026-03-28*
-*Last updated: 2026-04-12 — Milestone v1.2 started*
+*Roadmap phases: v1.0 (1–8), v1.1 (9–10), v1.2 (11–13)*
+*Last updated: 2026-04-12 — v1.2 roadmap created*
