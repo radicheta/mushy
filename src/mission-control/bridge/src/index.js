@@ -308,16 +308,27 @@ rclnodejs.init().then(async () => {
         }
     );
 
-    // Subscribe: fc1/actuators/humidifier -> fc.humidifier
+    // QoS profile for humidifier — matches fc_controller.py TRANSIENT_LOCAL publisher (TDEBT-01)
+    const humidifierQos = new rclnodejs.QoS(
+        rclnodejs.QoS.HistoryPolicy.RMW_QOS_POLICY_HISTORY_KEEP_LAST,
+        1,
+        rclnodejs.QoS.ReliabilityPolicy.RMW_QOS_POLICY_RELIABILITY_RELIABLE,
+        rclnodejs.QoS.DurabilityPolicy.RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL,
+        false
+    );
+
+    // Subscribe: fc1/actuators/humidifier -> fc.humidifier  (TRANSIENT_LOCAL — replays last state on restart)
     node.createSubscription(
         'std_msgs/msg/Bool',
         '/fc1/actuators/humidifier',
+        { qos: humidifierQos },
         async (msg) => {
             const value = msg.data ? 1 : 0;
             broadcast({ humidifier: value, timestamp: Date.now() });
             await insertTelemetry('fc.humidifier', value);
         }
     );
+    console.log('[bridge] Humidifier subscription: TRANSIENT_LOCAL QoS (replays last state on restart)');
 
     // Subscribe: fc1/camera/compressed -> MJPEG stream (D-03)
     node.createSubscription(
