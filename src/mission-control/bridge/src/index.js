@@ -254,6 +254,19 @@ app.get('/camera/snapshot', (req, res) => {
     res.end(latestFrame);
 });
 
+// Alias for /camera/snapshot — used by farmos_agent daily report (D-05)
+app.get('/camera/latest.jpg', (req, res) => {
+    if (!latestFrame) {
+        return res.status(503).json({ error: 'No camera frame available' });
+    }
+    res.writeHead(200, {
+        'Content-Type': 'image/jpeg',
+        'Content-Length': latestFrame.length,
+        'Cache-Control': 'no-cache'
+    });
+    res.end(latestFrame);
+});
+
 // Store connected WebSocket clients
 const clients = new Set();
 
