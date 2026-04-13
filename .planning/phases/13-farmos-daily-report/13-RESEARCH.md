@@ -516,27 +516,15 @@ This is a greenfield phase (new container, no rename/refactor). No runtime state
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **OAuth2 vs session-cookie auth**
-   - What we know: D-01 locks OAuth2 client credentials; the OAuth consumer doesn't exist in FarmOS yet; session-cookie auth is proven
-   - What's unclear: Does the user want to enable the OAuth2 consumer before this phase, or use session-cookie auth (same credentials as the farmos logger project)?
-   - Recommendation: Planner should add a Wave 0 task for OAuth2 consumer setup — create the client in `/admin/config/people/simple_oauth`, note the client_id and client_secret into `.env`
+1. **OAuth2 vs session-cookie auth** — RESOLVED: Session-cookie auth per user correction 2026-04-13. OAuth2 consumer not configured in FarmOS instance. Use proven `get_session()` pattern from `/mnt/slime-kingdom/shared/farmos/logger/server.py`.
 
-2. **Midnight boundary timezone**
-   - What we know: TimescaleDB stores UTC; reports are consumed by the grower at 06:00 local
-   - What's unclear: The server runs in what timezone? (`date` on elder-plops)
-   - Recommendation: Include `TZ=America/Toronto` (or whatever local TZ) in the compose service env, then use `datetime.now()` which respects the container's TZ
+2. **Midnight boundary timezone** — RESOLVED: `TZ=America/Toronto` set in compose service env. TimescaleDB stores UTC; Python `datetime.now()` respects container TZ for midnight boundary calculation.
 
-3. **Anomaly flag definition**
-   - What we know: D-07 mentions "anomaly flags" but no thresholds defined in CONTEXT.md or fc_config.yaml
-   - What's unclear: What constitutes an anomaly? (humidity outside 75–85%? CO2 > 1000ppm? sensor gap > 30 min?)
-   - Recommendation: Use fc_config.yaml target values as the reference: flag if daily avg outside `target ± 3×tolerance`; flag if any 24h period has zero readings (sensor offline)
+3. **Anomaly flag definition** — RESOLVED: Flag if daily avg outside target ± 3×tolerance (from fc_config.yaml); flag if zero readings in 24h window (sensor offline). Thresholds configurable via env vars.
 
-4. **Bridge endpoint name: `/camera/snapshot` vs `/camera/latest.jpg`**
-   - What we know: `/camera/snapshot` is live and working; D-05 references `/camera/latest.jpg`
-   - What's unclear: Should the plan add a route alias to the bridge, or just call `/camera/snapshot`?
-   - Recommendation: Add `/camera/latest.jpg` as a route alias in the bridge (single line of code, D-05 compliance, allows bridge to serve both OpenMCT and the agent)
+4. **Bridge endpoint name** — RESOLVED: `/camera/latest.jpg` alias added to bridge in Plan 01 Task 2 per D-05. Existing `/camera/snapshot` route also preserved.
 
 ---
 
