@@ -35,12 +35,22 @@ def _make_rclpy_mock():
     class FakePublisher:
         def __init__(self):
             self.published = []
+            self._sub_count = 0
 
         def publish(self, msg):
             self.published.append(msg)
 
+        def get_subscription_count(self):
+            return self._sub_count
+
     class FakeTimer:
-        pass
+        def __init__(self):
+            self.period = None
+            self.callback = None
+            self.cancelled = False
+
+        def cancel(self):
+            self.cancelled = True
 
     class FakeParameter:
         def __init__(self, value):
@@ -77,8 +87,15 @@ def _make_rclpy_mock():
 
         def create_timer(self, period, callback):
             t = FakeTimer()
+            t.period = period
+            t.callback = callback
             self._timers.append(t)
             return t
+
+        def destroy_timer(self, timer):
+            if timer in self._timers:
+                self._timers.remove(timer)
+            return True
 
         def destroy_node(self):
             pass
@@ -146,6 +163,25 @@ def _patch_param(name, value):
             pname, default = item[0], item[1]
             if pname == name:
                 default = value
+            new_params.append((pname, default))
+        original_declare(self_node, namespace, new_params)
+
+    return patch.object(FakeNode, 'declare_parameters', patched_declare)
+
+
+def _patch_params(overrides):
+    """Return a declare_parameters patch that overrides multiple parameter defaults.
+
+    overrides: dict of {param_name: value}
+    """
+    original_declare = FakeNode.declare_parameters
+
+    def patched_declare(self_node, namespace, parameters):
+        new_params = []
+        for item in parameters:
+            pname, default = item[0], item[1]
+            if pname in overrides:
+                default = overrides[pname]
             new_params.append((pname, default))
         original_declare(self_node, namespace, new_params)
 
@@ -256,6 +292,121 @@ class TestCameraParametersDeclared(unittest.TestCase):
                           f'Parameter {param!r} not declared on FcCamera node')
 
         node.destroy_node()
+
+
+class TestSubscriberAwareCamera(unittest.TestCase):
+    """Tests for subscriber-aware rate switching (CAM-01, CAM-02)."""
+
+    def _make_node(self):
+        """Create FcCamera in simulation mode with default subscriber-aware params."""
+        fc_camera = _load_fc_camera()
+        mock_cv2 = MagicMock()
+        with patch.dict(sys.modules, {'cv2': mock_cv2}):
+            with _patch_params({
+                'camera_simulation_mode': True,
+                'camera_active_fps': 1.0,
+                'camera_subscriber_grace_sec': 5.0,
+            }):
+                node = fc_camera.FcCamera()
+        return node
+
+    def test_starts_idle(self):
+        """FcCamera starts with _is_active=False and timer period ~3600s (1 frame/hour)."""
+        node = self._make_node()
+        self.assertFalse(node._is_active)
+        # camera_fps default is 0.000278 => period = 1.0/0.000278 ≈ 3597s
+        idle_period = node._cam_timer.period
+        self.assertAlmostEqual(idle_period, 1.0 / 0.000278, delta=5.0)
+        node.destroy_node()
+
+    def test_ramp_up_on_subscriber(self):
+        """When subscriber connects, node transitions to active at 1.0 fps."""
+        node = self._make_node()
+        node._cam_pub._sub_count = 1
+        node.capture_and_publish()
+        self.assertTrue(node._is_active)
+        self.assertAlmostEqual(node._cam_timer.period, 1.0, places=3)
+        node.destroy_node()
+
+    def test_stays_active_while_subscribed(self):
+        """Stays active on subsequent ticks while subscriber is present."""
+        node = self._make_node()
+        node._cam_pub._sub_count = 1
+        node.capture_and_publish()
+        timer_count_after_ramp = len(node._timers)
+        node.capture_and_publish()
+        self.assertTrue(node._is_active)
+        # No extra timers created on subsequent active ticks
+        self.assertEqual(len(node._timers), timer_count_after_ramp)
+        node.destroy_node()
+
+    def test_new_params_declared(self):
+        """camera_active_fps and camera_subscriber_grace_sec are declared as parameters."""
+        node = self._make_node()
+        self.assertIn('camera_active_fps', node._params)
+        self.assertIn('camera_subscriber_grace_sec', node._params)
+        node.destroy_node()
+
+
+class TestSubscriberGracePeriod(unittest.TestCase):
+    """Tests for grace period before dropping to idle (CAM-03)."""
+
+    def _make_active_node(self):
+        """Create FcCamera, ramp it up to active state."""
+        fc_camera = _load_fc_camera()
+        mock_cv2 = MagicMock()
+        with patch.dict(sys.modules, {'cv2': mock_cv2}):
+            with _patch_params({
+                'camera_simulation_mode': True,
+                'camera_active_fps': 1.0,
+                'camera_subscriber_grace_sec': 5.0,
+            }):
+                node = fc_camera.FcCamera()
+        node._cam_pub._sub_count = 1
+        node.capture_and_publish()
+        return node
+
+    def test_grace_starts_on_unsub(self):
+        """Grace timer created when last subscriber disconnects; node stays active."""
+        node = self._make_active_node()
+        node._cam_pub._sub_count = 0
+        node.capture_and_publish()
+        self.assertIsNotNone(node._grace_timer)
+        self.assertTrue(node._is_active)  # still active, grace period running
+        node.destroy_node()
+
+    def test_grace_expires_drops_to_idle(self):
+        """After grace timer fires with no subscribers, node drops to idle."""
+        node = self._make_active_node()
+        node._cam_pub._sub_count = 0
+        node.capture_and_publish()
+        # Fire the grace timer callback manually
+        node._grace_timer.callback()
+        self.assertFalse(node._is_active)
+        self.assertIsNone(node._grace_timer)
+        node.destroy_node()
+
+    def test_resub_cancels_grace(self):
+        """If subscriber reconnects during grace period, grace is cancelled."""
+        node = self._make_active_node()
+        node._cam_pub._sub_count = 0
+        node.capture_and_publish()  # starts grace
+        node._cam_pub._sub_count = 1
+        node.capture_and_publish()  # subscriber back
+        self.assertIsNone(node._grace_timer)
+        self.assertTrue(node._is_active)
+        node.destroy_node()
+
+    def test_destroy_node_cleans_grace(self):
+        """destroy_node removes grace timer without error."""
+        node = self._make_active_node()
+        node._cam_pub._sub_count = 0
+        node.capture_and_publish()  # starts grace
+        grace_timer = node._grace_timer
+        self.assertIsNotNone(grace_timer)
+        node.destroy_node()  # must not raise
+        # Grace timer should have been removed from _timers
+        self.assertNotIn(grace_timer, node._timers)
 
 
 if __name__ == '__main__':
