@@ -1,5 +1,20 @@
 # Milestones
 
+## v1.2 FarmOS Integration & QoL (Shipped: 2026-04-13)
+
+**Phases completed:** 3 phases, 7 plans, 5 tasks
+
+**Key accomplishments:**
+
+- docker-compose v1 purged and replaced with compose v2 plugin (2.40.3) on elder-plops; all 3 Mission Control services running with hyphen-named containers and live telemetry confirmed flowing
+- fc_camera.py:
+- One-liner:
+- One-liner:
+- One-liner:
+- Rebuilt bridge and farmos-agent containers with Plan 03 bug fixes; scheduler active at 06:00; three FarmOS admin actions pending user browser access.
+
+---
+
 ## v1.1 Tech Debt & Connectivity (Shipped: 2026-04-12)
 
 **Phases completed:** 2 phases, 6 plans, 13 tasks
@@ -26,6 +41,7 @@ bridge restart.
 ### Requirements Outcome
 
 4/4 v1.1 requirements fully satisfied:
+
 - TDEBT-01 ✅, TDEBT-02 ✅, TDEBT-03 ✅, CONN-01 ✅
 
 Deferred to future: SHT30 physical reinstall (sensor redundancy, SCD41 fallback works).
