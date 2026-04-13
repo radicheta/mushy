@@ -29,6 +29,11 @@ const BOUNDARY = 'frameboundary';
 const mjpegClients = new Set();
 let latestFrame = null;
 let lastFrameTime = null;
+const FRAME_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+function isFrameStale() {
+    return !latestFrame || !lastFrameTime || (Date.now() - lastFrameTime > FRAME_MAX_AGE_MS);
+}
 
 // Camera ROS2 subscription — conditional on MJPEG client presence (Phase 12)
 let cameraSubscription = null;
@@ -243,8 +248,8 @@ app.get('/camera/mjpeg', (req, res) => {
 
 // Camera latest frame endpoint (single JPEG for testing)
 app.get('/camera/snapshot', (req, res) => {
-    if (!latestFrame) {
-        return res.status(503).json({ error: 'No camera frame available' });
+    if (isFrameStale()) {
+        return res.status(503).json({ error: 'No recent camera frame available' });
     }
     res.writeHead(200, {
         'Content-Type': 'image/jpeg',
@@ -256,8 +261,8 @@ app.get('/camera/snapshot', (req, res) => {
 
 // Alias for /camera/snapshot — used by farmos_agent daily report (D-05)
 app.get('/camera/latest.jpg', (req, res) => {
-    if (!latestFrame) {
-        return res.status(503).json({ error: 'No camera frame available' });
+    if (isFrameStale()) {
+        return res.status(503).json({ error: 'No recent camera frame available' });
     }
     res.writeHead(200, {
         'Content-Type': 'image/jpeg',
