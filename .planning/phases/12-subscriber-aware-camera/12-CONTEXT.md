@@ -44,8 +44,8 @@ fc_camera conserves 4G bandwidth by idling at a trickle rate when no Mission Con
 - `src/chambers/fc-core/config/fc_config.yaml` — Camera parameters (camera_fps, camera_device, etc.); new params added here
 - `src/chambers/fc-core/fc_core/test/test_camera.py` — Existing camera tests; new subscriber-aware tests follow this pattern
 
-### Bridge (read-only context)
-- `src/mission-control/bridge/src/index.js` — Bridge subscribes to `/fc1/camera/compressed` and serves MJPEG; tracks `mjpegClients`. No changes needed here, but its subscription is what fc_camera detects.
+### Bridge (needs conditional subscription change)
+- `src/mission-control/bridge/src/index.js` — Bridge currently subscribes to `/fc1/camera/compressed` at startup and stays subscribed forever. Must be changed to subscribe only when MJPEG clients are connected (mjpegClients.size > 0) and unsubscribe when the last client disconnects. This is what makes fc_camera's `get_subscription_count()` actually reflect viewer presence.
 
 ### Launch
 - `src/chambers/fc-core/launch/fc.launch.py` — Launches fc_camera with config; may need new param declarations
@@ -66,8 +66,8 @@ fc_camera conserves 4G bandwidth by idling at a trickle rate when no Mission Con
 - Non-blocking error handling: log and skip, never crash the node
 
 ### Integration Points
-- Bridge subscribes to `/fc1/camera/compressed` via rclcnodejs — this subscription is what triggers fc_camera's active mode
-- When bridge has 0 MJPEG clients, it still holds the ROS subscription (subscription count stays 1). Rate change is driven by ROS subscriber count, not MJPEG client count.
+- Bridge subscribes to `/fc1/camera/compressed` via rclcnodejs — this subscription is what triggers fc_camera's active mode. Bridge must be changed to conditionally subscribe/unsubscribe based on MJPEG client count so that `get_subscription_count()` on fc_camera accurately reflects whether anyone is viewing.
+- Bridge already tracks MJPEG clients with a `mjpegClients` Set and logs connect/disconnect — the conditional subscription hooks into these events.
 - fc_config.yaml parameter loading via ROS2 parameter server — new params follow existing pattern
 
 </code_context>
