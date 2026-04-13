@@ -7,7 +7,7 @@ FC-1 is a closed-loop humidity control system for a mushroom fruiting chamber, r
 ## Architecture
 
 ```
-FC-1 Pi (10.68.155.53 LAN / 172.16.10.5 VPN)
+FC-1 Pi (100.96.239.75 Tailscale / 10.68.155.53 LAN fallback)
 +-- fc-core.service (systemd, Restart=on-failure, RestartSec=5)
 |   +-- fc_sensors     -> SHT30 (I2C 0x44) + SCD41 (I2C 0x62)
 |   +-- fc_controller  -> GPIO27 (SSR-10A -> humidifier power strip)
@@ -140,17 +140,17 @@ Both `mushy_openmct_1` and `mushy_bridge_1` containers should be listed as runni
 
 **Symptom:** `ssh fc1` times out or refuses connection
 
-**Check LAN connectivity:**
+**Check Tailscale connectivity** (primary path):
+```bash
+ping 100.96.239.75   # or: tailscale ping fc1
+```
+
+**Check LAN connectivity** (only reachable from the farm LAN):
 ```bash
 ping 10.68.155.53
 ```
 
-**Check VPN connectivity** (requires WireGuard `wg0` up on workstation):
-```bash
-ping 172.16.10.5
-```
-
-If the Pi is powered but unreachable on both paths, physical access is required — check the network cable and power supply at the chamber location.
+If the Pi is powered but unreachable on both paths, physical access is required — check power supply and 4G hotspot at the chamber location.
 
 ## Monitoring
 
@@ -166,4 +166,4 @@ If the Pi is powered but unreachable on both paths, physical access is required 
 - **No remote configuration UI** — all config changes require editing `fc_config.yaml` in the repo and running `deploy.sh`. A runtime config UI via the OpenMCT command channel is a future phase capability.
 - **Pi 4 only** — not tested on Pi 5 or other single-board computers.
 - **GPIO library deprecation path** — RPi.GPIO 0.7.1 works on Pi 4 / Ubuntu 24.04 LTS (kernel 6.8.0-raspi). RPi.GPIO is deprecated upstream; migration to `rpi-lgpio` may be required for future Pi hardware or OS versions.
-- **WireGuard VPN required for remote access** — the `wg0` interface must be up on both the Pi and the workstation for remote monitoring and SSH over VPN.
+- **Tailscale required for remote access** — fc1 is at the farm on 4G; SSH uses the Tailscale IP (`100.96.239.75`, host alias `fc1-ts`). The LAN IP (`10.68.155.53`) only reachable from the farm LAN.
