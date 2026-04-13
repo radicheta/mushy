@@ -69,7 +69,7 @@ pick up the latest committed-and-pushed code, no ssh required.
 Override defaults with environment variables if needed:
 
 ```bash
-PI_HOST=fc1 PI_USER=ubuntu BRANCH=fc1/prod ./scripts/pi-deploy/deploy.sh
+PI_HOST=fc1-ts PI_USER=ubuntu BRANCH=fc1/prod ./scripts/pi-deploy/deploy.sh
 ```
 
 ## Observe Logs

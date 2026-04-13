@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Configuration
-PI_HOST="${PI_HOST:-fc1}"
+PI_HOST="${PI_HOST:-fc1-ts}"
 PI_USER="${PI_USER:-ubuntu}"
 PI_WS="/home/${PI_USER}/mushroom_farm_ws"
 PI_REPO="${PI_WS}/mushy-repo"
