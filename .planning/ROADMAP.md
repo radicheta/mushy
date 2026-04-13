@@ -68,7 +68,10 @@ Plans:
   2. When Mission Control bridge connects as a subscriber, fc_camera automatically ramps up to the configured active FPS without any manual intervention
   3. When Mission Control is closed and the subscriber disconnects, fc_camera drops back to idle rate automatically
   4. The MJPEG stream in Mission Control is smooth and uninterrupted during the active period — no visible gap or stutter at the moment of rate transition
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 12-01-PLAN.md — TDD: subscriber-aware rate switching in fc_camera.py with tests
+- [ ] 12-02-PLAN.md — Bridge conditional subscription + LIVE/IDLE status badge in Mission Control
 **UI hint**: yes
 
 ### Phase 13: FarmOS Daily Report
@@ -97,7 +100,7 @@ Plans:
 | 9. Connectivity & Boot Stability | v1.1 | 4/4 | Complete | 2026-04-11 |
 | 10. Bridge QoS & MJPEG Delivery | v1.1 | 2/2 | Complete | 2026-04-12 |
 | 11. Compose v2 Upgrade | v1.2 | 1/1 | Complete    | 2026-04-13 |
-| 12. Subscriber-Aware Camera | v1.2 | 0/? | Not started | - |
+| 12. Subscriber-Aware Camera | v1.2 | 0/2 | Planning | - |
 | 13. FarmOS Daily Report | v1.2 | 0/? | Not started | - |
 
 ## Backlog (parking lot)
