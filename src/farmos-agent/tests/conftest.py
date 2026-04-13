@@ -32,7 +32,7 @@ def sample_telemetry_rows():
     return [
         ('fc.co2',        845.00, 620.00, 1180.00, 1440),
         ('fc.humidifier', 0.45,   0.00,   1.00,    1440),
-        ('fc.humidity',   0.823,  0.781,  0.865,   1440),
+        ('fc.humidity',   82.3,   78.1,   86.5,    1440),
         ('fc.temperature', 21.4,  19.8,   23.1,    1440),
     ]
 
@@ -41,7 +41,7 @@ def sample_telemetry_rows():
 def sample_summary_dict():
     """Pre-built dict matching query_daily_summary output."""
     return {
-        'fc.humidity':    {'avg': 0.823, 'min': 0.781, 'max': 0.865, 'samples': 1440},
+        'fc.humidity':    {'avg': 82.3, 'min': 78.1, 'max': 86.5, 'samples': 1440},
         'fc.temperature': {'avg': 21.4,  'min': 19.8,  'max': 23.1,  'samples': 1440},
         'fc.co2':         {'avg': 845.0, 'min': 620.0, 'max': 1180.0,'samples': 1440},
         'fc.humidifier':  {'avg': 0.45,  'min': 0.0,   'max': 1.0,   'samples': 1440},

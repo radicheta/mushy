@@ -93,13 +93,12 @@ def upload_photo(
 
     Returns the file UUID string or None on failure.
     """
-    headers = dict(session.headers)
-    headers['Content-Type'] = 'application/octet-stream'
-    headers['Content-Disposition'] = f'file; filename="{filename}"'
-
-    resp = requests.post(
+    resp = session.post(
         f"{farmos_url}/api/log/observation/image",
-        headers=headers,
+        headers={
+            'Content-Type': 'application/octet-stream',
+            'Content-Disposition': f'file; filename="{filename}"',
+        },
         data=jpeg_bytes,
         timeout=30,
     )
@@ -178,7 +177,7 @@ def observation_exists_for_date(
         f"{farmos_url}/api/log/observation",
         params={
             'filter[name][value]': f'FC-1 Daily Report {date_str}',
-            'filter[name][operator]': 'CONTAINS',
+            'filter[name][operator]': '=',
         },
         timeout=10,
     )
