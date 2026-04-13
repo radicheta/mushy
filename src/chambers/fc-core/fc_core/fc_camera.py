@@ -27,8 +27,10 @@ class FcCamera(Node):
                 ('camera_device', 0),
                 ('camera_width', 640),    # D-05: 640x480 default
                 ('camera_height', 480),
-                ('camera_fps', 1.0),      # D-04: float — supports sub-1 for cellular thrift (e.g. 0.0167 ≈ 1 frame/min)
+                ('camera_fps', 1.0),      # D-02: idle rate — 1 frame/hour when no viewers
                 ('camera_jpeg_quality', 65),  # D-06: 60-70% default
+                ('camera_active_fps', 1.0),           # D-01: FPS when Mission Control viewers connected
+                ('camera_subscriber_grace_sec', 5.0),  # D-07: seconds before dropping to idle after last viewer
             ]
         )
 
@@ -39,6 +41,11 @@ class FcCamera(Node):
         height = self.get_parameter('camera_height').value
         fps = self.get_parameter('camera_fps').value
         self._jpeg_quality = self.get_parameter('camera_jpeg_quality').value
+        self._idle_fps = fps  # camera_fps is now the idle rate (D-03)
+        self._active_fps = self.get_parameter('camera_active_fps').value
+        self._grace_sec = self.get_parameter('camera_subscriber_grace_sec').value
+        self._is_active = False
+        self._grace_timer = None
 
         if simulation_mode:
             self.get_logger().info('fc_camera: running in simulation mode (no USB webcam)')
@@ -68,17 +75,31 @@ class FcCamera(Node):
             CompressedImage, 'fc1/camera/compressed', 10
         )
 
-        # Timer fires at the requested FPS rate
-        self.create_timer(1.0 / fps, self.capture_and_publish)
+        # Timer fires at the idle FPS rate; ramps up when subscribers connect
+        self._cam_timer = self.create_timer(1.0 / self._idle_fps, self.capture_and_publish)
 
-        self.get_logger().info('FcCamera node started')
+        self.get_logger().info(
+            f'FcCamera node started (idle: {self._idle_fps} fps, '
+            f'active: {self._active_fps} fps, grace: {self._grace_sec}s)'
+        )
 
     def capture_and_publish(self):
         """Capture one frame and publish as CompressedImage.
 
-        No-op if cap is None (simulation mode) or camera is not open.
+        Checks subscriber count on every tick to switch between idle and active
+        rates. No-op capture if cap is None (simulation mode) or camera is not open.
         Wraps all cv2 calls in try/except to never crash the node.
         """
+        count = self._cam_pub.get_subscription_count()
+        if count > 0 and not self._is_active:
+            self._ramp_up()
+        elif count > 0 and self._is_active and self._grace_timer is not None:
+            # Subscriber reconnected during grace — cancel grace, stay active
+            self.destroy_timer(self._grace_timer)
+            self._grace_timer = None
+        elif count == 0 and self._is_active and self._grace_timer is None:
+            self._start_grace()
+
         if self.cap is None or not self.cap.isOpened():
             return
 
@@ -108,8 +129,42 @@ class FcCamera(Node):
             # Non-blocking: log and skip frame. Next timer tick retries automatically.
             self.get_logger().error(f'fc_camera: capture_and_publish error: {e}')
 
+    def _ramp_up(self):
+        """Switch from idle to active rate (per D-05)."""
+        if self._grace_timer is not None:
+            self.destroy_timer(self._grace_timer)
+            self._grace_timer = None
+        self.destroy_timer(self._cam_timer)
+        self._cam_timer = self.create_timer(1.0 / self._active_fps, self.capture_and_publish)
+        self._is_active = True
+        self.get_logger().info(
+            f'fc_camera: active ({self._active_fps} fps, '
+            f'{self._cam_pub.get_subscription_count()} subscriber(s))'
+        )
+
+    def _start_grace(self):
+        """Begin grace period before dropping to idle (per D-06, D-07)."""
+        self._grace_timer = self.create_timer(self._grace_sec, self._grace_expired)
+
+    def _grace_expired(self):
+        """Grace period elapsed — drop to idle if still no subscribers."""
+        self.destroy_timer(self._grace_timer)
+        self._grace_timer = None
+        if self._cam_pub.get_subscription_count() == 0:
+            self._ramp_down()
+
+    def _ramp_down(self):
+        """Switch from active to idle rate."""
+        self.destroy_timer(self._cam_timer)
+        self._cam_timer = self.create_timer(1.0 / self._idle_fps, self.capture_and_publish)
+        self._is_active = False
+        self.get_logger().info(f'fc_camera: idle ({self._idle_fps} fps)')
+
     def destroy_node(self):
-        """Release the VideoCapture handle before shutting down."""
+        """Release the VideoCapture handle and clean up timers before shutting down."""
+        if self._grace_timer is not None:
+            self.destroy_timer(self._grace_timer)
+            self._grace_timer = None
         if self.cap is not None and self.cap.isOpened():
             self.cap.release()
         super().destroy_node()

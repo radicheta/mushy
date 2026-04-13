@@ -42,5 +42,7 @@
     camera_device: 0                # /dev/video0
     camera_width: 640               # pixels (D-05: 640x480 default)
     camera_height: 480              # pixels
-    camera_fps: 0.0167              # ~1 frame/minute — 4G credit thrift (2026-04-11). See backlog 999.10 for on-demand streaming.
+    camera_fps: 0.000278            # ~1 frame/hour — idle rate when no viewers (Phase 12 D-02). Active rate set by camera_active_fps.
     camera_jpeg_quality: 65         # 0-100 (D-06: 60-70% default)
+    camera_active_fps: 1.0            # FPS when Mission Control viewers are connected (Phase 12 D-01)
+    camera_subscriber_grace_sec: 5.0  # Seconds before dropping to idle after last viewer disconnects (Phase 12 D-07)
