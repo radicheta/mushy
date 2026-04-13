@@ -1,3 +1,5 @@
+version: '3.8'
+
 # Host networking: bridge reaches Pi's DDS via WireGuard (wg0, domain 69)
 # With host networking, port mappings are ignored — services bind directly.
 services:
