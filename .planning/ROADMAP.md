@@ -83,10 +83,12 @@ Plans:
   2. Once per day a new observation log entry appears on the FC-1 asset containing an attached camera snapshot image from that day
   3. The same observation entry includes a text summary with avg/min/max humidity, CO2, and temperature for the day plus humidifier duty cycle and any anomaly flags — all values drawn from TimescaleDB
   4. The daily report service runs on elder-plops (not the Pi) and survives a service restart without creating duplicate entries for the same day
-**Plans:** 2 plans
+**Plans:** 4 plans (2 original + 2 gap closure)
 Plans:
-- [ ] 13-01-PLAN.md — FarmOS client library, telemetry query, report builder, tests, bridge endpoint
-- [ ] 13-02-PLAN.md — ROS2 lifecycle node, Dockerfile, compose integration, end-to-end verification
+- [x] 13-01-PLAN.md — FarmOS client library, telemetry query, report builder, tests, bridge endpoint
+- [x] 13-02-PLAN.md — ROS2 lifecycle node, Dockerfile, compose integration, end-to-end verification
+- [ ] 13-03-PLAN.md — Gap closure: fix humidity units, upload_photo auth, bridge staleness guard, commit tests
+- [ ] 13-04-PLAN.md — Gap closure: rebuild containers, FarmOS admin actions, end-to-end verification
 
 ## Progress
 
@@ -104,7 +106,7 @@ Plans:
 | 10. Bridge QoS & MJPEG Delivery | v1.1 | 2/2 | Complete | 2026-04-12 |
 | 11. Compose v2 Upgrade | v1.2 | 1/1 | Complete | 2026-04-13 |
 | 12. Subscriber-Aware Camera | v1.2 | 2/2 | Complete | 2026-04-13 |
-| 13. FarmOS Daily Report | v1.2 | 0/2 | Planning | - |
+| 13. FarmOS Daily Report | v1.2 | 2/4 | Gap Closure | - |
 
 ## Backlog (parking lot)
 
