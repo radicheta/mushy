@@ -30,6 +30,10 @@ const mjpegClients = new Set();
 let latestFrame = null;
 let lastFrameTime = null;
 
+// Camera ROS2 subscription — conditional on MJPEG client presence (Phase 12)
+let cameraSubscription = null;
+let rosNode = null;  // set inside rclnodejs.init().then()
+
 // Snapshot config from environment
 const SNAPSHOT_DIR = process.env.SNAPSHOT_DIR || '/data/snapshots';
 const SNAPSHOT_INTERVAL_MS = parseInt(process.env.SNAPSHOT_INTERVAL_MIN || '15', 10) * 60 * 1000;
@@ -59,6 +63,26 @@ function pushFrame(jpegBuffer) {
             mjpegClients.delete(res);
         }
     });
+}
+
+function ensureCameraSubscribed() {
+    if (cameraSubscription !== null || rosNode === null) return;
+    cameraSubscription = rosNode.createSubscription(
+        'sensor_msgs/msg/CompressedImage',
+        '/fc1/camera/compressed',
+        (msg) => {
+            const buf = Buffer.from(msg.data);
+            pushFrame(buf);
+        }
+    );
+    console.log('[camera] subscribed to /fc1/camera/compressed');
+}
+
+function maybeCameraUnsubscribe() {
+    if (mjpegClients.size > 0 || cameraSubscription === null) return;
+    rosNode.destroySubscription(cameraSubscription);
+    cameraSubscription = null;
+    console.log('[camera] unsubscribed from /fc1/camera/compressed');
 }
 
 function saveSnapshot() {
@@ -130,7 +154,8 @@ app.get('/health', (req, res) => {
         db: dbReady,
         camera: {
             lastFrame: lastFrameTime,
-            clients: mjpegClients.size
+            clients: mjpegClients.size,
+            subscribed: cameraSubscription !== null
         }
     });
 });
@@ -207,9 +232,11 @@ app.get('/camera/mjpeg', (req, res) => {
         'Pragma': 'no-cache'
     });
     mjpegClients.add(res);
+    ensureCameraSubscribed();
     console.log(`[camera] MJPEG client connected (${mjpegClients.size} total)`);
     req.on('close', () => {
         mjpegClients.delete(res);
+        maybeCameraUnsubscribe();
         console.log(`[camera] MJPEG client disconnected (${mjpegClients.size} total)`);
     });
 });
@@ -266,6 +293,7 @@ async function insertTelemetry(topic, value) {
 // Main startup sequence
 rclnodejs.init().then(async () => {
     const node = new rclnodejs.Node('mission_control_bridge');
+    rosNode = node;
 
     // Try DB init — non-fatal if it fails
     try {
@@ -330,16 +358,6 @@ rclnodejs.init().then(async () => {
         }
     );
     console.log('[bridge] Humidifier subscription: TRANSIENT_LOCAL QoS (replays last state on restart)');
-
-    // Subscribe: fc1/camera/compressed -> MJPEG stream (D-03)
-    node.createSubscription(
-        'sensor_msgs/msg/CompressedImage',
-        '/fc1/camera/compressed',
-        (msg) => {
-            const buf = Buffer.from(msg.data);
-            pushFrame(buf);
-        }
-    );
 
     // Start snapshot timer (D-10: periodic snapshots, default 15 min)
     setInterval(saveSnapshot, SNAPSHOT_INTERVAL_MS);

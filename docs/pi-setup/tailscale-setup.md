@@ -59,7 +59,7 @@ volumes:
   - /home/santi/.config/cyclonedds.xml:/etc/cyclonedds.xml:ro
 ```
 
-Then: `docker compose rm -sf bridge && docker compose up -d --build bridge`
+Then: `docker-compose rm -sf bridge && docker-compose up -d bridge`
 
 ## Connecting Pi to 4G Hotspot
 
@@ -91,7 +91,7 @@ ping 100.96.239.75
 ssh fc1-ts "hostname"
 
 # Check ROS topics through bridge
-docker exec mushy-bridge-1 bash -c "\
+docker exec mushy_bridge_1 bash -c "\
   export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp && \
   export CYCLONEDDS_URI=file:///etc/cyclonedds-tailscale.xml && \
   source /opt/ros/jazzy/setup.bash && \

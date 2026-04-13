@@ -16,8 +16,8 @@ FC-1 Pi (10.68.155.53 LAN / 172.16.10.5 VPN)
 +-- Config: ~/mushroom_farm_ws/src/chambers/fc-core/config/fc_config.yaml
 
 elder-plops (172.16.10.3 VPN)
-+-- OpenMCT    (docker: mushy-openmct-1, port 8080)
-+-- rosbridge  (docker: mushy-bridge-1)
++-- OpenMCT    (docker: mushy_openmct_1, port 8080)
++-- rosbridge  (docker: mushy_bridge_1)
 ```
 
 ### ROS2 Topics
@@ -134,7 +134,7 @@ cd /path/to/mushy && docker compose up -d openmct bridge
 ```bash
 docker ps | grep mushy
 ```
-Both `mushy-openmct-1` and `mushy-bridge-1` containers should be listed as running.
+Both `mushy_openmct_1` and `mushy_bridge_1` containers should be listed as running.
 
 ### 5.5 Pi unreachable via SSH
 
