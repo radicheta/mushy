@@ -7,14 +7,14 @@ Formats TimescaleDB telemetry aggregates into a markdown table with anomaly flag
 from typing import Optional
 
 _DEFAULT_CONFIG_TARGETS = {
-    'humidity_target': 0.82,
-    'humidity_tolerance': 0.01,
+    'humidity_target': 82.0,
+    'humidity_tolerance': 1.0,
     'co2_warn': 1200,
 }
 
 # Human-readable labels and units for each topic
 _TOPIC_DISPLAY = {
-    'fc.humidity':    ('Humidity (%)',        lambda avg: f'{round(avg * 100, 1)}'),
+    'fc.humidity':    ('Humidity (%)',        lambda avg: f'{round(avg, 1)}'),
     'fc.temperature': ('Temperature (C)',     lambda avg: f'{round(avg, 1)}'),
     'fc.co2':         ('CO2 (ppm)',           lambda avg: f'{round(avg, 0):.0f}'),
     'fc.humidifier':  ('Humidifier Duty (%)', lambda avg: f'{round(avg * 100, 1)}%'),
@@ -93,7 +93,7 @@ def _fmt_metric(topic: str, value) -> str:
     if value is None:
         return 'N/A'
     if topic == 'fc.humidity':
-        return f'{round(value * 100, 1)}'
+        return f'{round(value, 1)}'
     if topic == 'fc.co2':
         return f'{round(value, 0):.0f}'
     return f'{round(value, 1)}'
@@ -111,11 +111,9 @@ def _detect_anomalies(summary_dict: dict, targets: dict) -> list:
         tolerance = targets['humidity_tolerance']
         avg = humidity_data['avg']
         if abs(avg - target) > 3 * tolerance:
-            pct = round(avg * 100, 1)
-            target_pct = round(target * 100, 1)
             anomalies.append(
-                f'ANOMALY: Humidity avg {pct}% is outside target {target_pct}% '
-                f'± {round(3 * tolerance * 100, 1)}%'
+                f'ANOMALY: Humidity avg {round(avg, 1)}% is outside target {round(target, 1)}% '
+                f'± {round(3 * tolerance, 1)}%'
             )
 
     co2_data = summary_dict.get('fc.co2', {})
