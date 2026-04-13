@@ -106,7 +106,7 @@ Plans:
 | 10. Bridge QoS & MJPEG Delivery | v1.1 | 2/2 | Complete | 2026-04-12 |
 | 11. Compose v2 Upgrade | v1.2 | 1/1 | Complete | 2026-04-13 |
 | 12. Subscriber-Aware Camera | v1.2 | 2/2 | Complete | 2026-04-13 |
-| 13. FarmOS Daily Report | v1.2 | 4/4 | Complete   | 2026-04-13 |
+| 13. FarmOS Daily Report | v1.2 | 4/4 | Complete    | 2026-04-13 |
 
 ## Backlog (parking lot)
 
