@@ -62,6 +62,12 @@ Existing codebase provides:
 - ✓ 4G cellular connectivity — fc1 on mossrock-lab MiFi, ROS-over-cellular via Tailscale, dual-location verified (CONN-01) — v1.1
 - ✓ fc-system-sync early-boot service — git-shipped /etc config with netplan + wpa_cli reload, future wifi changes via `git push fc1/prod` — v1.1
 
+### Validated in Phase 11 (Compose v2 Upgrade) — v1.2
+
+- ✓ elder-plops runs docker compose v2 plugin (2.40.3) — v1 binary purged (INFRA-01)
+- ✓ All 3 Mission Control services (bridge, openmct, timescale) healthy under compose v2 (INFRA-02)
+- ✓ Container name format change (underscores → hyphens) accounted for in all docs (INFRA-03)
+
 ### Active
 
 ## Current Milestone: v1.2 FarmOS Integration & QoL
@@ -80,6 +86,7 @@ Existing codebase provides:
 **v1.0 MVP shipped 2026-04-11.** Grower attested "better than the timer".
 **v1.1 Tech Debt & Connectivity shipped 2026-04-12.** All carryover tech debt
 closed; fc1 reliably reachable over 4G cellular. See `.planning/MILESTONES.md`.
+**Phase 11 complete 2026-04-13.** Compose v2 upgrade — elder-plops on docker compose v2.40.3, v1 purged.
 
 ### Out of Scope
 
@@ -191,4 +198,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-04-12 after v1.2 milestone start*
+*Last updated: 2026-04-13 after Phase 11 (Compose v2 Upgrade) completion*
