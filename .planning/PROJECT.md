@@ -67,6 +67,9 @@ Existing codebase provides:
 **v1.0 MVP shipped 2026-04-11.** Grower attested "better than the timer".
 **v1.1 Tech Debt & Connectivity shipped 2026-04-12.** All carryover tech debt
 closed; fc1 reliably reachable over 4G cellular. See `.planning/MILESTONES.md`.
+**v1.2 Phase 12 complete 2026-04-13.** Subscriber-aware camera — fc_camera idles
+at 1 frame/hr when no viewers, ramps to 1 fps on Mission Control connect. Bridge
+conditionally subscribes. LIVE/IDLE badge in camera view. Human UAT pending.
 
 ### Out of Scope
 
