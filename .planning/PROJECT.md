@@ -70,6 +70,10 @@ closed; fc1 reliably reachable over 4G cellular. See `.planning/MILESTONES.md`.
 **v1.2 Phase 12 complete 2026-04-13.** Subscriber-aware camera — fc_camera idles
 at 1 frame/hr when no viewers, ramps to 1 fps on Mission Control connect. Bridge
 conditionally subscribes. LIVE/IDLE badge in camera view. Human UAT pending.
+**v1.2 Phase 13 complete 2026-04-13.** FarmOS daily report — ROS2 lifecycle node
+(`farmos_agent`) on elder-plops posts daily observation to FC-1 (asset 28) with
+env summary from TimescaleDB. Camera snapshot + markdown table. Seed architecture
+for autonomous farm agents. FarmOS admin actions pending (permissions, location).
 
 ### Out of Scope
 
