@@ -4,6 +4,7 @@
 
 - ✅ **v1.0 MVP — FC-1 Humidity Control** — Phases 1–8 (shipped 2026-04-11)
 - ✅ **v1.1 Tech Debt & Connectivity** — Phases 9–10 (shipped 2026-04-12)
+- 🚧 **v1.2 FarmOS Integration & QoL** — Phases 11–13 (in progress)
 
 ## Phases
 
@@ -35,6 +36,55 @@ cellular connectivity (CONN-01). fc-system-sync ships /etc config via git.
 
 </details>
 
+### 🚧 v1.2 FarmOS Integration & QoL (In Progress)
+
+**Milestone Goal:** Connect chamber telemetry to FarmOS as the farm's system of record; add subscriber-aware camera streaming to stop bleeding 4G credit; upgrade elder-plops to compose v2.
+
+- [x] **Phase 11: Compose v2 Upgrade** — Replace docker-compose v1 with compose v2 plugin on elder-plops; verify all services and fix any hardcoded container name references (completed 2026-04-13)
+- [x] **Phase 12: Subscriber-Aware Camera** — fc_camera idles at trickle rate when no Mission Control viewers are connected; ramps to configured FPS when subscribers appear (completed 2026-04-13)
+- [ ] **Phase 13: FarmOS Daily Report** — FC-1 asset provisioned in FarmOS; daily camera snapshot and environment summary (humidity, CO2, temp, duty cycle) posted as an observation log entry
+
+## Phase Details
+
+### Phase 11: Compose v2 Upgrade
+**Goal**: elder-plops runs the compose v2 plugin and the full Mission Control stack is healthy under it
+**Depends on**: Nothing (independent infrastructure task)
+**Requirements**: INFRA-01, INFRA-02, INFRA-03
+**Success Criteria** (what must be TRUE):
+  1. `docker compose version` prints a v2.x version on elder-plops; the old `docker-compose` v1 binary is no longer the active tool
+  2. `docker compose up -d` starts bridge, openmct, and timescale without errors and all containers reach healthy/running state
+  3. Live telemetry flows end-to-end: Mission Control shows current fc1 humidity, CO2, and humidifier state after a fresh `up -d`
+  4. No hardcoded container names break — any scripts or bridge code that referenced v1 underscore names (`mushy_bridge_1`) are updated to v2 hyphen names or made name-independent
+**Plans:** 1/1 plans complete
+Plans:
+- [x] 11-01-PLAN.md — Install compose v2, recreate stack, update docs with v2 names/commands
+
+### Phase 12: Subscriber-Aware Camera
+**Goal**: fc_camera conserves 4G bandwidth by idling when no viewers are watching; Mission Control gets full-rate feed the moment someone connects
+**Depends on**: Nothing (self-contained fc_camera.py change)
+**Requirements**: CAM-01, CAM-02, CAM-03
+**Success Criteria** (what must be TRUE):
+  1. When no subscriber is connected to `/fc1/camera/compressed`, fc_camera publishes at idle rate (1 frame/min or less) — verifiable by watching topic frequency with `ros2 topic hz`
+  2. When Mission Control bridge connects as a subscriber, fc_camera automatically ramps up to the configured active FPS without any manual intervention
+  3. When Mission Control is closed and the subscriber disconnects, fc_camera drops back to idle rate automatically
+  4. The MJPEG stream in Mission Control is smooth and uninterrupted during the active period — no visible gap or stutter at the moment of rate transition
+**Plans:** 2/2 plans complete
+Plans:
+- [x] 12-01-PLAN.md — TDD: subscriber-aware rate switching in fc_camera.py with tests
+- [x] 12-02-PLAN.md — Bridge conditional subscription + LIVE/IDLE status badge in Mission Control
+**UI hint**: yes
+
+### Phase 13: FarmOS Daily Report
+**Goal**: FC-1 exists as an asset in FarmOS and receives a daily observation log containing a camera snapshot and environment summary
+**Depends on**: Phase 12 (daily snapshot uses fc_camera; idle-rate trickle provides the scheduled capture)
+**Requirements**: FMOS-01, FMOS-02, FMOS-03
+**Success Criteria** (what must be TRUE):
+  1. FC-1 appears as a structure asset in FarmOS (port 8082 on elder-plops) with correct name, location, and metadata — visible in the FarmOS UI
+  2. Once per day a new observation log entry appears on the FC-1 asset containing an attached camera snapshot image from that day
+  3. The same observation entry includes a text summary with avg/min/max humidity, CO2, and temperature for the day plus humidifier duty cycle and any anomaly flags — all values drawn from TimescaleDB
+  4. The daily report service runs on elder-plops (not the Pi) and survives a service restart without creating duplicate entries for the same day
+**Plans**: TBD
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -49,6 +99,9 @@ cellular connectivity (CONN-01). fc-system-sync ships /etc config via git.
 | 8. Pi Camera Feed in Mission Control | v1.0 | 4/4 | Complete | 2026-04-09 |
 | 9. Connectivity & Boot Stability | v1.1 | 4/4 | Complete | 2026-04-11 |
 | 10. Bridge QoS & MJPEG Delivery | v1.1 | 2/2 | Complete | 2026-04-12 |
+| 11. Compose v2 Upgrade | v1.2 | 1/1 | Complete | 2026-04-13 |
+| 12. Subscriber-Aware Camera | v1.2 | 2/2 | Complete | 2026-04-13 |
+| 13. FarmOS Daily Report | v1.2 | 0/? | Not started | - |
 
 ## Backlog (parking lot)
 
