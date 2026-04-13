@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: FarmOS Integration & QoL
 status: planning
-stopped_at: v1.2 roadmap created — Phase 11 ready to plan
-last_updated: "2026-04-13T03:21:54.004Z"
+stopped_at: Phase 12 context gathered
+last_updated: "2026-04-13T03:33:09.431Z"
 last_activity: 2026-04-13
 progress:
   total_phases: 3
@@ -67,9 +67,9 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-12
-Stopped at: v1.2 roadmap created — Phase 11 ready to plan
-Resume file: None
+Last session: 2026-04-13T03:33:09.428Z
+Stopped at: Phase 12 context gathered
+Resume file: .planning/phases/12-subscriber-aware-camera/12-CONTEXT.md
 
 ---
 *Roadmap phases: v1.0 (1–8), v1.1 (9–10), v1.2 (11–13)*
