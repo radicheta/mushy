@@ -312,19 +312,60 @@
                     return {
                         show: function (el) {
                             container = el;
+                            var healthUrl = cameraUrl.replace('/camera/mjpeg', '/health');
+                            var badgeId = 'fc-camera-badge-' + Date.now();
+                            var pollId = null;
+
                             container.innerHTML = ''
-                                + '<div style="display:flex;flex-direction:column;align-items:center;height:100%;background:#000;">'
+                                + '<div style="display:flex;flex-direction:column;align-items:center;height:100%;background:#000;position:relative;">'
+                                + '  <div id="' + badgeId + '" style="position:absolute;top:8px;right:8px;z-index:10;'
+                                + '    height:24px;padding:4px 8px;border-radius:4px;background:rgba(0,0,0,0.6);'
+                                + '    border:1px solid #555;display:flex;align-items:center;gap:4px;'
+                                + '    font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:#ccc;">'
+                                + '    <span style="width:8px;height:8px;border-radius:50%;background:#555;display:inline-block;"></span>'
+                                + '    IDLE \u00B7 1 frame/hr'
+                                + '  </div>'
                                 + '  <img src="' + cameraUrl + '"'
                                 + '       style="max-width:100%;max-height:100%;object-fit:contain;"'
                                 + '       alt="FC-1 Camera Feed"'
-                                + '       onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\';" />'
+                                + '       onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\';'
+                                + '               var b=document.getElementById(\'' + badgeId + '\');if(b)b.style.display=\'none\';" />'
                                 + '  <p style="display:none;color:#888;padding:2em;text-align:center;">'
                                 + '    Camera feed unavailable. Check that the bridge is running and the camera is connected.'
                                 + '  </p>'
                                 + '</div>';
+
+                            function updateBadge() {
+                                fetch(healthUrl).then(function(r) { return r.json(); }).then(function(data) {
+                                    var badge = document.getElementById(badgeId);
+                                    if (!badge) return;
+                                    var cam = data.camera || {};
+                                    var isLive = cam.subscribed === true && cam.lastFrame && (Date.now() - cam.lastFrame < 10000);
+                                    var dot = badge.querySelector('span');
+                                    if (isLive) {
+                                        badge.style.borderColor = '#4ecdc4';
+                                        if (dot) dot.style.background = '#4ecdc4';
+                                        badge.childNodes[badge.childNodes.length - 1].textContent = 'LIVE';
+                                    } else {
+                                        badge.style.borderColor = '#555';
+                                        if (dot) dot.style.background = '#555';
+                                        badge.childNodes[badge.childNodes.length - 1].textContent = 'IDLE \u00B7 1 frame/hr';
+                                    }
+                                    badge.style.display = 'flex';
+                                }).catch(function() {});
+                            }
+
+                            updateBadge();
+                            pollId = setInterval(updateBadge, 5000);
+                            container._fcCameraPollId = pollId;
                         },
                         destroy: function () {
-                            if (container) container.innerHTML = '';
+                            if (container) {
+                                if (container._fcCameraPollId) {
+                                    clearInterval(container._fcCameraPollId);
+                                }
+                                container.innerHTML = '';
+                            }
                         }
                     };
                 }
