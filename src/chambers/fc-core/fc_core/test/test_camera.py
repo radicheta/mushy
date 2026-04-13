@@ -304,6 +304,7 @@ class TestSubscriberAwareCamera(unittest.TestCase):
         with patch.dict(sys.modules, {'cv2': mock_cv2}):
             with _patch_params({
                 'camera_simulation_mode': True,
+                'camera_fps': 0.000278,
                 'camera_active_fps': 1.0,
                 'camera_subscriber_grace_sec': 5.0,
             }):
