@@ -40,5 +40,25 @@ services:
     volumes:
       - timescale-data:/var/lib/postgresql/data
 
+  farmos-agent:
+    build:
+      context: ./src/farmos-agent
+      dockerfile: Dockerfile
+    depends_on:
+      - timescale
+      - bridge
+    environment:
+      - FARMOS_URL=${FARMOS_URL:-http://10.68.155.50:8082}
+      - FARMOS_USERNAME=${FARMOS_USERNAME}
+      - FARMOS_PASSWORD=${FARMOS_PASSWORD}
+      - TIMESCALE_HOST=localhost
+      - TIMESCALE_PASSWORD=${TIMESCALE_PASSWORD}
+      - TZ=America/Toronto
+      - REPORT_TIMEZONE=America/Toronto
+      - BRIDGE_URL=http://localhost:8081
+    volumes:
+      - /data/snapshots:/data/snapshots:ro
+    restart: unless-stopped
+
 volumes:
   timescale-data:
