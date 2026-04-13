@@ -15,3 +15,6 @@ services:
       - CYCLONEDDS_URI=file:///etc/cyclonedds-tailscale.xml
     volumes:
       - /home/santi/.config/cyclonedds-tailscale.xml:/etc/cyclonedds-tailscale.xml:ro
+
+  farmos-agent:
+    network_mode: "host"
