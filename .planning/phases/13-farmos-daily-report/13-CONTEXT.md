@@ -15,8 +15,8 @@ FC-1 exists as a structure asset in FarmOS and receives a daily observation log 
 
 ### FarmOS API Integration
 - **D-01:** Authenticate with FarmOS via OAuth2 client credentials — FarmOS 2.x/3.x standard, token auto-refreshes
-- **D-02:** FC-1 asset provisioned automatically via API on first run (idempotent) — no manual creation step. Asset type is `structure` per SC-1.
-- **D-03:** FarmOS credentials stored in `.env` on elder-plops alongside existing `TIMESCALE_PASSWORD` — variables: `FARMOS_URL`, `FARMOS_CLIENT_ID`, `FARMOS_CLIENT_SECRET`
+- **D-02:** FC-1 already exists as asset 28 in FarmOS at `http://10.68.155.50:8082/asset/28` — no provisioning needed. Hardcode asset ID 28 in config (or env var `FARMOS_ASSET_ID=28`). Lab 1 is asset 26 at `/asset/26` for reference.
+- **D-03:** FarmOS credentials stored in `.env` on elder-plops alongside existing `TIMESCALE_PASSWORD` — variables: `FARMOS_URL=http://10.68.155.50:8082`, `FARMOS_USERNAME`, `FARMOS_PASSWORD` (session-cookie auth per research finding — OAuth2 consumer not configured on this instance)
 
 ### Daily Report Content & Scheduling
 - **D-04:** Report runs at 06:00 local time — before grower's morning check, covers previous full day
