@@ -54,8 +54,9 @@ FC-1 location), Phase 12 hardware UAT pending.
 <details open>
 <summary>🚧 v1.2.1 Hotfix — camera stall + sensor warmup (Phases 14-15) — FILED 2026-04-17</summary>
 
-- [ ] Phase 14: fc_camera idle-mode stall hotfix — farmer-facing symptom (frozen MC image) from Phase 12 regression; root cause TBD (idle→active transition not firing). Context: `.planning/phases/14-fc-camera-idle-stall-hotfix/CONTEXT.md`
+- [ ] Phase 14: fc_camera idle-mode stall hotfix — farmer-facing symptom (frozen MC image) from Phase 12 regression. Diagnose root cause first (not just patch symptom); add two status lights in MC camera panel; bundle `last_frame_age_sec` in bridge `/health`. Context: `.planning/phases/14-fc-camera-idle-stall-hotfix/14-CONTEXT.md`
 - [ ] Phase 15: Sensor warm-up grace period — promoted from 999.8 at farmer's explicit ask 2026-04-17. Farmer constraint: "bigger gap than noise" — publish nothing (or explicit warming-up state) rather than spiky/wrong values during the ~30s post-restart transient. Context: `.planning/phases/15-sensor-warmup-grace-period/CONTEXT.md`
+- [ ] Phase 16: System health panel (seed) — broad "green lights" dashboard for all fc1 subsystems. Split out from Phase 14 to keep hotfix weekend-sized. Seed note: `.planning/phases/16-system-health-panel/CONTEXT-SEED.md`. Milestone TBD (v1.2.1 stretch or v1.3).
 
 Filed during a farmer debug session on the camera feed. Both issues erode
 operator trust in Mission Control and should ship together as a small
