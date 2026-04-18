@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: FarmOS Integration & QoL
+milestone: v1.2.1
+milestone_name: Hotfix — camera stall + sensor warmup
 status: executing
-stopped_at: Phase 12 context gathered
-last_updated: "2026-04-13T13:34:48.554Z"
-last_activity: 2026-04-13
+stopped_at: "Completed 14-05-PLAN.md (soak complete, SOAK_PASS: true)"
+last_updated: "2026-04-18T01:09:02.031Z"
+last_activity: 2026-04-18
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_phases: 14
+  completed_phases: 4
+  total_plans: 15
+  completed_plans: 12
+  percent: 80
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-12)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 11 — Compose v2 Upgrade (v1.2 start)
+**Current focus:** Phase 14 — fc-camera-idle-stall-hotfix
 
 ## Current Position
 
-Phase: 13 of 13 (edge buffering local telemetry storage on pi with store and )
-Plan: Not started
+Phase: 14 (fc-camera-idle-stall-hotfix) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-04-13
+Last activity: 2026-04-18
 
 Progress: [░░░░░░░░░░] 0% (v1.2 phases only)
 
@@ -55,6 +55,7 @@ Progress: [░░░░░░░░░░] 0% (v1.2 phases only)
 - [v1.2] Compose v2 first — independent, unblocks FarmOS work on a clean stack
 - [v1.2] Camera phase before FarmOS — daily snapshot depends on fc_camera; idle-rate trickle provides scheduled capture
 - [v1.2] FarmOS daily report runs on elder-plops (not Pi) — pulls from TimescaleDB + Flask on 8765
+- [Phase 14]: SOAK_PASS: true — canonical stall recovery confirmed in 9s via 1Hz graph-poll fix
 
 ### Pending Todos
 
@@ -67,9 +68,9 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-13T03:33:09.428Z
-Stopped at: Phase 12 context gathered
-Resume file: .planning/phases/12-subscriber-aware-camera/12-CONTEXT.md
+Last session: 2026-04-18T01:09:02.028Z
+Stopped at: Completed 14-05-PLAN.md (soak complete, SOAK_PASS: true)
+Resume file: None
 
 ---
 *Roadmap phases: v1.0 (1–8), v1.1 (9–10), v1.2 (11–13)*
