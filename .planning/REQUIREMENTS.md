@@ -45,10 +45,9 @@ Deferred to future milestones. Tracked but not in v1.3 roadmap.
 
 ### Dashboard enhancements (v1.4 candidates)
 
-- **DASH-FUT-01**: 6h inline sparklines for RH + CO2 (farmer's #1 field-notes wish — calibration ergonomics)
-- **DASH-FUT-02**: Annotated event timeline (restarts, DWELL-BLOCK events, threshold crossings) — requires fc_controller to emit structured events
-- **DASH-FUT-03**: "Compare two timestamps" view (this cycle vs yesterday's cycle)
-- **DASH-FUT-04**: Parameter-change UI (setpoint, tolerance, dwell with predicted-effect banner) — its own milestone
+- **DASH-FUT-01**: Annotated event timeline (restarts, DWELL-BLOCK events, threshold crossings) — requires fc_controller to emit structured events
+- **DASH-FUT-02**: "Compare two timestamps" view (this cycle vs yesterday's cycle)
+- **DASH-FUT-03**: Parameter-change UI (setpoint, tolerance, dwell with predicted-effect banner) — its own milestone
 
 ### Alert enhancements
 
@@ -73,7 +72,7 @@ Explicitly excluded from v1.3. Documented to prevent scope creep.
 | Live MJPEG in alert messages | signal-cli attachment size limits + 4G cost; link-to-dashboard (ALRT-08) instead |
 | Multi-chamber navigation in dashboard | Deferred with multi-chamber itself (MCHAM-FUT-01) |
 | More than 2 alert severity tiers | info/warn/critical triage fatigue; WARN/CRITICAL is sufficient |
-| 6h sparklines | Deferred to v1.4 per user 2026-04-18; easy to add back if priorities shift |
+| Inline sparklines on dashboard | Farmer explicitly did not want them; kept off the roadmap entirely rather than deferred |
 
 ## Traceability
 
@@ -81,32 +80,32 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ALRT-01 | TBD | Pending |
-| ALRT-02 | TBD | Pending |
-| ALRT-03 | TBD | Pending |
-| ALRT-04 | TBD | Pending |
-| ALRT-05 | TBD | Pending |
-| ALRT-06 | TBD | Pending |
-| ALRT-07 | TBD | Pending |
-| ALRT-08 | TBD | Pending |
-| DASH-01 | TBD | Pending |
-| DASH-02 | TBD | Pending |
-| DASH-03 | TBD | Pending |
-| DASH-04 | TBD | Pending |
-| DASH-05 | TBD | Pending |
-| DASH-06 | TBD | Pending |
-| DASH-07 | TBD | Pending |
-| DASH-08 | TBD | Pending |
-| DASH-09 | TBD | Pending |
-| FMOS-04 | TBD | Pending |
-| FMOS-05 | TBD | Pending |
-| CARRY-01 | TBD | Pending |
+| ALRT-01 | Phase 17 | Pending |
+| ALRT-02 | Phase 17 | Pending |
+| ALRT-03 | Phase 17 | Pending |
+| ALRT-04 | Phase 17 | Pending |
+| ALRT-05 | Phase 17 | Pending |
+| ALRT-06 | Phase 17 | Pending |
+| ALRT-07 | Phase 17 | Pending |
+| ALRT-08 | Phase 17 | Pending |
+| DASH-01 | Phase 18 | Pending |
+| DASH-02 | Phase 18 | Pending |
+| DASH-03 | Phase 18 | Pending |
+| DASH-04 | Phase 18 | Pending |
+| DASH-05 | Phase 18 | Pending |
+| DASH-06 | Phase 18 | Pending |
+| DASH-07 | Phase 18 | Pending |
+| DASH-08 | Phase 18 | Pending |
+| DASH-09 | Phase 18 | Pending |
+| FMOS-04 | Phase 19 | Pending |
+| FMOS-05 | Phase 19 | Pending |
+| CARRY-01 | Phase 20 | Pending |
 
 **Coverage:**
 - v1.3 requirements: 20 total (8 alerts, 9 dashboard, 2 FarmOS carryover, 1 Phase 12 UAT)
-- Mapped to phases: 0 (roadmap not yet created)
-- Unmapped: 20
+- Mapped to phases: 20
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-18*
-*Last updated: 2026-04-18 — milestone v1.3 scope defined*
+*Last updated: 2026-04-18 — traceability filled, roadmap Phases 17–20 assigned*
