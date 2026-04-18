@@ -12,3 +12,7 @@ __pycache__/
 
 # Misc
 .DS_Store
+
+# Phase 17: agent node_modules
+src/agents/*/node_modules/
+src/agents/*/package-lock.json
