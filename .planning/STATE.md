@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2.1
 milestone_name: Hotfix — camera stall + sensor warmup
 status: executing
-stopped_at: Completed 15-03-PLAN.md
-last_updated: "2026-04-18T01:33:29.396Z"
+stopped_at: Completed 16-system-health-panel-01-PLAN.md
+last_updated: "2026-04-18T01:43:30.661Z"
 last_activity: 2026-04-18
 progress:
   total_phases: 14
   completed_phases: 5
-  total_plans: 15
-  completed_plans: 15
-  percent: 100
+  total_plans: 18
+  completed_plans: 16
+  percent: 89
 ---
 
 # Project State
@@ -21,12 +21,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-12)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 15 — sensor-warmup-grace-period
+**Current focus:** Phase 16 — system-health-panel
 
 ## Current Position
 
-Phase: 16
-Plan: Not started
+Phase: 16 (system-health-panel) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
 Last activity: 2026-04-18
 
@@ -58,6 +58,8 @@ Progress: [░░░░░░░░░░] 0% (v1.2 phases only)
 - [Phase 14]: SOAK_PASS: true — canonical stall recovery confirmed in 9s via 1Hz graph-poll fix
 - [Phase 15-sensor-warmup-grace-period]: SENS-01 promoted from backlog/out-of-scope to active v1.2.1 requirement with Phase 15 traceability
 - [Phase 15]: SOAK_PASS: true — WARN->OK transition at 25s post-node-init; no humidifier actuation in grace window; Phase 16 sensor_health topic confirmed live
+- [Phase 16-system-health-panel]: Flatten DiagnosticStatus KeyValue[] into plain JS object before WebSocket broadcast for easy browser consumption
+- [Phase 16-system-health-panel]: rosReady flips true immediately before node.spin() so it reflects full subscription readiness
 
 ### Pending Todos
 
@@ -70,8 +72,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-18T01:29:13.014Z
-Stopped at: Completed 15-03-PLAN.md
+Last session: 2026-04-18T01:43:30.659Z
+Stopped at: Completed 16-system-health-panel-01-PLAN.md
 Resume file: None
 
 ---

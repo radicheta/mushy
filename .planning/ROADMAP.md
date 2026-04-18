@@ -68,7 +68,7 @@ FC-1 location), Phase 12 hardware UAT pending.
   - [x] 15-03-PLAN.md — deploy to fc1/prod via deploy.sh + live soak; 15-03-SOAK-EVIDENCE.md with SOAK_PASS verdict
 - [ ] Phase 16: System health panel — narrow six-light strip for fc1 subsystems (Sensors, Camera feed, Humidifier, Bridge, Pi reachable, Grace). Reuses Phase 14 makeStatusLight primitive; consumes signals already on the stack plus one small bridge extension. Context: `.planning/phases/16-system-health-panel/16-CONTEXT.md`. Milestone TBD (v1.2.1 stretch or v1.3).
   **Plans:** 3 plans
-  - [ ] 16-01-PLAN.md — bridge forwards /fc1/sensor_health + exposes ros.connected and humidifier.last_msg_ts on /health
+  - [x] 16-01-PLAN.md — bridge forwards /fc1/sensor_health + exposes ros.connected and humidifier.last_msg_ts on /health
   - [ ] 16-02-PLAN.md — plugin.js adds six-light horizontal health strip (new openmct type + view)
   - [ ] 16-03-PLAN.md — smoke test live stack; produces 16-SMOKE-EVIDENCE.md with SMOKE_PASS verdict
 
