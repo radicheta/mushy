@@ -65,6 +65,7 @@ def _make_rclpy_mock():
             self._params = {}
             self._pub_registry = {}
             self._timers = []
+            self._node_sub_count = {}  # topic -> int, simulates node-level graph cache
 
         def get_logger(self):
             return FakeLogger()
@@ -84,6 +85,12 @@ def _make_rclpy_mock():
             pub = FakePublisher()
             self._pub_registry[topic] = pub
             return pub
+
+        def count_subscribers(self, topic):
+            return self._node_sub_count.get(topic, 0)
+
+        def count_publishers(self, topic):
+            return self._node_sub_count.get('__pub_' + topic, 1)
 
         def create_timer(self, period, callback):
             t = FakeTimer()
@@ -408,6 +415,87 @@ class TestSubscriberGracePeriod(unittest.TestCase):
         node.destroy_node()  # must not raise
         # Grace timer should have been removed from _timers
         self.assertNotIn(grace_timer, node._timers)
+
+
+class TestIdleToActiveRecovery(unittest.TestCase):
+    """Phase 14 regression: recover from writer-cache stale idle stalls.
+
+    Reproduces the 2026-04-17 bug where fc_camera's publisher.get_subscription_count()
+    read 0 while node.count_subscribers() saw the bridge subscription on the DDS graph.
+    The fix must poll both and ramp up when EITHER says viewer-present.
+    """
+
+    TOPIC = 'fc1/camera/compressed'
+
+    def _make_node(self):
+        fc_camera = _load_fc_camera()
+        mock_cv2 = MagicMock()
+        with patch.dict(sys.modules, {'cv2': mock_cv2}):
+            with _patch_params({
+                'camera_simulation_mode': True,
+                'camera_fps': 0.000278,
+                'camera_active_fps': 1.0,
+                'camera_subscriber_grace_sec': 5.0,
+            }):
+                node = fc_camera.FcCamera()
+        return node
+
+    def _fire_graph_poll(self, node):
+        """Find and fire the 1 Hz graph-poll timer callback.
+
+        The fix creates a dedicated timer whose period is 1.0 seconds and
+        whose callback is node._graph_poll (or equivalent). Locate it by
+        period and invoke its callback directly — faster-than-realtime.
+        """
+        graph_timers = [t for t in node._timers
+                        if t.period is not None and abs(t.period - 1.0) < 1e-6
+                        and t is not node._cam_timer]
+        self.assertEqual(len(graph_timers), 1,
+                         "Expected exactly one 1 Hz graph-poll timer (found {})".format(len(graph_timers)))
+        graph_timers[0].callback()
+
+    def test_node_level_sub_count_drives_ramp_up(self):
+        """Stale writer cache (FakePublisher._sub_count=0) but live graph cache (=1) ramps up."""
+        node = self._make_node()
+        # Simulate DDS asymmetry: writer-local cache stale, node-level cache live
+        node._cam_pub._sub_count = 0
+        node._node_sub_count[self.TOPIC] = 1
+        self._fire_graph_poll(node)
+        self.assertTrue(node._is_active,
+                        "fc_camera must ramp up when node.count_subscribers reports a viewer "
+                        "even if publisher.get_subscription_count is stale at 0")
+        self.assertAlmostEqual(node._cam_timer.period, 1.0, places=3)
+        node.destroy_node()
+
+    def test_long_idle_then_graph_sees_sub_ramps_up(self):
+        """10 idle ticks with both caches 0, then graph cache sees viewer — ramp up on next poll."""
+        node = self._make_node()
+        node._cam_pub._sub_count = 0
+        node._node_sub_count[self.TOPIC] = 0
+        for _ in range(10):
+            node.capture_and_publish()
+        self.assertFalse(node._is_active)
+        # Bridge subscribes — only node-level cache updates; writer cache remains stale (the bug)
+        node._node_sub_count[self.TOPIC] = 1
+        self._fire_graph_poll(node)
+        self.assertTrue(node._is_active)
+        node.destroy_node()
+
+    def test_happy_path_both_caches_agree(self):
+        """When both caches report the same count, Phase-12 behaviour is unchanged."""
+        node = self._make_node()
+        # Normal ramp-up: both say 1
+        node._cam_pub._sub_count = 1
+        node._node_sub_count[self.TOPIC] = 1
+        node.capture_and_publish()
+        self.assertTrue(node._is_active)
+        # Normal ramp-down path (grace) via capture_and_publish: both say 0
+        node._cam_pub._sub_count = 0
+        node._node_sub_count[self.TOPIC] = 0
+        node.capture_and_publish()
+        self.assertIsNotNone(node._grace_timer,
+                             "Grace timer must start when both caches say 0")
+        node.destroy_node()
 
 
 if __name__ == '__main__':

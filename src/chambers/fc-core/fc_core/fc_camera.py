@@ -70,18 +70,56 @@ class FcCamera(Node):
                     f'{fps}fps quality={self._jpeg_quality}'
                 )
 
+        # Topic name — used by both the publisher and the graph-poll fallback
+        # (Phase 14 fix for Phase 12 stall: writer-local matched-readers cache goes
+        # stale over CycloneDDS unicast on Tailscale; node-level graph cache does not.
+        # See 14-RESEARCH.md §1 H1.)
+        self._camera_topic = 'fc1/camera/compressed'
+
         # Publisher for compressed images
         self._cam_pub = self.create_publisher(
-            CompressedImage, 'fc1/camera/compressed', 10
+            CompressedImage, self._camera_topic, 10
         )
 
         # Timer fires at the idle FPS rate; ramps up when subscribers connect
         self._cam_timer = self.create_timer(1.0 / self._idle_fps, self.capture_and_publish)
 
+        # Phase 14 (HFIX-01): fast-path viewer detection via node-level graph cache.
+        # The capture timer runs at idle rate (~1/hr in production) so cannot recover
+        # the feed within the 10 s MC LIVE-badge SLA. This dedicated 1 Hz timer polls
+        # self.count_subscribers() which reads the rcl/rmw graph cache — a different
+        # cache from publisher.get_subscription_count()'s writer-local matched-readers
+        # set (the latter goes stale over lossy unicast DDS).
+        self._graph_poll_timer = self.create_timer(1.0, self._graph_poll)
+
         self.get_logger().info(
             f'FcCamera node started (idle: {self._idle_fps} fps, '
             f'active: {self._active_fps} fps, grace: {self._grace_sec}s)'
         )
+
+    def _graph_poll(self):
+        """1 Hz subscriber-presence check via node-level graph introspection.
+
+        Complements the writer-local get_subscription_count() polling inside
+        capture_and_publish. If the writer's matched-readers cache goes stale
+        (see 14-RESEARCH.md §1 H1), this path still detects the viewer and
+        ramps up within ~1 second.
+
+        Cheap: one rclpy call, no capture, no publish. Safe to run at 1 Hz.
+        """
+        if self._is_active:
+            # Already active — writer-cache or graph-cache agreement doesn't matter.
+            # If a subscriber leaves, capture_and_publish handles the grace-period
+            # transition via its own get_subscription_count() check.
+            return
+        try:
+            n = self.count_subscribers(self._camera_topic)
+        except Exception as e:
+            # Never crash the node on an introspection hiccup — log and retry next tick.
+            self.get_logger().warn(f'fc_camera: graph poll failed: {e}')
+            return
+        if n > 0:
+            self._ramp_up()
 
     def capture_and_publish(self):
         """Capture one frame and publish as CompressedImage.
@@ -90,7 +128,12 @@ class FcCamera(Node):
         rates. No-op capture if cap is None (simulation mode) or camera is not open.
         Wraps all cv2 calls in try/except to never crash the node.
         """
-        count = self._cam_pub.get_subscription_count()
+        writer_count = self._cam_pub.get_subscription_count()
+        try:
+            graph_count = self.count_subscribers(self._camera_topic)
+        except Exception:
+            graph_count = 0
+        count = writer_count if writer_count > 0 else graph_count  # prefer live count
         if count > 0 and not self._is_active:
             self._ramp_up()
         elif count > 0 and self._is_active and self._grace_timer is not None:
@@ -139,7 +182,8 @@ class FcCamera(Node):
         self._is_active = True
         self.get_logger().info(
             f'fc_camera: active ({self._active_fps} fps, '
-            f'{self._cam_pub.get_subscription_count()} subscriber(s))'
+            f'writer={self._cam_pub.get_subscription_count()} '
+            f'graph={self.count_subscribers(self._camera_topic)} subscriber(s))'
         )
 
     def _start_grace(self):
@@ -165,6 +209,9 @@ class FcCamera(Node):
         if self._grace_timer is not None:
             self.destroy_timer(self._grace_timer)
             self._grace_timer = None
+        if hasattr(self, '_graph_poll_timer') and self._graph_poll_timer is not None:
+            self.destroy_timer(self._graph_poll_timer)
+            self._graph_poll_timer = None
         if self.cap is not None and self.cap.isOpened():
             self.cap.release()
         super().destroy_node()
