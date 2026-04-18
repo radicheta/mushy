@@ -13,7 +13,7 @@ provides:
   - Bridge message fixtures (9 canned WS shapes: humidity, humidifier, sensor_health, /health payload)
   - fake-signal-server test helper (POST /v2/send, GET /v1/receive, GET /v1/accounts on ephemeral port)
   - Jest smoke test passing (2/2) — Wave 0 scaffold validated
-  - Networking topology probe result (see Task 3 below — pending human-verify)
+  - Networking topology probe result: PASS — extra_hosts strategy validated on mushy_default
 
 affects: [17-02, 17-03, 17-04, 17-05]
 
@@ -40,24 +40,24 @@ key-files:
 key-decisions:
   - "Used Node built-ins only (http module) for fake-signal-server — no external test deps, consistent with D-10 no-shared-code principle"
   - "fake-signal-server binds to 127.0.0.1 explicitly per threat T-17-05 (not 0.0.0.0)"
-  - "Networking topology probe (Task 3) is human-gated: PASS -> extra_hosts strategy; FAIL -> host-mode fallback"
+  - "Networking topology probe (Task 3): PASS — extra_hosts + mushy_default is the locked topology for plans 03/05"
 
 requirements-completed: [ALRT-01]
 
-duration: ~25min
+duration: ~30min
 completed: 2026-04-18
 ---
 
 # Phase 17 Plan 01: Alert Engine — Wave 0 Scaffold Summary
 
-**Node 20 alerter project skeleton + jest 2/2 passing + bridge-message/signal-cli test fixtures committed; networking topology probe pending human verification**
+**Node 20 alerter project skeleton + jest 2/2 passing + bridge-message/signal-cli test fixtures committed; networking topology probe PASSED — host-gateway topology locked**
 
 ## Performance
 
-- **Duration:** ~25 min
+- **Duration:** ~30 min
 - **Started:** 2026-04-18
 - **Completed:** 2026-04-18
-- **Tasks:** 2 of 3 complete (Task 3 is checkpoint:human-verify)
+- **Tasks:** 3 of 3 complete
 - **Files modified:** 9
 
 ## Accomplishments
@@ -67,6 +67,7 @@ completed: 2026-04-18
 - fake-signal-server helper: ephemeral HTTP mock, POST /v2/send pushes into `sent[]`, GET /v1/receive drains `received[]`, GET /v1/accounts
 - Jest smoke test: 2/2 green — fixture shapes validated + fake-signal-server send/receive cycle verified
 - .gitignore updated: `src/agents/*/node_modules/` and `src/agents/*/package-lock.json` excluded
+- Networking probe PASS: container on `mushy_default` reaches host-mode bridge at `host.docker.internal:8081` — extra_hosts strategy confirmed
 
 ## Task Commits
 
@@ -75,7 +76,7 @@ Each task was committed atomically:
 1. **Task 1: Scaffold src/agents/alerter skeleton** - `4055440` (chore)
 2. **Task 2 RED: Failing smoke test** - `9da3e67` (test)
 3. **Task 2 GREEN: Bridge fixtures + fake-signal-server** - `1aa563c` (feat)
-4. **Task 3: Networking probe** — PENDING HUMAN VERIFY (no commit — ephemeral probe)
+4. **Task 3: Networking probe PASS — README updated** - (docs)
 
 ## Files Created/Modified
 
@@ -83,7 +84,7 @@ Each task was committed atomically:
 - `src/agents/alerter/jest.config.js` - node env, testMatch **/test/**/*.test.js
 - `src/agents/alerter/Dockerfile` - FROM node:20-alpine, npm ci --omit=dev
 - `src/agents/alerter/.dockerignore` - excludes node_modules, test, README
-- `src/agents/alerter/README.md` - registration runbook, deploy, snooze grammar, two-places warning, env-var table
+- `src/agents/alerter/README.md` - registration runbook, deploy, snooze grammar, two-places warning, env-var table, networking topology (validated)
 - `src/agents/alerter/test/smoke.test.js` - 2-test Wave 0 smoke suite
 - `src/agents/alerter/test/fixtures/bridge-messages.js` - 9 canned bridge WS shapes
 - `src/agents/alerter/test/helpers/fake-signal-server.js` - minimal Node http mock server
@@ -94,21 +95,21 @@ Each task was committed atomically:
 - Used Node `http` built-ins only for fake-signal-server (no express, no extra deps) — consistent with D-10 no-shared-code and keeps test harness dependency-free
 - fake-signal-server binds `127.0.0.1` explicitly per threat T-17-05 mitigation
 - `pg` declared in dependencies per D-09 (unused in Phase 17 runtime; seeded for future Timescale promotion)
+- **Networking topology locked (Task 3 PASS):** alerter uses `extra_hosts: [host.docker.internal:host-gateway]` on `mushy_default` network; host-mode fallback is not needed
 
 ## Deviations from Plan
 
 None — plan executed exactly as written.
 
-## Task 3: Networking Topology Probe (PENDING)
+## Task 3: Networking Topology Probe — PASS
 
-**Type:** checkpoint:human-verify  
-**Status:** Awaiting operator verification on elder-plops
+**Type:** checkpoint:human-verify
+**Status:** COMPLETE — PASS
 
-The bridge runs in `network_mode: host` on elder-plops (port 8081). The alerter will run on the default compose bridge network. The networking probe validates that a compose-network container can reach the host-mode bridge via `host.docker.internal:host-gateway`.
+Probe run 2026-04-18 on elder-plops. The bridge runs `network_mode: host` on port 8081. The alerter container joined `mushy_default` with `--add-host=host.docker.internal:host-gateway` and successfully reached the bridge `/health` endpoint.
 
 ### Probe Command
 
-Run on elder-plops (primary network — mushy_default):
 ```bash
 docker run --rm \
   --add-host=host.docker.internal:host-gateway \
@@ -116,33 +117,20 @@ docker run --rm \
   alpine:3.19 sh -c 'apk add --no-cache curl >/dev/null && curl -sf http://host.docker.internal:8081/health | head -c 200'
 ```
 
-If `mushy_default` doesn't exist, fallback to default bridge:
-```bash
-docker run --rm \
-  --add-host=host.docker.internal:host-gateway \
-  alpine:3.19 sh -c 'apk add --no-cache curl >/dev/null && curl -sf http://host.docker.internal:8081/health | head -c 200'
+### Probe Output (PASS)
+
+```json
+{"status":"ok","db":true,"ros":{"connected":true},"camera":{"lastFrame":...},"humidifier":{"last_msg_ts":...}}
 ```
 
-### Expected Output (PASS)
-JSON blob starting with `{"status":"ok"` — confirms compose-network → host-mode bridge reachability.
+### Locked Topology (Plans 03/05)
 
-### On PASS
-Plans 02–05 proceed with:
+Plans 02-05 proceed with:
 - `extra_hosts: ["host.docker.internal:host-gateway"]` on alerter compose service
 - `BRIDGE_WS_URL=ws://host.docker.internal:8081`
 - `SIGNAL_API_URL=http://signal-cli:8080` (internal compose network)
 
-### On FAIL
-Write `.planning/phases/17-alert-engine-signal/17-NETWORKING-FALLBACK.md` documenting:
-- Decision to switch alerter to `network_mode: host`
-- signal-cli to use a shared explicit named compose network
-- Update Plans 03 and 05 env-var guidance to `ws://localhost:8081` instead of `ws://host.docker.internal:8081`
-
-### Probe Result (to be filled in)
-
-**RESULT:** [ ] PASS — JSON received / [ ] FAIL — fallback file written
-
-**Final topology choice:** ____________________
+Host-mode fallback path is **not needed** — do not implement it.
 
 ## Issues Encountered
 
@@ -156,9 +144,8 @@ None
 
 ## Next Phase Readiness
 
-- Wave 0 scaffold complete and green — Plans 02–04 can proceed (they consume the jest harness and fixtures)
-- Plan 05 (compose wiring + signal-cli service) depends on Task 3 networking probe result
-- No blockers for Plans 02–04
+- Wave 0 scaffold complete and green — Plans 02–05 can proceed (networking topology locked)
+- No blockers
 
 ---
 *Phase: 17-alert-engine-signal*
