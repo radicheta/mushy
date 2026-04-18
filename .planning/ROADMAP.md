@@ -66,7 +66,11 @@ FC-1 location), Phase 12 hardware UAT pending.
   - [x] 15-01-PLAN.md — controller grace gate + /fc1/sensor_health publisher + unit tests + package.xml diagnostic_msgs dep
   - [x] 15-02-PLAN.md — REQUIREMENTS.md cleanup: promote SENS-01 to v1.2.1 active (deduplicate Future/Out-of-Scope)
   - [x] 15-03-PLAN.md — deploy to fc1/prod via deploy.sh + live soak; 15-03-SOAK-EVIDENCE.md with SOAK_PASS verdict
-- [ ] Phase 16: System health panel (seed) — broad "green lights" dashboard for all fc1 subsystems. Split out from Phase 14 to keep hotfix weekend-sized. Seed note: `.planning/phases/16-system-health-panel/CONTEXT-SEED.md`. Milestone TBD (v1.2.1 stretch or v1.3).
+- [ ] Phase 16: System health panel — narrow six-light strip for fc1 subsystems (Sensors, Camera feed, Humidifier, Bridge, Pi reachable, Grace). Reuses Phase 14 makeStatusLight primitive; consumes signals already on the stack plus one small bridge extension. Context: `.planning/phases/16-system-health-panel/16-CONTEXT.md`. Milestone TBD (v1.2.1 stretch or v1.3).
+  **Plans:** 3 plans
+  - [ ] 16-01-PLAN.md — bridge forwards /fc1/sensor_health + exposes ros.connected and humidifier.last_msg_ts on /health
+  - [ ] 16-02-PLAN.md — plugin.js adds six-light horizontal health strip (new openmct type + view)
+  - [ ] 16-03-PLAN.md — smoke test live stack; produces 16-SMOKE-EVIDENCE.md with SMOKE_PASS verdict
 
 Filed during a farmer debug session on the camera feed. Both issues erode
 operator trust in Mission Control and should ship together as a small
