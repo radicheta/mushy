@@ -1,36 +1,36 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2.1
-milestone_name: Hotfix — camera stall + sensor warmup
-status: verifying
-stopped_at: Completed 16-03-PLAN.md (smoke evidence)
-last_updated: "2026-04-18T02:23:53.221Z"
+milestone: v1.3
+milestone_name: Alerts & Unified Farmer Dashboard
+status: defining_requirements
+stopped_at: Milestone v1.3 started
+last_updated: "2026-04-18T00:00:00.000Z"
 last_activity: 2026-04-18
 progress:
-  total_phases: 14
-  completed_phases: 6
-  total_plans: 18
-  completed_plans: 18
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-12)
+See: .planning/PROJECT.md (updated 2026-04-18)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 16 — system-health-panel
+**Current focus:** v1.3 — Alerts & Unified Farmer Dashboard (defining requirements)
 
 ## Current Position
 
-Phase: 999.1
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-04-18
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-18 — Milestone v1.3 started
 
-Progress: [░░░░░░░░░░] 0% (v1.2 phases only)
+Progress: [░░░░░░░░░░] 0% (v1.3 phases not yet defined)
 
 ## Performance Metrics
 
