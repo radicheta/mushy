@@ -1,0 +1,87 @@
+'use strict';
+
+const WebSocket = require('ws');
+
+function createBridgeClient({
+  wsUrl,
+  healthUrl,
+  onMessage,
+  onLiveness,
+  logger = console,
+  minBackoffMs = 1000,
+  maxBackoffMs = 30000,
+}) {
+  let ws = null;
+  let backoffMs = minBackoffMs;
+  let reconnectTimer = null;
+  let closed = false;
+  let lastHealth = null;
+
+  async function pollHealth() {
+    try {
+      const res = await fetch(healthUrl);
+      if (!res.ok) throw new Error(`health ${res.status}`);
+      const h = await res.json();
+      lastHealth = h;
+      onLiveness({
+        wsConnected: true,
+        rosConnected: !!(h.ros && h.ros.connected),
+        humidifierLastMsgTs: h.humidifier ? h.humidifier.last_msg_ts : null,
+        nowMs: Date.now(),
+      });
+    } catch (e) {
+      logger.warn(`[bridge-client] /health poll failed: ${e.message}`);
+      onLiveness({ wsConnected: true, rosConnected: false, humidifierLastMsgTs: null, nowMs: Date.now() });
+    }
+  }
+
+  function open() {
+    if (closed) return;
+    logger.info(`[bridge-client] connecting ${wsUrl}`);
+    ws = new WebSocket(wsUrl);
+
+    ws.on('open', async () => {
+      logger.info('[bridge-client] ws_open');
+      backoffMs = minBackoffMs;
+      await pollHealth();
+    });
+
+    ws.on('message', (data) => {
+      try {
+        onMessage(JSON.parse(data.toString()));
+      } catch (e) {
+        logger.error(`[bridge-client] parse error: ${e.message}`);
+      }
+    });
+
+    ws.on('close', () => {
+      logger.warn(`[bridge-client] ws_close; backoff=${backoffMs}ms`);
+      onLiveness({
+        wsConnected: false,
+        rosConnected: !!(lastHealth && lastHealth.ros && lastHealth.ros.connected),
+        humidifierLastMsgTs: lastHealth && lastHealth.humidifier ? lastHealth.humidifier.last_msg_ts : null,
+        nowMs: Date.now(),
+      });
+      if (closed) return;
+      reconnectTimer = setTimeout(open, backoffMs);
+      backoffMs = Math.min(backoffMs * 2, maxBackoffMs);
+    });
+
+    ws.on('error', (err) => {
+      logger.error(`[bridge-client] ws_error: ${err.message}`);
+      // 'close' will follow — don't double-schedule reconnect
+    });
+  }
+
+  return {
+    start() { open(); },
+    close() {
+      closed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (ws) ws.terminate();
+    },
+    isConnected() { return !!(ws && ws.readyState === WebSocket.OPEN); },
+  };
+}
+
+module.exports = { createBridgeClient };
