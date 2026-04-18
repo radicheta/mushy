@@ -1,5 +1,57 @@
 # Milestones
 
+## v1.2.1 Hotfix — camera stall + sensor warmup (Shipped: 2026-04-18)
+
+**Phases completed:** 3 phases (14, 15, 16), 11 plans + Phase 16.1 follow-up
+**Timeline:** 2026-04-17 → 2026-04-18 (same-session autonomous run + next-day UAT)
+**Git range:** `v1.2..v1.2.1` (6 feat commits across phases 14/15/16/16.1)
+**Tag:** `v1.2.1`
+
+### Delivered
+
+A hotfix milestone filed during a farmer debug session on 2026-04-17 and
+shipped autonomously the same session. Addresses two operator-trust erosions:
+camera feed silently freezing in Mission Control and humidifier briefly
+actuating on sensor noise during fc-core restart. Also lands a system-health
+panel (six status lights) so both conditions are legible to the operator
+without reading logs. Farmer-attested "all green" 2026-04-18.
+
+### Key Accomplishments
+
+- **fc_camera idle-stall hotfix (Phase 14)** — Root-caused the frozen-feed symptom via live diagnostic (Path A: idle callback at 3597 s, not DDS staleness). 1 Hz `count_subscribers` graph-poll added to `fc_camera.py`; canonical stall now recovers in 9 s (30-min soak SOAK_PASS). Two status lights added to MC camera panel ("Feed live", "Camera subscribed") via a new reusable `makeStatusLight(parentEl, label)` primitive in plugin.js. Bridge `/health` extended with `camera.last_frame_age_sec` + `subscribed`.
+- **Sensor warm-up grace period (Phase 15, promoted from 999.8)** — Farmer constraint "bigger gap than noise" honored: `fc_controller` now early-returns from `control_loop` for the first 20 s post-boot (ANDed with buffer-full guard) and publishes `/fc1/sensor_health` `DiagnosticStatus` WARN→OK. Live soak confirmed WARN→OK at 25 s with no humidifier actuation in the grace window. SENS-01 promoted from duplicate Future/Out-of-Scope to canonical v1.2.1 active requirement.
+- **System health panel (Phase 16)** — Narrow six-light strip in Mission Control: Sensors, Camera feed, Humidifier, Bridge, Pi reachable, Grace. Reuses Phase 14 `makeStatusLight`. Bridge flattens `DiagnosticStatus.KeyValue[]` into plain JS `values{}` for browser consumption; adds `ros.connected` + `humidifier.last_msg_ts` to `/health`. Humidifier light uses a 30 s watchdog window.
+- **Phase 16.1 replay shim** — Farmer UAT caught "sensor_health lights grey on fresh page load". Fixed same-session: bridge caches `lastSensorHealthBroadcast` and sends it only to newly-connected WS clients. Humidifier state still relies on ROS-level TRANSIENT_LOCAL replay (parity deferred as tech debt).
+
+### Requirements Outcome
+
+1/1 v1.2.1 formal requirement satisfied:
+
+- **SENS-01** ✅ — sensor warm-up grace + `/fc1/sensor_health` WARN→OK verified live.
+
+Phases 14 and 16 used plan-frontmatter hotfix IDs (HFIX-01..05, WARMUP-01..04);
+all SATISFIED per phase VERIFICATION files.
+
+### Tech Debt Incurred (non-blocking)
+
+- Humidifier state has no bridge-side replay cache for new WS clients (relies on ROS TRANSIENT_LOCAL to the bridge only). Fine today; revisit if a "cold-open greys" report surfaces.
+- Health view opens a second WebSocket alongside the telemetry WS — note for any future client-quota work.
+- Phase 14 VALIDATION.md is draft-only; Phases 15 & 16 have no VALIDATION.md. Live soak + unit tests substitute for formal Nyquist validation on this hotfix.
+
+### Process Findings
+
+- **Autonomous multi-phase hotfix shipped same-session.** `/gsd:autonomous` drove Phases 14 → 15 → 16 → 16.1 start-to-finish with farmer-attested UAT next day — confirms the autonomous loop holds for tight scope.
+- **UTC-midnight is not a session boundary.** Earlier write-up invented a "Saturday handoff" narrative from file mtimes; all four phases were a single continuous session. See memory `feedback_dont_invent_time_narrative.md`.
+
+### Archive
+
+- Full roadmap: `.planning/milestones/v1.2.1-ROADMAP.md`
+- Requirements with final status: `.planning/milestones/v1.2.1-REQUIREMENTS.md`
+- Audit report: `.planning/milestones/v1.2.1-MILESTONE-AUDIT.md`
+- Autonomous run notes: `.planning/milestones/v1.2.1-AUTONOMOUS-RUN-SUMMARY.md`
+
+---
+
 ## v1.2 FarmOS Integration & QoL (Shipped: 2026-04-13)
 
 **Phases completed:** 3 phases, 7 plans, 5 tasks
