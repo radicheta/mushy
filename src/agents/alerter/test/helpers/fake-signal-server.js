@@ -7,6 +7,12 @@ const http = require('http');
  *   GET  /v1/receive/:sender -> 200; drains received[]
  *   GET  /v1/accounts -> 200 ["+15551234567"]
  *
+ * Returned handle exposes:
+ *   sent[]          - requests received by /v2/send
+ *   received[]      - queue to drain via /v1/receive
+ *   statusOverride  - if set to a number, /v2/send returns that status code once, then clears
+ *   delayMs         - if > 0, /v2/send sleeps this many ms before responding
+ *
  * @param {object} [options]
  * @param {number} [options.port=0] - Port to bind; 0 = ephemeral
  * @returns {Promise<{url: string, sent: Array, received: Array, close: Function}>}
@@ -15,6 +21,11 @@ function start({ port = 0 } = {}) {
   return new Promise((resolve, reject) => {
     const sent = [];
     const received = [];
+    const handle = { sent, received, statusOverride: null, delayMs: 0 };
+
+    function sleep(ms) {
+      return new Promise((r) => setTimeout(r, ms));
+    }
 
     const server = http.createServer((req, res) => {
       const url = new URL(req.url, 'http://127.0.0.1');
@@ -23,8 +34,18 @@ function start({ port = 0 } = {}) {
       if (req.method === 'POST' && path === '/v2/send') {
         let body = '';
         req.on('data', (chunk) => { body += chunk; });
-        req.on('end', () => {
+        req.on('end', async () => {
           try {
+            if (handle.delayMs > 0) {
+              await sleep(handle.delayMs);
+            }
+            const statusCode = handle.statusOverride || 201;
+            handle.statusOverride = null;
+            if (statusCode !== 201) {
+              res.writeHead(statusCode, { 'Content-Type': 'text/plain' });
+              res.end(`error ${statusCode}`);
+              return;
+            }
             const parsed = JSON.parse(body);
             sent.push(parsed);
             res.writeHead(201, { 'Content-Type': 'application/json' });
@@ -56,13 +77,9 @@ function start({ port = 0 } = {}) {
 
     server.listen(port, '127.0.0.1', () => {
       const { port: boundPort } = server.address();
-      const url = `http://127.0.0.1:${boundPort}`;
-      resolve({
-        url,
-        sent,
-        received,
-        close: () => new Promise((res) => server.close(res))
-      });
+      handle.url = `http://127.0.0.1:${boundPort}`;
+      handle.close = () => new Promise((res) => server.close(res));
+      resolve(handle);
     });
 
     server.on('error', reject);
