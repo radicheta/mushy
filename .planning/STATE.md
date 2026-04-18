@@ -4,7 +4,7 @@ milestone: v1.2.1
 milestone_name: Hotfix — camera stall + sensor warmup
 status: executing
 stopped_at: Completed 15-03-PLAN.md
-last_updated: "2026-04-18T01:29:16.751Z"
+last_updated: "2026-04-18T01:33:29.396Z"
 last_activity: 2026-04-18
 progress:
   total_phases: 14
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-04-12)
 
 ## Current Position
 
-Phase: 15
+Phase: 16
 Plan: Not started
 Status: Ready to execute
 Last activity: 2026-04-18
@@ -36,7 +36,7 @@ Progress: [░░░░░░░░░░] 0% (v1.2 phases only)
 
 **Velocity:**
 
-- Total plans completed: 49 (v1.0 + v1.1)
+- Total plans completed: 52 (v1.0 + v1.1)
 - Average duration: ~25 min/plan (estimated)
 - v1.2 plans completed: 0
 
