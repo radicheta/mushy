@@ -371,3 +371,177 @@ def test_humidifier_state_published(ros_context):
     assert published[0] == True
 
     node.destroy_node()
+
+
+# -----------------------------
+# TestStartupGracePeriod (SENS-01, WARMUP-01/02/03/04)
+# -----------------------------
+# Pattern: override node._boot_time post-init to control grace window.
+# This is simpler than patching get_clock before __init__ and matches
+# the research recommendation (15-RESEARCH.md §Code Examples).
+
+from diagnostic_msgs.msg import DiagnosticStatus
+from rclpy.qos import DurabilityPolicy
+
+
+def test_startup_grace_period_param_declared(ros_context):
+    """startup_grace_period is a declared parameter with default 20.0."""
+    node = FruitingChamberController()
+    assert node.get_parameter('startup_grace_period').value == 20.0
+    node.destroy_node()
+
+
+def test_warmup_grace_blocks_actuation(ros_context):
+    """Humidifier stays OFF during grace even with full buffer below threshold."""
+    node = FruitingChamberController()
+    node.current_temp = 23.0
+    node._boot_time = rclpy.time.Time(nanoseconds=0)
+
+    # t=5s (< 20s grace), buffer full below threshold — would normally turn ON
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(5e9))):
+        for _ in range(5):
+            _send_humidity(node, 0.70)
+        node.control_loop()
+        assert node.humidifier_state == False
+        assert node._warming_up == True
+
+    node.destroy_node()
+
+
+def test_warmup_grace_time_elapsed_buffer_not_full(ros_context):
+    """Time elapsed but buffer not full -> grace still active."""
+    node = FruitingChamberController()
+    node.current_temp = 23.0
+    node._boot_time = rclpy.time.Time(nanoseconds=0)
+
+    # t=25s (past grace period) but only 3 samples — buffer not full
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(25e9))):
+        for _ in range(3):
+            _send_humidity(node, 0.70)
+        node.control_loop()
+        assert node.humidifier_state == False
+        assert node._warming_up == True
+
+    node.destroy_node()
+
+
+def test_warmup_grace_buffer_full_time_not_elapsed(ros_context):
+    """Buffer full but time not elapsed -> grace still active."""
+    node = FruitingChamberController()
+    node.current_temp = 23.0
+    node._boot_time = rclpy.time.Time(nanoseconds=0)
+
+    # t=10s (< 20s grace), buffer full
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(10e9))):
+        for _ in range(5):
+            _send_humidity(node, 0.70)
+        node.control_loop()
+        assert node.humidifier_state == False
+        assert node._warming_up == True
+
+    node.destroy_node()
+
+
+def test_warmup_grace_clears_when_both_conditions_met(ros_context):
+    """Grace clears at t=21s with full buffer; humidifier engages."""
+    node = FruitingChamberController()
+    node.current_temp = 23.0
+    node._boot_time = rclpy.time.Time(nanoseconds=0)
+
+    # Fill buffer while still in grace
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(5e9))):
+        for _ in range(5):
+            _send_humidity(node, 0.70)
+        node.control_loop()
+        assert node._warming_up == True
+
+    # t=21s — both conditions satisfied
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(21e9))):
+        node.control_loop()
+        assert node.humidifier_state == True
+        assert node._warming_up == False
+
+    node.destroy_node()
+
+
+def test_sensor_health_warn_published_during_grace(ros_context):
+    """On first grace tick, sensor_health publishes DiagnosticStatus.WARN."""
+    node = FruitingChamberController()
+    node.current_temp = 23.0
+    node._boot_time = rclpy.time.Time(nanoseconds=0)
+
+    published = []
+    node.sensor_health_pub.publish = lambda msg: published.append(msg)
+
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(5e9))):
+        for _ in range(5):
+            _send_humidity(node, 0.70)
+        node.control_loop()
+
+    assert len(published) == 1
+    assert published[0].level == DiagnosticStatus.WARN
+    assert published[0].name == 'fc1/controller'
+    assert published[0].message == 'warming up'
+    assert published[0].hardware_id == 'fc1'
+    kv = {kv.key: kv.value for kv in published[0].values}
+    assert kv['warming_up'] == 'true'
+    assert kv['buffer_full'] == 'true'
+
+    node.destroy_node()
+
+
+def test_sensor_health_ok_published_on_grace_clear(ros_context):
+    """On first tick after grace, sensor_health publishes DiagnosticStatus.OK."""
+    node = FruitingChamberController()
+    node.current_temp = 23.0
+    node._boot_time = rclpy.time.Time(nanoseconds=0)
+
+    published = []
+    node.sensor_health_pub.publish = lambda msg: published.append(msg)
+
+    # Tick during grace -> WARN
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(5e9))):
+        for _ in range(5):
+            _send_humidity(node, 0.70)
+        node.control_loop()
+    assert len(published) == 1 and published[0].level == DiagnosticStatus.WARN
+
+    # Tick after grace -> OK
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(21e9))):
+        node.control_loop()
+
+    assert len(published) == 2
+    assert published[1].level == DiagnosticStatus.OK
+    assert published[1].message == 'ok'
+
+    node.destroy_node()
+
+
+def test_sensor_health_not_republished_every_tick_in_grace(ros_context):
+    """Only one WARN publish during grace, not one per tick (state-change only)."""
+    node = FruitingChamberController()
+    node.current_temp = 23.0
+    node._boot_time = rclpy.time.Time(nanoseconds=0)
+
+    published = []
+    node.sensor_health_pub.publish = lambda msg: published.append(msg)
+
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(5e9))):
+        for _ in range(5):
+            _send_humidity(node, 0.70)
+        node.control_loop()
+        node.control_loop()
+        node.control_loop()
+
+    assert len(published) == 1  # state-change only, not 3
+
+    node.destroy_node()
+
+
+def test_sensor_health_qos_transient_local(ros_context):
+    """sensor_health_pub QoS durability is TRANSIENT_LOCAL for late-joiner replay."""
+    node = FruitingChamberController()
+    qos = node.sensor_health_pub.qos_profile
+    assert qos.durability == DurabilityPolicy.TRANSIENT_LOCAL
+    assert qos.depth == 1
+    node.destroy_node()

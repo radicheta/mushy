@@ -91,7 +91,7 @@ hotfix before the next feature milestone.
 | 11. Compose v2 Upgrade | v1.2 | 1/1 | Complete | 2026-04-13 |
 | 12. Subscriber-Aware Camera | v1.2 | 2/2 | Complete | 2026-04-13 |
 | 13. FarmOS Daily Report | v1.2 | 4/4 | Complete    | 2026-04-13 |
-| 14. fc_camera idle-mode stall hotfix | v1.2.1 | 5/5 | Complete   | 2026-04-18 |
+| 14. fc_camera idle-mode stall hotfix | v1.2.1 | 5/5 | Complete    | 2026-04-18 |
 | 15. Sensor warm-up grace period | v1.2.1 | 1/3 | In Progress|  |
 
 ## Backlog (parking lot)
