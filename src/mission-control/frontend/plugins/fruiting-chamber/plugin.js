@@ -56,7 +56,8 @@
         }
     ];
 
-    var CAMERA_ID = { namespace: 'fruiting-chamber', key: 'fc.camera' };
+    var CAMERA_ID  = { namespace: 'fruiting-chamber', key: 'fc.camera' };
+    var HEALTH_ID  = { namespace: 'fruiting-chamber', key: 'fc.health' };
 
     /**
      * StatusLight primitive — green/red/grey dot with a label.
@@ -154,6 +155,13 @@
                 creatable: false
             });
 
+            openmct.types.addType('fruiting-chamber.health', {
+                name: 'System Health',
+                description: 'Six-light system health strip for FC-1',
+                cssClass: 'icon-activity',
+                creatable: false
+            });
+
             // ── Object provider ──────────────────────────────────────────────
             openmct.objects.addProvider('fruiting-chamber', {
                 get: function (identifier) {
@@ -163,7 +171,15 @@
                             name: 'Fruiting Chamber FC-1',
                             type: 'folder',
                             location: 'ROOT',
-                            composition: SENSORS.map(function (s) { return s.identifier; }).concat([CAMERA_ID])
+                            composition: SENSORS.map(function (s) { return s.identifier; }).concat([CAMERA_ID, HEALTH_ID])
+                        });
+                    }
+                    if (identifier.key === 'fc.health') {
+                        return Promise.resolve({
+                            identifier: HEALTH_ID,
+                            name: 'System Health',
+                            type: 'fruiting-chamber.health',
+                            location: openmct.objects.makeKeyString(ROOT_ID)
                         });
                     }
                     if (identifier.key === 'fc.camera') {
@@ -463,6 +479,170 @@
                                 }
                                 container.innerHTML = '';
                             }
+                        }
+                    };
+                }
+            });
+            // ── System Health view provider (Phase 16-02) ───────────────────
+            openmct.objectViews.addProvider({
+                key: 'fruiting-chamber.health-view',
+                name: 'System Health',
+                canView: function (domainObject) {
+                    return domainObject.type === 'fruiting-chamber.health';
+                },
+                view: function (domainObject) {
+                    var container;
+                    var pollId = null;
+                    var lights = {};
+                    var lastSensorHealth = null;      // last sensor_health from WS
+                    var lastSensorHealthTs = null;    // ms epoch of last arrival
+                    var healthUrl = (options && options.historyUrl)
+                        ? options.historyUrl.replace('/history', '/health')
+                        : 'http://localhost:8081/health';
+
+                    // Dedicated WebSocket for sensor_health broadcasts.
+                    // Opens independently so it does not disturb the shared
+                    // telemetry WS connection managed by the telemetry provider.
+                    var healthWs = null;
+                    function openHealthWs() {
+                        try { healthWs = new WebSocket(bridgeUrl); } catch (e) { healthWs = null; return; }
+                        healthWs.onmessage = function (event) {
+                            var data;
+                            try { data = JSON.parse(event.data); } catch (e) { return; }
+                            if (data && data.sensor_health) {
+                                lastSensorHealth = data.sensor_health;
+                                lastSensorHealthTs = Date.now();
+                                updateSensorsAndGraceLights();
+                            }
+                        };
+                        healthWs.onclose = function () {
+                            healthWs = null;
+                            setTimeout(openHealthWs, 3000);
+                        };
+                    }
+
+                    function updateSensorsAndGraceLights() {
+                        if (!lights.sensors) return;
+                        // Sensors light
+                        if (!lastSensorHealth || (Date.now() - (lastSensorHealthTs || 0)) > 10000) {
+                            lights.sensors.setGrey('no /fc1/sensor_health message in the last 10s');
+                        } else if (lastSensorHealth.level === 0) {
+                            lights.sensors.setGreen('sensors OK — ' + (lastSensorHealth.message || ''));
+                        } else if (lastSensorHealth.level === 1) {
+                            var elapsed = (lastSensorHealth.values && lastSensorHealth.values.grace_elapsed_sec) || '?';
+                            var total   = (lastSensorHealth.values && lastSensorHealth.values.grace_total_sec)   || '?';
+                            lights.sensors.setGrey('warming up ' + elapsed + '/' + total + 's');
+                        } else {
+                            lights.sensors.setRed(lastSensorHealth.message || 'sensor error');
+                        }
+
+                        // Grace light — meaningful only during WARN; grey otherwise (D-01 #6)
+                        if (lastSensorHealth && lastSensorHealth.level === 1) {
+                            var e = (lastSensorHealth.values && lastSensorHealth.values.grace_elapsed_sec) || '?';
+                            var t = (lastSensorHealth.values && lastSensorHealth.values.grace_total_sec)   || '?';
+                            lights.grace.setGrey('warming up ' + e + '/' + t + 's');
+                        } else if (lastSensorHealth && lastSensorHealth.level === 0) {
+                            lights.grace.setGreen('grace complete');
+                        } else {
+                            lights.grace.setGrey('unknown');
+                        }
+                    }
+
+                    return {
+                        show: function (el) {
+                            container = el;
+                            container.innerHTML = '';
+                            container.style.display = 'flex';
+                            container.style.flexDirection = 'row';
+                            container.style.flexWrap = 'wrap';
+                            container.style.gap = '8px';
+                            container.style.padding = '8px';
+                            container.style.alignItems = 'center';
+                            container.style.background = '#111';
+
+                            // Six makeStatusLight instances — one per subsystem
+                            lights.sensors    = makeStatusLight(container, 'Sensors');
+                            lights.cameraFeed = makeStatusLight(container, 'Camera feed');
+                            lights.humidifier = makeStatusLight(container, 'Humidifier');
+                            lights.bridge     = makeStatusLight(container, 'Bridge');
+                            lights.pi         = makeStatusLight(container, 'Pi reachable');
+                            lights.grace      = makeStatusLight(container, 'Grace');
+
+                            Object.keys(lights).forEach(function (k) {
+                                lights[k].setGrey('waiting for first /health response');
+                            });
+
+                            openHealthWs();
+
+                            function pollHealth() {
+                                fetch(healthUrl).then(function (r) {
+                                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                                    return r.json();
+                                }).then(function (data) {
+                                    // Bridge light — we got a response at all
+                                    lights.bridge.setGreen('/health 200 OK');
+
+                                    // Pi reachable light — ros.connected
+                                    if (data.ros && data.ros.connected === true) {
+                                        lights.pi.setGreen('ROS node is up and spinning');
+                                    } else {
+                                        lights.pi.setRed('bridge is up but rclnodejs is not ready');
+                                    }
+
+                                    // Camera feed light — same logic as Phase 14's Feed live
+                                    var cam = data.camera || {};
+                                    var age = cam.last_frame_age_sec;
+                                    if (typeof age === 'number' && age < 10 && cam.subscribed === true) {
+                                        lights.cameraFeed.setGreen('last frame ' + age.toFixed(1) + 's ago');
+                                    } else if (age === null || age === undefined) {
+                                        lights.cameraFeed.setGrey('no frame received yet');
+                                    } else if (cam.subscribed !== true) {
+                                        lights.cameraFeed.setGrey('no MJPEG viewers — fc_camera idle by design');
+                                    } else {
+                                        lights.cameraFeed.setRed('last frame ' + age.toFixed(1) + 's ago — stream is not live');
+                                    }
+
+                                    // Humidifier light — 30s liveness window on last_msg_ts
+                                    var hum = data.humidifier || {};
+                                    if (typeof hum.last_msg_ts === 'number') {
+                                        var ageMs = Date.now() - hum.last_msg_ts;
+                                        if (ageMs < 30000) {
+                                            lights.humidifier.setGreen('last message ' + Math.round(ageMs / 1000) + 's ago');
+                                        } else {
+                                            lights.humidifier.setGrey('no humidifier message in ' + Math.round(ageMs / 1000) + 's');
+                                        }
+                                    } else {
+                                        lights.humidifier.setGrey('no humidifier message received yet');
+                                    }
+
+                                    // Sensors + Grace lights update on every WS message;
+                                    // also refresh here so a stale WS feed flips Sensors to grey.
+                                    updateSensorsAndGraceLights();
+                                }).catch(function (e) {
+                                    lights.bridge.setRed('/health unreachable: ' + e.message);
+                                    lights.pi.setGrey('bridge unreachable — cannot determine ROS state');
+                                    lights.cameraFeed.setGrey('bridge unreachable');
+                                    lights.humidifier.setGrey('bridge unreachable');
+                                });
+                            }
+
+                            pollHealth();
+                            pollId = setInterval(pollHealth, 2000);
+                            container._fcHealthPollId = pollId;
+                        },
+                        destroy: function () {
+                            if (container && container._fcHealthPollId) {
+                                clearInterval(container._fcHealthPollId);
+                            }
+                            // Destroy each makeStatusLight instance in the health strip
+                            Object.keys(lights).forEach(function (k) {
+                                if (lights[k]) lights[k].destroy();
+                            });
+                            if (healthWs) {
+                                try { healthWs.onclose = null; healthWs.close(); } catch (e) {}
+                                healthWs = null;
+                            }
+                            if (container) container.innerHTML = '';
                         }
                     };
                 }
