@@ -4,7 +4,7 @@ milestone: v1.2.1
 milestone_name: Hotfix — camera stall + sensor warmup
 status: verifying
 stopped_at: Completed 16-03-PLAN.md (smoke evidence)
-last_updated: "2026-04-18T01:54:51.106Z"
+last_updated: "2026-04-18T01:57:51.961Z"
 last_activity: 2026-04-18
 progress:
   total_phases: 14
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-04-12)
 
 ## Current Position
 
-Phase: 16 (system-health-panel) — EXECUTING
-Plan: 3 of 3
+Phase: 999.1
+Plan: Not started
 Status: Phase complete — ready for verification
 Last activity: 2026-04-18
 
@@ -36,7 +36,7 @@ Progress: [░░░░░░░░░░] 0% (v1.2 phases only)
 
 **Velocity:**
 
-- Total plans completed: 52 (v1.0 + v1.1)
+- Total plans completed: 55 (v1.0 + v1.1)
 - Average duration: ~25 min/plan (estimated)
 - v1.2 plans completed: 0
 
