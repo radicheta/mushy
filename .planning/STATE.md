@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2.1
 milestone_name: Hotfix — camera stall + sensor warmup
 status: executing
-stopped_at: Completed 15-02-PLAN.md
-last_updated: "2026-04-18T01:12:53.801Z"
+stopped_at: Completed 15-03-PLAN.md
+last_updated: "2026-04-18T01:29:16.751Z"
 last_activity: 2026-04-18
 progress:
   total_phases: 14
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 15
-  completed_plans: 13
-  percent: 87
+  completed_plans: 15
+  percent: 100
 ---
 
 # Project State
@@ -57,6 +57,7 @@ Progress: [░░░░░░░░░░] 0% (v1.2 phases only)
 - [v1.2] FarmOS daily report runs on elder-plops (not Pi) — pulls from TimescaleDB + Flask on 8765
 - [Phase 14]: SOAK_PASS: true — canonical stall recovery confirmed in 9s via 1Hz graph-poll fix
 - [Phase 15-sensor-warmup-grace-period]: SENS-01 promoted from backlog/out-of-scope to active v1.2.1 requirement with Phase 15 traceability
+- [Phase 15]: SOAK_PASS: true — WARN->OK transition at 25s post-node-init; no humidifier actuation in grace window; Phase 16 sensor_health topic confirmed live
 
 ### Pending Todos
 
@@ -69,8 +70,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-18T01:12:03.041Z
-Stopped at: Completed 15-02-PLAN.md
+Last session: 2026-04-18T01:29:13.014Z
+Stopped at: Completed 15-03-PLAN.md
 Resume file: None
 
 ---
