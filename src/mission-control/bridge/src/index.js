@@ -152,13 +152,18 @@ app.use((req, res, next) => {
     next();
 });
 
-// Health check route
+// Health check route — Phase 14 adds last_frame_age_sec (HFIX-03).
+// Server-side age avoids client clock-skew; null when no frame has ever arrived.
 app.get('/health', (req, res) => {
+    const lastFrameAgeSec = lastFrameTime === null
+        ? null
+        : Math.round((Date.now() - lastFrameTime) / 1000);
     res.json({
         status: 'ok',
         db: dbReady,
         camera: {
-            lastFrame: lastFrameTime,
+            lastFrame: lastFrameTime,               // ms epoch or null — existing consumers
+            last_frame_age_sec: lastFrameAgeSec,    // Phase 14 HFIX-03: integer seconds or null
             clients: mjpegClients.size,
             subscribed: cameraSubscription !== null
         }
