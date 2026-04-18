@@ -4,6 +4,84 @@ Signal alert agent for FC-1 fruiting chamber. Runs as a standalone compose servi
 Consumes the bridge WebSocket, fires PROBLEM/RECOVERY Signal messages via signal-cli-rest-api,
 and supports bidirectional snooze via Signal replies.
 
+## Deployment + Registration
+
+Complete end-to-end setup: bring up the containers, register the Signal account, verify delivery.
+
+### Step 1: Set env vars in .env on elder-plops
+
+```bash
+# Add to .env (see .env.example for all available vars)
+SIGNAL_SENDER=+1XXXXXXXXXX    # 4G SIM number that signal-cli registers as primary
+SIGNAL_RECIPIENT=+1XXXXXXXXXX # Farmer's Signal number to receive alerts
+```
+
+### Step 2: Start signal-cli and alerter
+
+```bash
+# From the repo root on elder-plops
+docker compose up -d --build alerter signal-cli
+
+# Verify signal-cli is up
+docker compose logs signal-cli
+# Expected: "Server started on ..." or similar startup line
+```
+
+### Step 3: Register the Signal primary account
+
+One-time manual step. Requires the 4G SIM phone number + SMS access.
+
+```bash
+# Get a captcha token first:
+# 1. Open https://signalcaptchas.org/registration/generate.html
+# 2. Right-click the "Open Signal" button → Copy link address
+# 3. The link looks like: signalcaptcha://signal-hcaptcha.XXXXXXX...
+
+# Register (replace +1XXXXXXXXXX with the 4G SIM number, paste captcha token)
+curl -X POST 'http://localhost:8085/v1/register/+1XXXXXXXXXX' \
+  -H 'Content-Type: application/json' \
+  -d '{"captcha":"signalcaptcha://PASTE_TOKEN_HERE","use_voice":false}'
+
+# Wait for the 6-digit SMS code on the 4G SIM, then verify:
+curl -X POST 'http://localhost:8085/v1/register/+1XXXXXXXXXX/verify/123456'
+
+# Confirm registration succeeded — should return the registered number:
+curl http://localhost:8085/v1/accounts
+# Expected: ["+1XXXXXXXXXX"]
+```
+
+Notes:
+- Registration goes through the REST API only — never `docker exec` into signal-cli container.
+- Volume `signal-cli-data` persists at `/home/.local/share/signal-cli` inside the container.
+- Primary accounts do not have a 45-day linked-device expiry. Daily heartbeat keeps the session warm.
+- signal-cli listens on port 8085 on elder-plops (mapped from internal container port 8080).
+
+### Step 4: Restart alerter after registration
+
+```bash
+docker compose restart alerter
+
+# Confirm it connected to the bridge:
+docker compose logs alerter | grep -E 'ws_open|bridge|health|connected'
+# Expected: ws_open event + /health bootstrap log showing bridge reachable
+```
+
+### Step 5: Verify Signal delivery (farmer UAT)
+
+After registration, trigger a synthetic test (see UAT section below) and confirm the farmer
+receives PROBLEM, RECOVERY, and heartbeat messages on their Signal app.
+
+### Ongoing operations
+
+```bash
+# After alerter source changes (no re-registration needed)
+docker compose up -d --build alerter
+
+# View live logs
+docker compose logs -f alerter
+docker compose logs -f signal-cli
+```
+
 ## Primary Registration Runbook
 
 One-time manual step. Requires the 4G SIM phone number + SMS access.
