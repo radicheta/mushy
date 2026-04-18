@@ -69,21 +69,6 @@ Existing codebase provides:
 - ✓ System health panel — six-light strip in Mission Control (Sensors, Camera feed, Humidifier, Bridge, Pi reachable, Grace) via `makeStatusLight` primitive — v1.2.1
 - ✓ Replay shim for sensor_health on new WS connect (Phase 16.1) — v1.2.1
 
-### Current Milestone: v1.3 Alerts & Unified Farmer Dashboard
-
-**Goal:** The farmer sees chamber + production data in one webpage and gets a Signal message when something's wrong.
-
-**Target features:**
-- Signal alerts for Pi offline, sensor unhealthy, RH out-of-band, humidifier stuck (promotes 999.3)
-- Unified farmer dashboard — one webpage combining Mission Control widgets + FarmOS Drupal widgets (scopes down 999.11 to a HUD-only MVP; host TBD during planning)
-- FarmOS v1.2 carryover — admin actions (permissions, FC-1 location) to complete the 999.2 beachhead
-- Phase 12 hardware UAT carryover
-
-**Explicitly deferred from v1.3:**
-- Multi-chamber / Pi Zero remote I/O — hardware decision (original Pi Zero W armv6 cannot run ROS2 Jazzy; revisit in v1.4 after swap-to-Pi-Zero-2-W vs MQTT-dumb-publisher decision)
-- Farmer app knobs / story timeline / mobile surface (999.11 full scope)
-- 999.9 PID, 999.12 weather, 999.14 camera history
-
 ### Current State
 
 **v1.0 MVP shipped 2026-04-11.** Grower attested "better than the timer".
