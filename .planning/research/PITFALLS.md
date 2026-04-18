@@ -1,349 +1,390 @@
-# Domain Pitfalls: ROS2 Closed-Loop Humidity Control
+# Domain Pitfalls: v1.3 Alerts + Unified Farmer Dashboard
 
-**Domain:** ROS2-based environmental control — fruiting chamber humidity (Raspberry Pi + DHT22 + MOSFET)
-**Researched:** 2026-03-28
-**Project:** Mushroom Farm FC-1 MVP
-
----
-
-## Critical Pitfalls
-
-These mistakes cause rewrites, production outages, or hardware damage.
+**Domain:** Signal alerting bot + multi-source farm ops dashboard (ROS2 + FarmOS Drupal)
+**Researched:** 2026-04-18
+**Project:** Mushroom Farm — v1.3 milestone planning input
+**Confidence:** HIGH for project-specific items (drawn from lived v1.0–v1.2.1 history); MEDIUM for Signal-specific constraints (signal-cli GitHub issues + Signal support docs)
 
 ---
 
-### Pitfall 1: Blocking `time.sleep()` Inside a ROS2 Callback
+## Part 1 — Signal / Chat Alert Pitfalls
 
-**What goes wrong:** `fc_sensors.py` line 77 calls `time.sleep(2.0)` inside the `read_sensors` timer callback when a `RuntimeError` occurs. This blocks the entire rclpy executor thread for 2 seconds.
+### CRITICAL: Flap-storm (alert flood on sensor bounce)
 
-**Why it happens:** The default rclpy executor is single-threaded. A blocking call in any callback prevents ALL other callbacks (including the control timer, subscriber callbacks, and shutdown handling) from executing during that window. The 2-second sleep is also exactly the sensor read interval, meaning consecutive failures create a compounding pile-up.
+**What goes wrong:** The SCD41 humidity reading can jitter by ±0.5–1% around the ±1% operating band edge. Without debounce, a single sensor bounce can fire "RH out-of-band" and "RH recovered" alternately 10–20 times before the value settles. The farmer mutes the Signal group after the third alert and misses the next real excursion.
 
-**Consequences:**
-- Control loop is starved during sensor error recovery windows
-- Humidifier can be left in an indeterminate state (on or off) with no updates
-- ROS2 shutdown signal may be ignored during the sleep, making the node unkillable with Ctrl+C (confirmed ROS2 issue: `sleep_for` not exiting on shutdown — ros2/rclpy#1148)
-- With repeated errors, the node effectively freezes
-
-**Prevention:** Replace `time.sleep()` with a state flag (`_sensor_error_until = time.monotonic() + 2.0`) checked at the top of the callback. The callback returns immediately; the next timer invocation resumes normal reads. Alternatively, use rclpy async timer patterns.
-
-**Detection:** Node stops logging debug output but process remains alive. Control loop timer callbacks cease firing.
-
-**Confidence:** HIGH — confirmed blocking behavior in rclpy single-threaded executor.
-
----
-
-### Pitfall 2: Uninitialized Sensor Data — Control Loop Executes with `None`
-
-**What goes wrong:** `fc_controller.py` lines 143–145 guard the control loop with `if self.current_temp is None or self.current_humidity is None: return`. This is silent — no log, no warning, no indication to the operator.
-
-**Why it happens:** At startup, the controller subscribes to `fc/temperature` and `fc/humidity` but has no guarantee of when the first message arrives. The sensor node publishes on a 2-second timer; the control loop fires on a 1-second timer. The control loop silently does nothing for the first 1–2 seconds minimum. On a slow boot or if the sensor node crashes, it does nothing forever.
-
-**Consequences:**
-- The humidifier never turns on after node restart if the sensor node is down — this looks identical to "working correctly" from the outside
-- No alerting means growers may not notice the system has stopped controlling for hours
-- Silent failure is especially dangerous because the previous actuator state persists (humidifier left on indefinitely if it was on before the sensor node crashed)
+**Why it happens:** A naive alert checks `current_value > threshold` on every sensor publish interval (currently ~5 s). The operating band is ±1% by empirical choice; the SCD41 reports at ±1.8% humidity accuracy (nominal ±6% from manufacturer, tighter in practice). The threshold and sensor noise floor are uncomfortably close.
 
 **Prevention:**
-1. Log a warning when control loop fires with None data
-2. Implement a stale-data timeout: if data hasn't arrived in N seconds, treat it as a sensor failure and take a safe action (turn humidifier off)
-3. Use `TRANSIENT_LOCAL` durability QoS on humidity publisher + subscriber so the controller gets the last published value immediately on subscribe
+- Require N consecutive out-of-band readings before firing (minimum 3, suggest 5 — covers ~25 s of consecutive out-of-band at 5 s publish rate).
+- Suppress the `RH recovered` message if the alert fired fewer than 60 s ago (avoids rapid on/off spam).
+- Store the last-alerted state so alerts only fire on transitions, not on each tick while already in an alerted state.
+- Log suppressed alerts to TimescaleDB so the record isn't lost — silent suppression is fine for Signal, but the data must exist for later review.
 
-**Detection:** `ros2 topic echo fc/humidity` returns no messages while the controller is "running."
+**Warning signs during development:** In simulation or soak test you see multiple identical alerts within a 30 s window. If you see it in dev, the farmer will see it in prod.
 
-**Confidence:** HIGH — confirmed via code inspection; known ROS2 pattern documented in community.
+**Phase:** Alert threshold + debounce logic must be spec'd and tested in the signal-alert implementation phase before any real threshold firing is enabled on fc1.
 
 ---
 
-### Pitfall 3: Humidity Unit Inconsistency Between Hardware and Simulation Modes
+### CRITICAL: Missing recovery notification
 
-**What goes wrong:** `fc_sensors.py` line 70 divides by 100 only in hardware mode: `float(humidity) / 100.0 if not simulation_mode else float(humidity)`. The `adafruit_dht` library returns humidity as a percentage (0–100). The simulation stores it as a fraction (0.0–1.0). The published `RelativeHumidity` message therefore carries different units depending on mode.
-
-**Why it happens:** `sensor_msgs/RelativeHumidity.relative_humidity` is defined as a value in range 0.0–1.0 (fraction, not percent). The simulation was written to match the message spec; hardware mode adds an (incorrect) divide by 100 on top of the raw sensor value.
-
-**Wait — this is actually the bug:** The `adafruit_dht` library returns 85.0 for 85% humidity. The code divides by 100 to get 0.85, which is correct for the message type. The simulation already stores 0.85. So the unit conversion is actually correct for the intended message format.
-
-**The real trap:** If anyone changes the simulation initial value `self.sim_humidity = 0.85` thinking it represents "85 out of 100", then adds a `/100.0` for "consistency," the simulation will publish 0.0085 — way below the target humidity tolerance band, causing the humidifier to run continuously in simulation.
-
-**Consequences:**
-- Simulation and hardware behavior diverge silently if the conversion is modified
-- Closed-loop tests in simulation pass but real hardware fails (or vice versa)
-- The control loop compares `current_humidity` against `target_humidity = 0.85` — if a 1.0x vs 0.01x error creeps in, the humidifier either never turns off or never turns on
+**What goes wrong:** "RH out-of-band" fires at 02:00. The humidifier recovers by 02:03. If there is no "RH recovered" message, the farmer wakes at 07:00, sees the alert, and doesn't know if the chamber is still broken or has been fine for five hours. They can't sleep through alerts if recovery is silent — so they either check every alert manually (alert fatigue) or disable all alerts (worse).
 
 **Prevention:**
-- Add an assertion/validation on publish: `assert 0.0 <= humidity_msg.relative_humidity <= 1.0`
-- Add a comment at line 70 explicitly stating: "DHT22 returns 0–100; divide by 100 to conform to RelativeHumidity message spec (0.0–1.0)"
-- Test both modes publish the same range and that the controller target matches
+- Every alert type that fires a PROBLEM message must have a corresponding RECOVERY message.
+- Recovery message must include duration: "RH out-of-band RESOLVED — was out of band for 3 min 07 s."
+- Test the recovery path explicitly: fire a synthetic threshold crossing, verify PROBLEM fires, correct the value, verify RECOVERY fires.
 
-**Confidence:** HIGH — confirmed by code inspection and ROS2 message type spec.
+**Warning signs during development:** Alert tests that only verify the PROBLEM path and not the RECOVERY path.
+
+**Phase:** Implement recovery messages in the same phase as the PROBLEM messages. Never ship PROBLEM without RECOVERY.
 
 ---
 
-### Pitfall 4: MOSFET Not Fully Switching at 3.3V GPIO Logic Level
+### CRITICAL: Bootstrap chicken-and-egg (Pi-offline alert from the offline Pi)
 
-**What goes wrong:** Many MOSFETs commonly used in hobby projects (e.g., IRF520N, IRLB8721) are not fully enhanced at 3.3V gate voltage. The Raspberry Pi GPIO outputs 3.3V logic. A MOSFET that is only partially on dissipates power as heat instead of cleanly switching the load.
+**What goes wrong:** The desired alert is "fc1 is unreachable." fc1 going offline is exactly the condition that prevents fc1 from sending the alert. A bot running on fc1 cannot alert on its own absence.
 
-**Why it happens:** Standard MOSFETs are specified for Vgs = 10V. "Logic-level" MOSFETs are specified for Vgs = 4.5V but still may not switch cleanly at 3.3V. Only MOSFETs explicitly rated for 2.5V or 3.3V Vgs threshold (e.g., IRLZ44N, IRL540N, AO3400, 2N7000 for small loads) are guaranteed to fully switch.
-
-**Consequences:**
-- MOSFET runs hot, reducing lifespan
-- Humidifier may not receive full power, running at reduced capacity
-- In worst case, MOSFET fails in partially-on state, leaving humidifier running continuously with no GPIO control
-- GPIO pin may be damaged if MOSFET draws excessive gate current
+**Why it happens:** It's easy to scope alert logic as "add to fc_core" or "add to bridge" and not notice the liveness problem until the Pi actually goes offline.
 
 **Prevention:**
-- Verify the specific MOSFET part number has a Vgs(th) datasheet rating that ensures full enhancement at 3.3V
-- If MOSFET is not rated for 3.3V logic: add a gate driver (e.g., 74HC logic buffer) or level shifter between GPIO and gate
-- Add a gate pull-down resistor (10kΩ) to ensure the MOSFET is off when GPIO is floating during Pi boot sequence
+- The Pi-offline alert must originate from a process that is NOT on fc1. Elder-plops is the natural home — it already runs the bridge that talks to fc1 over Tailscale.
+- Implementation: elder-plops pings fc1's Tailscale IP (100.96.239.75) or polls the bridge's `/health` endpoint at a configurable interval. If N consecutive checks fail, Signal alert fires.
+- The alert process on elder-plops must itself have a watchdog (see next pitfall).
+- Do not implement this as a ROS2 node on fc1. It will not fire when fc1 is down.
 
-**Detection:** MOSFET warm/hot to touch during normal operation. Humidifier runs at partial power.
+**Warning signs during development:** Alert logic lives in a Python node under `fc_core`, or in a systemd service on the Pi, or triggered by a ROS2 topic from the Pi.
 
-**Confidence:** MEDIUM — confirmed general electronics principle; specific MOSFET part for this project unknown at research time.
+**Phase:** Must be a deliberate architecture decision at the start of the alert phase. Wrong placement here requires a rewrite.
 
 ---
 
-### Pitfall 5: Humidifier Left On at Node Crash / Process Kill
+### CRITICAL: Alert bot dies silently (no liveness / heartbeat)
 
-**What goes wrong:** If the ROS2 node process is killed with `SIGKILL` (kill -9, OOM killer, Docker stop with insufficient timeout), `GPIO.cleanup()` in the `finally` block is never called. The MOSFET gate retains its last voltage state. If the humidifier was on when the node dies, it stays on indefinitely.
+**What goes wrong:** The Python alerting daemon crashes on a Monday afternoon due to an unhandled exception (e.g., Signal API timeout, JSON parse error). Nothing is monitoring the monitor. The farmer receives zero alerts for two weeks until they notice something feels off and manually check. This is the worst failure mode — the system appears healthy because it's quiet.
 
-**Why it happens:** `GPIO.cleanup()` resets all pins to input mode (effectively low). This only runs on clean shutdown. `SIGKILL` cannot be caught. Docker's default stop timeout is 10 seconds; if the ROS2 node takes longer to shut down, Docker escalates to `SIGKILL`.
-
-**Consequences:**
-- Humidifier runs continuously overnight, flooding the fruiting chamber
-- Mushroom substrate waterlogging is irreversible — lost harvest
-- Electrical hazard if humidifier water reservoir runs dry while unattended
+**Why it happens:** Alerting code is "background infrastructure" — it doesn't have a visible output that anyone checks. Service restarts may mask recurring crashes that consume all retry budget before the first real alert fires.
 
 **Prevention:**
-1. Wire the MOSFET gate with a pull-down resistor (10kΩ to GND) so the default hardware state (GPIO floating) is humidifier OFF. This is a hardware safety measure independent of software.
-2. Set `stop_grace_period: 30s` in docker-compose for the ros-core service
-3. Add SIGTERM handler to ensure GPIO cleanup before process exits
-4. Consider a hardware watchdog: if the Pi's WDT is not petted, it resets the Pi, which forces GPIO to re-initialize (pins go low on boot)
+- Daily heartbeat message: the alert bot sends a Signal message every 24h (e.g., "Farm watchdog: fc1 up 4d 3h, RH 79.8%, last alert: none in 48h"). The farmer expects this. If it doesn't arrive, that IS the alert.
+- The heartbeat must come from the same code path as real alerts — not a separate script. If the heartbeat doesn't arrive, the alert path is broken.
+- Systemd `Restart=always` + `RestartSec=30` for the alerting service. Log restart count. Alert if `NRestarts > 3` within an hour.
+- Use `Type=notify` or a watchdog ping in systemd if the alert daemon supports it. At minimum, write a PID file and have a cron-based liveness check.
 
-**Detection:** Humidifier running with no ROS2 nodes active. `ros2 node list` returns nothing but humidifier is on.
+**Warning signs during development:** The alert daemon has no heartbeat mechanism. Crash handling is `try/except: pass`. No restart policy in the service unit.
 
-**Confidence:** HIGH — confirmed via code inspection; standard embedded systems safety principle.
-
----
-
-## Moderate Pitfalls
-
-Issues that cause degraded behavior or require investigation to diagnose.
+**Phase:** Heartbeat implementation is not optional — ship it in the same phase as the alert bot, not deferred.
 
 ---
 
-### Pitfall 6: Bang-Bang Control Oscillation Without Minimum On/Off Time
+### Signal-specific: Linked device session expiry
 
-**What goes wrong:** The current control algorithm is a pure bang-bang (on/off) controller with hysteresis band `target ± tolerance` (85% ± 5%). When humidity is near the threshold, the humidifier may cycle on and off rapidly — multiple times per minute.
+**What goes wrong:** signal-cli is registered as a linked device against the farmer's phone number. Signal's protocol expires linked devices after 45 days of inactivity (confirmed in Signal support docs). If the bot has been quiet (no alerts, no heartbeat), the linked device de-registers silently. The next time an alert condition occurs, signal-cli returns an error and no message is sent.
 
-**Why it happens:** The sensor reads every 2 seconds; the control loop fires every 1 second. When humidity is near `target - tolerance` (80%), a single sensor read triggering "turn on" followed by propagation delay, ultrasonic mist dispersion, then another read hitting `target + tolerance` (90%) causes a fast on/off cycle. This is worsened by DHT22 read noise (±2–5% typical).
-
-**Consequences:**
-- MOSFET subjected to excessive switching cycles (reduces lifespan)
-- Humidifier motor wears faster
-- Ultrasonic transducers are not designed for rapid on/off cycling
-- Humidity oscillates rather than stabilizing, stressing the substrate
+**Why it happens:** Linked devices that don't communicate regularly lose their session. The primary device (farmer's phone) is not notified of the de-registration.
 
 **Prevention:**
-- Implement minimum on-time and minimum off-time (e.g., 30 seconds each) as state variables in the controller
-- Track `humidifier_last_state_change` timestamp; enforce minimum dwell time before allowing state transition
-- Research shows this is standard practice in mushroom cultivation controllers
+- The daily heartbeat message (see above) also serves as an inactivity prevention mechanism — 24h heartbeat keeps the session alive well within the 45-day window.
+- Add explicit error handling for signal-cli exit code / stderr indicating de-registration. Log and escalate (email/syslog) if message sending fails, since Signal itself can't be used to report the failure.
+- Consider registering the bot on a dedicated SIM/number rather than as a linked device. A primary account on a cheap SIM is not subject to linked-device expiry. Trade-off: requires physical SIM and periodic SMS verification (~every 120 days per Signal account expiry policy).
+- Test re-registration procedure. Document it in OPERATIONS.md. You will need it.
 
-**Detection:** Log shows `Humidifier: ON` / `Humidifier: OFF` alternating faster than every 30 seconds.
+**Confidence:** MEDIUM — 45-day inactivity expiry confirmed via Signal support docs and signal-cli GitHub issues. Exact de-registration error messages vary by signal-cli version.
 
-**Confidence:** HIGH — confirmed in mushroom cultivation control literature and control theory fundamentals.
+**Phase:** Registration decision (linked device vs dedicated number) must be made before implementing the alerting phase. It affects operational runbook.
 
 ---
 
-### Pitfall 7: DHT22 Systematic Read Failures Under Humidity
+### Signal-specific: Rate limiting on burst sends
 
-**What goes wrong:** DHT22 sensors have a known failure pattern: at very high humidity (>90%), the sensor can produce systematic errors — `RuntimeError: DHT sensor not responding` or returns implausible values. This is the exact environment a mushroom fruiting chamber operates in.
-
-**Why it happens:** The DHT22 uses a capacitive humidity element that can absorb condensation at very high humidity, causing the internal timing circuit to produce malformed pulses. The Adafruit CircuitPython DHT library raises `RuntimeError` on checksum failure. The sensor requires minimum 2 seconds between reads — reading faster causes persistent errors.
-
-**Consequences:**
-- Sensor returns errors precisely when humidity is highest and control is most critical
-- The current error handler (`time.sleep(2.0)`) blocks the callback thread
-- Multiple consecutive errors cause the control loop to stall (see Pitfall 1)
-- If errors persist, the humidifier state is frozen at whatever it last was
+**What goes wrong:** After a flap-storm (if debounce is not implemented), signal-cli hits Signal's server rate limit (HTTP 413). The limit is undocumented but practically observed at roughly 10–20 messages in quick succession. After hitting the limit, messages are queued and delayed, or dropped entirely depending on signal-cli version. Solving the CAPTCHA challenge that rate-limiting triggers requires manual intervention.
 
 **Prevention:**
-- Implement retry counter and exponential backoff using state (not sleep)
-- After N consecutive failures (e.g., 5), log an error and take a safe default action (turn humidifier off, alert operator)
-- Ensure minimum 2-second interval between reads — current `sensor_read_interval: 2.0` is on the minimum edge; increasing to 3.0 reduces error rate
-- Position sensor away from direct mist flow; condensation on the sensor element causes errors
+- Debounce (see flap-storm pitfall) prevents the underlying cause.
+- Add a send-rate limiter in the alert code: maximum N messages per hour from the bot. Queue or drop excess with a log entry.
+- Never send attachments (e.g., camera snapshots) in alert messages unless explicitly needed. Attachments increase the risk of triggering size or rate limits and have a ~100MB upload limit per Signal message.
 
-**Detection:** Logs show repeating `Failed to read sensor: DHT sensor not responding` entries.
+**Warning signs during development:** Alert code calls signal-cli in a tight loop without backoff or deduplication.
 
-**Confidence:** HIGH — extensively documented in Adafruit forums, community issues, and DHT22 datasheet.
-
----
-
-### Pitfall 8: Hardcoded GPIO17 for Humidifier Pin
-
-**What goes wrong:** `fc_controller.py` line 49: `self.humidifier_pin = 17` is hardcoded regardless of `fc_config.yaml`. The config file has `dht_pin` and `light_pin` as configurable parameters, but the humidifier pin is not.
-
-**Why it happens:** Oversight during implementation — humidifier control was added after the parameter system was established.
-
-**Consequences:**
-- If hardware is rewired to a different pin (e.g., to avoid a faulty pin), code must be modified not just config changed
-- Two sources of truth for pin assignments invites configuration drift
-- Inconsistency in the codebase makes onboarding new developers error-prone
-
-**Prevention:** Add `humidifier_pin` to `fc_config.yaml` and declare it as a ROS2 parameter; remove the hardcoded constant.
-
-**Confidence:** HIGH — confirmed by code inspection.
+**Phase:** Rate-limit wrapper should be part of the initial alert implementation, not retrofitted.
 
 ---
 
-### Pitfall 9: Control Loop Reads Parameters on Every Cycle
+### Alert fatigue (operator mutes after false positive)
 
-**What goes wrong:** `fc_controller.py` control_loop calls `self.get_parameter()` 8+ times per invocation, once per second. Each call performs a dictionary lookup through the rclpy parameter server.
+**What goes wrong:** One false-positive alert (e.g., sensor warm-up spike firing "RH critical" during fc-core restart) causes the farmer to mute the Signal group. All subsequent real alerts are missed silently.
 
-**Why it happens:** Parameters are accessed inline rather than cached at initialization.
-
-**Consequences:**
-- Minor performance overhead (usually acceptable at 1 Hz)
-- More critically: if parameters are updated via `ros2 param set` at runtime, mid-loop parameter reads can see inconsistent values — e.g., `target_humidity` read for comparison uses the new value but `humidity_tolerance` still reflects the old value within the same loop iteration
-- Race condition is real if parameters are changed during a control cycle
-
-**Prevention:** Cache all parameters at initialization into instance variables. Use `add_on_set_parameters_callback` to update the cache when parameters change externally. This is the documented ROS2 pattern.
-
-**Confidence:** MEDIUM — race condition is real but low probability at 1 Hz; performance impact is negligible in practice.
-
----
-
-### Pitfall 10: `RPi.GPIO` is Incompatible with Raspberry Pi 5
-
-**What goes wrong:** If/when the hardware is upgraded to a Raspberry Pi 5, `RPi.GPIO` will fail to import. The Pi 5 uses a different GPIO memory-mapping architecture that `RPi.GPIO` does not support.
-
-**Why it happens:** The Pi 5 uses a new RP1 southbridge chip. `RPi.GPIO` directly maps `/dev/mem` using the older Broadcom GPIO register layout, which does not exist on the Pi 5. Raspberry Pi OS Bookworm ships a non-functional stub that throws errors.
-
-**Consequences:**
-- Entire hardware mode fails to initialize
-- The `if not simulation_mode` import block raises `ImportError`, crashing the node at startup
+**Why it happens here specifically:** The v1.2.1 sensor warm-up grace period (20s WARN→OK on `/fc1/sensor_health`) was added specifically because early-boot spikes were causing misleading state. If the alert bot does not respect the `grace` light from the sensor_health topic, it will fire on every fc-core restart.
 
 **Prevention:**
-- If hardware will be Pi 4 only for the MVP: no immediate action needed, but document the constraint
-- Migration path: `rpi-lgpio` is a drop-in replacement for `RPi.GPIO` that works on Pi 5; `gpiozero` is the officially recommended long-term replacement
-- The `adafruit_dht` / `adafruit-circuitpython-dht` library also requires `board` module from Blinka, which has its own Pi 5 compatibility story
+- The alert bot must consume `/fc1/sensor_health` (or the WS broadcast equivalent) and suppress threshold alerts during the grace window.
+- Test: restart fc-core, verify no alerts fire during the 20s grace period, verify alerts resume after grace.
+- Alert level tuning: start with only the highest-severity alerts active (Pi offline, sensor ERROR for >5 min). Add lower-severity alerts after the farmer has lived with the system for a week and confirmed signal/noise ratio is acceptable.
+- Provide a simple per-alert-type enable/disable in config, without requiring a redeploy.
 
-**Detection:** `ImportError: No module named 'RPi.GPIO'` or GPIO register errors at node startup.
-
-**Confidence:** HIGH — confirmed by Raspberry Pi Foundation documentation and community reports.
+**Phase:** Alert suppression during grace period must be verified in the same test suite as alert firing. It is a correctness requirement, not a nice-to-have.
 
 ---
 
-### Pitfall 11: Simulation Mode Silently Continues if GPIO Import Fails on Real Hardware
+### Out-of-band threshold config (hardcoded values require redeploy to change)
 
-**What goes wrong:** `fc_controller.py` lines 34–63: if `simulation_mode=false` is set but `RPi.GPIO` import fails (library not installed, Pi 5, permission error), Python raises `ImportError` which propagates up through `__init__`, crashing the node. However, if the import *succeeds* but GPIO initialization fails partway through (e.g., `HardwarePWM` channel unavailable), the node crashes mid-initialization with GPIO partially configured — pins may be left in unexpected states.
-
-**Why it happens:** No explicit try/except around the hardware initialization block. No validation that hardware init completed before proceeding.
-
-**Consequences:**
-- Partial GPIO initialization leaves some pins configured as outputs, others not
-- Next node startup may see "already configured" warnings or incorrect initial states
-- `GPIO.cleanup()` in `finally` is only reached if `__init__` completed — if it crashes in `__init__`, cleanup is never called
+**What goes wrong:** Alert thresholds (RH out-of-band, CO2 high, temperature warning) are hardcoded in the Python alerting script. The farmer wants to tighten the RH alert threshold after observing the chamber for a week. This requires a code edit, commit, push, and service restart — same friction as any code change. The farmer doesn't do it and lives with a miscalibrated alert indefinitely.
 
 **Prevention:**
-- Wrap hardware initialization in a try/except block with explicit cleanup on failure
-- Fail fast with a clear error message: "Hardware initialization failed with simulation_mode=false. Check GPIO library installation and permissions."
-- Call `GPIO.cleanup()` in the except handler before re-raising
+- Store alert thresholds in `fc_config.yaml` alongside control parameters. The alerting service reads the same config file as fc-core.
+- This also means a config push via `git push fc1/prod` (or the elder-plops equivalent) is sufficient to update thresholds without a code change.
+- Document which config keys control which alerts in OPERATIONS.md.
 
-**Detection:** Node crashes during startup with a traceback originating in `__init__`, not in a callback.
-
-**Confidence:** HIGH — confirmed by code inspection.
+**Phase:** Config-driven thresholds should be designed in from the start, not retrofitted.
 
 ---
 
-## Minor Pitfalls
+## Part 2 — Dashboard Pitfalls
 
-Lower severity but worth addressing for production quality.
+### CRITICAL: Stale WebSocket connection looks live
 
----
+**What goes wrong:** The farmer's browser tab has been open for 6 hours. The WebSocket to the bridge reconnected silently after an elder-plops bridge restart, but the reconnect landed before the next sensor publish. The chart shows data from 30 minutes ago. There is no loading indicator, no stale banner, no last-updated timestamp. The farmer makes a decision based on 30-minute-old RH data.
 
-### Pitfall 12: Test Assertions Check Pin Number, Not State
+**Why it happens here specifically:** The bridge's WS broadcasts are event-driven (on sensor message arrival). If a reconnect happens between sensor messages, the client may sit with stale in-memory values for up to the sensor publish interval (5s normally, potentially longer during bridge restarts). This is worse on the farmer dashboard than on Mission Control because it's designed to be glanced at, not scrutinized.
 
-**What goes wrong:** `test_controller.py` lines 66 and 74 assert `node.humidifier_pin == 1` and `node.humidifier_pin == 0`. `humidifier_pin` is `17` (GPIO pin number) in hardware mode. In simulation mode there is no `humidifier_pin` attribute at all — there is only `humidifier_state`.
+**Prevention:**
+- Display last-updated timestamps on every live value, computed as `(now - last_message_ts)`. Use bridge-computed `_age_sec` fields (the v1.2.1 pattern from HFIX-03) rather than client-computed ages to avoid clock skew.
+- Show a "stale" banner (yellow or grey) when any value has not updated in more than `2 * publish_interval` (10s for a 5s interval). This was the lesson behind `feedback_gap_over_noise.md` — gap over noise, honest grey over green.
+- The farmer dashboard must replicate the sensor_health replay-on-connect pattern (Phase 16.1 shim) so the status panel is not grey on cold open. If a new dashboard is built without this, it will regress the UX that the farmer already attested.
 
-**Prevention:** Replace with `assert node.get_humidifier_state() == True` / `False`. Tests currently fail on every run.
+**Warning signs during development:** Timestamps shown as "just now" or not shown at all. No staleness detection. Dashboard code uses client `Date.now()` to interpret server-sent timestamps.
 
-**Confidence:** HIGH — confirmed by code inspection and CONCERNS.md.
-
----
-
-### Pitfall 13: `fan_temp_scale` Formula Can Exceed 100% PWM
-
-**What goes wrong:** `fc_controller.py` lines 150–154: fan speed formula `min_fan_speed + (temp_diff * fan_temp_scale)` uses `min()` clamp to 100 but `max()` against `min_fan_speed`. With `min_fan_speed=50` and `fan_temp_scale=20`, a temp_diff of only +2.5°C drives fan to 100%. A diff of -1°C drives fan to 30%, below `min_fan_speed`. The `max()` prevents going below 50, so the formula is actually: `min(100, max(50, 50 + (temp_diff * 20)))`. This means the fan can never go below 50% — even in cool conditions — which increases humidity loss via evaporation.
-
-**Consequences:** The fan running at minimum 50% continuously works against humidity retention. For a high-humidity fruiting chamber, this may make it impossible to maintain target humidity without the humidifier running almost continuously.
-
-**Prevention:** Review whether 50% minimum fan speed is appropriate for the fruiting chamber or if it was copied from a different context. Consider a lower minimum (20%) or allowing the fan to turn off when temperature is within tolerance.
-
-**Confidence:** MEDIUM — temperature/humidity interaction depends on chamber size, insulation, and airflow that isn't characterized in the codebase.
+**Phase:** Staleness display and sensor_health replay must be verified in the first iteration of the farmer dashboard, before any user testing.
 
 ---
 
-### Pitfall 14: WebSocket Telemetry `localhost` Binding Inside Docker
+### Sensor offline vs sensor reads zero — no distinction
 
-**What goes wrong:** `fc_telemetry.py` line 61 binds WebSocket to `localhost`. Inside a Docker container, `localhost` is the container's loopback — unreachable from the host machine or other containers.
+**What goes wrong:** The humidity sensor returns 0.0% RH (or the bridge shows `null`). The dashboard displays "0%" in a number widget. The farmer sees 0% and initially thinks the mushrooms are in a desert. More subtle: the humidifier starts running continuously trying to reach setpoint, causing hardware wear and water overflow, because the controller reads 0 as "way below setpoint."
 
-**Prevention:** Bind to `0.0.0.0` inside Docker and restrict access at the network/firewall level. Already flagged in CONCERNS.md.
+**Why it happens here specifically:** This already bit the project during the SHT30/SCD41 transition (see FARMER-APP-NOTES). The dashboard showed numbers without provenance. The farmer spent 40 minutes on calibration before realizing the sensor was offline.
 
-**Confidence:** HIGH — confirmed by code inspection.
+**Prevention:**
+- The farmer dashboard must reflect sensor_health state visually on every number that depends on a sensor. If sensor_health is ERROR, the number should be greyed out or replaced with "OFFLINE" rather than "0" or the last reading.
+- Never show the last known value as if it were live when the sensor is in ERROR state. Show a gap or an explicit "last seen: T ago" with a distinct visual style.
+- Design principle from FARMER-APP-NOTES: "81.3% RH (SCD41, ±6%)" — source provenance travels with every number.
 
----
-
-### Pitfall 15: `adafruit_dht` is the Legacy Library (Deprecated 2019)
-
-**What goes wrong:** `setup.py` imports `adafruit-dht` — the legacy pre-Blinka library deprecated since November 2019. The current supported library is `adafruit-circuitpython-dht` (requires `adafruit-blinka`).
-
-**Consequences:**
-- No security patches
-- May not install cleanly on newer Raspberry Pi OS versions (Bookworm)
-- DHT22 read failures on Pi 5 even if RPi.GPIO is solved separately
-
-**Prevention:** Migrate to `adafruit-circuitpython-dht` + `adafruit-blinka`. The API is similar but not identical — `adafruit_dht.DHT22(board.D4)` becomes an import from `adafruit_dht` via CircuitPython. Already flagged in CONCERNS.md.
-
-**Confidence:** HIGH — confirmed by Adafruit official documentation and PyPI deprecation notice.
+**Phase:** Sensor health integration is mandatory in the farmer dashboard MVP. Not a polish step.
 
 ---
 
-## Phase-Specific Warnings
+### Browser clock skew interpreting server timestamps
 
-| Phase Topic | Likely Pitfall | Mitigation |
-|-------------|---------------|------------|
-| Sensor wiring and first reads | DHT22 systematic read errors at high humidity (Pitfall 7) | Start with low humidity, increase gradually; build retry logic before full deployment |
-| MOSFET wiring | 3.3V logic-level compatibility (Pitfall 4); pin float on boot (Pitfall 5 hardware aspect) | Verify MOSFET part number datasheet; add gate pull-down resistor before first power-on |
-| Control loop implementation | Bang-bang oscillation (Pitfall 6) | Implement minimum dwell time from day one; not a refactor |
-| First real hardware test | `None` initial sensor values causing silent no-op (Pitfall 2) | Add explicit "waiting for sensor data" log at startup; add stale data timeout |
-| Production deployment | Node crash leaves humidifier on (Pitfall 5) | Hardware pull-down resistor is mandatory before grower handoff |
-| Dependency updates or Pi upgrade | `RPi.GPIO` + `adafruit-dht` deprecation chain (Pitfalls 10, 15) | Pin library versions; document hardware constraints |
-| Adding parameters or tuning | Mid-loop parameter inconsistency (Pitfall 9) | Cache parameters; fix before exposing runtime tuning to growers |
+**What goes wrong:** The farmer dashboard receives a timestamp from the bridge (e.g., `{ humidity: 81.3, timestamp: 1713456789123 }`). The browser subtracts `Date.now()` to compute age. If the browser clock is ahead or behind by even 30s (common on mobile devices that haven't synced), the computed age is wrong. "5 minutes ago" becomes "4:30 ago" or "5:30 ago." More critically, a clock skew of >30s can flip a staleness check from "fresh" to "stale" incorrectly.
+
+**Lesson already learned:** v1.2.1 HFIX-03 explicitly moved to server-computed `last_frame_age_sec` for this reason, per bridge comments and RETROSPECTIVE. This pattern must be carried forward to the new farmer dashboard — not re-learned.
+
+**Prevention:**
+- Use server-computed `_age_sec` fields from the bridge `/health` endpoint and WS broadcasts wherever age matters.
+- Never do `Date.now() - server_timestamp` in the browser for anything that drives a UI state decision (stale/fresh, ok/warn).
+- For the farmer dashboard, the bridge should expose `humidity_age_sec`, `co2_age_sec` etc. as explicit computed fields alongside the raw values.
+
+**Phase:** Establish this as a convention in the bridge API spec before building the farmer dashboard frontend.
 
 ---
 
-## Summary: Safety-Critical Items for Production
+### Timezone displayed in UTC when farmer is in farm-local time
 
-These three items must be resolved before handing the system to a grower:
+**What goes wrong:** The dashboard shows "last updated: 2026-04-18T02:31:00Z". The farmer is on Pacific time (UTC-7). The "2:31 AM" means nothing without conversion. This is worse for alert timestamps: "alert fired at 14:22:07Z" requires mental arithmetic the farmer won't do at 7am.
 
-1. **Hardware pull-down on MOSFET gate** — ensures humidifier is off by default on power-up and node crash. No software fix substitutes for this.
-2. **Sensor failure safe state** — if DHT22 stops responding, the controller must turn the humidifier OFF and alert (not freeze in last state).
-3. **Minimum humidifier dwell time** — prevent rapid cycling that damages actuator hardware and causes humidity oscillation.
+**Why it happens here specifically:** The Mission Control (OpenMCT) timezone plugin exists (`src/mission-control/frontend/plugins/timezone/plugin.js`) and is already part of the stack. The farmer dashboard, if built separately, will not inherit this automatically.
+
+**Prevention:**
+- Use the browser's `Intl.DateTimeFormat` with `timeZone: undefined` (resolves to local browser timezone) for all human-readable timestamp rendering. Do not hardcode UTC.
+- Show UTC on hover/detail view for the operator, but default to farm-local for grower-facing displays.
+- If the timezone plugin can be extracted from the OpenMCT plugin and reused, use it. Otherwise replicate the pattern.
+
+**Phase:** Include timezone handling in the initial farmer dashboard spec. It is a one-line fix if planned in; a tedious grep-and-replace if retrofitted.
+
+---
+
+### Mobile screen real estate — charts unreadable on phone
+
+**What goes wrong:** The farmer is in the fruiting chamber (40m from main infra, on their phone) and opens the dashboard. All widgets are desktop-sized. Charts require horizontal scrolling. Number readouts are 11px. The farmer gives up and uses Mission Control instead (which is even more desktop-heavy), or just checks nothing.
+
+**Why it happens here specifically:** Mission Control (OpenMCT) is explicitly desktop-heavy per FARMER-APP-NOTES. The farmer dashboard is the first surface designed for phone-in-humid-chamber use. If it's built with desktop assumptions, the use case is lost.
+
+**Prevention:**
+- Phone-first layout from the start: single-column stacking, min touch target 44px, high contrast for humid/bright-light environments.
+- Sparklines (small 48–72px trend lines) over full charts on the primary view. Full charts on tap/expand only.
+- Defer chart rendering until user taps "expand" — reduces bandwidth on 4G.
+- Test on an actual phone screen (or browser devtools mobile emulation) before any user testing.
+
+**Phase:** Layout responsiveness must be a constraint from the first farmer dashboard implementation iteration, not a polish pass.
+
+---
+
+### Over-engineering the farmer dashboard frontend
+
+**What goes wrong:** The dashboard is built with React + Redux + a charting library + a component framework, taking 3 phases to ship. The farmer gets a complex SPA that breaks when the CDN is unreachable from the farm, requires a build step to change a threshold color, and adds 200KB of JS to load on 4G.
+
+**Why it happens here specifically:** v1.3 is scoping the farmer dashboard as a "HUD-only MVP." The FARMER-APP-NOTES explicitly state "stories, not tables" but the spec is a heads-up display, not an interactive app. A single HTML file with vanilla JS and inline CSS would cover this scope. The temptation to "build it properly" often means "build it later" in a project with production pressure.
+
+**Prevention:**
+- v1.3 scope: one HTML file served from elder-plops (nginx or the bridge itself), consuming the existing bridge WS and `/health` endpoint. No build step. No framework.
+- If the file exceeds 400 lines of JS, that is a smell that scope crept.
+- React, Vue, etc. are appropriate for v1.3+ when the farmer app gains interactive knobs and a story timeline. Not for a status HUD.
+
+**Phase:** State this constraint explicitly in the farmer dashboard design phase. Reject any plan that proposes a frontend framework for the HUD MVP.
+
+---
+
+## Part 3 — Multi-Source Dashboard Pitfalls
+
+### One source down silently hangs the page
+
+**What goes wrong:** The farmer dashboard renders widgets from two sources: the Mission Control bridge (WS on port 8081) and FarmOS Drupal (API or embedded widgets). FarmOS is on a shared farm instance and occasionally responds slowly during Drupal cron runs or backups. The farmer dashboard waits for FarmOS data before rendering, so the entire page hangs. The farmer can't see fc1 chamber status because FarmOS is slow.
+
+**Prevention:**
+- Treat each data source as independent and failure-isolated. Render what is available; show a "FarmOS unavailable" stub for FarmOS widgets, and real data for bridge widgets.
+- Set explicit timeouts on all FarmOS fetch calls (5s recommended). Do not allow one source to block the render of another.
+- Load bridge data first (it's the primary ops surface), FarmOS data second (production records, less time-critical for a glance dashboard).
+
+**Phase:** Source isolation and independent loading must be part of the initial dashboard architecture, not an afterthought.
+
+---
+
+### Re-auth storm (FarmOS session expires mid-day)
+
+**What goes wrong:** The farmer opens the dashboard at 09:00. FarmOS API tokens (if using OAuth) expire after some TTL. At 14:00 the token expires. The next time FarmOS widgets try to refresh, they get a 401. If the error handling redirects the whole page to FarmOS login, the farmer loses their Mission Control view in the middle of a session. If the error is silent, FarmOS data goes stale without indication.
+
+**Prevention:**
+- Token refresh must happen transparently in the background, never by redirecting the whole page.
+- If a FarmOS token cannot be refreshed (user session fully expired), show a "FarmOS: re-login required" stub in the FarmOS widget area only. The Mission Control portion of the dashboard continues working.
+- Test with an intentionally short-lived token to verify the re-auth path before go-live.
+
+**Phase:** Auth error handling must be specified and tested in the FarmOS integration phase, not discovered in production.
+
+---
+
+### CORS misconfiguration when browser talks to two origins
+
+**What goes wrong:** The farmer dashboard page is served from elder-plops on port X. It makes a WS connection to the bridge on port 8081 (same host, different port — different origin). It also fetches from FarmOS on its own host. The browser enforces CORS and the bridge's `CORS_ALLOWED` env var (already an allowlist in index.js) does not include the farmer dashboard origin. Connections are silently blocked.
+
+**Why it happens here specifically:** The bridge already has CORS handling with an explicit allowlist (`CORS_ALLOWED`). Adding a new origin for the farmer dashboard requires updating `CORS_ORIGIN` in the docker-compose `.env`. If this isn't done before the first test of the new dashboard, it will look like the bridge is broken when the new dashboard is the unconfigured consumer.
+
+**Prevention:**
+- Before building the farmer dashboard frontend, determine its serving origin (port, hostname) and add it to `CORS_ORIGIN` in `.env`.
+- Test the bridge WS connection from the farmer dashboard origin explicitly as a first step — before implementing any UI logic.
+- FarmOS CORS: FarmOS Drupal needs to allow requests from the farmer dashboard origin if fetching FarmOS APIs directly from the browser. If FarmOS API calls go server-side through the bridge, CORS is not an issue but adds latency.
+
+**Phase:** CORS configuration must be verified at the start of the farmer dashboard phase, as a pre-condition check before any frontend work.
+
+---
+
+### FarmOS Drupal session cookies colliding with bridge session on embed
+
+**What goes wrong:** If FarmOS widgets are embedded via iframe (or if the farmer dashboard includes FarmOS content inline), the browser's third-party cookie restrictions (Chrome/Safari SameSite=Lax default) prevent the FarmOS session cookie from being sent inside the iframe. The embedded FarmOS view shows a login wall. More subtly, if both the farmer dashboard and FarmOS set cookies on similar paths, session collision can log the farmer out of FarmOS when they open the dashboard.
+
+**Prevention:**
+- For v1.3 HUD MVP: do not use iframes. Fetch FarmOS data via API from the bridge (server-side proxy) and render it in your own widgets. Eliminates cookie collision entirely.
+- If iframes are ever used later: FarmOS must be served from the same domain as the farmer dashboard (or a subdomain), and cookies must be `SameSite=None; Secure`.
+- Practical v1.3 approach: the farmos_agent already has FarmOS API access patterns. Expose a `/farmos/summary` endpoint on the bridge that the farmer dashboard fetches, keeping all FarmOS auth server-side.
+
+**Phase:** iframe embed should be explicitly ruled out in the v1.3 design. API proxy through the bridge is the safe path for this milestone.
+
+---
+
+## Part 4 — Integration-with-Existing-System Pitfalls
+
+### Duplicating health logic between Mission Control plugin and farmer dashboard
+
+**What goes wrong:** Mission Control (OpenMCT plugin.js) already interprets `sensor_health.level` and `camera.last_frame_age_sec` to drive the six-light status panel. If the farmer dashboard re-implements this logic independently, it will drift. Alert thresholds (e.g., "age > 10s means stale") become inconsistent between the two views. A farmer switching between views sees contradictory status colors for the same sensor.
+
+**Prevention:**
+- Extract the threshold constants and state-machine logic into a shared module or configuration value that both the Mission Control plugin and the farmer dashboard import.
+- Alternatively: the farmer dashboard consumes the bridge `/health` endpoint directly and trusts the server-computed state — the bridge becomes the single source of truth for computed health state, and both dashboards just render it.
+- Do not copy-paste health logic. If you find yourself doing so, stop and extract.
+
+**Phase:** Identify the canonical health logic location before writing the farmer dashboard. Budget 30 minutes to extract it if it's currently inline in plugin.js.
+
+---
+
+### sensor_health replay pattern not carried to new dashboard
+
+**What goes wrong:** Phase 16.1 added a `lastSensorHealthBroadcast` replay shim to the bridge: new WS clients receive the last sensor_health state immediately on connect, before the next fc_controller state transition. The farmer UAT that prompted this fix specifically involved hard-refresh showing grey lights for up to 60s on cold open.
+
+If the new farmer dashboard subscribes to the same WS but does not handle the replayed `sensor_health` message on connect, the grey-on-cold-open problem re-emerges for the farmer dashboard even though it was fixed in Mission Control.
+
+**Prevention:**
+- The farmer dashboard WS client must handle `sensor_health` messages on connect (same as Mission Control does). The bridge already sends it; the dashboard must consume it.
+- Add a cold-open test to the farmer dashboard verification: hard-reload the page after fc_controller has published at least one sensor_health update. Verify status lights are not grey.
+- This is not a new feature request — it is a regression check. The bridge already does the right thing; the client just needs to listen.
+
+**Phase:** Include explicit cold-open verification step in the farmer dashboard phase checklist. This is the exact failure mode that generated Phase 16.1 — do not repeat it.
+
+---
+
+### Shipping alerts without verifying delivery on the real Signal account
+
+**What goes wrong:** Alert logic is tested in dev against a signal-cli instance with a test number. It works. The production deployment uses the farmer's real Signal number (or a linked device from it). On first real alert condition, signal-cli fails silently because: (a) the device is not linked, (b) the linked device session expired during the dev/test gap, (c) the CAPTCHA challenge flow was never completed for this number, or (d) the signal-cli version on elder-plops differs from dev.
+
+**Why it happens here specifically:** The project has been burned by "but it worked in dev" before (compose-file drift in v1.0, bridge image cache in v1.0, warm-reconnect vs cold-open in v1.2.1). Signal delivery is an end-to-end path that cannot be verified without actually sending a message to the real recipient.
+
+**Prevention:**
+- Mandatory end-to-end delivery test before Phase complete: trigger a real test alert to the farmer's Signal number from the production elder-plops host and have the farmer confirm receipt. Not a signal-cli exit-code 0 test — a human reads the message on their phone.
+- This test must be run on the same elder-plops service account / user that the production alerting daemon runs under. Permission issues or missing signal-cli data directories will surface here.
+- Add delivery verification to the phase VERIFICATION.md as a hard human-attestation gate (not "human_needed" status that gets deferred — an explicit REQUIRED BEFORE MERGE gate).
+
+**Phase:** End-to-end delivery test is a gate on the alerting phase, not a post-ship verification.
+
+---
+
+### Humidifier replay parity gap (carried from v1.2.1)
+
+**What goes wrong:** The v1.2.1 RETROSPECTIVE notes: "Humidifier replay parity not shipped. sensor_health got a replay shim (16.1); humidifier state still relies only on ROS-level TRANSIENT_LOCAL replay to the bridge." On a cold-open of the farmer dashboard, the Humidifier light may still show grey if the bridge reconnects to ROS after the last TRANSIENT_LOCAL publish window.
+
+**Why it matters for v1.3:** If the farmer dashboard is built with higher stakes for cold-open UX (it's the farmer's primary glance view, not a secondary ops surface), this gap will be more visible than it was in Mission Control.
+
+**Prevention:**
+- When implementing the farmer dashboard, audit which bridge WS fields have replay-on-connect coverage and which do not. Budget a follow-up task if the Humidifier state needs a replay shim for the new surface.
+- Alternatively: poll `/health` once on page load to get `humidifier.last_msg_ts` and use it to render initial state, then switch to WS for live updates. This avoids the replay gap entirely for the farmer dashboard.
+
+**Phase:** Audit bridge replay coverage as a pre-task in the farmer dashboard phase.
+
+---
+
+## Phase Assignment Summary
+
+| Pitfall | Phase to Address |
+|---------|-----------------|
+| Flap-storm debounce | Signal alert implementation phase |
+| Missing recovery notifications | Signal alert implementation phase (same PR as PROBLEM alerts) |
+| Pi-offline bootstrap architecture | Alert architecture decision — first task of alert phase |
+| Alert bot heartbeat / liveness | Signal alert implementation phase (ship with bot, not deferred) |
+| Linked device expiry | Registration decision before alert phase begins |
+| Signal rate limiting | Alert implementation phase (rate-limit wrapper) |
+| Alert fatigue / grace suppression | Alert implementation phase (must test restart→no-alert path) |
+| Out-of-band threshold config | Alert implementation phase (fc_config.yaml, not hardcoded) |
+| Stale WS + sensor_health replay | First farmer dashboard phase (mandatory verification step) |
+| Sensor offline vs reads zero | First farmer dashboard phase (MVP requirement) |
+| Browser clock skew | Bridge API spec phase (before dashboard frontend) |
+| Timezone handling | First farmer dashboard phase |
+| Mobile layout | First farmer dashboard phase (constraint from start) |
+| Over-engineering frontend | Design decision — state explicitly before dashboard phase |
+| Source isolation (FarmOS down) | Multi-source dashboard phase |
+| Re-auth storm | FarmOS integration phase |
+| CORS misconfiguration | Pre-condition check at start of farmer dashboard phase |
+| FarmOS cookie collision | Design decision — use bridge proxy, not iframe |
+| Duplicate health logic | Identify canonical location before dashboard phase |
+| sensor_health replay not carried forward | Farmer dashboard phase verification checklist |
+| Shipping alerts without real delivery test | Hard gate on alert phase completion |
+| Humidifier replay parity gap | Audit task at start of farmer dashboard phase |
 
 ---
 
 ## Sources
 
-- Adafruit DHT forums: [DHT22 failed to read (forums.adafruit.com)](https://forums.adafruit.com/viewtopic.php?t=210100)
-- Sensor failures after hours: [DHT22 sensor no reading after some hours (GitHub)](https://github.com/adafruit/DHT-sensor-library/issues/205)
-- DHT22 on Pi 5: [Inquiry about DHT Sensor on Raspberry Pi 5 (raspberrypi.com)](https://forums.raspberrypi.com/viewtopic.php?t=386699)
-- rclpy sleep blocking: [Sleep inside node is blocking indefinitely (ROS Answers)](https://answers.ros.org/question/407654/)
-- rclpy sleep_for not exiting on shutdown: [sleep_for not exiting on node shutdown (GitHub)](https://github.com/ros2/rclpy/issues/1148)
-- ROS2 callback race conditions: [Race conditions in publisher and callback (ROS Answers)](https://answers.ros.org/question/395250/)
-- ROS2 QoS transient local: [Quality of Service settings (ROS2 docs)](https://docs.ros.org/en/rolling/Concepts/Intermediate/About-Quality-of-Service-Settings.html)
-- MOSFET 3.3V GPIO: [N-channel MOSFET on GPIO (raspberrypi.org)](https://www.raspberrypi.org/forums/viewtopic.php?t=49306)
-- RPi.GPIO Pi 5 incompatibility: [RPi.GPIO on Pi5 (raspberrypi.com)](https://forums.raspberrypi.com/viewtopic.php?t=361834)
-- gpiozero official replacement: [gpiozero 2.0.1 Documentation](https://gpiozero.readthedocs.io/)
-- adafruit_dht deprecation: [Adafruit Python Library Deprecation (raspberrypi.com)](https://forums.raspberrypi.com/viewtopic.php?t=364194)
-- Mushroom cultivation bang-bang control: [Investigation of Temperature and Humidity Control System for Mushroom House (ResearchGate)](https://www.researchgate.net/publication/336419291_Investigation_of_Temperature_and_Humidity_Control_System_for_Mushroom_House)
-- GPIO cleanup on shutdown: [RPi.GPIO basics 3 — exit cleanly (raspi.tv)](https://raspi.tv/2013/rpi-gpio-basics-3-how-to-exit-gpio-programs-cleanly-avoid-warnings-and-protect-your-pi)
-- Internal codebase analysis: `.planning/codebase/CONCERNS.md` (2026-03-28)
+- v1.2.1 RETROSPECTIVE: cold-open vs warm-reconnect lesson, replay shim origin, humidifier parity gap
+- v1.0 RETROSPECTIVE: "but it worked in dev" pattern (compose drift, image cache)
+- FARMER-APP-NOTES-2026-04-11: sensor provenance principle, timezone wish, mobile use case, SHT30 offline blind-spot
+- bridge/src/index.js: existing replay shim, CORS allowlist, server-computed age fields, health endpoint
+- Signal support docs (support.signal.org): linked device 45-day inactivity expiry, account 120-day expiry
+- signal-cli GitHub issues #1911, #1603, #1823: rate limiting behavior (HTTP 413, CAPTCHA challenge)
+- Memory: `feedback_gap_over_noise.md`, `project_signal_alerts.md`, `project_phase12_camera_stall.md`

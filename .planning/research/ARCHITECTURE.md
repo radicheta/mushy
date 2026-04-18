@@ -1,256 +1,335 @@
-# Architecture Patterns: ROS2 Sensor Reading + Closed-Loop Control
+# Architecture: v1.3 Alerts + Unified Farmer Dashboard
 
-**Domain:** ROS2 Jazzy Python node — environmental sensor + on/off actuator control
-**Researched:** 2026-03-28
-**Overall confidence:** HIGH (patterns verified against official ROS2 Jazzy docs, existing codebase, community sources)
-
----
-
-## Recommended Architecture
-
-The existing codebase already follows the correct high-level separation: a dedicated sensor node (`fc_sensors`) publishes to topics, and a separate controller node (`fc_controller`) subscribes and drives actuators via a timer-based control loop. **This split is the right call and should not change.**
-
-What follows documents the specific patterns for implementing the humidity control path correctly within this architecture, including the gaps and improvements needed.
+**Domain:** ROS2 mushroom farm control — adding alerting and a unified operator HUD
+**Researched:** 2026-04-18
+**Overall confidence:** HIGH (based on actual codebase + running system; no speculation)
 
 ---
 
-## Component Boundaries
+## Summary of Existing Integration Points
 
-| Component | Responsibility | Communicates With |
-|-----------|---------------|-------------------|
-| `FruitingChamberSensors` | Read DHT22, publish `fc/temperature` and `fc/humidity` at `sensor_read_interval` | Publisher to controller, display, telemetry |
-| `FruitingChamberController` | Subscribe to sensor topics, run control loop on timer, drive actuators | Subscriber of sensors; direct GPIO/PWM write |
-| `FruitingChamberDisplay` | Log current state to console | Subscriber of sensors |
-| `FruitingChamberTelemetry` | Emit JSON over WebSocket to OpenMCT | Subscriber of sensors |
+Before documenting new components, the concrete existing surface area:
 
-The humidity control path lives entirely inside `FruitingChamberController`. The sensor node is already correct and does not need structural changes — only the controller's humidity logic needs to be hardened.
+**Bridge service** (`src/mission-control/bridge/src/index.js`, port 8081 on host network):
+- ROS subscriptions (all with rclnodejs): `/fc1/humidity`, `/fc1/temperature`, `/fc1/co2`, `/fc1/actuators/humidifier` (TRANSIENT_LOCAL), `/fc1/sensor_health` (TRANSIENT_LOCAL, DiagnosticStatus)
+- WebSocket: `ws://localhost:8081` — broadcasts `{humidity, timestamp}`, `{temperature, timestamp}`, `{co2, timestamp}`, `{humidifier, timestamp}`, `{sensor_health: {level, name, message, values}, timestamp}`
+- REST: `GET /health`, `GET /history/:topic`, `GET /camera/mjpeg`, `GET /camera/snapshot`, `GET /camera/latest.jpg`
+- In-process state: `rosReady`, `humidifierLastMsgTs`, `lastSensorHealthBroadcast`, `dbReady`
+- CORS: allowlist via `CORS_ORIGIN` env var (comma-separated origins)
+- TimescaleDB `telemetry` table: columns `(time, topic, value)` — topics are `fc.humidity`, `fc.temperature`, `fc.co2`, `fc.humidifier`
 
----
+**farmos-agent** (`src/farmos-agent/farmos_agent/farmos_agent_node.py`):
+- Connects to FarmOS via HTTP session (username+password, session cookie auth)
+- Reads TimescaleDB for daily aggregates via psycopg2
+- Posts observations to FarmOS REST API (`/api/log/observation`)
+- Fetches camera snapshot from bridge at `$BRIDGE_URL/camera/latest.jpg`
+- Runs on elder-plops as a docker-compose service with host networking
 
-## Control Loop Pattern: Timer-Driven Subscriber Cache
+**docker-compose topology** (all services use `network_mode: host` via override):
+- `bridge` — host network, port 8081
+- `openmct` — host network, port 8080
+- `timescale` — bound to `127.0.0.1:5432` only
+- `farmos-agent` — host network
 
-This is the canonical ROS2 pattern for closed-loop control. It is what the codebase already uses and is the correct choice.
-
-```
-Sensor node                Controller node
-────────────────           ─────────────────────────────────
-timer fires (2s)           subscription callback (async)
-  read DHT22                 humidity_callback(msg)
-  publish fc/humidity          self.current_humidity = msg.relative_humidity
-                               self.last_humidity_ts = self.get_clock().now()
-
-                           control timer fires (1s)
-                             control_loop()
-                               check if data is fresh
-                               compare current vs setpoint
-                               drive humidifier GPIO
-```
-
-**Why this works:** The subscription callback fires asynchronously whenever a message arrives and caches the value. The control timer fires independently at the control frequency and reads the cached value. They never block each other in a `SingleThreadedExecutor` (the default for `rclpy.spin()`).
-
-**Threading note (confirmed against Jazzy docs):** With the default `SingleThreadedExecutor`, all callbacks including timers run serially. This is fine here — sensor reads at 2s intervals and control decisions at 1s intervals are not time-critical enough to require `MultiThreadedExecutor`. Do not add threading complexity unless profiling shows it is needed.
+**Signal context**: farm uses Signal for notifications (not Telegram/Slack). No existing Signal integration.
 
 ---
 
-## Hysteresis (Bang-Bang) Control Pattern
+## Question 1: Alert Engine Placement
 
-The existing controller implements basic hysteresis for the humidifier — on below `target - tolerance`, off above `target + tolerance`. This is correct for an on/off actuator and should be preserved. The dead band (`humidity_tolerance = 0.05`, i.e. 5%) prevents constant switching at the setpoint.
+### The three options evaluated against the actual codebase
 
-**Current implementation (correct baseline):**
-```python
-if self.current_humidity < (target - tolerance):
-    self.set_humidifier(True)
-elif self.current_humidity > (target + tolerance):
-    self.set_humidifier(False)
-# else: inside dead band → no state change (implicit, correct)
-```
+**Option A: New ROS2 node on elder-plops subscribing directly to ROS topics + calling Signal CLI locally.**
 
-**What is missing: minimum on/off time guard.** DHT22 humidity readings have noise. Without a minimum dwell time, the humidifier can switch rapidly near the dead-band edge (chattering), which degrades actuator lifespan and produces oscillating telemetry. The fix is to track `last_humidifier_change_ts` and enforce a minimum interval (e.g., 10 seconds) before allowing a state change.
+The bridge already does all ROS subscriptions needed for alerting. A second rclnodejs or rclpy process on elder-plops subscribing to the same topics is technically valid (DDS pub/sub is many-to-many), but creates duplication: two processes each managing TRANSIENT_LOCAL subscriptions to the same topics, each with their own rclnodejs init lifecycle, each potentially racing for CycloneDDS unicast peer establishment on the Tailscale link. The Pi-offline detection case — noticing that ROS messages stopped arriving — already has a working proxy in the `/health` endpoint's `ros.connected` + `humidifier.last_msg_ts` fields. Rebuilding that detection in a second ROS node is strictly redundant.
 
-```
-Pattern:
-  when deciding to change humidifier state:
-    if time_since_last_change < min_dwell_time: skip
-    else: change state, record timestamp
-```
+Verdict: **reject**. Doubles ROS connection complexity for no benefit given bridge already has all the data.
 
-The `min_dwell_time` should be a config parameter, not a hardcode, so it can be tuned per-chamber without a code change.
+**Option C: Dedicated container subscribing to bridge WebSocket and calling Signal.**
 
----
+This is the "microservice" instinct — clean separation, no coupling to bridge internals. The blast radius argument (if the alert service crashes, bridge is unaffected) is real. However, in this system the bridge crashing *is* an alert condition — if the container consuming the bridge WS goes away, the alert engine goes silent at exactly the wrong moment. The WS reconnect dance adds a failure mode: during the reconnection gap between bridge restart and alert consumer reconnect, a sensor_health ERROR or humidifier-stuck event could be missed. The TRANSIENT_LOCAL replay shim for sensor_health (Phase 16.1) mitigates this for that one topic, but not for humidity or humidifier time-series anomalies. Additionally, the Pi-offline detection (noticing absence of messages) is hard to implement correctly in a WS consumer — you'd need to replicate the same timestamp-tracking the bridge already does in `humidifierLastMsgTs`.
 
-## Stale Data Guard Pattern
+Verdict: **reject for MVP**. The "clean separation" benefit is real but the failure-mode complexity is not worth it at this scale. Revisit if the bridge grows beyond one file.
 
-**The existing code has a gap here.** The controller checks `if self.current_humidity is None: return` — this correctly handles the startup case before the first sensor message arrives. However, it does not handle the case where the sensor node restarts or the DHT22 fails after initially working: `current_humidity` will hold a stale value indefinitely and the controller will continue acting on it silently.
+**Option B: Alert module inside `src/mission-control/bridge/src/`.**
 
-**Recommended pattern — timestamp-based freshness check:**
+The bridge already has:
+- All four ROS subscriptions needed for alert conditions
+- `humidifierLastMsgTs` — exact state needed for Pi-offline and humidifier-stuck detection
+- `rosReady` — bridge-internal health flag
+- `lastSensorHealthBroadcast` — cached sensor_health for level checks
+- The `/health` endpoint already computing derived health state
 
-```
-In humidity_callback:
-  self.current_humidity = msg.relative_humidity
-  self.last_humidity_ts = self.get_clock().now()
+Adding alert logic here means zero new ROS subscriptions, zero new DDS sessions, zero new WS connection management. A restart of the bridge restarts the alert engine with it — that is correct behavior, not a bug (a crashed bridge should stop alerting because it has no data to alert on). Signal CLI invocation from Node.js is `child_process.exec('signal-cli ...')` — a one-liner.
 
-In control_loop:
-  if self.last_humidity_ts is None: return early  # no data yet
-  age = (self.get_clock().now() - self.last_humidity_ts).nanoseconds / 1e9
-  if age > sensor_stale_timeout:  # e.g. 10.0s = 5 missed reads
-    self.get_logger().warn('Humidity data stale, holding actuator state')
-    return
-  # else proceed with control decision
-```
+The "blast radius if it crashes" concern cuts the other way: the alert engine crashing *should* bring down the bridge, because silent alert engine failure is worse than visible bridge failure. The whole container restarts cleanly via `restart: always`.
 
-`sensor_stale_timeout` should be a config parameter. A reasonable default is `5 * sensor_read_interval` (10 seconds at the default 2s read interval).
+Verdict: **recommend Option B**.
 
-**Why hold (not safe-off):** Turning the humidifier off on stale data is not obviously the right safe state for a mushroom farm. Holding the current actuator state is safer than forced-off, which could dry the chamber. If a safety override is needed, that is a separate explicit feature, not a default behavior.
+### Recommended integration: alert module in bridge
 
----
-
-## State Publishing Pattern
-
-The controller currently drives hardware directly but does not publish actuator state to any ROS topic. This means:
-- The display node reads sensor topics but cannot show actuator state
-- Telemetry has no visibility into what the controller is doing
-- Tests must inspect internal instance variables directly (a test smell visible in `test_controller.py`)
-
-**Recommended addition:** Publish humidifier state to a topic like `fc/actuators/humidifier` using `std_msgs/Bool`. This decouples state reporting from the controller's internals and allows display/telemetry nodes to subscribe without coupling to the controller implementation.
+Create `src/mission-control/bridge/src/alerter.js` — a plain JS module (not a class, just exported functions) that the bridge's `index.js` calls after each relevant subscription callback.
 
 ```
-Topic:   fc/actuators/humidifier
-Message: std_msgs/Bool  (data: True = ON)
-QoS:     Reliability=RELIABLE, Durability=TRANSIENT_LOCAL (last-value available to late-joiners)
+src/mission-control/bridge/src/
+  index.js           (existing — calls alerter.check*() after subscriptions fire)
+  alerter.js         (new — alert state machine, Signal CLI invocation, dedupe logic)
 ```
 
-The `TRANSIENT_LOCAL` durability is important: when the display or telemetry node starts after the controller, it should receive the current state without waiting for the next control cycle.
+`alerter.js` exports:
+- `checkSensorHealth(level, message)` — called from sensor_health subscription callback
+- `checkHumidity(valuePercent)` — called from humidity callback
+- `checkHumidifier(state, ts)` — called from humidifier callback; also used by Pi-offline ticker
+- `checkPiOffline(humidifierLastMsgTs, rosReady)` — called from a `setInterval` in index.js (60s tick)
 
----
+Alert conditions to implement (from PROJECT.md v1.3 scope):
+1. Pi offline: `rosReady === false` OR `humidifierLastMsgTs` not updated in N minutes
+2. Sensor unhealthy: `sensor_health.level >= 2` (ERROR) persists for >1 tick
+3. RH out-of-band: humidity value outside `[target - tolerance, target + tolerance]` for >N minutes
+4. Humidifier stuck: `humidifier === 1` (or 0) continuously for >N minutes without cycling
 
-## Parameter Configuration Pattern
+Signal invocation: Signal CLI must be installed on the elder-plops host (not in the bridge container). Because all services use `network_mode: host`, `child_process.exec('signal-cli -u +1... send -m "..." +1...')` runs against the host's PATH directly. Alternatively, use signal-cli REST API mode — a local HTTP server on a fixed port — which is easier to mock in tests.
 
-All control parameters should be declared in `fc_config.yaml` and loaded via `declare_parameters()` in `__init__`. The existing pattern is correct.
-
-**Gap identified:** The humidifier GPIO pin is hardcoded in `fc_controller.py` as `self.humidifier_pin = 17` and is not declared as a parameter. This means changing the pin requires a code edit. It should be promoted to a config parameter (`humidifier_pin: 17`) alongside `dht_pin` and `light_pin`.
-
-**Live parameter updates:** For MVP, `get_parameter()` inside `control_loop()` on every tick is acceptable and is what the existing code does. It is slightly inefficient (a dict lookup each tick) but avoids stale parameter state. If performance profiling ever shows this as a bottleneck, cache with `add_on_set_parameters_callback()`. For Raspberry Pi at 1Hz control rate, this is not a concern.
-
----
-
-## Node vs Nodelet / Composable Node
-
-Do not use composable nodes (nodelets) for this project. The rationale:
-
-- Composable nodes exist to reduce serialization overhead for high-frequency data between nodes running in the same process. This system runs at 1-2Hz, where serialization is irrelevant.
-- The existing plain `rclpy.node.Node` pattern is correct and adding composable nodes adds build complexity (requires `rclcpp_components`, not native to `ament_python`).
-- Keep separate processes: if the controller crashes, the sensor node keeps publishing. This isolation is valuable for a production system.
-
----
-
-## LifecycleNode Decision
-
-Do not use `LifecycleNode` for MVP. The rationale:
-
-- Lifecycle nodes are valuable when startup order dependencies are safety-critical (e.g., Nav2 where a failed planner should prevent the robot from moving). In this system, if the controller starts before the sensor, it simply waits for data (the `None` guard handles this).
-- The added complexity — explicit state transitions, lifecycle manager configuration, transition callbacks — is not justified for a single-chamber system with two loosely coupled nodes.
-- If the system grows to multiple chambers with strict startup ordering requirements, revisit this decision.
-
----
-
-## Data Flow: Humidity Control Path (Complete)
-
+Environment variables to add to bridge service in docker-compose:
 ```
-DHT22 hardware / simulation
-        |
-        v  (every sensor_read_interval, default 2s)
-FruitingChamberSensors.read_sensors()
-        |
-        v  publish
-fc/humidity  (sensor_msgs/RelativeHumidity, field: relative_humidity [0.0–1.0])
-        |
-        v  subscription callback (async)
-FruitingChamberController.humidity_callback()
-   self.current_humidity = msg.relative_humidity
-   self.last_humidity_ts = self.get_clock().now()
-        |
-        v  (every control_interval, default 1s, independent timer)
-FruitingChamberController.control_loop()
-   1. freshness check: is data recent enough?
-   2. hysteresis: compare current vs [target ± tolerance]
-   3. dwell guard: has enough time passed since last state change?
-   4. set_humidifier(state) → GPIO.output() or sim variable
-   5. publish to fc/actuators/humidifier  [recommended addition]
-        |
-        v
-MOSFET GPIO pin → ultrasonic humidifier
+SIGNAL_PHONE=+1...           # sender number registered with signal-cli
+SIGNAL_RECIPIENT=+1...       # farmer's Signal number
+ALERT_RH_MIN=78              # lower OOB threshold for RH alert
+ALERT_RH_MAX=83              # upper OOB threshold
+ALERT_OFFLINE_MINUTES=5      # minutes before Pi-offline alert fires
+ALERT_STUCK_MINUTES=30       # minutes humidifier in same state before stuck alert
 ```
 
 ---
 
-## Error Handling Patterns
+## Question 2: Unified Dashboard Integration
 
-| Scenario | Current Handling | Recommended |
-|----------|-----------------|-------------|
-| No humidity data yet | `return` if `current_humidity is None` | Keep; add `last_humidity_ts` init to `None` |
-| Sensor node stopped/crashed | Silent: uses stale value forever | Add timestamp freshness check, log warning |
-| DHT22 read failure | Logged in `fc_sensors`, no publish | Controller detects via stale data timeout |
-| GPIO write failure | No handling (real hardware) | Catch exception, log error, do not crash node |
-| Humidifier chattering | No handling | Minimum dwell time guard |
-| Invalid humidity value | No validation | Check value in [0.0, 1.0] range before use |
+### Where the page lives
+
+Serve the farmer dashboard as a static HTML page from the bridge itself. Add a route:
+
+```
+GET /farmer  → serves src/mission-control/bridge/src/farmer/index.html
+```
+
+Rationale: The bridge is already on host network at port 8081, already has CORS configured, already serves the MJPEG endpoint. Adding one more `express.static()` or `res.sendFile()` is trivial. Avoids a new service, new port mapping, new container to rebuild.
+
+The OpenMCT app continues on port 8080 unchanged. Farmer dashboard is on port 8081 at path `/farmer`. These are separate HTML pages sharing the same bridge WS and REST backend.
+
+Static file location: `src/mission-control/bridge/src/farmer/` — a directory of vanilla HTML/CSS/JS files, no build step.
+
+### Data access pattern (concrete)
+
+```
+Browser (farmer dashboard at http://elder-plops-ip:8081/farmer)
+  │
+  ├── WebSocket: ws://elder-plops-ip:8081
+  │     Receives: humidity, temperature, co2, humidifier, sensor_health (real-time)
+  │     Same WS endpoint already used by OpenMCT plugin.js
+  │
+  ├── REST GET /health
+  │     Returns: {status, db, ros, camera, humidifier.last_msg_ts}
+  │     Polling interval: 30s (not real-time; just for connectivity status panel)
+  │
+  ├── REST GET /history/fc.humidity?start=...&end=...
+  ├── REST GET /history/fc.co2?start=...&end=...
+  │     Used for sparkline/trend view (last 6h on page load)
+  │
+  └── REST GET /farmos/summary  (NEW proxy endpoint on bridge)
+        Bridge calls FarmOS REST API server-side and returns a sanitized JSON
+        → avoids browser needing FarmOS credentials/CORS
+```
+
+### CORS and FarmOS auth
+
+FarmOS is on a separate host (`http://10.68.155.50:8082` per farmos_agent_node.py). The browser cannot call FarmOS directly without: (a) FarmOS CORS headers allowing the dashboard origin, and (b) the farmer's browser having a valid FarmOS session.
+
+The right solution at this scale: **bridge proxies FarmOS**. Add one route:
+
+```
+GET /farmos/summary
+```
+
+Bridge calls FarmOS server-to-server (same pattern as farmos_agent: session cookie or Basic auth from env vars), fetches the most recent observation for FC-1, and returns a stripped-down JSON. This keeps FarmOS credentials server-side, avoids CORS configuration on the FarmOS Drupal instance, and means the farmer dashboard only needs to trust the bridge origin — which it already does.
+
+```javascript
+// src/mission-control/bridge/src/index.js addition
+app.get('/farmos/summary', async (req, res) => {
+    // fetch latest FC-1 observation from FarmOS using stored session
+    // return { date, rh_avg, co2_avg, notes_preview, observation_url }
+});
+```
+
+Add `FARMOS_URL`, `FARMOS_USERNAME`, `FARMOS_PASSWORD` env vars to the bridge service (they're currently only on farmos-agent). The bridge only calls FarmOS on demand (per `/farmos/summary` request), not on a schedule.
+
+CORS for the farmer dashboard: The dashboard is served from `localhost:8081/farmer`, so same-origin — no CORS headers needed for the bridge API calls. If the farmer accesses from a different IP (their phone on Tailscale), add `http://farmer-phone-ip:8081` or use `CORS_ORIGIN` env var. The existing CORS allowlist mechanism handles this without code changes.
+
+### Static asset pipeline
+
+Vanilla HTML + CSS + JS only. No React, no Vite, no build step. The bridge already serves static files (e.g., the OpenMCT frontend is a separate container but this page is even simpler). A `<script>` tag with vanilla fetch and DOM manipulation is sufficient for the HUD MVP described in the farmer app notes (readings, sparklines, camera snapshot, health lights).
+
+One dependency that earns its weight: a small charting library for the sparklines. `Chart.js` (CDN link, ~60KB gzipped) via a `<script src="https://cdn.jsdelivr.net/npm/chart.js">` tag — no npm install, no bundler.
 
 ---
 
-## Anti-Patterns to Avoid
+## Question 3: Alert State Persistence
 
-### Blocking in Timer Callbacks
+### Do we need it?
 
-**What:** Using `time.sleep()` inside a timer callback or subscription callback.
+The concrete restart scenario: bridge restarts, alert module initializes with empty state, first sensor_health message arrives (TRANSIENT_LOCAL replay), state is ERROR, alert fires. This is correct behavior, not spam — the farmer wants to know the sensor is still unhealthy after a restart.
 
-**Current occurrence:** `fc_sensors.py` calls `time.sleep(2.0)` inside the `except RuntimeError` block of `read_sensors()`. This blocks the entire executor for 2 seconds while the ROS spin loop cannot process any other callbacks on that node.
+The spam scenario the question is worried about: bridge restarts 3 times in 5 minutes, farmer gets 3 "Pi back online" messages. This is a real annoyance.
 
-**Why bad:** With `SingleThreadedExecutor` (the default), `time.sleep()` in any callback blocks all other callbacks on that node until it returns. No other timer fires, no subscriptions are processed.
+### Recommendation: in-memory dedupe with reset-on-restart, no persistence
 
-**Instead:** Use a `self.retry_after` timestamp: set it when a read fails, and skip the read in subsequent timer fires until the time has passed. All callbacks remain non-blocking.
+For the MVP, use a per-alert-type cooldown map in alerter.js:
 
-### Hardcoded Hardware Pins
+```javascript
+const lastAlertTs = {};  // { 'pi_offline': ms, 'sensor_unhealthy': ms, ... }
+const COOLDOWN_MS = 60 * 60 * 1000;  // 1 hour between same-type alerts
+```
 
-**What:** GPIO pin numbers embedded in code rather than parameters.
+A bridge restart clears `lastAlertTs`, which means a restart can fire one instance of each alert type if the condition still holds. That is acceptable — the farmer gets one alert per restart, not three in five minutes. Three restarts in five minutes is itself an infrastructure problem that warrants investigation.
 
-**Current occurrence:** `self.humidifier_pin = 17` in `fc_controller.py`.
+If this proves noisy in practice, the next step is a Timescale `alerts` table (not SQLite — Timescale is already there):
 
-**Why bad:** Changing hardware requires a code edit rather than a config edit; makes testing harder; blocks multi-chamber scaling.
+```sql
+CREATE TABLE IF NOT EXISTS alerts (
+    time        TIMESTAMPTZ NOT NULL,
+    alert_type  TEXT        NOT NULL,
+    message     TEXT        NOT NULL,
+    resolved_at TIMESTAMPTZ
+);
+```
 
-**Instead:** Declare `humidifier_pin: 17` in `fc_config.yaml` and read via `get_parameter()` in `__init__`.
-
-### Testing Internal State Directly
-
-**What:** Tests checking `node.humidifier_pin == 1` to verify the humidifier turned on.
-
-**Current occurrence:** `test_controller.py` lines 66 and 74 test `node.humidifier_pin` as if it were a boolean state flag, but `humidifier_pin` is a GPIO pin number (17). This test is broken — it conflates the pin assignment with the pin output state.
-
-**Why bad:** Test couples to implementation internals; will break if humidifier state is stored differently; currently tests incorrect thing.
-
-**Instead:** Either expose a `get_humidifier_state()` method (already exists) and test that, or test that the published topic message is correct once the actuator state topic is added.
-
----
-
-## Scalability Considerations
-
-| Concern | At 1 chamber (MVP) | At 4 chambers | At 10+ chambers |
-|---------|-------------------|---------------|-----------------|
-| Node organization | Single fc_core package | Namespace per chamber (`fc1/`, `fc2/`) | Same namespacing, orchestrated via launch |
-| Config management | Single `fc_config.yaml` | Per-chamber config files | Templated config generation |
-| Topic naming | `fc/humidity` | `fc1/humidity`, `fc2/humidity` | Same pattern |
-| Hardware isolation | All in one controller | Separate controller node per chamber | Same pattern |
-| Control logic sharing | N/A | Shared base class or common module | Python module extracted to shared package |
-
-For MVP, none of this needs to be built. The `fc/` topic prefix already accommodates future namespacing. Do not over-engineer for multi-chamber now.
+The bridge queries `SELECT MAX(time) FROM alerts WHERE alert_type = $1` before firing. This adds one DB round-trip per alert check but eliminates cross-restart spam entirely. **Defer this to Phase 2 of the milestone — ship in-memory first.**
 
 ---
 
-## Sources
+## Question 4: Build Order
 
-- [Using Callback Groups — ROS 2 Jazzy docs](https://docs.ros.org/en/jazzy/How-To-Guides/Using-callback-groups.html) — HIGH confidence (official)
-- [rclpy Timer API — ROS 2 Jazzy](https://docs.ros.org/en/jazzy/p/rclpy/api/timers.html) — HIGH confidence (official)
-- [Managed Nodes design article — ROS 2](https://design.ros2.org/articles/node_lifecycle.html) — HIGH confidence (official)
-- [How to Use ROS 2 Lifecycle Nodes — Foxglove](https://foxglove.dev/blog/how-to-use-ros2-lifecycle-nodes) — MEDIUM confidence (third-party, consistent with official docs)
-- [ROS2 rclpy Parameter Callback — Robotics Back-End](https://roboticsbackend.com/ros2-rclpy-parameter-callback/) — MEDIUM confidence (third-party tutorial, verified against official API)
-- [Handling sensor timeouts/disconnects in ROS2 — ROS Answers](https://answers.ros.org/question/414290/handling-sensor-timeoutsdisconnects-in-ros2/) — MEDIUM confidence (community, consistent with timestamp pattern)
-- [ROS 2 Common Issues and Mistakes — Karelics](https://karelics.fi/blog/2023/05/19/ros-2-common-issues-and-mistakes/) — MEDIUM confidence (practitioner post)
-- Existing codebase: `fc_controller.py`, `fc_sensors.py`, `fc_config.yaml`, `test_controller.py` — HIGH confidence (ground truth for current state)
+### Dependency graph
+
+```
+FarmOS admin setup (carryover from v1.2)
+    → required before /farmos/summary proxy returns useful data
+    → but dashboard can ship without it (show placeholder if no FarmOS data)
+
+alert engine (alerter.js in bridge)
+    → depends on: Signal CLI installed on elder-plops host
+    → does NOT depend on: dashboard, FarmOS
+
+dashboard static page
+    → depends on: bridge /farmos/summary endpoint (for FarmOS section)
+    → does NOT depend on: alert engine
+
+Phase 12 hardware UAT (carryover)
+    → independent of all new v1.3 work
+```
+
+### Recommended phase decomposition (4 phases)
+
+**Phase 17: Alert engine + Signal integration**
+- Install and configure signal-cli on elder-plops (manual step, pre-phase)
+- Create `src/mission-control/bridge/src/alerter.js`
+- Wire alerter calls into existing subscription callbacks in `index.js`
+- Add Pi-offline ticker (`setInterval` in index.js)
+- Add alert env vars to `docker-compose.yml`
+- Test: force sensor_health ERROR level, verify Signal message received
+- Ship to production before dashboard — alerts are higher value and fully independent
+
+**Phase 18: Farmer dashboard HUD**
+- Create `src/mission-control/bridge/src/farmer/` directory with `index.html`
+- Add `express.static()` route in `index.js` for `/farmer`
+- Implement: WS connection for live readings, `/health` poll for status lights, `/history/fc.*` for sparklines, `/camera/snapshot` for latest frame
+- No FarmOS section yet — show placeholder
+- Ship: `docker compose up -d --build bridge`
+
+**Phase 19: FarmOS proxy + dashboard FarmOS section**
+- Add `GET /farmos/summary` route to bridge
+- Add `FARMOS_URL`, `FARMOS_USERNAME`, `FARMOS_PASSWORD` to bridge env
+- Add FarmOS section to farmer dashboard consuming `/farmos/summary`
+- Complete FarmOS admin carryover (FC-1 asset location, permissions)
+- Ship bridge rebuild
+
+**Phase 20: Phase 12 hardware UAT + polish**
+- Execute Phase 12 hardware UAT checklist (camera on real hardware)
+- Alert cooldown tuning based on real-world behavior from Phase 17
+- Dashboard UX polish based on farmer feedback from Phase 18
+- Consider Timescale `alerts` table if in-memory cooldown proved noisy
+
+### Parallelism
+
+Phase 17 and Phase 18 are fully parallel — alerter.js and the farmer dashboard page share no code. They require the same bridge rebuild to ship but can be developed independently and merged before a single `docker compose up -d --build bridge`.
+
+Phase 19 requires Phase 18 to be live (dashboard already exists to add the FarmOS section to).
+
+Phase 20 is independent of everything except needing Phase 17 in production long enough to observe cooldown behavior.
+
+---
+
+## Concrete File Paths and Route Summary
+
+### New files
+```
+src/mission-control/bridge/src/alerter.js
+src/mission-control/bridge/src/farmer/index.html
+src/mission-control/bridge/src/farmer/farmer.css     (optional, can inline)
+src/mission-control/bridge/src/farmer/farmer.js      (optional, can inline)
+```
+
+### Modified files
+```
+src/mission-control/bridge/src/index.js
+  + import alerter.js
+  + call alerter.checkSensorHealth() in sensor_health subscription callback
+  + call alerter.checkHumidity() in humidity callback
+  + call alerter.checkHumidifier() in humidifier callback
+  + add setInterval Pi-offline check (60s tick)
+  + add express.static() for /farmer
+  + add GET /farmos/summary proxy route
+
+docker-compose.yml  (bridge service environment block)
+  + SIGNAL_PHONE, SIGNAL_RECIPIENT
+  + ALERT_RH_MIN, ALERT_RH_MAX, ALERT_OFFLINE_MINUTES, ALERT_STUCK_MINUTES
+  + FARMOS_URL, FARMOS_USERNAME, FARMOS_PASSWORD  (Phase 19)
+```
+
+### New HTTP routes on bridge (port 8081)
+```
+GET /farmer              → serves static farmer dashboard HTML
+GET /farmos/summary      → proxied FarmOS latest observation for FC-1
+```
+
+### ROS topics consumed (no new subscriptions needed)
+```
+/fc1/humidity             — already subscribed; alerter.checkHumidity() added to callback
+/fc1/actuators/humidifier — already subscribed; alerter.checkHumidifier() added to callback
+/fc1/sensor_health        — already subscribed; alerter.checkSensorHealth() added to callback
+(Pi-offline uses existing humidifierLastMsgTs + rosReady state variables)
+```
+
+### TimescaleDB (Phase 1 of alerts: no changes; Phase 2 if cooldown proves noisy)
+```sql
+CREATE TABLE alerts (
+    time        TIMESTAMPTZ NOT NULL,
+    alert_type  TEXT        NOT NULL,
+    message     TEXT        NOT NULL,
+    resolved_at TIMESTAMPTZ
+);
+SELECT create_hypertable('alerts', 'time', if_not_exists => TRUE);
+```
+
+---
+
+## Key Constraints and Risks
+
+**Signal CLI host dependency.** signal-cli must be installed and registered on elder-plops before Phase 17 can ship. This is a pre-phase manual step that requires a phone number registration flow. It cannot be automated in the compose stack without significant complexity. Factor 1-2 hours for setup + registration.
+
+**elder-plops is dev + prod simultaneously.** Per memory, rebuilding the bridge affects production immediately. The `--build bridge` command on a system with live production traffic means the bridge goes down for the rebuild duration (typically <60 seconds). Alert logic must be verified in dev/sim mode before shipping.
+
+**FarmOS auth in bridge.** Adding `FARMOS_USERNAME`/`FARMOS_PASSWORD` to the bridge docker-compose means those credentials appear in environment variables accessible to any process in the bridge container. Current practice (farmos-agent already does this). Not a new risk, just the same risk extended to one more service.
+
+**Farmer dashboard has no auth.** The dashboard at `http://elder-plops-ip:8081/farmer` will be accessible to anyone on the Tailscale network. That is acceptable for this farm (same trust model as OpenMCT at port 8080). Do not add auth in v1.3.
+
+**CORS for mobile access.** If the farmer accesses the dashboard from their phone via Tailscale, the `CORS_ORIGIN` env var needs to include the phone's browser origin or the farmer must access via the elder-plops IP (not a hostname). Document in the phase plan — do not solve automatically.
