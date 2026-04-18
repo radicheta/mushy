@@ -290,9 +290,17 @@ app.get('/camera/latest.jpg', (req, res) => {
 // Store connected WebSocket clients
 const clients = new Set();
 
+// Phase 16.1: cache last sensor_health broadcast so new WS clients see current state
+// before the next fc_controller state transition (addresses grey-until-tick UX).
+let lastSensorHealthBroadcast = null;
+
 wss.on('connection', (ws) => {
     console.log('[bridge] Client connected');
     clients.add(ws);
+
+    if (lastSensorHealthBroadcast && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(lastSensorHealthBroadcast));
+    }
 
     ws.on('close', () => {
         console.log('[bridge] Client disconnected');
@@ -410,7 +418,7 @@ rclnodejs.init().then(async () => {
             // Flatten KeyValue[] into a plain object for easy browser consumption
             const values = {};
             (msg.values || []).forEach((kv) => { values[kv.key] = kv.value; });
-            broadcast({
+            const payload = {
                 sensor_health: {
                     level: msg.level,           // 0=OK, 1=WARN, 2=ERROR
                     name: msg.name,
@@ -418,7 +426,9 @@ rclnodejs.init().then(async () => {
                     values: values              // { grace_elapsed_sec, grace_total_sec, ... } when WARN
                 },
                 timestamp: Date.now()
-            });
+            };
+            lastSensorHealthBroadcast = payload;
+            broadcast(payload);
         }
     );
     console.log('[bridge] Sensor health subscription: TRANSIENT_LOCAL QoS (/fc1/sensor_health)');
