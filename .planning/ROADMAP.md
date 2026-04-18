@@ -86,7 +86,12 @@ farmer-attested "all green" on 2026-04-18. See `.planning/milestones/v1.2.1-ROAD
   3. A duplicate condition does not generate a second alert within the configured cooldown window (N consecutive OOB readings required before first fire; same-type alert suppressed until cooldown elapses)
   4. A daily heartbeat message arrives on the farmer's phone once per 24h with an FC-1 summary, confirming the alerter is alive
   5. All thresholds and cadences are readable from env vars (ALERT_RH_TARGET, ALERT_RH_BAND, ALERT_COOLDOWN_MIN, etc.) — changing a threshold requires only a `docker compose up -d --build bridge`, not a code edit
-**Plans**: TBD
+**Plans**: 5 plans
+- [ ] 17-01-PLAN.md — Wave 0 scaffolding + jest harness + networking topology probe
+- [ ] 17-02-PLAN.md — Pure state machine + detection rules + env config + message templates + snooze grammar (TDD)
+- [ ] 17-03-PLAN.md — signal.js HTTP client + bridge-client.js WS reconnect
+- [ ] 17-04-PLAN.md — heartbeat scheduler + receive loop + index.js wire-up + end-to-end integration test
+- [ ] 17-05-PLAN.md — Compose deploy + Signal registration + human-attested PROBLEM/RECOVERY/heartbeat (hard gate)
 **UI hint**: no
 
 ---
@@ -155,7 +160,7 @@ farmer-attested "all green" on 2026-04-18. See `.planning/milestones/v1.2.1-ROAD
 | 14. fc_camera idle-mode stall hotfix | v1.2.1 | 5/5 | Complete    | 2026-04-18 |
 | 15. Sensor warm-up grace period | v1.2.1 | 3/3 | Complete    | 2026-04-18 |
 | 16. System health panel | v1.2.1 | 3/3 | Complete    | 2026-04-18 |
-| 17. Alert Engine + Signal | v1.3 | 0/? | Not started | - |
+| 17. Alert Engine + Signal | v1.3 | 0/5 | Planned | - |
 | 18. Farmer Dashboard HUD | v1.3 | 0/? | Not started | - |
 | 19. FarmOS Proxy + Dashboard FarmOS Section | v1.3 | 0/? | Not started | - |
 | 20. Hardware UAT + Polish | v1.3 | 0/? | Not started | - |
