@@ -22,18 +22,18 @@ result: resolved — farmer chose the fix. Phase 16.1 shipped commit `3ccece1`: 
 
 ### 3. Post-16.1 visual re-check
 expected: After a hard-refresh (Ctrl+Shift+R) of Mission Control, Sensors and Grace lights should now be green on page load without needing to wait for an fc_controller state transition.
-result: [pending — farmer to refresh and report]
+result: passed — farmer reported "all green" after hard-refresh 2026-04-18. All 6 lights green: Sensors, Grace, Camera feed, Humidifier, Bridge, Pi reachable. Farmer quote: "i wanna see a panel of green lights like the farmer said!" — goal met.
 
 ## Summary
 
 total: 3
-passed: 0
+passed: 1
 issues: 0
-pending: 1
+pending: 0
 skipped: 0
 blocked: 0
 resolved: 2
 
 ## Gaps
 
-_None yet — pending human review._
+_None. Phase 16 UAT complete — farmer-attested "all green"._
