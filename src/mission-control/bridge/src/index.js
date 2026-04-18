@@ -24,6 +24,10 @@ const pool = new Pool({
 // Track DB availability — live WS continues even if DB is down
 let dbReady = false;
 
+// Phase 16: liveness tracking for health panel
+let rosReady = false;              // flips true once rclnodejs.init().then() completes
+let humidifierLastMsgTs = null;    // ms epoch of most recent /fc1/actuators/humidifier
+
 // Camera MJPEG streaming state
 const BOUNDARY = 'frameboundary';
 const mjpegClients = new Set();
@@ -161,11 +165,17 @@ app.get('/health', (req, res) => {
     res.json({
         status: 'ok',
         db: dbReady,
+        ros: {
+            connected: rosReady
+        },
         camera: {
             lastFrame: lastFrameTime,               // ms epoch or null — existing consumers
             last_frame_age_sec: lastFrameAgeSec,    // Phase 14 HFIX-03: integer seconds or null
             clients: mjpegClients.size,
             subscribed: cameraSubscription !== null
+        },
+        humidifier: {
+            last_msg_ts: humidifierLastMsgTs
         }
     });
 });
@@ -375,12 +385,43 @@ rclnodejs.init().then(async () => {
         '/fc1/actuators/humidifier',
         { qos: humidifierQos },
         async (msg) => {
+            humidifierLastMsgTs = Date.now();
             const value = msg.data ? 1 : 0;
             broadcast({ humidifier: value, timestamp: Date.now() });
             await insertTelemetry('fc.humidifier', value);
         }
     );
     console.log('[bridge] Humidifier subscription: TRANSIENT_LOCAL QoS (replays last state on restart)');
+
+    // Phase 16: forward /fc1/sensor_health (DiagnosticStatus, TRANSIENT_LOCAL) to WS clients
+    const sensorHealthQos = new rclnodejs.QoS(
+        rclnodejs.QoS.HistoryPolicy.RMW_QOS_POLICY_HISTORY_KEEP_LAST,
+        1,
+        rclnodejs.QoS.ReliabilityPolicy.RMW_QOS_POLICY_RELIABILITY_RELIABLE,
+        rclnodejs.QoS.DurabilityPolicy.RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL,
+        rclnodejs.QoS.LivelinessPolicy.RMW_QOS_POLICY_LIVELINESS_SYSTEM_DEFAULT,
+        false
+    );
+    node.createSubscription(
+        'diagnostic_msgs/msg/DiagnosticStatus',
+        '/fc1/sensor_health',
+        { qos: sensorHealthQos },
+        (msg) => {
+            // Flatten KeyValue[] into a plain object for easy browser consumption
+            const values = {};
+            (msg.values || []).forEach((kv) => { values[kv.key] = kv.value; });
+            broadcast({
+                sensor_health: {
+                    level: msg.level,           // 0=OK, 1=WARN, 2=ERROR
+                    name: msg.name,
+                    message: msg.message,
+                    values: values              // { grace_elapsed_sec, grace_total_sec, ... } when WARN
+                },
+                timestamp: Date.now()
+            });
+        }
+    );
+    console.log('[bridge] Sensor health subscription: TRANSIENT_LOCAL QoS (/fc1/sensor_health)');
 
     // Start snapshot timer (D-10: periodic snapshots, default 15 min)
     setInterval(saveSnapshot, SNAPSHOT_INTERVAL_MS);
@@ -391,6 +432,7 @@ rclnodejs.init().then(async () => {
         console.log('[bridge] HTTP + WebSocket server on port 8081');
     });
 
+    rosReady = true;
     node.spin();
 }).catch((err) => {
     console.error('Failed to initialize ROS:', err);
