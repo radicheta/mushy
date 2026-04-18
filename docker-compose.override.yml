@@ -16,3 +16,58 @@ services:
 
   farmos-agent:
     network_mode: "host"
+
+  # signal-cli-rest-api: Signal primary-account host
+  # json-rpc-native mode required for /v1/receive (snooze loop).
+  # Account state persists in named volume — survive container recreation.
+  # Internal only: NOT published to host, NOT Tailscale-served (D-13).
+  signal-cli:
+    image: bbernhard/signal-cli-rest-api:0.200-dev
+    restart: unless-stopped
+    environment:
+      - MODE=json-rpc-native
+    volumes:
+      - signal-cli-data:/home/.local/share/signal-cli
+    networks:
+      - signal-net
+
+  # alerter: mushy-alerter Signal notification agent
+  # Joins mushy_default (reaches bridge via host.docker.internal:8081)
+  # and signal-net (reaches signal-cli:8080 on internal compose network).
+  alerter:
+    build:
+      context: ./src/agents/alerter
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - signal-cli
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - BRIDGE_WS_URL=ws://host.docker.internal:8081
+      - BRIDGE_HEALTH_URL=http://host.docker.internal:8081/health
+      - SIGNAL_API_URL=http://signal-cli:8080
+      - SIGNAL_SENDER=${SIGNAL_SENDER}
+      - SIGNAL_RECIPIENT=${SIGNAL_RECIPIENT}
+      - ALERT_RH_TARGET=${ALERT_RH_TARGET:-90}
+      - ALERT_RH_BAND=${ALERT_RH_BAND:-3}
+      - ALERT_OOB_N=${ALERT_OOB_N:-5}
+      - ALERT_OOB_WINDOW_MIN=${ALERT_OOB_WINDOW_MIN:-3}
+      - ALERT_COOLDOWN_MIN=${ALERT_COOLDOWN_MIN:-30}
+      - ALERT_CRITICAL_COOLDOWN_MIN=${ALERT_CRITICAL_COOLDOWN_MIN:-60}
+      - ALERT_PI_OFFLINE_MIN=${ALERT_PI_OFFLINE_MIN:-5}
+      - ALERT_HUMIDIFIER_STUCK_MIN=${ALERT_HUMIDIFIER_STUCK_MIN:-30}
+      - ALERT_HEARTBEAT_HOUR=${ALERT_HEARTBEAT_HOUR:-8}
+      - ALERT_RECEIVE_POLL_SEC=${ALERT_RECEIVE_POLL_SEC:-30}
+      - DASHBOARD_URL=${DASHBOARD_URL:-http://elder-plops-ts:8081/farmer}
+      - TZ=America/Toronto
+    networks:
+      - mushy_default
+      - signal-net
+
+networks:
+  signal-net:
+    driver: bridge
+
+volumes:
+  signal-cli-data:
