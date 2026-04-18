@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2.1
 milestone_name: Hotfix — camera stall + sensor warmup
 status: executing
-stopped_at: Completed 16-system-health-panel-01-PLAN.md
-last_updated: "2026-04-18T01:43:30.661Z"
+stopped_at: Completed 16-system-health-panel 16-02-PLAN.md
+last_updated: "2026-04-18T01:46:36.572Z"
 last_activity: 2026-04-18
 progress:
   total_phases: 14
   completed_phases: 5
   total_plans: 18
-  completed_plans: 16
-  percent: 89
+  completed_plans: 17
+  percent: 94
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-12)
 ## Current Position
 
 Phase: 16 (system-health-panel) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-04-18
 
@@ -60,6 +60,8 @@ Progress: [░░░░░░░░░░] 0% (v1.2 phases only)
 - [Phase 15]: SOAK_PASS: true — WARN->OK transition at 25s post-node-init; no humidifier actuation in grace window; Phase 16 sensor_health topic confirmed live
 - [Phase 16-system-health-panel]: Flatten DiagnosticStatus KeyValue[] into plain JS object before WebSocket broadcast for easy browser consumption
 - [Phase 16-system-health-panel]: rosReady flips true immediately before node.spin() so it reflects full subscription readiness
+- [Phase 16-system-health-panel]: Camera feed light duplicated in strip rather than relocated — preserves inline context in camera panel during soak
+- [Phase 16-system-health-panel]: Dedicated WS opened in health view for sensor_health — avoids reworking shared telemetry WS
 
 ### Pending Todos
 
@@ -72,8 +74,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-18T01:43:30.659Z
-Stopped at: Completed 16-system-health-panel-01-PLAN.md
+Last session: 2026-04-18T01:46:36.569Z
+Stopped at: Completed 16-system-health-panel 16-02-PLAN.md
 Resume file: None
 
 ---
