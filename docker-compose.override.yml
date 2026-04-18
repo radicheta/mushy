@@ -32,8 +32,8 @@ services:
       - signal-net
 
   # alerter: mushy-alerter Signal notification agent
-  # Joins mushy_default (reaches bridge via host.docker.internal:8081)
-  # and signal-net (reaches signal-cli:8080 on internal compose network).
+  # Reaches bridge via host.docker.internal:8081 (extra_hosts, no compose network needed).
+  # Reaches signal-cli via signal-net internal compose network at signal-cli:8080.
   alerter:
     build:
       context: ./src/agents/alerter
@@ -62,7 +62,6 @@ services:
       - DASHBOARD_URL=${DASHBOARD_URL:-http://elder-plops-ts:8081/farmer}
       - TZ=America/Toronto
     networks:
-      - mushy_default
       - signal-net
 
 networks:
