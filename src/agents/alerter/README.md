@@ -79,6 +79,51 @@ If you update only elder-plops `.env`, the controller and alerter will be out of
 The alert band (`ALERT_RH_BAND=3`) is intentionally wider than the controller band (`±1%`).
 The alerter fires only when the system fails to stay within ±3% — not for normal control oscillation.
 
+## Networking Topology (Validated)
+
+Probe run 2026-04-18 on elder-plops. Result: **PASS**.
+
+### Topology
+
+- Alerter container joins `mushy_default` compose bridge network
+- Bridge runs `network_mode: host` on elder-plops port 8081
+- Alerter reaches bridge via `host.docker.internal` resolved to the host gateway IP
+- signal-cli reached via internal compose network at `http://signal-cli:8080`
+
+### Probe Command
+
+```bash
+docker run --rm \
+  --add-host=host.docker.internal:host-gateway \
+  --network=mushy_default \
+  alpine:3.19 sh -c 'apk add --no-cache curl >/dev/null && curl -sf http://host.docker.internal:8081/health | head -c 200'
+```
+
+### Probe Output (PASS)
+
+```json
+{"status":"ok","db":true,"ros":{"connected":true},"camera":{"lastFrame":...},"humidifier":{"last_msg_ts":...}}
+```
+
+### Locked Compose Config (Plans 03/05)
+
+This probe locks the networking strategy for all alerter compose wiring:
+
+```yaml
+alerter:
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  networks:
+    - mushy_default          # reaches bridge via host.docker.internal:8081
+    - signal-net             # reaches signal-cli:8080
+
+environment:
+  BRIDGE_WS_URL: ws://host.docker.internal:8081
+  SIGNAL_API_URL: http://signal-cli:8080
+```
+
+The `host-mode fallback` path (Plans 03/05 fallback branch) is **not needed** — do not implement it.
+
 ## Env Vars
 
 | Variable | Default | Description |
