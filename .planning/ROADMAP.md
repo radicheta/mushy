@@ -55,6 +55,12 @@ FC-1 location), Phase 12 hardware UAT pending.
 <summary>🚧 v1.2.1 Hotfix — camera stall + sensor warmup (Phases 14-15) — FILED 2026-04-17</summary>
 
 - [ ] Phase 14: fc_camera idle-mode stall hotfix — farmer-facing symptom (frozen MC image) from Phase 12 regression. Diagnose root cause first (not just patch symptom); add two status lights in MC camera panel; bundle `last_frame_age_sec` in bridge `/health`. Context: `.planning/phases/14-fc-camera-idle-stall-hotfix/14-CONTEXT.md`
+  **Plans:** 5 plans
+  - [ ] 14-01-PLAN.md — live-stall diagnostic (Path A vs B); no-op safe; produces 14-DIAGNOSTIC-RESULT.md
+  - [ ] 14-02-PLAN.md — fc_camera 1Hz graph-poll fallback + TestIdleToActiveRecovery unit tests
+  - [ ] 14-03-PLAN.md — bridge /health adds camera.last_frame_age_sec; rebuild on elder-plops
+  - [ ] 14-04-PLAN.md — MC two status lights ("Feed live" + "Camera subscribed") via makeStatusLight primitive
+  - [ ] 14-05-PLAN.md — deploy to fc1/prod + 30-min live soak; 14-SOAK-EVIDENCE.md with SOAK_PASS verdict
 - [ ] Phase 15: Sensor warm-up grace period — promoted from 999.8 at farmer's explicit ask 2026-04-17. Farmer constraint: "bigger gap than noise" — publish nothing (or explicit warming-up state) rather than spiky/wrong values during the ~30s post-restart transient. Context: `.planning/phases/15-sensor-warmup-grace-period/CONTEXT.md`
 - [ ] Phase 16: System health panel (seed) — broad "green lights" dashboard for all fc1 subsystems. Split out from Phase 14 to keep hotfix weekend-sized. Seed note: `.planning/phases/16-system-health-panel/CONTEXT-SEED.md`. Milestone TBD (v1.2.1 stretch or v1.3).
 
@@ -81,7 +87,7 @@ hotfix before the next feature milestone.
 | 11. Compose v2 Upgrade | v1.2 | 1/1 | Complete | 2026-04-13 |
 | 12. Subscriber-Aware Camera | v1.2 | 2/2 | Complete | 2026-04-13 |
 | 13. FarmOS Daily Report | v1.2 | 4/4 | Complete    | 2026-04-13 |
-| 14. fc_camera idle-mode stall hotfix | v1.2.1 | 0/? | Filed | — |
+| 14. fc_camera idle-mode stall hotfix | v1.2.1 | 0/5 | Planned | — |
 | 15. Sensor warm-up grace period | v1.2.1 | 0/? | Filed (promoted from 999.8) | — |
 
 ## Backlog (parking lot)
