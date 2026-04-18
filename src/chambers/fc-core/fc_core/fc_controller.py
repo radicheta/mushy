@@ -6,6 +6,7 @@ from sensor_msgs.msg import Temperature, RelativeHumidity
 from std_msgs.msg import Bool
 import time
 from collections import deque
+from diagnostic_msgs.msg import DiagnosticStatus, KeyValue
 from datetime import datetime
 from statistics import median
 
@@ -34,6 +35,7 @@ class FruitingChamberController(Node):
                 ('control_interval', 1.0),
                 ('min_dwell_time', 300.0),
                 ('sensor_stale_timeout', 10.0),
+                ('startup_grace_period', 20.0),
             ]
         )
         
@@ -98,6 +100,11 @@ class FruitingChamberController(Node):
             Bool, 'fc1/actuators/humidifier', actuator_qos
         )
 
+        # Sensor health publisher — TRANSIENT_LOCAL so late-joiners get last state (SENS-01, WARMUP-02)
+        self.sensor_health_pub = self.create_publisher(
+            DiagnosticStatus, 'fc1/sensor_health', actuator_qos
+        )
+
         # Current values
         self.current_temp = None
         self.current_humidity = None
@@ -107,6 +114,11 @@ class FruitingChamberController(Node):
         self._safe_state_active = False        # log deduplication flag
         self._dwell_blocked_desired = None     # dedupe DWELL-BLOCK logs per blocked window
         
+        # Startup grace state (SENS-01, WARMUP-01/02/03)
+        self._boot_time = self.get_clock().now()
+        self._warming_up = True
+        self._warmup_signal_published = False
+
         # Control timer
         self.timer = self.create_timer(
             self.get_parameter('control_interval').value,
@@ -203,7 +215,66 @@ class FruitingChamberController(Node):
             return self.GPIO.input(self.light_pin) == self.GPIO.HIGH
         return self.light_state
 
+    def _grace_active(self) -> bool:
+        """True while startup grace is in effect.
+
+        Grace holds until BOTH:
+          (a) _humidity_buffer is full (maxlen samples received), AND
+          (b) startup_grace_period seconds elapsed since __init__.
+        Either unmet -> grace active -> no actuation.
+        """
+        if len(self._humidity_buffer) < self._humidity_buffer.maxlen:
+            return True
+        elapsed = (
+            self.get_clock().now() - self._boot_time
+        ).nanoseconds / 1e9
+        if elapsed < self.get_parameter('startup_grace_period').value:
+            return True
+        return False
+
+    def _publish_sensor_health(self, warming_up: bool):
+        """Publish a DiagnosticStatus snapshot on fc1/sensor_health.
+
+        Called on state CHANGE only (grace enter and grace exit) to keep
+        the topic quiet. TRANSIENT_LOCAL QoS means late-joiners still
+        see last state on subscribe.
+        """
+        grace_period = self.get_parameter('startup_grace_period').value
+        elapsed = (
+            self.get_clock().now() - self._boot_time
+        ).nanoseconds / 1e9
+        buffer_full = (
+            len(self._humidity_buffer) >= self._humidity_buffer.maxlen
+        )
+        msg = DiagnosticStatus()
+        msg.level = (
+            DiagnosticStatus.WARN if warming_up else DiagnosticStatus.OK
+        )
+        msg.name = 'fc1/controller'
+        msg.message = 'warming up' if warming_up else 'ok'
+        msg.hardware_id = 'fc1'
+        msg.values = [
+            KeyValue(key='warming_up', value=str(warming_up).lower()),
+            KeyValue(key='grace_elapsed_sec', value=f'{elapsed:.1f}'),
+            KeyValue(key='grace_total_sec', value=f'{grace_period:.1f}'),
+            KeyValue(key='buffer_full', value=str(buffer_full).lower()),
+        ]
+        self.sensor_health_pub.publish(msg)
+
     def control_loop(self):
+        # WARMUP-01: startup grace — no actuation until sensors settle
+        if self._grace_active():
+            self.set_humidifier(False)
+            if not self._warmup_signal_published:
+                self._publish_sensor_health(warming_up=True)
+                self._warmup_signal_published = True
+            return
+
+        if self._warming_up:
+            self._warming_up = False
+            self._publish_sensor_health(warming_up=False)
+            self.get_logger().info('WARMUP-CLEARED: control loop engaging')
+
         if self.current_temp is None or self.current_humidity is None:
             self.set_humidifier(False)
             return
