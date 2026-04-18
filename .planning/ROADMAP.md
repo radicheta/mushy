@@ -70,7 +70,7 @@ FC-1 location), Phase 12 hardware UAT pending.
   **Plans:** 3 plans
   - [x] 16-01-PLAN.md — bridge forwards /fc1/sensor_health + exposes ros.connected and humidifier.last_msg_ts on /health
   - [x] 16-02-PLAN.md — plugin.js adds six-light horizontal health strip (new openmct type + view)
-  - [ ] 16-03-PLAN.md — smoke test live stack; produces 16-SMOKE-EVIDENCE.md with SMOKE_PASS verdict
+  - [x] 16-03-PLAN.md — smoke test live stack; produces 16-SMOKE-EVIDENCE.md with SMOKE_PASS verdict
 
 Filed during a farmer debug session on the camera feed. Both issues erode
 operator trust in Mission Control and should ship together as a small

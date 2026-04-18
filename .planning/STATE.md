@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.2.1
 milestone_name: Hotfix — camera stall + sensor warmup
-status: executing
-stopped_at: Completed 16-system-health-panel 16-02-PLAN.md
-last_updated: "2026-04-18T01:46:36.572Z"
+status: verifying
+stopped_at: Completed 16-03-PLAN.md (smoke evidence)
+last_updated: "2026-04-18T01:54:51.106Z"
 last_activity: 2026-04-18
 progress:
   total_phases: 14
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 18
-  completed_plans: 17
-  percent: 94
+  completed_plans: 18
+  percent: 100
 ---
 
 # Project State
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-12)
 
 Phase: 16 (system-health-panel) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-18
 
 Progress: [░░░░░░░░░░] 0% (v1.2 phases only)
@@ -62,6 +62,7 @@ Progress: [░░░░░░░░░░] 0% (v1.2 phases only)
 - [Phase 16-system-health-panel]: rosReady flips true immediately before node.spin() so it reflects full subscription readiness
 - [Phase 16-system-health-panel]: Camera feed light duplicated in strip rather than relocated — preserves inline context in camera panel during soak
 - [Phase 16-system-health-panel]: Dedicated WS opened in health view for sensor_health — avoids reworking shared telemetry WS
+- [Phase 16]: SMOKE_PASS: true — all 6 lights have labels, live data, and computable states on live stack
 
 ### Pending Todos
 
@@ -74,8 +75,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-18T01:46:36.569Z
-Stopped at: Completed 16-system-health-panel 16-02-PLAN.md
+Last session: 2026-04-18T01:54:51.103Z
+Stopped at: Completed 16-03-PLAN.md (smoke evidence)
 Resume file: None
 
 ---
