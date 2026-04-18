@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2.1
 milestone_name: Hotfix — camera stall + sensor warmup
 status: executing
-stopped_at: "Completed 14-05-PLAN.md (soak complete, SOAK_PASS: true)"
-last_updated: "2026-04-18T01:09:02.031Z"
+stopped_at: Completed 15-02-PLAN.md
+last_updated: "2026-04-18T01:12:03.043Z"
 last_activity: 2026-04-18
 progress:
   total_phases: 14
   completed_phases: 4
   total_plans: 15
-  completed_plans: 12
-  percent: 80
+  completed_plans: 13
+  percent: 87
 ---
 
 # Project State
@@ -21,12 +21,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-12)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 14 — fc-camera-idle-stall-hotfix
+**Current focus:** Phase 15 — sensor-warmup-grace-period
 
 ## Current Position
 
-Phase: 14 (fc-camera-idle-stall-hotfix) — EXECUTING
-Plan: 2 of 5
+Phase: 15 (sensor-warmup-grace-period) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
 Last activity: 2026-04-18
 
@@ -56,6 +56,7 @@ Progress: [░░░░░░░░░░] 0% (v1.2 phases only)
 - [v1.2] Camera phase before FarmOS — daily snapshot depends on fc_camera; idle-rate trickle provides scheduled capture
 - [v1.2] FarmOS daily report runs on elder-plops (not Pi) — pulls from TimescaleDB + Flask on 8765
 - [Phase 14]: SOAK_PASS: true — canonical stall recovery confirmed in 9s via 1Hz graph-poll fix
+- [Phase 15-sensor-warmup-grace-period]: SENS-01 promoted from backlog/out-of-scope to active v1.2.1 requirement with Phase 15 traceability
 
 ### Pending Todos
 
@@ -68,8 +69,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-18T01:09:02.028Z
-Stopped at: Completed 14-05-PLAN.md (soak complete, SOAK_PASS: true)
+Last session: 2026-04-18T01:12:03.041Z
+Stopped at: Completed 15-02-PLAN.md
 Resume file: None
 
 ---
