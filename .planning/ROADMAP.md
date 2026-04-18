@@ -60,7 +60,7 @@ FC-1 location), Phase 12 hardware UAT pending.
   - [x] 14-02-PLAN.md — fc_camera 1Hz graph-poll fallback + TestIdleToActiveRecovery unit tests
   - [x] 14-03-PLAN.md — bridge /health adds camera.last_frame_age_sec; rebuild on elder-plops
   - [x] 14-04-PLAN.md — MC two status lights ("Feed live" + "Camera subscribed") via makeStatusLight primitive
-  - [ ] 14-05-PLAN.md — deploy to fc1/prod + 30-min live soak; 14-SOAK-EVIDENCE.md with SOAK_PASS verdict
+  - [x] 14-05-PLAN.md — deploy to fc1/prod + 30-min live soak; 14-SOAK-EVIDENCE.md with SOAK_PASS verdict
 - [ ] Phase 15: Sensor warm-up grace period — promoted from 999.8 at farmer's explicit ask 2026-04-17. Farmer constraint: "bigger gap than noise" — publish nothing (or explicit warming-up state) rather than spiky/wrong values during the ~30s post-restart transient. Context: `.planning/phases/15-sensor-warmup-grace-period/15-CONTEXT.md`
   **Plans:** 3 plans
   - [ ] 15-01-PLAN.md — controller grace gate + /fc1/sensor_health publisher + unit tests + package.xml diagnostic_msgs dep
@@ -91,7 +91,7 @@ hotfix before the next feature milestone.
 | 11. Compose v2 Upgrade | v1.2 | 1/1 | Complete | 2026-04-13 |
 | 12. Subscriber-Aware Camera | v1.2 | 2/2 | Complete | 2026-04-13 |
 | 13. FarmOS Daily Report | v1.2 | 4/4 | Complete    | 2026-04-13 |
-| 14. fc_camera idle-mode stall hotfix | v1.2.1 | 4/5 | In Progress|  |
+| 14. fc_camera idle-mode stall hotfix | v1.2.1 | 5/5 | Complete   | 2026-04-18 |
 | 15. Sensor warm-up grace period | v1.2.1 | 0/3 | Planned | — |
 
 ## Backlog (parking lot)
