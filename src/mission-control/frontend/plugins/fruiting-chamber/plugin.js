@@ -58,6 +58,63 @@
 
     var CAMERA_ID = { namespace: 'fruiting-chamber', key: 'fc.camera' };
 
+    /**
+     * StatusLight primitive — green/red/grey dot with a label.
+     * Reusable: Phase 16 will instantiate N of these for sensors/actuators/bridge.
+     *
+     * @param {Element} parentEl - DOM element to append the light into
+     * @param {string}  label    - Display label (e.g. "Feed live")
+     * @returns {{ setGreen(tooltip?), setRed(tooltip?), setGrey(tooltip?), destroy() }}
+     */
+    function makeStatusLight(parentEl, label) {
+        var root = document.createElement('span');
+        root.className = 'fc-status-light';
+        root.setAttribute('data-label', label);
+        root.setAttribute('data-state', 'unknown');
+        root.style.display = 'inline-flex';
+        root.style.alignItems = 'center';
+        root.style.gap = '6px';
+        root.style.padding = '2px 8px';
+        root.style.borderRadius = '4px';
+        root.style.background = 'rgba(0,0,0,0.6)';
+        root.style.border = '1px solid #555';
+        root.style.fontSize = '11px';
+        root.style.fontWeight = '600';
+        root.style.letterSpacing = '0.05em';
+        root.style.textTransform = 'uppercase';
+        root.style.color = '#ccc';
+
+        var dot = document.createElement('span');
+        dot.className = 'dot';
+        dot.style.width = '8px';
+        dot.style.height = '8px';
+        dot.style.borderRadius = '50%';
+        dot.style.background = '#555';
+        dot.style.display = 'inline-block';
+        root.appendChild(dot);
+
+        var labelEl = document.createElement('span');
+        labelEl.className = 'label';
+        labelEl.textContent = label;
+        root.appendChild(labelEl);
+
+        parentEl.appendChild(root);
+
+        function setState(state, color, borderColor, tooltip) {
+            root.setAttribute('data-state', state);
+            dot.style.background = color;
+            root.style.borderColor = borderColor;
+            if (tooltip !== undefined) root.title = tooltip;
+        }
+
+        return {
+            setGreen: function (tooltip) { setState('ok',      '#4ecdc4', '#4ecdc4', tooltip); },
+            setRed:   function (tooltip) { setState('bad',     '#e74c3c', '#e74c3c', tooltip); },
+            setGrey:  function (tooltip) { setState('unknown', '#555',    '#555',    tooltip); },
+            destroy:  function () { if (root.parentNode) root.parentNode.removeChild(root); }
+        };
+    }
+
     function getTimestamp(msg) {
         if (msg.header && msg.header.stamp) {
             var s = msg.header.stamp;
@@ -313,56 +370,96 @@
                         show: function (el) {
                             container = el;
                             var healthUrl = cameraUrl.replace('/camera/mjpeg', '/health');
-                            var badgeId = 'fc-camera-badge-' + Date.now();
                             var pollId = null;
 
-                            container.innerHTML = ''
-                                + '<div style="display:flex;flex-direction:column;align-items:center;height:100%;background:#000;position:relative;">'
-                                + '  <div id="' + badgeId + '" style="position:absolute;top:8px;right:8px;z-index:10;'
-                                + '    height:24px;padding:4px 8px;border-radius:4px;background:rgba(0,0,0,0.6);'
-                                + '    border:1px solid #555;display:flex;align-items:center;gap:4px;'
-                                + '    font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:#ccc;">'
-                                + '    <span style="width:8px;height:8px;border-radius:50%;background:#555;display:inline-block;"></span>'
-                                + '    IDLE \u00B7 1 frame/hr'
-                                + '  </div>'
-                                + '  <img src="' + cameraUrl + '"'
-                                + '       style="max-width:100%;max-height:100%;object-fit:contain;"'
-                                + '       alt="FC-1 Camera Feed"'
-                                + '       onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\';'
-                                + '               var b=document.getElementById(\'' + badgeId + '\');if(b)b.style.display=\'none\';" />'
-                                + '  <p style="display:none;color:#888;padding:2em;text-align:center;">'
-                                + '    Camera feed unavailable. Check that the bridge is running and the camera is connected.'
-                                + '  </p>'
-                                + '</div>';
+                            // Layout — absolute-positioned lights row overlaid on black background
+                            container.innerHTML = '';
+                            container.style.display = 'flex';
+                            container.style.flexDirection = 'column';
+                            container.style.alignItems = 'stretch';
+                            container.style.height = '100%';
+                            container.style.background = '#000';
+                            container.style.position = 'relative';
 
-                            function updateBadge() {
-                                fetch(healthUrl).then(function(r) { return r.json(); }).then(function(data) {
-                                    var badge = document.getElementById(badgeId);
-                                    if (!badge) return;
-                                    var cam = data.camera || {};
-                                    var isLive = cam.subscribed === true && cam.lastFrame && (Date.now() - cam.lastFrame < 10000);
-                                    var dot = badge.querySelector('span');
-                                    if (isLive) {
-                                        badge.style.borderColor = '#4ecdc4';
-                                        if (dot) dot.style.background = '#4ecdc4';
-                                        badge.childNodes[badge.childNodes.length - 1].textContent = 'LIVE';
+                            // Lights row — top-right corner, above image
+                            var lightsRow = document.createElement('div');
+                            lightsRow.style.display = 'flex';
+                            lightsRow.style.gap = '8px';
+                            lightsRow.style.padding = '8px';
+                            lightsRow.style.position = 'absolute';
+                            lightsRow.style.top = '0';
+                            lightsRow.style.right = '0';
+                            lightsRow.style.zIndex = '10';
+                            container.appendChild(lightsRow);
+
+                            var feedLight = makeStatusLight(lightsRow, 'Feed live');
+                            var subLight  = makeStatusLight(lightsRow, 'Camera subscribed');
+                            feedLight.setGrey('waiting for first /health response');
+                            subLight.setGrey('waiting for first /health response');
+
+                            // Camera image
+                            var img = document.createElement('img');
+                            img.src = cameraUrl;
+                            img.alt = 'FC-1 Camera Feed';
+                            img.style.maxWidth = '100%';
+                            img.style.maxHeight = '100%';
+                            img.style.objectFit = 'contain';
+                            img.style.margin = 'auto';
+
+                            var fallback = document.createElement('p');
+                            fallback.style.display = 'none';
+                            fallback.style.color = '#888';
+                            fallback.style.padding = '2em';
+                            fallback.style.textAlign = 'center';
+                            fallback.textContent = 'Camera feed unavailable. Check that the bridge is running and the camera is connected.';
+
+                            img.onerror = function () {
+                                img.style.display = 'none';
+                                fallback.style.display = 'block';
+                            };
+                            container.appendChild(img);
+                            container.appendChild(fallback);
+
+                            function updateLights() {
+                                fetch(healthUrl).then(function (r) { return r.json(); }).then(function (data) {
+                                    var cam = (data && data.camera) || {};
+
+                                    // Camera subscribed light — grey is not a failure state
+                                    if (cam.subscribed === true) {
+                                        subLight.setGreen('bridge is subscribed to /fc1/camera/compressed (' + (cam.clients || 0) + ' MJPEG client(s))');
                                     } else {
-                                        badge.style.borderColor = '#555';
-                                        if (dot) dot.style.background = '#555';
-                                        badge.childNodes[badge.childNodes.length - 1].textContent = 'IDLE \u00B7 1 frame/hr';
+                                        subLight.setGrey('no MJPEG viewers — fc_camera is idle (1 frame/hr) by design');
                                     }
-                                    badge.style.display = 'flex';
-                                }).catch(function() {});
+
+                                    // Feed live light — D-03 gap-over-noise: red if stale OR null
+                                    // Green only if numeric age < 10s AND subscribed (prevents false-green on idle heartbeat)
+                                    var age = cam.last_frame_age_sec;
+                                    if (typeof age === 'number' && age < 10 && cam.subscribed === true) {
+                                        feedLight.setGreen('last frame ' + age.toFixed(1) + 's ago');
+                                    } else if (age === null || age === undefined) {
+                                        feedLight.setRed('no frame received yet');
+                                    } else {
+                                        feedLight.setRed('last frame ' + age.toFixed(1) + 's ago — stream is not live');
+                                    }
+                                }).catch(function () {
+                                    feedLight.setGrey('/health unreachable');
+                                    subLight.setGrey('/health unreachable');
+                                });
                             }
 
-                            updateBadge();
-                            pollId = setInterval(updateBadge, 5000);
+                            updateLights();
+                            pollId = setInterval(updateLights, 5000);
                             container._fcCameraPollId = pollId;
+                            container._fcLights = [feedLight, subLight];
                         },
                         destroy: function () {
                             if (container) {
                                 if (container._fcCameraPollId) {
                                     clearInterval(container._fcCameraPollId);
+                                }
+                                // Destroy each makeStatusLight instance (feedLight, subLight)
+                                if (container._fcLights) {
+                                    container._fcLights.forEach(function (l) { l.destroy(); });
                                 }
                                 container.innerHTML = '';
                             }
