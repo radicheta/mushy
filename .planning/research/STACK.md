@@ -1,7 +1,7 @@
 # Technology Stack
 
 **Project:** Mushroom Farm FC-1 Humidity Control
-**Researched:** 2026-03-28
+**Researched:** 2026-03-28 (original); v1.3 additions appended 2026-04-18
 **Overall Confidence:** MEDIUM-HIGH
 
 ---
@@ -185,3 +185,310 @@ privileged: true                     # or use specific device grants
 ---
 
 *Stack research: 2026-03-28*
+
+---
+
+---
+
+# v1.3 Stack Additions: Alerts & Unified Farmer Dashboard
+
+**Appended:** 2026-04-18
+**Confidence:** HIGH (Signal integration, alert placement), MEDIUM (FarmOS CORS, dashboard host)
+
+This section covers only net-new stack decisions for v1.3. Existing decisions are not
+re-examined.
+
+---
+
+## 1. Signal Integration
+
+### Recommended Library
+
+**Use:** `bbernhard/signal-cli-rest-api` as a new Docker container on elder-plops.
+
+**Docker tag:** `bbernhard/signal-cli-rest-api:latest-stable`
+
+The project does not use SemVer releases. Docker Hub exposes three relevant tags:
+- `latest` — tracks master HEAD, may include in-progress changes
+- `latest-stable` — lags a few days behind master; appropriate for production
+- `0.200-dev` — most recent numbered build as of research date; pin this if you need a
+  reproducible hash
+
+Use `latest-stable` in docker-compose. If breakage occurs, pin to the numbered dev tag
+(`0.200-dev` as of 2026-04-18) and update it at each milestone boundary.
+
+### Why This Option
+
+| Option | Verdict | Reason |
+|--------|---------|--------|
+| `bbernhard/signal-cli-rest-api` | Recommended | Self-contained Docker service; REST API so callers are language-agnostic; active community; QR-link registration documented; runs on amd64 (elder-plops) |
+| `signal-cli` bare JVM | Reject | Requires Java on host or custom image; no REST abstraction; caller must shell out or parse stdout |
+| `signald` | Reject | Less active maintenance; requires a separate client library; not simpler |
+| `node-signal-client` npm | Reject | Requires native Rust compilation; brittle build; REST API decouples language from protocol entirely |
+| Third-party SaaS | Reject | Not Signal; farmer uses Signal specifically |
+
+### Operation Mode
+
+Set `MODE=json-rpc-native` via environment variable.
+
+This runs the native GraalVM binary as a persistent daemon rather than spawning a JVM
+per request. For a low-volume farm alert bot (< 10 messages/day), `normal` mode would
+work, but `json-rpc-native` avoids the 5-10 second JVM startup on each alert fire and
+has lower memory overhead than `json-rpc`.
+
+### Registration Flow
+
+**Use linked-device flow, not primary number registration.**
+
+Primary registration requires a dedicated phone number + SMS verification. The farmer
+already has a Signal account on their phone. Linked-device flow requires one manual
+setup step:
+
+1. Start the container with the data volume mounted (see compose snippet below).
+2. Open `http://elder-plops:8083/v1/qrcodelink?device_name=mushy-alerts` in a browser.
+3. On the farmer's phone: Signal Settings → Linked Devices → tap + → scan the QR code.
+4. The container is registered as a linked device. `registration_data` is persisted in
+   the mounted volume and survives container restarts.
+
+The data volume path inside the container is `/home/.local/share/signal-cli/`. Using
+`docker exec` without specifying this path writes to `/root/...` instead (ephemeral).
+Always register through the REST API endpoint — do not exec into the container.
+
+### Send Message API
+
+`POST /v2/send` with JSON body:
+
+```json
+{
+  "message": "[mushy] RH out-of-band: 89% (target 95±2%)",
+  "number": "+1XXXXXXXXXX",
+  "recipients": ["+1XXXXXXXXXX"]
+}
+```
+
+`number` is the linked sender number (the farmer's own Signal number). `recipients` is
+the destination — for self-alerts or a farm Signal group, this can be the same number
+or a group ID. No client library needed; Node.js 18+ native `fetch` handles the HTTP
+call.
+
+### Compose service addition
+
+```yaml
+signal:
+  image: bbernhard/signal-cli-rest-api:latest-stable
+  environment:
+    - MODE=json-rpc-native
+  volumes:
+    - signal-data:/home/.local/share/signal-cli
+  restart: unless-stopped
+  # Internal only — no external port. Bridge calls http://localhost:8083
+  ports:
+    - "127.0.0.1:8083:8080"
+```
+
+Do not expose port 8083 to the LAN. The bridge calls it via localhost.
+
+---
+
+## 2. Alert Engine Placement
+
+### Recommendation: Node.js module inside `mission_control_bridge`
+
+Not a new container. Not a new ROS2 node. A new module file loaded by the bridge.
+
+**Rationale referencing existing bridge state:**
+
+The bridge (`src/mission-control/bridge/src/index.js`) already holds every signal the
+alert engine needs:
+
+- `lastSensorHealthBroadcast` — current `sensor_health` level (0=OK, 1=WARN, 2=ERROR)
+- `humidifierLastMsgTs` — timestamp of most recent humidifier message from the Pi;
+  staleness directly indicates Pi offline or humidifier silence
+- `rosReady` — flips false if ROS init fails
+- Live humidity broadcast values — available via the subscription callback
+- `pool` (TimescaleDB) — available for stuck-humidifier historical queries
+- `/health` endpoint — the bridge is already the infrastructure health authority
+
+The bridge is always running on elder-plops. This is the right choke point for
+infrastructure-level alerts, which must fire even when the Pi is offline.
+
+A ROS2 Python node on the Pi cannot detect that the Pi is offline — the Pi-offline
+alert requirement alone eliminates it as a candidate.
+
+A dedicated alerts container would need to poll the bridge's `/health` or duplicate
+all ROS2 subscriptions. Both are worse than running inside the bridge directly.
+
+**Implementation:** Extract alerting into `src/mission-control/bridge/src/alerter.js`,
+imported by `index.js` after ROS init completes. The module exports an `init(node,
+pool)` function that sets up a `setInterval` tick (60 seconds) and evaluates four
+conditions:
+
+| Alert | Detection signal | Source in bridge |
+|-------|-----------------|-----------------|
+| Pi offline | `humidifierLastMsgTs` stale > 5 min AND `rosReady` | Already tracked |
+| Sensor unhealthy | `lastSensorHealthBroadcast.sensor_health.level >= 2` | Already tracked |
+| RH out-of-band | Latest humidity value outside `[target - band, target + band]` | Last broadcast value |
+| Humidifier stuck | Humidifier ON continuously > threshold with RH not recovering | `humidifierLastMsgTs` + Timescale window query |
+
+Each alert carries a per-type cooldown (default 30 minutes) stored in module-level
+state. A bridge restart resets cooldowns — acceptable for a farm bot.
+
+Sending is a single `fetch` call to `http://localhost:8083/v2/send`. No new npm
+dependency: Node.js 18+ has native `fetch`.
+
+**New environment variables for the `bridge` service:**
+
+```
+SIGNAL_API_URL=http://localhost:8083
+SIGNAL_SENDER=+1XXXXXXXXXX
+SIGNAL_RECIPIENT=+1XXXXXXXXXX
+ALERT_RH_TARGET=95
+ALERT_RH_BAND=2
+ALERT_COOLDOWN_MIN=30
+ALERT_HUMIDIFIER_STUCK_MIN=30
+```
+
+These go in `.env` and are added to the bridge's `environment:` block in
+`docker-compose.yml`.
+
+---
+
+## 3. FarmOS Data Access for Dashboard
+
+### Problem
+
+The farmer dashboard needs recent FarmOS observation logs displayed alongside MC
+telemetry. FarmOS is at `http://10.68.155.50:8082` — a different origin from the
+dashboard page. Drupal CORS is off by default. The FarmOS instance is shared
+farm-wide and managed by the farm team, so `services.yml` changes require coordination.
+
+### Options
+
+| Approach | CORS friction | Auth complexity | Recommended |
+|----------|--------------|-----------------|-------------|
+| Browser fetches FarmOS JSON:API directly | Must edit Drupal `services.yml` on shared instance; `allowedOrigins: ['*']` disables `withCredentials`, breaking session-cookie auth | High — cross-origin session cookies restricted by browsers (SameSite=Lax) | No |
+| Bridge proxies FarmOS (`/farmos/logs` route) | None — browser only talks to bridge (same origin) | Low — bridge calls FarmOS server-side using session-cookie pattern from `farmos_agent` | **Yes** |
+| Iframe of FarmOS Drupal page | N/A — Drupal serves its own HTML | None — Drupal session is in the browser already | Fallback only |
+| FarmOS hosts the page and embeds MC | N/A | Low | Out of scope |
+
+### Recommendation: Bridge proxy
+
+Add a `/farmos/logs?limit=N` route to the bridge. The bridge calls FarmOS JSON:API
+server-side (session-cookie auth, same pattern as `farmos_agent`), caches the response
+in memory for 60 seconds, and returns a sanitized array to the browser.
+
+Auth flow: the bridge initializes a FarmOS session on startup using `FARMOS_URL`,
+`FARMOS_USERNAME`, `FARMOS_PASSWORD` — already present in `.env` from Phase 13.
+Add these three vars to the bridge service's `environment:` block in `docker-compose.yml`
+(they already exist for `farmos-agent`; no new secrets required).
+
+The proxy must be read-only (GET only) for v1.3. No write-through.
+
+If FarmOS is unreachable, return cached last-known data or an empty array. Never let
+FarmOS downtime break the MC dashboard.
+
+The bridge's existing CORS allowlist (`CORS_ORIGIN`) already covers the dashboard
+origin; no CORS changes needed.
+
+---
+
+## 4. Dashboard Host
+
+### Options
+
+| Option | Effort | Auth | FarmOS data | MC data | Verdict |
+|--------|--------|------|-------------|---------|---------|
+| New OpenMCT plugin view | Low — adds a `plugin.js` view | Reuses MC | Via bridge proxy | Native WS | Good for MC-operator audience |
+| Standalone `/farmer` page served by bridge | Low-medium — static HTML in `bridge/static/`, served via `express.static` | None (LAN-only) | Via `/farmos/logs` proxy | Via bridge WS + REST | **Recommended** |
+| FarmOS Drupal page iframing MC | High — Drupal theming + CSP changes on shared instance | Drupal session | Native | MC iframe (CSP issues) | Avoid |
+
+### Recommendation: Standalone `/farmer` page served by the bridge
+
+A static HTML + vanilla JS file at `src/mission-control/bridge/static/farmer.html`,
+served by the bridge at `http://elder-plops:8081/farmer`.
+
+Three lines of bridge config:
+```js
+app.use('/static', express.static(path.join(__dirname, '../static')));
+app.get('/farmer', (req, res) =>
+  res.sendFile(path.join(__dirname, '../static/farmer.html')));
+```
+
+The page calls:
+- `/history/fc.humidity` (existing) — last 24h RH chart
+- `/health` (existing) — Pi/bridge/DB liveness
+- `/farmos/logs?limit=5` (new) — recent FarmOS observations
+- Bridge WebSocket (existing) — live RH value
+
+No OpenMCT dependency. No build step. No new npm package. The URL is bookmarkable on
+the farmer's phone: `http://10.68.155.50:8081/farmer`.
+
+**Heuristic for future decisions:** If the target user is an MC operator who already
+has the full dashboard open, use an OpenMCT plugin. If the target user is a farmer who
+wants a 10-second morning check without navigating MC, use a standalone page.
+
+For v1.3, the farmer is the target.
+
+---
+
+## 5. What NOT to Add
+
+| Temptation | Why to skip | What to use instead |
+|------------|------------|---------------------|
+| Full backend framework (NestJS, Fastify) | Bridge is already Express; new routes don't need a framework | Add routes directly to `index.js` or extract to `src/alerter.js` / `src/farmos_proxy.js` |
+| Push notifications / PWA service worker | Signal message is the alert channel; dashboard is LAN-only | Signal + `/farmer` static page |
+| Dedicated alerting container (Alertmanager, Grafana) | Heavy; duplicates bridge subscriptions; overkill for 4 conditions | In-bridge alerter module |
+| OAuth2 for FarmOS bridge proxy | OAuth2 consumer not configured on shared instance; session-cookie is proven | Session-cookie auth (same as `farmos_agent`) |
+| React / Vue for `/farmer` page | Adds build step, dependency management; page is read-only telemetry | Vanilla JS + `fetch`; Chart.js if charts needed |
+| WebSocket from bridge to signal-cli-rest-api | REST API is request/response; no WS offered | POST to `/v2/send` on alert condition |
+
+---
+
+## New Environment Variables (v1.3)
+
+All go in `.env` on elder-plops. Injected via `docker-compose.yml`.
+
+| Variable | Service | Purpose | Notes |
+|----------|---------|---------|-------|
+| `SIGNAL_API_URL` | bridge | URL of signal-cli-rest-api | `http://localhost:8083` |
+| `SIGNAL_SENDER` | bridge | Farmer's Signal number (linked device) | `+1XXXXXXXXXX` |
+| `SIGNAL_RECIPIENT` | bridge | Alert destination | Same as sender for self-alerts |
+| `ALERT_RH_TARGET` | bridge | RH setpoint % | `95` |
+| `ALERT_RH_BAND` | bridge | ±band % | `2` |
+| `ALERT_COOLDOWN_MIN` | bridge | Minutes between repeat alerts per type | `30` |
+| `ALERT_HUMIDIFIER_STUCK_MIN` | bridge | Minutes ON with no recovery = stuck | `30` |
+| `FARMOS_URL` | bridge | FarmOS base URL (already in .env) | Existing — add to bridge env block |
+| `FARMOS_USERNAME` | bridge | FarmOS login (already in .env) | Existing — add to bridge env block |
+| `FARMOS_PASSWORD` | bridge | FarmOS password (already in .env) | Existing — add to bridge env block |
+
+`FARMOS_*` vars already exist in `.env` (Phase 13). Only the bridge's `environment:`
+block in `docker-compose.yml` needs them added — no new secrets.
+
+---
+
+## Version Summary (v1.3 additions)
+
+| Component | Version / Tag | Notes |
+|-----------|--------------|-------|
+| `bbernhard/signal-cli-rest-api` | `latest-stable` (pin `0.200-dev` for hash stability) | New Docker service |
+| Node.js native `fetch` | Node 18+ built-in | No new npm package |
+| `express.static` | Already in bridge `express ^4.x` | No version change |
+| FarmOS | `3.x` shared instance | No change |
+| TimescaleDB | `latest-pg14` | No change |
+
+No new npm packages are required for the alert engine or farmer dashboard. Node.js 18+
+native `fetch` is available in the existing bridge image.
+
+---
+
+## Sources (v1.3 additions)
+
+- [bbernhard/signal-cli-rest-api README](https://github.com/bbernhard/signal-cli-rest-api/blob/master/README.md) — linked-device registration flow, `/v2/send` payload, MODE options — MEDIUM confidence (verified via WebFetch; project has no versioned release tags)
+- [Docker Hub: bbernhard/signal-cli-rest-api](https://hub.docker.com/r/bbernhard/signal-cli-rest-api) — tag naming (`latest-stable`, `latest-dev`, numbered dev) — MEDIUM confidence
+- [Drupal CORS opt-in documentation](https://www.drupal.org/node/2715637) — `services.yml` CORS config, wildcard credential restriction — HIGH confidence (official Drupal docs)
+- [Phase 13 RESEARCH.md](.planning/milestones/v1.2-phases/13-farmos-daily-report/13-RESEARCH.md) — FarmOS session-cookie auth pattern, farmos_agent architecture — HIGH confidence (verified against live instance)
+- `src/mission-control/bridge/src/index.js` — bridge subscriptions (`humidifierLastMsgTs`, `lastSensorHealthBroadcast`, `rosReady`), express routes, pool — HIGH confidence (live code, read directly)
+
+---
+
+*v1.3 stack additions researched: 2026-04-18*
