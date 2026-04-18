@@ -25,6 +25,14 @@ Requirements for milestone v1.2: FarmOS Integration & QoL. Each maps to roadmap 
 - [ ] **INFRA-02**: All existing services (bridge, openmct, timescale) start correctly under compose v2
 - [ ] **INFRA-03**: Container name format change (underscores → hyphens) accounted for — no hardcoded references break
 
+## v1.2.1 Requirements
+
+Requirements for milestone v1.2.1: Hotfix — camera stall + sensor warmup (filed 2026-04-17).
+
+### Sensor Stability
+
+- [ ] **SENS-01**: Sensor warm-up grace period at fc-core boot to avoid false actuation from SCD41 settling — controller early-returns from control_loop for the first 20s post-boot (ANDed with _humidity_buffer full); emits `/fc1/sensor_health` DiagnosticStatus (WARN→OK) for Phase 16 consumption. Promoted from backlog 999.8 at farmer's explicit ask 2026-04-17.
+
 ## Future Requirements
 
 Deferred to future milestones. Tracked but not in current roadmap.
@@ -33,10 +41,6 @@ Deferred to future milestones. Tracked but not in current roadmap.
 
 - **TEL-01**: Periodic environment snapshots (humidity, CO2, temp) pushed to FarmOS as observation logs
 - **TEL-02**: Actuator event logs (humidifier on/off transitions) posted as activity logs in FarmOS
-
-### Sensor Stability
-
-- **SENS-01**: Sensor warm-up grace period at fc-core boot to avoid false actuation from SCD41 settling (backlog 999.8)
 
 ## Out of Scope
 
@@ -47,7 +51,6 @@ Deferred to future milestones. Tracked but not in current roadmap.
 | Signal alerts | Bigger scope (999.3), deferred to future milestone |
 | Farmer app | Separate UI surface (999.11), depends on FarmOS and alerts foundations |
 | PID humidity control | Control refinement (999.9), not QoL |
-| Sensor warm-up grace | Dropped from v1.2 scope — workaround ("ignore first minute") holds |
 
 ## Traceability
 
@@ -64,12 +67,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFRA-01 | Phase 11 | Pending |
 | INFRA-02 | Phase 11 | Pending |
 | INFRA-03 | Phase 11 | Pending |
+| SENS-01 | Phase 15 | In Progress |
 
 **Coverage:**
 - v1.2 requirements: 9 total
-- Mapped to phases: 9
+- v1.2.1 requirements: 1 total (SENS-01)
+- Mapped to phases: 10
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-04-12*
-*Last updated: 2026-04-12 — traceability filled in after roadmap creation*
+*Last updated: 2026-04-17 — SENS-01 promoted to v1.2.1 active (Phase 15)*
