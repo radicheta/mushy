@@ -31,7 +31,7 @@ Requirements for milestone v1.2.1: Hotfix — camera stall + sensor warmup (file
 
 ### Sensor Stability
 
-- [ ] **SENS-01**: Sensor warm-up grace period at fc-core boot to avoid false actuation from SCD41 settling — controller early-returns from control_loop for the first 20s post-boot (ANDed with _humidity_buffer full); emits `/fc1/sensor_health` DiagnosticStatus (WARN→OK) for Phase 16 consumption. Promoted from backlog 999.8 at farmer's explicit ask 2026-04-17.
+- [x] **SENS-01**: Sensor warm-up grace period at fc-core boot to avoid false actuation from SCD41 settling — controller early-returns from control_loop for the first 20s post-boot (ANDed with _humidity_buffer full); emits `/fc1/sensor_health` DiagnosticStatus (WARN→OK) for Phase 16 consumption. Promoted from backlog 999.8 at farmer's explicit ask 2026-04-17.
 
 ## Future Requirements
 
