@@ -100,6 +100,56 @@
 
 ---
 
+## Milestone: v1.2.1 — Hotfix: camera stall + sensor warmup
+
+**Shipped:** 2026-04-18
+**Phases:** 3 (14, 15, 16) + 16.1 follow-up | **Plans:** 11
+
+### What Was Built
+
+- fc_camera idle-stall fix: 1 Hz `count_subscribers` graph-poll in `fc_camera.py` (9s recovery on canonical stall, 30-min soak PASS).
+- Two camera-panel status lights in Mission Control ("Feed live" + "Camera subscribed") via a new reusable `makeStatusLight(parentEl, label)` primitive.
+- Bridge `/health` extended with `camera.last_frame_age_sec`, `camera.subscribed`, `ros.connected`, `humidifier.last_msg_ts`.
+- Sensor warm-up grace period: 20s controller early-return + `/fc1/sensor_health` DiagnosticStatus WARN→OK, satisfying SENS-01.
+- Six-light system health panel in Mission Control consuming `/fc1/sensor_health` + `/health` signals.
+- Phase 16.1 replay shim: bridge caches `lastSensorHealthBroadcast` and replays to new WS clients on connect.
+
+### What Worked
+
+- **Autonomous loop held end-to-end.** `/gsd:autonomous` drove discuss→plan→execute across Phases 14/15/16 in a single session, with Phase 16.1 follow-up added after farmer UAT surfaced the cold-open greys. Farmer-attested "all green" the next day with no scope expansion needed.
+- **Primitive reuse across phases.** `makeStatusLight` from Phase 14 (camera panel) was reused unchanged by Phase 16 (six-light strip). Cross-phase integration check found zero API drift — the primitive landed with the right signature on first try.
+- **Diagnostic before patch.** Phase 14 Plan 01 was a live no-op probe that distinguished idle-callback starvation (Path A) from DDS staleness (Path B). Patching happened against a confirmed root cause, not a guessed one — the 9s recovery is direct evidence the fix targets the actual mechanism.
+- **Farmer constraint made explicit.** "Bigger gap than noise" (captured in memory `feedback_gap_over_noise.md`) drove the grace-gate design: publish WARN/empty, never spiky values. Design question answered before it was asked.
+
+### What Was Inefficient
+
+- **Cold-open sensor_health greys slipped past Phase 16 verification.** Phase 16 SMOKE_PASS came from a warm WebSocket — the farmer hit the cold-open path on hard refresh and saw grey lights. Caught in HUMAN-UAT, fixed in 16.1 the same session. Verification should have included a "hard refresh after controller publishes WARN then OK" flow.
+- **MILESTONES.md auto-extraction still noisy.** `gsd-tools milestone complete` produced 15 garbage bullets from summary-frontmatter scraping (same failure mode as v1.0). Had to manually curate the entry. The parser evidently doesn't know how to skip summary sub-headers.
+- **STATE.md field drift.** The `gsd-tools` CLI warned it couldn't find "Last Activity Description" in STATE.md — the file format has drifted from the tool's expectations. Non-blocking but accumulating.
+- **Humidifier replay parity not shipped.** sensor_health got a replay shim (16.1); humidifier state still relies only on ROS-level TRANSIENT_LOCAL replay to the bridge. Deferred as tech debt; future cold-open may surface the same greyness.
+
+### Patterns Established
+
+- **1 Hz graph-poll for ROS callback-starvation fixes.** When an idle subscriber-aware node goes dark, a `create_timer(1.0, ...)` running `count_subscribers` beats waiting on publish-driven callbacks.
+- **Server-computed `_age_sec` fields.** Bridge now returns integer seconds computed against server clock instead of sending raw timestamps — eliminates client clock-skew interpretation and makes ages directly comparable to thresholds like `< 10`.
+- **`makeStatusLight(parentEl, label) -> {setGreen,setRed,setGrey,destroy}`.** Stable primitive for any grower-facing status indicator. Keep the signature stable; lights cheap to add.
+- **Replay-on-connect shim for WS broadcasts that matter on cold open.** Cache `last*Broadcast` at broadcast time; on `wss.on('connection')`, replay to that single socket before the first live message arrives. Don't rebroadcast to everyone.
+
+### Key Lessons
+
+1. **Cold-open paths are distinct from warm-reconnect paths.** Hard-refresh or first-visit is not equivalent to "reconnect after restart" — a WS reconnect may still beat the next publish, but a cold load of a page starts with nothing. Verification of status-light features must include the cold-open flow explicitly.
+2. **Autonomous run ≠ single-session narrative.** UTC-midnight split a continuous autonomous run across two calendar days; earlier drafts invented a "Saturday morning handoff" from file mtimes that didn't happen. Memory `feedback_dont_invent_time_narrative.md` captures this.
+3. **"Frozen image" symptoms hide callback-frequency bugs, not network bugs.** The intuitive hypothesis was DDS staleness; the actual cause was a subscriber-poll callback firing every 3597s instead of every 1s. The diagnostic phase earned its keep.
+4. **Grey is an actionable color.** The six-light panel treats grey as "unknown / not yet reported" rather than green-by-default. Farmer-trusted because wrong-looking green would be worse than honest grey — reinforces `feedback_gap_over_noise.md`.
+
+### Cost Observations
+
+- Model mix: Opus throughout (autonomous loop under `balanced` profile).
+- Sessions: 1 main autonomous session (2026-04-17 evening) + 1 UAT close-out (2026-04-18 morning).
+- Notable: 3 phases + 1 follow-up shipped in a single session. Hotfix milestone cadence — "small, surgical, shipped same-day" — is viable when the diagnostic is done first.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -108,6 +158,8 @@
 |-----------|--------|-------|------------|
 | v1.0 | 8 | 25 | Initial project; established GSD workflow, git-based Pi deploy, Mission Control stack |
 | v1.1 | 2 | 6 | Tech debt closure; fc-system-sync git-ops pattern; tight scope from audit-driven requirements |
+| v1.2 | 3 | 7 | FarmOS beachhead (farmos_agent), subscriber-aware camera, compose v2 |
+| v1.2.1 | 3 | 11 | Hotfix cadence; autonomous multi-phase run; reusable status-light primitive; replay-on-connect pattern |
 
 ### Top Lessons (Verified Across Milestones)
 
@@ -116,4 +168,4 @@
 3. **Side-effect fixes accumulate.** v1.0: SCD41 CO2 was a side-effect win. v1.1: Phase 09's fc-core restart resolved TDEBT-02 as a side-effect, saving Phase 10 debugging time.
 
 ---
-*Last updated: 2026-04-12 at v1.1 milestone completion.*
+*Last updated: 2026-04-18 at v1.2.1 milestone completion.*

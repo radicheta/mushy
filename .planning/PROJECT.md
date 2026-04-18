@@ -62,18 +62,25 @@ Existing codebase provides:
 - ✓ 4G cellular connectivity — fc1 on mossrock-lab MiFi, ROS-over-cellular via Tailscale, dual-location verified (CONN-01) — v1.1
 - ✓ fc-system-sync early-boot service — git-shipped /etc config with netplan + wpa_cli reload, future wifi changes via `git push fc1/prod` — v1.1
 
+### Validated in v1.2.1 (Hotfix — camera stall + sensor warmup)
+
+- ✓ fc_camera idle-stall fix — 1 Hz graph-poll on `count_subscribers('/fc1/camera/compressed')`; canonical stall recovery in 9s (HFIX-01..05) — v1.2.1
+- ✓ Sensor warm-up grace period — fc_controller early-returns for first 20s post-boot; `/fc1/sensor_health` WARN→OK (SENS-01) — v1.2.1
+- ✓ System health panel — six-light strip in Mission Control (Sensors, Camera feed, Humidifier, Bridge, Pi reachable, Grace) via `makeStatusLight` primitive — v1.2.1
+- ✓ Replay shim for sensor_health on new WS connect (Phase 16.1) — v1.2.1
+
 ### Current State
 
 **v1.0 MVP shipped 2026-04-11.** Grower attested "better than the timer".
 **v1.1 Tech Debt & Connectivity shipped 2026-04-12.** All carryover tech debt
-closed; fc1 reliably reachable over 4G cellular. See `.planning/MILESTONES.md`.
-**v1.2 Phase 12 complete 2026-04-13.** Subscriber-aware camera — fc_camera idles
-at 1 frame/hr when no viewers, ramps to 1 fps on Mission Control connect. Bridge
-conditionally subscribes. LIVE/IDLE badge in camera view. Human UAT pending.
-**v1.2 Phase 13 complete 2026-04-13.** FarmOS daily report — ROS2 lifecycle node
-(`farmos_agent`) on elder-plops posts daily observation to FC-1 (asset 28) with
-env summary from TimescaleDB. Camera snapshot + markdown table. Seed architecture
-for autonomous farm agents. FarmOS admin actions pending (permissions, location).
+closed; fc1 reliably reachable over 4G cellular.
+**v1.2 FarmOS Integration & QoL shipped 2026-04-13.** Compose v2 on elder-plops,
+subscriber-aware camera, FarmOS daily report (`farmos_agent`). Known gaps carried:
+FarmOS admin actions (permissions, FC-1 location), Phase 12 hardware UAT.
+**v1.2.1 Hotfix shipped 2026-04-18.** Camera idle-stall fix (9s recovery),
+sensor warm-up grace (20s WARN→OK), six-light system health panel with
+sensor_health replay shim. Farmer-attested "all green" 2026-04-18.
+See `.planning/MILESTONES.md`.
 
 ### Out of Scope
 
@@ -155,4 +162,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-04-12 after v1.1 milestone*
+*Last updated: 2026-04-18 after v1.2.1 milestone*
