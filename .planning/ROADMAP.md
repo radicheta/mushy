@@ -56,12 +56,16 @@ FC-1 location), Phase 12 hardware UAT pending.
 
 - [ ] Phase 14: fc_camera idle-mode stall hotfix — farmer-facing symptom (frozen MC image) from Phase 12 regression. Diagnose root cause first (not just patch symptom); add two status lights in MC camera panel; bundle `last_frame_age_sec` in bridge `/health`. Context: `.planning/phases/14-fc-camera-idle-stall-hotfix/14-CONTEXT.md`
   **Plans:** 5 plans
-  - [ ] 14-01-PLAN.md — live-stall diagnostic (Path A vs B); no-op safe; produces 14-DIAGNOSTIC-RESULT.md
-  - [ ] 14-02-PLAN.md — fc_camera 1Hz graph-poll fallback + TestIdleToActiveRecovery unit tests
-  - [ ] 14-03-PLAN.md — bridge /health adds camera.last_frame_age_sec; rebuild on elder-plops
-  - [ ] 14-04-PLAN.md — MC two status lights ("Feed live" + "Camera subscribed") via makeStatusLight primitive
+  - [x] 14-01-PLAN.md — live-stall diagnostic (Path A vs B); no-op safe; produces 14-DIAGNOSTIC-RESULT.md
+  - [x] 14-02-PLAN.md — fc_camera 1Hz graph-poll fallback + TestIdleToActiveRecovery unit tests
+  - [x] 14-03-PLAN.md — bridge /health adds camera.last_frame_age_sec; rebuild on elder-plops
+  - [x] 14-04-PLAN.md — MC two status lights ("Feed live" + "Camera subscribed") via makeStatusLight primitive
   - [ ] 14-05-PLAN.md — deploy to fc1/prod + 30-min live soak; 14-SOAK-EVIDENCE.md with SOAK_PASS verdict
-- [ ] Phase 15: Sensor warm-up grace period — promoted from 999.8 at farmer's explicit ask 2026-04-17. Farmer constraint: "bigger gap than noise" — publish nothing (or explicit warming-up state) rather than spiky/wrong values during the ~30s post-restart transient. Context: `.planning/phases/15-sensor-warmup-grace-period/CONTEXT.md`
+- [ ] Phase 15: Sensor warm-up grace period — promoted from 999.8 at farmer's explicit ask 2026-04-17. Farmer constraint: "bigger gap than noise" — publish nothing (or explicit warming-up state) rather than spiky/wrong values during the ~30s post-restart transient. Context: `.planning/phases/15-sensor-warmup-grace-period/15-CONTEXT.md`
+  **Plans:** 3 plans
+  - [ ] 15-01-PLAN.md — controller grace gate + /fc1/sensor_health publisher + unit tests + package.xml diagnostic_msgs dep
+  - [ ] 15-02-PLAN.md — REQUIREMENTS.md cleanup: promote SENS-01 to v1.2.1 active (deduplicate Future/Out-of-Scope)
+  - [ ] 15-03-PLAN.md — deploy to fc1/prod via deploy.sh + live soak; 15-03-SOAK-EVIDENCE.md with SOAK_PASS verdict
 - [ ] Phase 16: System health panel (seed) — broad "green lights" dashboard for all fc1 subsystems. Split out from Phase 14 to keep hotfix weekend-sized. Seed note: `.planning/phases/16-system-health-panel/CONTEXT-SEED.md`. Milestone TBD (v1.2.1 stretch or v1.3).
 
 Filed during a farmer debug session on the camera feed. Both issues erode
@@ -87,8 +91,8 @@ hotfix before the next feature milestone.
 | 11. Compose v2 Upgrade | v1.2 | 1/1 | Complete | 2026-04-13 |
 | 12. Subscriber-Aware Camera | v1.2 | 2/2 | Complete | 2026-04-13 |
 | 13. FarmOS Daily Report | v1.2 | 4/4 | Complete    | 2026-04-13 |
-| 14. fc_camera idle-mode stall hotfix | v1.2.1 | 0/5 | Planned | — |
-| 15. Sensor warm-up grace period | v1.2.1 | 0/? | Filed (promoted from 999.8) | — |
+| 14. fc_camera idle-mode stall hotfix | v1.2.1 | 4/5 | In Progress|  |
+| 15. Sensor warm-up grace period | v1.2.1 | 0/3 | Planned | — |
 
 ## Backlog (parking lot)
 
