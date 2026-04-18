@@ -2,18 +2,19 @@
 import pytest
 import rclpy
 import rclpy.time
-from rclpy.clock import ClockType
 from sensor_msgs.msg import Temperature, RelativeHumidity
 from fc_core.fc_controller import FruitingChamberController
 import time
 from unittest.mock import patch, MagicMock
+
+_ROS_TIME = rclpy.time.ClockType.ROS_TIME
 
 
 def _mock_clock_at(nanoseconds):
     """Return a mock clock whose .now() returns the given ROS time (ROS_TIME clock type)."""
     mock_clock = MagicMock()
     mock_clock.now.return_value = rclpy.time.Time(
-        nanoseconds=nanoseconds, clock_type=ClockType.ROS_TIME
+        nanoseconds=nanoseconds, clock_type=_ROS_TIME
     )
     return mock_clock
 
@@ -342,7 +343,7 @@ def test_safe_state_updates_dwell_toggle(ros_context):
 
     # _last_humidifier_toggle should be updated to t=15s
     assert node._last_humidifier_toggle is not None
-    assert node._last_humidifier_toggle == rclpy.time.Time(nanoseconds=int(15e9), clock_type=ClockType.ROS_TIME)
+    assert node._last_humidifier_toggle == rclpy.time.Time(nanoseconds=int(15e9), clock_type=_ROS_TIME)
     node.destroy_node()
 
 
@@ -409,7 +410,7 @@ def test_warmup_grace_blocks_actuation(ros_context):
     """Humidifier stays OFF during grace even with full buffer below threshold."""
     node = FruitingChamberController()
     node.current_temp = 23.0
-    node._boot_time = rclpy.time.Time(nanoseconds=0, clock_type=ClockType.ROS_TIME)
+    node._boot_time = rclpy.time.Time(nanoseconds=0, clock_type=_ROS_TIME)
 
     # t=5s (< 20s grace), buffer full below threshold — would normally turn ON
     with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(5e9))):
@@ -426,7 +427,7 @@ def test_warmup_grace_time_elapsed_buffer_not_full(ros_context):
     """Time elapsed but buffer not full -> grace still active."""
     node = FruitingChamberController()
     node.current_temp = 23.0
-    node._boot_time = rclpy.time.Time(nanoseconds=0, clock_type=ClockType.ROS_TIME)
+    node._boot_time = rclpy.time.Time(nanoseconds=0, clock_type=_ROS_TIME)
 
     # t=25s (past grace period) but only 3 samples — buffer not full
     with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(25e9))):
@@ -443,7 +444,7 @@ def test_warmup_grace_buffer_full_time_not_elapsed(ros_context):
     """Buffer full but time not elapsed -> grace still active."""
     node = FruitingChamberController()
     node.current_temp = 23.0
-    node._boot_time = rclpy.time.Time(nanoseconds=0, clock_type=ClockType.ROS_TIME)
+    node._boot_time = rclpy.time.Time(nanoseconds=0, clock_type=_ROS_TIME)
 
     # t=10s (< 20s grace), buffer full
     with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(10e9))):
@@ -460,7 +461,7 @@ def test_warmup_grace_clears_when_both_conditions_met(ros_context):
     """Grace clears at t=21s with full buffer; humidifier engages."""
     node = FruitingChamberController()
     node.current_temp = 23.0
-    node._boot_time = rclpy.time.Time(nanoseconds=0, clock_type=ClockType.ROS_TIME)
+    node._boot_time = rclpy.time.Time(nanoseconds=0, clock_type=_ROS_TIME)
 
     # Fill buffer while still in grace
     with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(5e9))):
@@ -484,7 +485,7 @@ def test_sensor_health_warn_published_during_grace(ros_context):
     """On first grace tick, sensor_health publishes DiagnosticStatus.WARN."""
     node = FruitingChamberController()
     node.current_temp = 23.0
-    node._boot_time = rclpy.time.Time(nanoseconds=0, clock_type=ClockType.ROS_TIME)
+    node._boot_time = rclpy.time.Time(nanoseconds=0, clock_type=_ROS_TIME)
 
     published = []
     node.sensor_health_pub.publish = lambda msg: published.append(msg)
@@ -510,7 +511,7 @@ def test_sensor_health_ok_published_on_grace_clear(ros_context):
     """On first tick after grace, sensor_health publishes DiagnosticStatus.OK."""
     node = FruitingChamberController()
     node.current_temp = 23.0
-    node._boot_time = rclpy.time.Time(nanoseconds=0, clock_type=ClockType.ROS_TIME)
+    node._boot_time = rclpy.time.Time(nanoseconds=0, clock_type=_ROS_TIME)
 
     published = []
     node.sensor_health_pub.publish = lambda msg: published.append(msg)
@@ -537,7 +538,7 @@ def test_sensor_health_not_republished_every_tick_in_grace(ros_context):
     """Only one WARN publish during grace, not one per tick (state-change only)."""
     node = FruitingChamberController()
     node.current_temp = 23.0
-    node._boot_time = rclpy.time.Time(nanoseconds=0, clock_type=ClockType.ROS_TIME)
+    node._boot_time = rclpy.time.Time(nanoseconds=0, clock_type=_ROS_TIME)
 
     published = []
     node.sensor_health_pub.publish = lambda msg: published.append(msg)
