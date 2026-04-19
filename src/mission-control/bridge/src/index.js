@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { decideSource } = require('./snapshot_helpers');
 const retention = require('./retention');
+const { validateHistoryParams } = require('./history_validate');
 
 // Fail fast if database password is not configured
 if (!process.env.TIMESCALE_PASSWORD) {
@@ -68,6 +69,10 @@ const CAMERA_ID = process.env.CAMERA_ID || 'fc1';
 const RETENTION_DAYS = retention.clampRetentionDays(process.env.RETENTION_DAYS || retention.DEFAULT_RETENTION_DAYS);
 const RETENTION_GRACE_DAYS = parseInt(process.env.RETENTION_GRACE_DAYS || retention.DEFAULT_GRACE_DAYS, 10);
 const PRUNE_INTERVAL_MS = 24 * 3600 * 1000;
+
+// Phase 21 D-06a: /camera/history bounds (match /history/:topic precedent + scrubber cap)
+const HISTORY_MAX_ROWS = 5000;
+const HISTORY_MAX_RANGE_MS = 30 * 24 * 3600000;
 
 function pushFrame(jpegBuffer) {
     latestFrame = jpegBuffer;
@@ -330,6 +335,42 @@ app.get('/history/:topic', async (req, res) => {
         res.json(datums);
     } catch (err) {
         console.error('[db] history query failed:', err.message);
+        res.status(500).json({ error: 'Query failed' });
+    }
+});
+
+// Phase 21 D-06a: read-only camera history index for Phase 22 scrubber consumption.
+app.get('/camera/history', async (req, res) => {
+    const v = validateHistoryParams(req.query, CAMERA_ID, HISTORY_MAX_RANGE_MS);
+    if (!v.ok) return res.status(v.status).json({ error: v.error });
+    if (!dbReady) return res.status(503).json({ error: 'Database not available' });
+    const { from, to, cameraId } = v.parsed;
+    try {
+        const result = await pool.query(
+            "SELECT captured_at, camera_id, file_path, bytes, source, fps " +
+            "FROM snapshots " +
+            "WHERE camera_id = $1 AND captured_at >= $2 AND captured_at <= $3 " +
+            "ORDER BY captured_at ASC LIMIT $4",
+            [cameraId, new Date(from), new Date(to), HISTORY_MAX_ROWS + 1]
+        );
+        const hasMore = result.rows.length > HISTORY_MAX_ROWS;
+        const rows = hasMore ? result.rows.slice(0, HISTORY_MAX_ROWS) : result.rows;
+        res.json({
+            camera_id: cameraId,
+            from, to,
+            count: rows.length,
+            has_more: hasMore,
+            rows: rows.map(r => ({
+                captured_at: r.captured_at.toISOString(),
+                camera_id: r.camera_id,
+                file_path: r.file_path,
+                bytes: r.bytes,
+                source: r.source,
+                fps: r.fps === null ? null : parseFloat(r.fps)
+            }))
+        });
+    } catch (err) {
+        console.error('[snapshots] history query failed:', err.message);
         res.status(500).json({ error: 'Query failed' });
     }
 });
