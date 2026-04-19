@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-18)
 
 Phase: 17 (alert-engine-signal) — COMPLETE (accepted with known debt)
 Plan: 5 of 5
-Status: Phase 17 shipped; farmer UAT pending for Task 3 of 17-05; next up is Phase 18 (farmer dashboard)
+Status: Phase 17 shipped; Phase 18 rescoped 2026-04-19 — farmer dashboard UI delegated to farmOS/Zoy side; mushy scope shrinks to read-only JSON API
 Last activity: 2026-04-18 -- Phase 17 deployed; ALRT-07 receive-side deferred to backlog 999.15
 
 Progress: [██░░░░░░░░] 25% (1/4 phases complete)
