@@ -8,6 +8,7 @@ const path = require('path');
 const { decideSource } = require('./snapshot_helpers');
 const retention = require('./retention');
 const { validateHistoryParams } = require('./history_validate');
+const { validateFrameParams } = require('./frame_validate');
 const { burnBar, formatBarText } = require('./burn_bar');
 
 // Fail fast if database password is not configured
@@ -81,6 +82,11 @@ const PRUNE_INTERVAL_MS = 24 * 3600 * 1000;
 // Phase 21 D-06a: /camera/history bounds (match /history/:topic precedent + scrubber cap)
 const HISTORY_MAX_ROWS = 5000;
 const HISTORY_MAX_RANGE_MS = 30 * 24 * 3600000;
+
+// Phase 22 D-02: closest-at-or-before tolerance window.
+// Frames outside 2x SNAPSHOT_INTERVAL_MS are considered "no coverage in this window"
+// -> 404 so farmOS renders "no frame in this window" (gap over noise).
+const FRAME_TOLERANCE_MS = 2 * SNAPSHOT_INTERVAL_MS;
 
 function pushFrame(jpegBuffer) {
     latestFrame = jpegBuffer;
@@ -432,6 +438,66 @@ app.get('/camera/history', async (req, res) => {
         });
     } catch (err) {
         console.error('[snapshots] history query failed:', err.message);
+        res.status(500).json({ error: 'Query failed' });
+    }
+});
+
+// Phase 22 D-02: single-frame retrieval for farmOS scrubber.
+//   GET /camera/frame?at=<iso>&camera_id=fc1          -> burnt JPEG (default)
+//   GET /camera/frame?at=<iso>&camera_id=fc1&raw=true -> raw JPEG (Phase 24 ML escape hatch)
+//   Returns 404 if no snapshot within FRAME_TOLERANCE_MS at-or-before `at`.
+app.get('/camera/frame', async (req, res) => {
+    const v = validateFrameParams(req.query, CAMERA_ID);
+    if (!v.ok) return res.status(v.status).json({ error: v.error });
+    if (!dbReady) return res.status(503).json({ error: 'Database not available' });
+    const { at, cameraId, raw } = v.parsed;
+    const lowerBound = new Date(at.getTime() - FRAME_TOLERANCE_MS);
+    try {
+        const result = await pool.query(
+            "SELECT captured_at, file_path " +
+            "FROM snapshots " +
+            "WHERE camera_id = $1 AND captured_at <= $2 AND captured_at >= $3 " +
+            "ORDER BY captured_at DESC LIMIT 1",
+            [cameraId, at, lowerBound]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'No frame in tolerance window' });
+        }
+        const row = result.rows[0];
+        // Path derivation: DB stores raw path; burnt twin = same filename under SNAPSHOT_BURNT_DIR.
+        // raw=true -> serve as-stored. Default -> swap root dir.
+        // Safety: only strip the SNAPSHOT_DIR prefix if file_path actually starts with it
+        // (defense-in-depth against a rogue DB row inserted outside the managed tree).
+        let srcPath;
+        if (raw) {
+            srcPath = row.file_path;
+        } else if (row.file_path.startsWith(SNAPSHOT_DIR)) {
+            srcPath = SNAPSHOT_BURNT_DIR + row.file_path.slice(SNAPSHOT_DIR.length);
+        } else {
+            console.error('[camera/frame] row.file_path outside SNAPSHOT_DIR, refusing burnt swap:', row.file_path);
+            return res.status(404).json({ error: 'Frame unavailable' });
+        }
+        fs.readFile(srcPath, (err, buf) => {
+            if (err) {
+                if (err.code === 'ENOENT') {
+                    console.error('[camera/frame] file missing on disk:', srcPath);
+                    return res.status(404).json({ error: 'Frame unavailable' });
+                }
+                console.error('[camera/frame] read failed:', err.message);
+                return res.status(500).json({ error: 'Read failed' });
+            }
+            res.writeHead(200, {
+                'Content-Type': 'image/jpeg',
+                'Content-Length': buf.length,
+                // Frames are immutable once written — safe to cache aggressively.
+                // Use the captured_at as implicit versioning via the `at` query.
+                'Cache-Control': 'public, max-age=3600',
+                'X-Captured-At': row.captured_at.toISOString()
+            });
+            res.end(buf);
+        });
+    } catch (err) {
+        console.error('[camera/frame] query failed:', err.message);
         res.status(500).json({ error: 'Query failed' });
     }
 });
