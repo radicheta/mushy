@@ -41,7 +41,7 @@ decisions:
 metrics:
   duration: ~25min
   completed: "2026-04-18"
-  tasks: 2 of 3 (Task 3 pending farmer Signal registration + UAT)
+  tasks: 3 of 3 (Task 3 UAT passed 2026-04-19 — farmer-attested)
   files: 3
 ---
 
@@ -53,8 +53,8 @@ metrics:
 
 - **Duration:** ~25 min
 - **Started:** 2026-04-18
-- **Completed:** 2026-04-18 (Tasks 1-2); Task 3 pending farmer
-- **Tasks:** 2 of 3 complete (Task 3: farmer Signal UAT — see checkpoint below)
+- **Completed:** 2026-04-18 (Tasks 1-2); Task 3 UAT passed 2026-04-19 (farmer-attested)
+- **Tasks:** 3 of 3 complete
 - **Files modified:** 3
 
 ## Accomplishments
@@ -88,11 +88,11 @@ metrics:
 - **Files modified:** `docker-compose.override.yml`
 - **Commit:** `a1e8247`
 
-## Task 3: Farmer Signal UAT — PENDING
+## Task 3: Farmer Signal UAT — PASSED 2026-04-19
 
-**Status:** Awaiting farmer Signal registration + delivery attestation
+**Status:** Farmer-attested. Alert delivery confirmed end-to-end; farmer reported positive sentiment ("loves it").
 
-See checkpoint section below for exact commands and farmer actions required.
+Signal registration completed, alerter connected, PROBLEM/RECOVERY/HEARTBEAT messages delivering as designed.
 
 ## Known Stubs
 
