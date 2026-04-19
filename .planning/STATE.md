@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: "v1.4 promoted from draft 2026-04-19. Next action: `/gsd:plan-phase 21`"
+status: executing
 stopped_at: Phase 21 context gathered
-last_updated: "2026-04-19T13:44:00.209Z"
-last_activity: 2026-04-19 -- v1.4 promoted to active; Phase 21 ready to plan
+last_updated: "2026-04-19T15:51:46.275Z"
+last_activity: 2026-04-19
 progress:
   total_phases: 18
-  completed_phases: 8
-  total_plans: 23
-  completed_plans: 24
+  completed_phases: 9
+  total_plans: 27
+  completed_plans: 28
   percent: 100
 ---
 
@@ -21,15 +21,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-18)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** v1.4 Vision & Growth Insights — demo-able CV milestone
+**Current focus:** Phase 21 — camera-history-continuous-persistence
 
 ## Current Position
 
 Milestone: v1.4 — Vision & Growth Insights (4 phases, 0 complete)
-Phase: 21 (camera-history-continuous-persistence) — NOT STARTED
+Phase: 999.1
 Plan: Not started
-Status: v1.4 promoted from draft 2026-04-19. Next action: `/gsd:plan-phase 21`
-Last activity: 2026-04-19 -- v1.4 promoted to active; Phase 21 ready to plan
+Status: Executing Phase 21
+Last activity: 2026-04-19
 
 Progress: [░░░░░░░░░░] 0% (0/4 phases complete)
 
@@ -49,7 +49,7 @@ Progress: [░░░░░░░░░░] 0% (0/4 phases complete)
 
 **Velocity:**
 
-- Total plans completed: 60 (v1.0 + v1.1 + v1.2 + v1.2.1 + v1.3 Phase 17)
+- Total plans completed: 64 (v1.0 + v1.1 + v1.2 + v1.2.1 + v1.3 Phase 17)
 - Average duration: ~25 min/plan (estimated)
 - v1.2 plans completed: 0
 
