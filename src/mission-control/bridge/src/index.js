@@ -28,6 +28,15 @@ let dbReady = false;
 let rosReady = false;              // flips true once rclnodejs.init().then() completes
 let humidifierLastMsgTs = null;    // ms epoch of most recent /fc1/actuators/humidifier
 
+// Phase 18: latest-value cache for GET /farmer/summary
+// Each entry is { value, timestamp } or null. Humidifier stores 0|1.
+const latestTelemetry = {
+    humidity: null,
+    temperature: null,
+    co2: null,
+    humidifier: null
+};
+
 // Camera MJPEG streaming state
 const BOUNDARY = 'frameboundary';
 const mjpegClients = new Set();
@@ -176,6 +185,34 @@ app.get('/health', (req, res) => {
         },
         humidifier: {
             last_msg_ts: humidifierLastMsgTs
+        }
+    });
+});
+
+// Phase 18: farmer dashboard read-only snapshot.
+// Consumed by the farmOS-hosted farmer UI (delegated to Zoy-side). Shape is
+// stable-by-convention; breaking changes require a farmOS-side sync first.
+app.get('/farmer/summary', (req, res) => {
+    const lastFrameAgeSec = lastFrameTime === null
+        ? null
+        : Math.round((Date.now() - lastFrameTime) / 1000);
+    res.json({
+        chamber_id: CAMERA_ID,
+        timestamp: Date.now(),
+        sensors: {
+            humidity: latestTelemetry.humidity,       // { value, timestamp } | null
+            temperature: latestTelemetry.temperature,
+            co2: latestTelemetry.co2
+        },
+        actuators: {
+            humidifier: latestTelemetry.humidifier    // { value: 0|1, timestamp } | null
+        },
+        sensor_health: lastSensorHealthBroadcast === null
+            ? null
+            : lastSensorHealthBroadcast.sensor_health,
+        camera: {
+            last_frame_age_sec: lastFrameAgeSec,
+            subscribed: cameraSubscription !== null
         }
     });
 });
@@ -350,7 +387,9 @@ rclnodejs.init().then(async () => {
         '/fc1/humidity',
         async (msg) => {
             const value = msg.relative_humidity * 100;
-            broadcast({ humidity: value, timestamp: Date.now() });
+            const ts = Date.now();
+            latestTelemetry.humidity = { value, timestamp: ts };
+            broadcast({ humidity: value, timestamp: ts });
             await insertTelemetry('fc.humidity', value);
         }
     );
@@ -361,7 +400,9 @@ rclnodejs.init().then(async () => {
         '/fc1/temperature',
         async (msg) => {
             const value = msg.temperature;
-            broadcast({ temperature: value, timestamp: Date.now() });
+            const ts = Date.now();
+            latestTelemetry.temperature = { value, timestamp: ts };
+            broadcast({ temperature: value, timestamp: ts });
             await insertTelemetry('fc.temperature', value);
         }
     );
@@ -372,7 +413,9 @@ rclnodejs.init().then(async () => {
         '/fc1/co2',
         async (msg) => {
             const value = msg.data;
-            broadcast({ co2: value, timestamp: Date.now() });
+            const ts = Date.now();
+            latestTelemetry.co2 = { value, timestamp: ts };
+            broadcast({ co2: value, timestamp: ts });
             await insertTelemetry('fc.co2', value);
         }
     );
@@ -393,9 +436,11 @@ rclnodejs.init().then(async () => {
         '/fc1/actuators/humidifier',
         { qos: humidifierQos },
         async (msg) => {
-            humidifierLastMsgTs = Date.now();
+            const ts = Date.now();
+            humidifierLastMsgTs = ts;
             const value = msg.data ? 1 : 0;
-            broadcast({ humidifier: value, timestamp: Date.now() });
+            latestTelemetry.humidifier = { value, timestamp: ts };
+            broadcast({ humidifier: value, timestamp: ts });
             await insertTelemetry('fc.humidifier', value);
         }
     );
