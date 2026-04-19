@@ -89,7 +89,7 @@ farmer-attested "all green" on 2026-04-18. See `.planning/milestones/v1.2.1-ROAD
 | 18. Farmer dashboard API (UI delegated to farmOS team) | v1.3 | 1/1 | Complete — `/farmer/summary` live on bridge; farmOS UI owned by Zoy-side | 2026-04-19 |
 | 19. FarmOS admin actions | v1.3 | — | Deferred to v1.5 — gated on Zoy/farm-team | — |
 | 20. Alert cooldown tuning | v1.3 | — | Deferred to v1.5 — calendar-gated | — |
-| 21. Camera history continuous persistence | v1.4 | — | Not started — v1.4 entry phase | — |
+| 21. Camera history continuous persistence | v1.4 | 0/4 | Planned 2026-04-19 — 4 plans, Wave 0→3 | — |
 | 22. Timeline scrubber + farmer story view | v1.4 | — | Depends on 21 | — |
 | 23. Time-lapse composition (ffmpeg) | v1.4 | — | Depends on 21 | — |
 | 24. ML vision events via ComfyUI | v1.4 | — | Depends on 21; pre-gate: ComfyUI-as-prod hardening | — |
