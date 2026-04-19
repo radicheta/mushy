@@ -21,7 +21,7 @@ services:
       - TIMESCALE_PASSWORD=${TIMESCALE_PASSWORD}
       - CORS_ORIGIN=${CORS_ORIGIN:-http://10.68.155.50:8080}
       - SNAPSHOT_DIR=/data/snapshots
-      - SNAPSHOT_INTERVAL_MIN=15
+      - SNAPSHOT_INTERVAL_MIN=5
       - CAMERA_ID=fc1
     volumes:
       - /data/snapshots:/data/snapshots

@@ -5,6 +5,7 @@ const rclnodejs = require('rclnodejs');
 const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
+const { decideSource } = require('./snapshot_helpers');
 
 // Fail fast if database password is not configured
 if (!process.env.TIMESCALE_PASSWORD) {
@@ -52,6 +53,10 @@ function isFrameStale() {
 let cameraSubscription = null;
 let rosNode = null;  // set inside rclnodejs.init().then()
 
+// Phase 21 D-01: keep ROS subscription alive for continuous persistence regardless of viewers.
+// Flipped true after initDb + ROS ready in the startup block.
+let persistenceKeepalive = false;
+
 // Snapshot config from environment
 const SNAPSHOT_DIR = process.env.SNAPSHOT_DIR || '/data/snapshots';
 const SNAPSHOT_INTERVAL_MS = parseInt(process.env.SNAPSHOT_INTERVAL_MIN || '15', 10) * 60 * 1000;
@@ -97,23 +102,45 @@ function ensureCameraSubscribed() {
 }
 
 function maybeCameraUnsubscribe() {
-    if (mjpegClients.size > 0 || cameraSubscription === null) return;
+    if (mjpegClients.size > 0 || persistenceKeepalive || cameraSubscription === null) return;
     rosNode.destroySubscription(cameraSubscription);
     cameraSubscription = null;
     console.log('[camera] unsubscribed from /fc1/camera/compressed');
 }
 
 function saveSnapshot() {
-    if (!latestFrame) return;
-    const now = new Date();
-    const dateDir = now.toISOString().slice(0, 10); // YYYY-MM-DD
+    // Phase 21 Pitfall 1: refuse to persist stale frames. isFrameStale covers
+    // the null-latestFrame case too, so the old `if (!latestFrame) return` is redundant.
+    if (isFrameStale()) {
+        console.log('[camera] snapshot skipped — frame is stale or missing');
+        return;
+    }
+    const capturedAt = new Date();
+    const bytes = latestFrame.length;
+    const source = decideSource(mjpegClients.size);
+    const dateDir = capturedAt.toISOString().slice(0, 10);
     const dir = path.join(SNAPSHOT_DIR, CAMERA_ID, dateDir);
     fs.mkdirSync(dir, { recursive: true });
-    const filename = `${now.toISOString().replace(/[:.]/g, '-')}.jpg`;
+    const filename = `${capturedAt.toISOString().replace(/[:.]/g, '-')}.jpg`;
     const filepath = path.join(dir, filename);
-    fs.writeFile(filepath, latestFrame, (err) => {
-        if (err) console.error('[camera] snapshot write failed:', err.message);
-        else console.log(`[camera] snapshot saved: ${filepath} (${CAMERA_ID}, ${latestFrame.length} bytes)`);
+    fs.writeFile(filepath, latestFrame, async (err) => {
+        if (err) {
+            console.error('[camera] snapshot write failed:', err.message);
+            return;
+        }
+        console.log(`[camera] snapshot saved: ${filepath} (${source}, ${bytes} bytes)`);
+        if (!dbReady) return;
+        try {
+            await pool.query(
+                `INSERT INTO snapshots (captured_at, camera_id, file_path, bytes, source, fps)
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                [capturedAt, CAMERA_ID, filepath, bytes, source, null]
+            );
+        } catch (e) {
+            // File exists on disk but row missing — retention sweep will eventually
+            // orphan-cleanup. See RESEARCH.md §Pattern 3 note.
+            console.error('[snapshots] insert failed:', e.message);
+        }
     });
 }
 
@@ -136,6 +163,26 @@ async function initDb() {
         await pool.query(`
             CREATE INDEX IF NOT EXISTS idx_telemetry_topic_time
             ON telemetry (topic, time DESC)
+        `);
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS snapshots (
+                captured_at TIMESTAMPTZ NOT NULL,
+                camera_id   TEXT        NOT NULL,
+                file_path   TEXT        NOT NULL,
+                bytes       INTEGER     NOT NULL,
+                source      TEXT        NOT NULL CHECK (source IN ('viewer','idle','manual')),
+                fps         NUMERIC
+            )
+        `);
+        await pool.query(`
+            SELECT create_hypertable('snapshots', 'captured_at',
+                if_not_exists        => TRUE,
+                chunk_time_interval  => INTERVAL '1 day'
+            )
+        `);
+        await pool.query(`
+            CREATE INDEX IF NOT EXISTS idx_snapshots_camera_captured
+            ON snapshots (camera_id, captured_at DESC)
         `);
         console.log('[db] Schema initialized');
     } catch (err) {
@@ -477,6 +524,11 @@ rclnodejs.init().then(async () => {
         }
     );
     console.log('[bridge] Sensor health subscription: TRANSIENT_LOCAL QoS (/fc1/sensor_health)');
+
+    // Phase 21 D-01: activate continuous-persistence keepalive and prime the subscription
+    // so we capture idle-cadence frames even with zero MJPEG viewers.
+    persistenceKeepalive = true;
+    ensureCameraSubscribed();
 
     // Start snapshot timer (D-10: periodic snapshots, default 15 min)
     setInterval(saveSnapshot, SNAPSHOT_INTERVAL_MS);
