@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 21 context gathered
-last_updated: "2026-04-19T15:51:46.275Z"
+stopped_at: Phase 22 shipped + verified on elder-plops
+last_updated: "2026-04-19T18:30:00.000Z"
 last_activity: 2026-04-19
 progress:
   total_phases: 18
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-18)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 21 — camera-history-continuous-persistence
+**Current focus:** Phase 22 shipped (timeline scrubber data surface) — farmOS-side UI next
 
 ## Current Position
 
-Milestone: v1.4 — Vision & Growth Insights (4 phases, 0 complete)
-Phase: 999.1
+Milestone: v1.4 — Vision & Growth Insights (4 phases, 2 complete)
+Phase: 23 (time-lapse) — next
 Plan: Not started
-Status: Executing Phase 21
+Status: Phase 22 complete (11/11 must-haves verified)
 Last activity: 2026-04-19
 
-Progress: [░░░░░░░░░░] 0% (0/4 phases complete)
+Progress: [█████░░░░░] 50% (2/4 phases complete)
 
 **Carried from v1.3 (not blocking v1.4):**
 
