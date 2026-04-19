@@ -84,7 +84,7 @@ farmer-attested "all green" on 2026-04-18. See `.planning/milestones/v1.2.1-ROAD
 | 15. Sensor warm-up grace period | v1.2.1 | 3/3 | Complete    | 2026-04-18 |
 | 16. System health panel | v1.2.1 | 3/3 | Complete    | 2026-04-18 |
 | 17. Alert engine + Signal | v1.3 | 5/5 | Complete (ALRT-07 → 999.15) | 2026-04-18 |
-| 18. Farmer dashboard API (UI delegated to farmOS team) | v1.3 | — | Rescoped 2026-04-19 — mushy exposes read-only JSON; Zoy-side builds UI in farmOS | — |
+| 18. Farmer dashboard API (UI delegated to farmOS team) | v1.3 | 1/1 | Complete — `/farmer/summary` live on bridge; farmOS UI owned by Zoy-side | 2026-04-19 |
 | 19. FarmOS admin actions | v1.3 | — | Gated on Zoy/farm-team (FC-1 asset + farmos_agent perms) | — |
 | 20. Alert cooldown tuning | v1.3 | — | Gated on 17 live ≥1 week | — |
 

@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-04-18)
 
 ## Current Position
 
-Phase: 17 (alert-engine-signal) — COMPLETE (accepted with known debt)
-Plan: 5 of 5
-Status: Phase 17 shipped; Phase 18 rescoped 2026-04-19 — farmer dashboard UI delegated to farmOS/Zoy side; mushy scope shrinks to read-only JSON API
+Phase: 18 (farmer-dashboard-api) — COMPLETE (shipped + retrofit docs 2026-04-19)
+Plan: 1 of 1
+Status: v1.3 mushy-side effectively done — 17 ✓, 18 ✓, 19 blocked on Zoy, 20 calendar-gated (earliest 2026-04-25). Pivoting to v1.4 CV milestone.
 Last activity: 2026-04-18 -- Phase 17 deployed; ALRT-07 receive-side deferred to backlog 999.15
 
-Progress: [██░░░░░░░░] 25% (1/4 phases complete)
+Progress: [█████░░░░░] 50% (2/4 phases complete; 19/20 both externally gated)
 
 **Known debt carried from Phase 17:**
 
