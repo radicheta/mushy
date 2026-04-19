@@ -6,6 +6,7 @@ const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
 const { decideSource } = require('./snapshot_helpers');
+const retention = require('./retention');
 
 // Fail fast if database password is not configured
 if (!process.env.TIMESCALE_PASSWORD) {
@@ -61,6 +62,12 @@ let persistenceKeepalive = false;
 const SNAPSHOT_DIR = process.env.SNAPSHOT_DIR || '/data/snapshots';
 const SNAPSHOT_INTERVAL_MS = parseInt(process.env.SNAPSHOT_INTERVAL_MIN || '15', 10) * 60 * 1000;
 const CAMERA_ID = process.env.CAMERA_ID || 'fc1';
+
+// Phase 21 D-04: retention config. clampRetentionDays enforces MIN_RETENTION_DAYS=30
+// (Pitfall 2 belt-and-suspenders) before runPrune's 30-day grace guard kicks in.
+const RETENTION_DAYS = retention.clampRetentionDays(process.env.RETENTION_DAYS || retention.DEFAULT_RETENTION_DAYS);
+const RETENTION_GRACE_DAYS = parseInt(process.env.RETENTION_GRACE_DAYS || retention.DEFAULT_GRACE_DAYS, 10);
+const PRUNE_INTERVAL_MS = 24 * 3600 * 1000;
 
 function pushFrame(jpegBuffer) {
     latestFrame = jpegBuffer;
@@ -533,6 +540,22 @@ rclnodejs.init().then(async () => {
     // Start snapshot timer (D-10: periodic snapshots, default 15 min)
     setInterval(saveSnapshot, SNAPSHOT_INTERVAL_MS);
     console.log(`[camera] Snapshot timer started: every ${SNAPSHOT_INTERVAL_MS / 60000} min to ${SNAPSHOT_DIR}/${CAMERA_ID}/`);
+
+    // Phase 21 D-04: daily retention tick + startup shot 60s after bridge comes up.
+    // Runs in-process (no new container) per D-01.
+    const prunerArgs = () => ({
+        pool, fs, now: () => Date.now(),
+        retentionDays: RETENTION_DAYS, graceDays: RETENTION_GRACE_DAYS
+    });
+    setInterval(() => {
+        if (!dbReady) return;
+        retention.runPrune(prunerArgs()).catch(e => console.error('[retention] tick failed:', e.message));
+    }, PRUNE_INTERVAL_MS);
+    setTimeout(() => {
+        if (!dbReady) return;
+        retention.runPrune(prunerArgs()).catch(e => console.error('[retention] startup tick failed:', e.message));
+    }, 60 * 1000);
+    console.log('[retention] scheduled — retain ' + RETENTION_DAYS + ' days, grace ' + RETENTION_GRACE_DAYS + ' days');
 
     // Start HTTP + WebSocket server
     server.listen(8081, () => {
