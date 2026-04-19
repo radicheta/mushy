@@ -83,4 +83,45 @@ describe('runPrune', () => {
         const deletes = pool.calls.filter(s => s.startsWith('DELETE FROM snapshots'));
         expect(deletes).toHaveLength(0);
     });
+
+    // Phase 22 D-03: burnt-twin mirror delete
+    test('mirror-deletes burnt twin alongside raw when rawDir/burntDir supplied', async () => {
+        const paths = ['/data/snapshots/fc1/2025-01-01/a.jpg'];
+        const pool = makePool(400, paths);
+        const fs = makeFs({
+            '/data/snapshots/fc1/2025-01-01/a.jpg': 'ok',
+            '/data/snapshots-burnt/fc1/2025-01-01/a.jpg': 'ok'
+        });
+        const r = await runPrune({
+            pool, fs, now, retentionDays: 365, graceDays: 30, log: silent,
+            rawDir: '/data/snapshots', burntDir: '/data/snapshots-burnt'
+        });
+        expect(r.deleted).toBe(1);
+        expect(r.failed).toBe(0);
+        expect(fs.promises.unlink).toHaveBeenCalledWith('/data/snapshots/fc1/2025-01-01/a.jpg');
+        expect(fs.promises.unlink).toHaveBeenCalledWith('/data/snapshots-burnt/fc1/2025-01-01/a.jpg');
+    });
+
+    test('ENOENT on burnt twin does not fail the row', async () => {
+        const paths = ['/data/snapshots/fc1/2025-01-01/b.jpg'];
+        const pool = makePool(400, paths);
+        const fs = makeFs({
+            '/data/snapshots/fc1/2025-01-01/b.jpg': 'ok',
+            '/data/snapshots-burnt/fc1/2025-01-01/b.jpg': 'ENOENT'
+        });
+        const r = await runPrune({
+            pool, fs, now, retentionDays: 365, graceDays: 30, log: silent,
+            rawDir: '/data/snapshots', burntDir: '/data/snapshots-burnt'
+        });
+        expect(r.deleted).toBe(1);
+        expect(r.failed).toBe(0);
+    });
+
+    test('no burnt unlink when rawDir/burntDir not provided (back-compat)', async () => {
+        const pool = makePool(400, ['/legacy.jpg']);
+        const fs = makeFs({ '/legacy.jpg': 'ok' });
+        const r = await runPrune({ pool, fs, now, retentionDays: 365, graceDays: 30, log: silent });
+        expect(r.deleted).toBe(1);
+        expect(fs.promises.unlink).toHaveBeenCalledTimes(1);
+    });
 });
