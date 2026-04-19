@@ -4,12 +4,16 @@
   "description": "Bridge between OpenMCT and ROS for fruiting chamber — WebSocket live + REST history",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "test": "jest"
   },
   "dependencies": {
-    "ws": "^8.16.0",
-    "rclnodejs": "^1.9.0",
+    "express": "^5.2.1",
     "pg": "^8.20.0",
-    "express": "^5.2.1"
+    "rclnodejs": "^1.9.0",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
   }
 }
