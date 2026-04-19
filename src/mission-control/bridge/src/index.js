@@ -368,7 +368,7 @@ app.get('/camera/history', async (req, res) => {
     const v = validateHistoryParams(req.query, CAMERA_ID, HISTORY_MAX_RANGE_MS);
     if (!v.ok) return res.status(v.status).json({ error: v.error });
     if (!dbReady) return res.status(503).json({ error: 'Database not available' });
-    const { from, to, cameraId } = v.parsed;
+    const { from, to, cameraId, fromIso, toIso } = v.parsed;
     try {
         const result = await pool.query(
             "SELECT captured_at, camera_id, file_path, bytes, source, fps " +
@@ -381,10 +381,11 @@ app.get('/camera/history', async (req, res) => {
         const rows = hasMore ? result.rows.slice(0, HISTORY_MAX_ROWS) : result.rows;
         res.json({
             camera_id: cameraId,
-            from, to,
+            from: fromIso,
+            to: toIso,
             count: rows.length,
             has_more: hasMore,
-            rows: rows.map(r => ({
+            items: rows.map(r => ({
                 captured_at: r.captured_at.toISOString(),
                 camera_id: r.camera_id,
                 file_path: r.file_path,
