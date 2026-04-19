@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Alerts & Unified Farmer Dashboard
 status: executing
-stopped_at: Phase 17 context gathered
-last_updated: "2026-04-18T18:18:36.581Z"
-last_activity: 2026-04-18 -- Phase 17 execution started
+stopped_at: Phase 17 complete (ALRT-07 receive-side deferred to 999.15)
+last_updated: "2026-04-19T00:00:00.000Z"
+last_activity: 2026-04-18 -- Phase 17 shipped; snooze receive blocked by signal-cli-rest-api linked-device limitation
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 5
-  completed_plans: 0
-  percent: 0
+  completed_plans: 5
+  percent: 25
 ---
 
 # Project State
@@ -25,23 +25,22 @@ See: .planning/PROJECT.md (updated 2026-04-18)
 
 ## Current Position
 
-Phase: 17 (alert-engine-signal) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 17
-Last activity: 2026-04-18 -- Phase 17 execution started
+Phase: 17 (alert-engine-signal) — COMPLETE (accepted with known debt)
+Plan: 5 of 5
+Status: Phase 17 shipped; farmer UAT pending for Task 3 of 17-05; next up is Phase 18 (farmer dashboard)
+Last activity: 2026-04-18 -- Phase 17 deployed; ALRT-07 receive-side deferred to backlog 999.15
 
-Progress: [░░░░░░░░░░] 0% (0/4 phases complete)
+Progress: [██░░░░░░░░] 25% (1/4 phases complete)
 
-**Pre-phase gate before Phase 17 can start:**
+**Known debt carried from Phase 17:**
 
-- Confirm 4G router exposes incoming SMS for signal-cli-rest-api verification
-- Complete Signal primary-account registration on the router SIM (QR/SMS pairing)
+- ALRT-07 snooze receive-side: signal-cli-rest-api `/v1/receive` returns HTTP 400 for linked secondary device. Code complete and unit-tested against fake; blocked only at real API layer. Tracked as 999.15.
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 55 (v1.0 + v1.1)
+- Total plans completed: 60 (v1.0 + v1.1 + v1.2 + v1.2.1 + v1.3 Phase 17)
 - Average duration: ~25 min/plan (estimated)
 - v1.2 plans completed: 0
 
@@ -90,8 +89,9 @@ Progress: [░░░░░░░░░░] 0% (0/4 phases complete)
 ## Session Continuity
 
 Last session: 2026-04-18T16:03:37.207Z
-Stopped at: Phase 17 context gathered
-Resume file: .planning/phases/17-alert-engine-signal/17-CONTEXT.md
+Stopped at: Phase 17 complete, accepted with known debt (ALRT-07 → 999.15)
+Resume file: .planning/phases/17-alert-engine-signal/17-VERIFICATION.md
+Next up: `/gsd:plan-phase 18` (farmer dashboard — parallel-safe with 17)
 
 ---
 *Roadmap phases: v1.0 (1–8), v1.1 (9–10), v1.2 (11–13), v1.2.1 (14–16), v1.3 (17–20)*
