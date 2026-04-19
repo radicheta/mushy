@@ -567,6 +567,7 @@
                             lights.bridge     = makeStatusLight(container, 'Bridge');
                             lights.pi         = makeStatusLight(container, 'Pi reachable');
                             lights.grace      = makeStatusLight(container, 'Grace');
+                            lights.snapshots  = makeStatusLight(container, 'Snapshots');
 
                             Object.keys(lights).forEach(function (k) {
                                 lights[k].setGrey('waiting for first /health response');
@@ -615,6 +616,20 @@
                                         lights.humidifier.setGrey('no humidifier message received yet');
                                     }
 
+                                    // Phase 21 D-06b: Snapshots chip — green >=200/24h, red ==0, grey unknown/degraded
+                                    var snap = data.snapshots || {};
+                                    var last24 = (typeof snap.last_24h === 'number') ? snap.last_24h : null;
+                                    var oldest = snap.oldest_at || null;
+                                    if (last24 === null) {
+                                        lights.snapshots.setGrey('snapshots stats unavailable (DB down?)');
+                                    } else if (last24 === 0) {
+                                        lights.snapshots.setRed('0 snapshots in last 24h — persister broken');
+                                    } else if (last24 < 200) {
+                                        lights.snapshots.setGrey(last24 + ' snapshots in last 24h (degraded; oldest ' + (oldest || 'unknown') + ')');
+                                    } else {
+                                        lights.snapshots.setGreen(last24 + ' snapshots in last 24h (oldest ' + (oldest || 'none') + ')');
+                                    }
+
                                     // Sensors + Grace lights update on every WS message;
                                     // also refresh here so a stale WS feed flips Sensors to grey.
                                     updateSensorsAndGraceLights();
@@ -623,6 +638,7 @@
                                     lights.pi.setGrey('bridge unreachable — cannot determine ROS state');
                                     lights.cameraFeed.setGrey('bridge unreachable');
                                     lights.humidifier.setGrey('bridge unreachable');
+                                    if (lights.snapshots) lights.snapshots.setGrey('bridge unreachable');
                                 });
                             }
 
