@@ -90,7 +90,7 @@ farmer-attested "all green" on 2026-04-18. See `.planning/milestones/v1.2.1-ROAD
 | 19. FarmOS admin actions | v1.3 | — | Deferred to v1.5 — gated on Zoy/farm-team | — |
 | 20. Alert cooldown tuning | v1.3 | — | Deferred to v1.5 — calendar-gated | — |
 | 21. Camera history continuous persistence | v1.4 | 4/4 | Complete    | 2026-04-19 |
-| 22. Timeline scrubber + farmer story view | v1.4 | — | Depends on 21 | — |
+| 22. Timeline scrubber + farmer story view | v1.4 | 0/4 | Planned — data-surface only (farmOS owns UI) | — |
 | 23. Time-lapse composition (ffmpeg) | v1.4 | — | Depends on 21 | — |
 | 24. ML vision events via ComfyUI | v1.4 | — | Depends on 21; pre-gate: ComfyUI-as-prod hardening | — |
 
