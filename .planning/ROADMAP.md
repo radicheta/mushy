@@ -83,6 +83,10 @@ farmer-attested "all green" on 2026-04-18. See `.planning/milestones/v1.2.1-ROAD
 | 14. fc_camera idle-mode stall hotfix | v1.2.1 | 5/5 | Complete    | 2026-04-18 |
 | 15. Sensor warm-up grace period | v1.2.1 | 3/3 | Complete    | 2026-04-18 |
 | 16. System health panel | v1.2.1 | 3/3 | Complete    | 2026-04-18 |
+| 17. Alert engine + Signal | v1.3 | 5/5 | Complete (ALRT-07 → 999.15) | 2026-04-18 |
+| 18. Farmer dashboard | v1.3 | — | Not started | — |
+| 19. FarmOS admin actions | v1.3 | — | Not started | — |
+| 20. Alert cooldown tuning | v1.3 | — | Gated on 17 live ≥1 week | — |
 
 ## Backlog (parking lot)
 
