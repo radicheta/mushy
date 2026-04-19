@@ -25,7 +25,7 @@ services:
     image: bbernhard/signal-cli-rest-api:0.200-dev
     restart: unless-stopped
     environment:
-      - MODE=json-rpc-native
+      - MODE=json-rpc
     volumes:
       - signal-cli-data:/home/.local/share/signal-cli
     networks:
@@ -44,8 +44,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      - BRIDGE_WS_URL=ws://host.docker.internal:8081
-      - BRIDGE_HEALTH_URL=http://host.docker.internal:8081/health
+      - BRIDGE_WS_URL=${BRIDGE_WS_URL:-ws://host.docker.internal:8081}
+      - BRIDGE_HEALTH_URL=${BRIDGE_HEALTH_URL:-http://host.docker.internal:8081/health}
       - SIGNAL_API_URL=http://signal-cli:8080
       - SIGNAL_SENDER=${SIGNAL_SENDER}
       - SIGNAL_RECIPIENT=${SIGNAL_RECIPIENT}
