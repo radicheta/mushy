@@ -472,27 +472,31 @@ See Patterns 1–6 above — all code is grounded in and traceable to existing `
 | A5 | Row-at-a-time DELETE loop at retention-time is fast enough for the retention cadence (max ~288 rows/day × oldest day = trivially small, but a backfilled install could have N days × 288) [ASSUMED] | Pattern 4 | LOW at Phase 21 volumes; if a future ML phase pushes row counts 10×+, batch deletes are straightforward |
 | A6 | No UNIQUE constraint on `file_path` is acceptable [CITED: D-03 does not mandate it, filename includes millisecond ISO timestamp] | Pattern 1 | LOW — if duplicates appear, add a UNIQUE index in a later migration |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Backfill: yes or no?**
    - What we know: pre-phase `/data/snapshots/` tree exists but is discontinuous by design (Phase 12 viewer-gated).
    - What's unclear: farmer's preference for "complete but patchy" vs "continuous from cutover."
    - Recommendation: start-from-now (A2). Planner: raise this with the user if uncertainty remains.
+   - **RESOLVED:** No. Start-from-now. Pre-phase `/data/snapshots/` tree left unindexed to preserve continuous-timeline semantics. (Plan 02 has no backfill task.)
 
 2. **Is `camera_id` validation via env (static `fc1`) or a config list?**
    - What we know: Phase 999.6 owns multi-chamber. Schema supports multiple IDs; wiring is discretion (CONTEXT).
    - What's unclear: whether v1.4 will have any other `camera_id` value before Phase 999.6.
    - Recommendation: static equality check against `CAMERA_ID` env var (Pattern 5). Trivial to extend to a list later.
+   - **RESOLVED:** Static equality against env `CAMERA_ID`. Allowlist deferred to Phase 999.6. (Implemented in validateHistoryParams in Plan 03.)
 
 3. **`captured_at` response shape: ISO string or ms epoch?**
    - What we know: `/farmer/summary` uses ms epoch for `timestamp`; `/history/:topic` uses ms epoch under key `utc`.
    - What's unclear: whether Phase 22's scrubber prefers one.
    - Recommendation: ISO string for `/camera/history` (new shape, correct default for TIMESTAMPTZ). Planner locks; Phase 22 consumes.
+   - **RESOLVED:** ISO string (not ms epoch). Documented in Plan 03 Task 2 /camera/history response.
 
 4. **Empty-date-dir cleanup after prune: ship now or defer?**
    - What we know: `/data/snapshots/fc1/2025-04-19/` directories stay empty after their last file is pruned.
    - What's unclear: disk-inode pressure on elder-plops (negligible at any realistic scale).
    - Recommendation: defer; add a one-liner `fs.rmdir(..., () => {})` ignore-error only if empty-dir accumulation becomes a real concern.
+   - **RESOLVED:** Deferred. Not load-bearing for Phase 22. (No cleanup task in Plan 03 retention job.)
 
 ## Environment Availability
 
