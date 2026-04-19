@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.3
-milestone_name: Alerts & Unified Farmer Dashboard
-status: executing
-stopped_at: Phase 17 complete (ALRT-07 receive-side deferred to 999.15)
+milestone: v1.4
+milestone_name: Vision & Growth Insights
+status: active
+stopped_at: v1.4 promoted from draft 2026-04-19 — Phase 21 not yet started
 last_updated: "2026-04-19T00:00:00.000Z"
-last_activity: 2026-04-18 -- Phase 17 shipped; snooze receive blocked by signal-cli-rest-api linked-device limitation
+last_activity: 2026-04-19 -- v1.3 closed on mushy side (17,18 shipped; 19,20 deferred to v1.5). v1.4 active, next is /gsd:plan-phase 21
 progress:
   total_phases: 4
-  completed_phases: 1
-  total_plans: 5
-  completed_plans: 5
-  percent: 25
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,20 +21,29 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-18)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 17 — alert-engine-signal
+**Current focus:** v1.4 Vision & Growth Insights — demo-able CV milestone
 
 ## Current Position
 
-Phase: 18 (farmer-dashboard-api) — COMPLETE (shipped + retrofit docs 2026-04-19)
-Plan: 1 of 1
-Status: v1.3 mushy-side effectively done — 17 ✓, 18 ✓, 19 blocked on Zoy, 20 calendar-gated (earliest 2026-04-25). Pivoting to v1.4 CV milestone.
-Last activity: 2026-04-18 -- Phase 17 deployed; ALRT-07 receive-side deferred to backlog 999.15
+Milestone: v1.4 — Vision & Growth Insights (4 phases, 0 complete)
+Phase: 21 (camera-history-continuous-persistence) — NOT STARTED
+Plan: Not started
+Status: v1.4 promoted from draft 2026-04-19. Next action: `/gsd:plan-phase 21`
+Last activity: 2026-04-19 -- v1.4 promoted to active; Phase 21 ready to plan
 
-Progress: [█████░░░░░] 50% (2/4 phases complete; 19/20 both externally gated)
+Progress: [░░░░░░░░░░] 0% (0/4 phases complete)
 
-**Known debt carried from Phase 17:**
+**Carried from v1.3 (not blocking v1.4):**
 
-- ALRT-07 snooze receive-side: signal-cli-rest-api `/v1/receive` returns HTTP 400 for linked secondary device. Code complete and unit-tested against fake; blocked only at real API layer. Tracked as 999.15.
+- 19 FarmOS admin actions — deferred to v1.5; gated on Zoy/farm-team availability
+- 20 Alert cooldown tuning — deferred to v1.5; calendar-gated (Phase 17 live ≥1 week)
+- ALRT-07 snooze receive-side — tracked as backlog 999.15 (signal-cli-rest-api linked-device limitation)
+
+**v1.4 pre-gates to check before Phase 24:**
+
+- ComfyUI on elder-plops promoted from dev-use to prod (systemd unit, restart policy, health check)
+- Retention policy for continuous raw snapshots agreed with operator
+- Farmer expectations set: v1.4 delivers detection + visibility, not autonomous intervention
 
 ## Performance Metrics
 

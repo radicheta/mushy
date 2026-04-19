@@ -6,6 +6,8 @@
 - ✅ **v1.1 Tech Debt & Connectivity** — Phases 9–10 (shipped 2026-04-12)
 - ✅ **v1.2 FarmOS Integration & QoL** — Phases 11–13 (shipped 2026-04-13)
 - ✅ **v1.2.1 Hotfix — camera stall + sensor warmup** — Phases 14–16 (shipped 2026-04-18)
+- ◆ **v1.3 Alerts & Unified Farmer Dashboard** — Phases 17–20 (17/18 ✓ 2026-04-18/19; 19/20 externally gated, deferred to v1.5)
+- ◆ **v1.4 Vision & Growth Insights** — Phases 21–24 (active 2026-04-19) — CV work, demo-able artifacts at every phase
 
 ## Phases
 
@@ -85,8 +87,12 @@ farmer-attested "all green" on 2026-04-18. See `.planning/milestones/v1.2.1-ROAD
 | 16. System health panel | v1.2.1 | 3/3 | Complete    | 2026-04-18 |
 | 17. Alert engine + Signal | v1.3 | 5/5 | Complete (ALRT-07 → 999.15) | 2026-04-18 |
 | 18. Farmer dashboard API (UI delegated to farmOS team) | v1.3 | 1/1 | Complete — `/farmer/summary` live on bridge; farmOS UI owned by Zoy-side | 2026-04-19 |
-| 19. FarmOS admin actions | v1.3 | — | Gated on Zoy/farm-team (FC-1 asset + farmos_agent perms) | — |
-| 20. Alert cooldown tuning | v1.3 | — | Gated on 17 live ≥1 week | — |
+| 19. FarmOS admin actions | v1.3 | — | Deferred to v1.5 — gated on Zoy/farm-team | — |
+| 20. Alert cooldown tuning | v1.3 | — | Deferred to v1.5 — calendar-gated | — |
+| 21. Camera history continuous persistence | v1.4 | — | Not started — v1.4 entry phase | — |
+| 22. Timeline scrubber + farmer story view | v1.4 | — | Depends on 21 | — |
+| 23. Time-lapse composition (ffmpeg) | v1.4 | — | Depends on 21 | — |
+| 24. ML vision events via ComfyUI | v1.4 | — | Depends on 21; pre-gate: ComfyUI-as-prod hardening | — |
 
 ## Backlog (parking lot)
 
