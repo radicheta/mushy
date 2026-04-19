@@ -226,10 +226,31 @@ app.use((req, res, next) => {
 
 // Health check route — Phase 14 adds last_frame_age_sec (HFIX-03).
 // Server-side age avoids client clock-skew; null when no frame has ever arrived.
-app.get('/health', (req, res) => {
+// Phase 21 D-06b: adds snapshots.{last_24h, oldest_at} + flat aliases for the
+// Mission Control "Snapshots" chip. DB failures are swallowed — /health always
+// returns 200 (gap-over-noise: chip goes grey, not a 5xx).
+app.get('/health', async (req, res) => {
     const lastFrameAgeSec = lastFrameTime === null
         ? null
         : Math.round((Date.now() - lastFrameTime) / 1000);
+
+    let snapshotsLast24h = null;
+    let oldestSnapshotAt = null;
+    if (dbReady) {
+        try {
+            const [countRow, oldestRow] = await Promise.all([
+                pool.query("SELECT COUNT(*)::int AS n FROM snapshots WHERE captured_at > NOW() - INTERVAL '24 hours'"),
+                pool.query("SELECT MIN(captured_at) AS oldest FROM snapshots")
+            ]);
+            snapshotsLast24h = countRow.rows[0].n;
+            oldestSnapshotAt = oldestRow.rows[0].oldest === null
+                ? null
+                : oldestRow.rows[0].oldest.toISOString();
+        } catch (e) {
+            console.error('[health] snapshots stats failed:', e.message);
+        }
+    }
+
     res.json({
         status: 'ok',
         db: dbReady,
@@ -244,7 +265,10 @@ app.get('/health', (req, res) => {
         },
         humidifier: {
             last_msg_ts: humidifierLastMsgTs
-        }
+        },
+        snapshots: { last_24h: snapshotsLast24h, oldest_at: oldestSnapshotAt },
+        snapshots_last_24h: snapshotsLast24h,
+        oldest_snapshot_at: oldestSnapshotAt
     });
 });
 
