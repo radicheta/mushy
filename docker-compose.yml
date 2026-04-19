@@ -21,6 +21,7 @@ services:
       - TIMESCALE_PASSWORD=${TIMESCALE_PASSWORD}
       - CORS_ORIGIN=${CORS_ORIGIN:-http://10.68.155.50:8080}
       - SNAPSHOT_DIR=/data/snapshots
+      - SNAPSHOT_BURNT_DIR=/data/snapshots-burnt
       - SNAPSHOT_INTERVAL_MIN=5
       - CAMERA_ID=fc1
       # Phase 21 retention defaults (optional; in-process daily prune)
@@ -28,6 +29,7 @@ services:
       - RETENTION_GRACE_DAYS=${RETENTION_GRACE_DAYS:-30}
     volumes:
       - /data/snapshots:/data/snapshots
+      - /data/snapshots-burnt:/data/snapshots-burnt
 
   timescale:
     image: timescale/timescaledb:latest-pg14
