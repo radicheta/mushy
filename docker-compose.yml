@@ -23,6 +23,9 @@ services:
       - SNAPSHOT_DIR=/data/snapshots
       - SNAPSHOT_INTERVAL_MIN=5
       - CAMERA_ID=fc1
+      # Phase 21 retention defaults (optional; in-process daily prune)
+      - RETENTION_DAYS=${RETENTION_DAYS:-365}
+      - RETENTION_GRACE_DAYS=${RETENTION_GRACE_DAYS:-30}
     volumes:
       - /data/snapshots:/data/snapshots
 
