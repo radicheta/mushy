@@ -8,6 +8,7 @@ const path = require('path');
 const { decideSource } = require('./snapshot_helpers');
 const retention = require('./retention');
 const { validateHistoryParams } = require('./history_validate');
+const { burnBar, formatBarText } = require('./burn_bar');
 
 // Fail fast if database password is not configured
 if (!process.env.TIMESCALE_PASSWORD) {
@@ -61,6 +62,13 @@ let persistenceKeepalive = false;
 
 // Snapshot config from environment
 const SNAPSHOT_DIR = process.env.SNAPSHOT_DIR || '/data/snapshots';
+// Phase 22 D-03: burnt-twin root. MUST differ from SNAPSHOT_DIR (guard below) to
+// prevent the burnt write from overwriting the raw file on disk.
+const SNAPSHOT_BURNT_DIR = process.env.SNAPSHOT_BURNT_DIR || '/data/snapshots-burnt';
+if (SNAPSHOT_BURNT_DIR === SNAPSHOT_DIR) {
+    console.error('[camera/burnt] SNAPSHOT_BURNT_DIR must differ from SNAPSHOT_DIR');
+    process.exit(1);
+}
 const SNAPSHOT_INTERVAL_MS = parseInt(process.env.SNAPSHOT_INTERVAL_MIN || '15', 10) * 60 * 1000;
 const CAMERA_ID = process.env.CAMERA_ID || 'fc1';
 
@@ -135,12 +143,40 @@ function saveSnapshot() {
     fs.mkdirSync(dir, { recursive: true });
     const filename = `${capturedAt.toISOString().replace(/[:.]/g, '-')}.jpg`;
     const filepath = path.join(dir, filename);
+    // Phase 22 D-03: pin the raw buffer reference NOW. latestFrame may rotate by the
+    // time burnBar resolves (threat T-22-09 mitigation via snapshot pin).
+    const rawBuf = latestFrame;
     fs.writeFile(filepath, latestFrame, async (err) => {
         if (err) {
             console.error('[camera] snapshot write failed:', err.message);
             return;
         }
         console.log(`[camera] snapshot saved: ${filepath} (${source}, ${bytes} bytes)`);
+
+        // Phase 22 D-03: fire-and-forget burnt twin. Errors logged, never block raw
+        // write or DB insert. No await on the IIFE — the callback chain continues
+        // regardless of burn outcome.
+        const burntDir = path.join(SNAPSHOT_BURNT_DIR, CAMERA_ID, dateDir);
+        const burntPath = path.join(burntDir, filename);
+        const barText = formatBarText({
+            capturedAt,
+            rh:   latestTelemetry.humidity?.value,
+            temp: latestTelemetry.temperature?.value,
+            co2:  latestTelemetry.co2?.value,
+            hum:  latestTelemetry.humidifier?.value
+        });
+        (async () => {
+            try {
+                fs.mkdirSync(burntDir, { recursive: true });
+                const burnt = await burnBar(rawBuf, barText);
+                fs.writeFile(burntPath, burnt, (werr) => {
+                    if (werr) console.error('[camera/burnt] write failed:', werr.message);
+                });
+            } catch (e) {
+                console.error('[camera/burnt] burn failed:', e.message);
+            }
+        })();
+
         if (!dbReady) return;
         try {
             await pool.query(
@@ -611,7 +647,8 @@ rclnodejs.init().then(async () => {
     // Runs in-process (no new container) per D-01.
     const prunerArgs = () => ({
         pool, fs, now: () => Date.now(),
-        retentionDays: RETENTION_DAYS, graceDays: RETENTION_GRACE_DAYS
+        retentionDays: RETENTION_DAYS, graceDays: RETENTION_GRACE_DAYS,
+        rawDir: SNAPSHOT_DIR, burntDir: SNAPSHOT_BURNT_DIR
     });
     setInterval(() => {
         if (!dbReady) return;

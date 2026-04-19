@@ -21,6 +21,8 @@ async function runPrune({
     retentionDays = DEFAULT_RETENTION_DAYS,
     graceDays = DEFAULT_GRACE_DAYS,
     batchLimit = DEFAULT_BATCH_LIMIT,
+    rawDir = null,
+    burntDir = null,
     log = console
 }) {
     const effectiveRetention = clampRetentionDays(retentionDays);
@@ -40,14 +42,26 @@ async function runPrune({
     );
     let deleted = 0, failed = 0;
     for (const r of expired.rows) {
-        try { await fs.promises.unlink(r.file_path); }
+        const rawPath = r.file_path;
+        try { await fs.promises.unlink(rawPath); }
         catch (e) {
             if (e.code !== 'ENOENT') {
-                log.error('[retention] unlink failed for ' + r.file_path + ': ' + e.message);
+                log.error('[retention] unlink failed for ' + rawPath + ': ' + e.message);
                 failed++; continue;
             }
         }
-        await pool.query("DELETE FROM snapshots WHERE file_path = $1", [r.file_path]);
+        // Phase 22 D-03: mirror-delete burnt twin. ENOENT acceptable (gap over noise).
+        // Other errors are non-fatal — raw file + row must still be cleaned up.
+        if (rawDir && burntDir && rawPath.startsWith(rawDir)) {
+            const burntPath = burntDir + rawPath.slice(rawDir.length);
+            try { await fs.promises.unlink(burntPath); }
+            catch (e) {
+                if (e.code !== 'ENOENT') {
+                    log.error('[retention/burnt] unlink failed for ' + burntPath + ': ' + e.message);
+                }
+            }
+        }
+        await pool.query("DELETE FROM snapshots WHERE file_path = $1", [rawPath]);
         deleted++;
     }
     log.log('[retention] pruned ' + deleted + ' snapshots older than ' + effectiveRetention + ' days (' + failed + ' failed)');
