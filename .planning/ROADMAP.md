@@ -65,6 +65,19 @@ farmer-attested "all green" on 2026-04-18. See `.planning/milestones/v1.2.1-ROAD
 
 </details>
 
+<details open>
+<summary>◆ v1.4 Vision & Growth Insights (Phases 21-25) — ACTIVE</summary>
+
+- [x] **Phase 21: Camera history continuous persistence** (4/4 plans) — 2026-04-19
+- [x] **Phase 22: Timeline scrubber + farmer story view** (4/4 plans) — 2026-04-19
+- [ ] **Phase 23: Time-lapse composition (ffmpeg)** — depends on 21
+- [ ] **Phase 24: ML vision events via ComfyUI** — depends on 21; pre-gate: ComfyUI-as-prod hardening
+- [ ] **Phase 25: Bidirectional Signal — farmer↔robot capture channel** — SPEC locked 2026-04-19 (absorbs retired backlog 999.15); independent of 21→24 chain. Farmer-facing UI label: **Field Notes**. See `.planning/phases/25-bidirectional-signal-farmer-robot-capture-channel/25-SPEC.md`.
+
+Full v1.4 narrative + per-phase scope: `.planning/milestones/v1.4-ROADMAP.md`.
+
+</details>
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -95,6 +108,24 @@ farmer-attested "all green" on 2026-04-18. See `.planning/milestones/v1.2.1-ROAD
 | 24. ML vision events via ComfyUI | v1.4 | — | Depends on 21; pre-gate: ComfyUI-as-prod hardening | — |
 | 25. Bidirectional Signal — farmer↔robot capture channel | v1.4 | 0/? | Planned — SPEC locked 2026-04-19 (absorbs backlog 999.15); farmOS event writes are a follow-up phase | — |
 
+### Phase 23: Time-lapse composition (ffmpeg)
+
+**Goal:** Daily and on-demand time-lapse mp4s generated automatically from Phase 21 snapshots. Full scope in `.planning/milestones/v1.4-ROADMAP.md`.
+
+### Phase 24: ML vision events via ComfyUI
+
+**Goal:** ComfyUI-backed detection writes pinning + contamination events to Timescale and fires Signal alerts for high-confidence contamination. Full scope in `.planning/milestones/v1.4-ROADMAP.md`.
+
+### Phase 25: Bidirectional Signal — farmer↔robot capture channel
+
+**Goal:** Farmer sends text, audio, and photos via Signal; the robot stores them, transcribes audio locally (Whisper), replies with an LLM-inferred session tag or clarifying question (Anthropic API). Snooze collapses to single "mute 24h" keyword. Absorbs retired backlog 999.15.
+
+**Farmer-facing UI label:** Field Notes.
+
+**SPEC.md location:** `.planning/phases/25-bidirectional-signal-farmer-robot-capture-channel/25-SPEC.md`. GSD workflows use `phase=25`.
+
+**Dependencies:** independent of Phases 21→24 CV chain. Extends Phase 17 alerter. Follow-up phase (farmOS event writer) captured in SEED-002.
+
 ## Backlog (parking lot)
 
 These are ideas captured during v1.0/v1.1 execution but not yet scoped into a
@@ -113,7 +144,7 @@ milestone. Promote with `/gsd:review-backlog` when ready.
 - **Phase 999.11: Farmer app (operator + grower UI)** — a dedicated app for the farmer's daily workflow: status glance, historical "story view", camera feed, parameter changes, "flag it" backlog capture. Mission Control (OpenMCT) is the engineer surface; the Farmer app is the operator/grower surface. Mobile-first, offline-tolerant over 4G, role-aware (operator vs grower modes). Captured from lived experience during the 2026-04-11 calibration session where Claude Code acted as an ad-hoc farmer app and exposed every gap. **Biggest lesson from that session:** sensor health must be so prominent it is impossible to ignore — today we calibrated against SCD41 humidity for 40 minutes without noticing SHT30 was offline. Full field notes with workflow moments, UI wishes, pitfall reminders, and a 3-item MVP prioritization are in `.planning/phases/999.11-farmer-app/FARMER-APP-NOTES-2026-04-11.md`. Depends on nothing strictly; composes well with 999.3 (alerts/Signal), 999.5 (vision/time-lapse), 999.10 (on-demand camera).
 - **Phase 999.13: Upgrade docker-compose v1 → v2** — elder-plops runs compose 1.29.2 which hit a `ContainerConfig` KeyError during v1.1 bridge deploy (2026-04-12), requiring manual `docker rm -f` + recreate. Compose v2 (`docker compose` plugin) fixes this. Container names change from underscores to hyphens (`mushy_bridge_1` → `mushy-bridge-1`) — grep for hardcoded references first. Low risk, high annoyance reduction.
 - **Phase 999.14: Camera history — continuous persistence + MC timeline scrubber** — Two issues surfaced during a farmer debug session 2026-04-17 (fc_camera idle-mode stall + discovery that Phase 12's subscriber-aware bridge means idle-pulse frames are never persisted when no one's watching). Original framing ("just index the existing files") was too narrow: indexing a discontinuous history gives a scrubber with blank hours. Real scope: (1) decide who persists idle frames — bridge stays at trickle subscription, or Pi-side history ring buffer, or dedicated archivist subscriber; (2) index in Timescale (`snapshots` table: camera_id, captured_at, file_path, bytes) alongside `saveSnapshot()` (`src/mission-control/bridge/src/index.js:381`); (3) MC timeline scrubber UI. Full findings and scope discussion in `.planning/phases/999.14-index-camera-snapshots-in-timescale/FINDINGS-2026-04-17.md`. Composes with 999.1 (edge-buffering), 999.5 (time-lapse), 999.11 (farmer app story view).
-- ~~Phase 999.15~~ — **absorbed into Phase 25** (v1.4) 2026-04-20 after farmer-driven rescope from "unblock snooze receive" into full capture channel (text + audio + images → local Whisper → Anthropic LLM reply). SPEC: `.planning/phases/999.15-signal-cli-receive-side-for-linked-secondary-device/999.15-SPEC.md`.
+- ~~Phase 999.15~~ — **absorbed into Phase 25** (v1.4) 2026-04-20 after farmer-driven rescope from "unblock snooze receive" into full capture channel (text + audio + images → local Whisper → Anthropic LLM reply). SPEC: `.planning/phases/25-bidirectional-signal-farmer-robot-capture-channel/25-SPEC.md`.
 - **Phase 999.12: Weather telemetry enrichment** — poll Open-Meteo API from Mission Control side (sidecar container or bridge addition), write outdoor temp/humidity/pressure/precipitation to TimescaleDB, display alongside fc1 chamber data in Mission Control. Proxy for a local weather station until one is installed. Farmer request from first 24h of live data (2026-04-12): correlate outdoor conditions with chamber behavior (e.g. wet day → humidifier never fires, RH stays above 83%). Must NOT run on Pi — runs on elder-plops alongside existing Mission Control stack. Touches: new container or bridge module, TimescaleDB schema for weather table, Mission Control layout. Composes well with 999.11 (farmer app — weather context in "story view").
 
 ---

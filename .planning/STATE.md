@@ -84,7 +84,7 @@ Progress: [████░░░░░░] 40% (2/5 phases complete)
 - [v1.3 roadmap]: Phase 19 depends on Phase 18 (extends existing farmer page); Phase 20 depends on Phase 17 being live ≥1 week
 - [v1.4 phase-25]: backlog 999.15 rescoped from "unblock snooze receive" into full capture channel (text + audio + images → local Whisper → Anthropic LLM reply); farmOS event writes deferred to follow-up phase (seed SEED-002)
 - [v1.4 phase-25]: LLM = Anthropic API; transcription = local dedicated container on elder-plops (no audio leaves the box); single-farmer model preserved (no multi-recipient this phase)
-- [v1.4 phase-25]: SPEC.md lives at `.planning/phases/999.15-signal-cli-.../999.15-SPEC.md` — do not create a duplicate SPEC under a `25-*` directory
+- [v1.4 phase-25]: SPEC.md lives at `.planning/phases/25-bidirectional-signal-farmer-robot-capture-channel/25-SPEC.md` (renamed from `999.15-*` on 2026-04-20 so GSD tooling resolves `phase=25` correctly)
 
 ### Pending Todos
 
