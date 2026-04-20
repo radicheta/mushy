@@ -12,7 +12,7 @@ owners: mushy-side (LLM draft + write path), farmOS-side / Zoy (schema mapping +
 
 ## Why This Matters
 
-Phase 25 ("Bidirectional Signal — farmer↔robot capture channel", SPEC at
+Phase 25 ("Bidirectional Signal — farmer↔robot capture channel; farmer-app surface: **Field Notes**", SPEC at
 `.planning/phases/999.15-signal-cli-receive-side-for-linked-secondary-device/999.15-SPEC.md`)
 explicitly defers farmOS event creation. That was the right scope call —
 Phase 25 proves the receive + transcribe + LLM-reply pipeline works, and

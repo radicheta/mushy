@@ -94,8 +94,10 @@ drop an iframe or external-link card. Mushy-side work is at most:
 ## Notes
 
 This seed composes with SEED-002 (farmOS event writer from Signal captures):
-together they define the three farmer-app sections — Capture (from Phase 25),
-Daily Summary + Events (existing + SEED-002), Mission Control (this seed).
+together they define the three farmer-app sections — **Field Notes** (from
+Phase 25; do NOT call it "Log" — collides with farmOS log type and with the
+farmers' wood-log grow substrate), Daily Summary + Events (existing + SEED-002),
+Mission Control (this seed).
 
 Non-goal for this phase: rebuilding MC widgets as shared web components.
 That was discussed and rejected 2026-04-20 — the MC widgets are operator-
