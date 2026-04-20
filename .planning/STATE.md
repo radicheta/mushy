@@ -1,13 +1,13 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
+milestone: v1.4
+milestone_name: Vision & Growth Insights
 status: executing
-stopped_at: Phase 22 shipped + verified on elder-plops
-last_updated: "2026-04-19T18:30:00.000Z"
-last_activity: 2026-04-19
+stopped_at: Phase 25 SPEC locked; 999.15 absorbed into Phase 25
+last_updated: "2026-04-20T00:00:00.000Z"
+last_activity: 2026-04-20
 progress:
-  total_phases: 18
+  total_phases: 19
   completed_phases: 9
   total_plans: 27
   completed_plans: 28
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-18)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 22 shipped (timeline scrubber data surface) — farmOS-side UI next
+**Current focus:** Phase 25 SPEC locked (bidirectional Signal capture channel); Phase 23 (time-lapse) still next in the CV chain
 
 ## Current Position
 
-Milestone: v1.4 — Vision & Growth Insights (4 phases, 2 complete)
-Phase: 23 (time-lapse) — next
+Milestone: v1.4 — Vision & Growth Insights (5 phases, 2 complete)
+Phase: 23 (time-lapse) next in CV chain; Phase 25 (Signal capture) independent and ready for discuss-phase
 Plan: Not started
-Status: Phase 22 complete (11/11 must-haves verified)
-Last activity: 2026-04-19
+Status: Phase 22 complete (11/11 must-haves verified); Phase 25 SPEC locked 2026-04-19 — absorbs backlog 999.15
+Last activity: 2026-04-20
 
-Progress: [█████░░░░░] 50% (2/4 phases complete)
+Progress: [████░░░░░░] 40% (2/5 phases complete)
 
 **Carried from v1.3 (not blocking v1.4):**
 
@@ -82,6 +82,9 @@ Progress: [█████░░░░░] 50% (2/4 phases complete)
 - [v1.3 roadmap]: FarmOS data proxied server-side via GET /farmos/summary — avoids CORS and cookie-collision issues
 - [v1.3 roadmap]: Phase 17 and Phase 18 are parallel-safe — alerter.js and farmer/index.html share no code
 - [v1.3 roadmap]: Phase 19 depends on Phase 18 (extends existing farmer page); Phase 20 depends on Phase 17 being live ≥1 week
+- [v1.4 phase-25]: backlog 999.15 rescoped from "unblock snooze receive" into full capture channel (text + audio + images → local Whisper → Anthropic LLM reply); farmOS event writes deferred to follow-up phase (seed SEED-002)
+- [v1.4 phase-25]: LLM = Anthropic API; transcription = local dedicated container on elder-plops (no audio leaves the box); single-farmer model preserved (no multi-recipient this phase)
+- [v1.4 phase-25]: SPEC.md lives at `.planning/phases/999.15-signal-cli-.../999.15-SPEC.md` — do not create a duplicate SPEC under a `25-*` directory
 
 ### Pending Todos
 
