@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.4
-milestone_name: Vision & Growth Insights
-status: executing
-stopped_at: Phase 25 SPEC locked; 999.15 absorbed into Phase 25
-last_updated: "2026-04-20T00:00:00.000Z"
+milestone: v1.0
+milestone_name: milestone
+status: verifying
+stopped_at: Phase 26 context gathered
+last_updated: "2026-04-20T17:40:16.401Z"
 last_activity: 2026-04-20
 progress:
-  total_phases: 19
-  completed_phases: 9
-  total_plans: 27
-  completed_plans: 28
-  percent: 100
+  total_phases: 4
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 40
 ---
 
 # Project State
@@ -63,6 +63,10 @@ Progress: [████░░░░░░] 40% (2/5 phases complete)
 
 ## Accumulated Context
 
+### Roadmap Evolution
+
+- Phase 26 added: Dual sensor publishing + offline alarms — SHT30/SCD41 slot topics (fc1/temperature + fc1/humidity as slot 1 SHT30 w/ SCD41 fallback; fc1/temperature_2 + fc1/humidity_2 as slot 2 SCD41 always) + Signal alerts on sensor offline. Motivation: SCD41 RH suspected ~4% high vs external meters; need a live second opinion once SHT30 is replugged.
+
 ### Decisions
 
 - [v1.1] fc-system-sync ships /etc config via git — wifi/systemd changes need only `git push fc1/prod`
@@ -100,9 +104,9 @@ Progress: [████░░░░░░] 40% (2/5 phases complete)
 
 ## Session Continuity
 
-Last session: 2026-04-19T13:44:00.206Z
-Stopped at: Phase 21 context gathered
-Resume file: .planning/phases/21-camera-history-continuous-persistence/21-CONTEXT.md
+Last session: --stopped-at
+Stopped at: Phase 26 context gathered
+Resume file: --resume-file
 Next up: `/gsd:plan-phase 18` (farmer dashboard — parallel-safe with 17)
 
 ---
