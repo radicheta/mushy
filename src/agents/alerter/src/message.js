@@ -63,10 +63,10 @@ function formatProblem({ alertType, severity, fields, config, nowMs }) {
       body += `Last seen: ${fmtRelative(lastSeenMs, nowMs)}\n`;
     }
   } else if (alertType === 'sht30' || alertType === 'scd41') {
-    const { lastSeenMs } = fields || {};
-    if (lastSeenMs != null) {
-      body += `Last fresh: ${fmtRelative(lastSeenMs, nowMs)}\n`;
-    }
+    // Hidden 2026-04-25 pending backlog 999.18: lastSeenMs is bootstrapped from
+    // alerter boot, not the actual sensor outage onset, so any number we'd print
+    // is misleading. Suppress until fc_controller publishes a true wall-clock
+    // last-fresh timestamp we can read from.
   } else if (alertType === 'sensor') {
     if (fields && fields.message) {
       body += `${fields.message}\n`;
