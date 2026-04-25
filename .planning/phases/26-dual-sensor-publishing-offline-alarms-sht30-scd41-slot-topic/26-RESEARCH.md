@@ -588,18 +588,17 @@ const STRICT = /^snooze\s+(rh|sensor|pi|humidifier|sht30|scd41|all)\s+(30m|1h|2h
 | A4 | farmer team / 999.17 owns the overlay-plot Mission Control layout, so Phase 26 doesn't need to ship overlays | Per-Consumer Impact | Confirmed by ROADMAP L149 ("Phase 999.17: Mission Control overlay plots"). |
 | A5 | sensor_simulation_mode is enough to test the dual-publisher logic without GPIO | Validation Architecture | Confirmed by reading fc_sensors.py L49-53; sim path is fully software, no hardware ever touched. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should `_publish_sensor_health` be called outside warm-up state changes once it gains freshness flags?**
    - What we know: Today it's called only on enter/exit of warm-up (fc_controller.py L268, L275). Plan 26 needs it to publish on `sht30_fresh` / `scd41_fresh` transitions too.
-   - What's unclear: Whether `_warmup_signal_published` flag pattern (called once) should become a per-sensor-state-change pattern (called on any of warming/sht30_fresh/scd41_fresh flipping), or whether to publish every tick (noisy).
-   - Recommendation: Publish on flip — track `_last_sht30_fresh` / `_last_scd41_fresh`, compare each `control_loop` tick, republish only on change. Keeps the topic quiet (Phase 16 design property), correct under late-joiner via TRANSIENT_LOCAL.
+   - **RESOLVED — republish on flip only.** Track `_last_sht30_fresh` / `_last_scd41_fresh`, compare each `control_loop` tick, republish only on change. This preserves Phase 16's TRANSIENT_LOCAL "quiet topic" property — late joiners still receive the latest state via durability without per-tick noise on the wire.
 
 2. **Does the alerter need an explicit `sensor_freshness` event type, or can it parse `sensor_health.values` inside the existing `sensor_health` route?**
-   - Recommendation: Parse inside the existing `sensor_health` route at `index.js` L77-83. Simpler, fewer event types. The route would dispatch *both* the existing sensor (level=2) check AND new `sht30`/`scd41` evaluations from `values.sht30_fresh` / `values.scd41_fresh`.
+   - **RESOLVED — parse inside the existing sensor_health route, plus a NEW `sensor_freshness` event ONLY for slot-2 WS arrivals (SCD41 belt-and-braces).** SHT30 freshness lives entirely inside the extended `sensor_health` case in `state.js` (reading `values.sht30_fresh`). SCD41 freshness has TWO entry points: (a) the same `sensor_health.values.scd41_fresh` parsed inside the route, and (b) a `sensor_freshness` event dispatched by `index.js` on `temperature_2`/`humidity_2` WS arrival. This keeps SHT30 derivation single-source while letting SCD41 survive an `fc_controller` crash.
 
 3. **Should the SCD41 belt-and-braces watchdog (alerter-side WS arrival timestamp) override or supplement the Pi-side `scd41_fresh` flag?**
-   - Recommendation: AND-gate them (alerter only fires SCD41 alert if BOTH `scd41_fresh === false` AND `nowMs - scd41LastSeenMs > thresholdMs`). Avoids double-counting, but loses some belt-and-braces. Alternative: OR-gate — fire if either is silent. **Defer to planner discretion;** this is a small detail not worth blocking on. AND-gate is more conservative; OR-gate catches more failure modes.
+   - **RESOLVED — OR-gate.** Fire SCD41 alert if EITHER `scd41_fresh === 'false'` OR `nowMs - scd41LastSeenMs > thresholdMs`. Rationale: this favors silence detection over false-positive avoidance, which matches Phase 26's primary motivation (the 2026-04-11 incident was a 40-minute SHT30 outage that went unnoticed — under-detection is the worse failure mode). Documented as a deliberate tradeoff in Plan 03 must_haves.
 
 ## Environment Availability
 
