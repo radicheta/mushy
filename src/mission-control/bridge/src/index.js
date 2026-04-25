@@ -629,6 +629,35 @@ rclnodejs.init().then(async () => {
         }
     );
 
+    // Phase 26 D-02: subscribe to slot-2 SCD41-only topics.
+    // Default VOLATILE QoS — DO NOT use TRANSIENT_LOCAL here. Slot-2 publishes
+    // are gappy by design (D-03); TRANSIENT_LOCAL would replay a stale value
+    // to late-joining clients during a real sensor outage (Phase 26 RESEARCH
+    // §Common Pitfalls Pitfall 2).
+    node.createSubscription(
+        'sensor_msgs/msg/Temperature',
+        '/fc1/temperature_2',
+        async (msg) => {
+            const value = msg.temperature;
+            const ts = Date.now();
+            latestTelemetry.temperature_2 = { value, timestamp: ts };
+            broadcast({ temperature_2: value, timestamp: ts });
+            await insertTelemetry('fc.temperature_2', value);
+        }
+    );
+
+    node.createSubscription(
+        'sensor_msgs/msg/RelativeHumidity',
+        '/fc1/humidity_2',
+        async (msg) => {
+            const value = msg.relative_humidity * 100;
+            const ts = Date.now();
+            latestTelemetry.humidity_2 = { value, timestamp: ts };
+            broadcast({ humidity_2: value, timestamp: ts });
+            await insertTelemetry('fc.humidity_2', value);
+        }
+    );
+
     // Subscribe: fc1/co2 -> fc.co2
     node.createSubscription(
         'std_msgs/msg/Float32',
