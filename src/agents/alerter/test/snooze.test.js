@@ -32,7 +32,7 @@ describe('parseSnoozeCommand', () => {
   test('Test E: unknown alert type returns {ok:false} with valid types in reply', () => {
     const result = parseSnoozeCommand('snooze xxx 1h', 0);
     expect(result.ok).toBe(false);
-    expect(result.reply).toContain('rh, sensor, pi, humidifier, all');
+    expect(result.reply).toContain('rh, sensor, pi, humidifier, sht30, scd41, all');
   });
 
   test('Test F: injection attempt rejected', () => {

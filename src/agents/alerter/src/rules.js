@@ -53,4 +53,16 @@ function isHumidifierStuck({ humidifierOnSinceMs, rhAtOn, currentRh, nowMs, conf
   return rhRise < 3.0;
 }
 
-module.exports = { isRhOob, isSensorError, isPiOffline, isHumidifierStuck };
+/**
+ * isSensorSilent({ lastSeenMs, nowMs, config }) -> boolean
+ *
+ * True when the per-physical-sensor watchdog elapsed past sensorOfflineMin
+ * minutes since the last freshness signal.
+ */
+function isSensorSilent({ lastSeenMs, nowMs, config }) {
+  if (lastSeenMs == null) return false;
+  const thresholdMs = config.sensorOfflineMin * 60000;
+  return nowMs - lastSeenMs > thresholdMs;
+}
+
+module.exports = { isRhOob, isSensorError, isPiOffline, isHumidifierStuck, isSensorSilent };
