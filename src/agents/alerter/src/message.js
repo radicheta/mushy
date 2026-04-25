@@ -5,6 +5,8 @@ const ALERT_TITLES = {
   sensor:     'Sensor ERROR',
   rh:         'RH out of band',
   humidifier: 'Humidifier stuck',
+  sht30:      'SHT30 offline',
+  scd41:      'SCD41 offline',
 };
 
 /**
@@ -59,6 +61,11 @@ function formatProblem({ alertType, severity, fields, config, nowMs }) {
     const { lastSeenMs } = fields;
     if (lastSeenMs != null) {
       body += `Last seen: ${fmtRelative(lastSeenMs, nowMs)}\n`;
+    }
+  } else if (alertType === 'sht30' || alertType === 'scd41') {
+    const { lastSeenMs } = fields || {};
+    if (lastSeenMs != null) {
+      body += `Last fresh: ${fmtRelative(lastSeenMs, nowMs)}\n`;
     }
   } else if (alertType === 'sensor') {
     if (fields && fields.message) {
