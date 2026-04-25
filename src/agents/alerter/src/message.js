@@ -5,8 +5,8 @@ const ALERT_TITLES = {
   sensor:     'Sensor ERROR',
   rh:         'RH out of band',
   humidifier: 'Humidifier stuck',
-  sht30:      'SHT30 offline',
-  scd41:      'SCD41 offline',
+  sht30:      'Primary Humidity Sensor offline',
+  scd41:      'CO2 Sensor offline',
 };
 
 /**
