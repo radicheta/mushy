@@ -61,7 +61,7 @@ services:
       - ALERT_HUMIDIFIER_STUCK_MIN=${ALERT_HUMIDIFIER_STUCK_MIN:-30}
       - ALERT_HEARTBEAT_HOUR=${ALERT_HEARTBEAT_HOUR:-8}
       - ALERT_RECEIVE_POLL_SEC=${ALERT_RECEIVE_POLL_SEC:-30}
-      - DASHBOARD_URL=${DASHBOARD_URL:-http://100.96.10.66:8081/farmer}
+      - DASHBOARD_URL=${DASHBOARD_URL:-http://100.96.10.66:8080/}
       - TZ=America/Toronto
     networks:
       - signal-net
