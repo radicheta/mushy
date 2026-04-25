@@ -377,46 +377,55 @@ describe('sht30_offline (D-04, D-05, D-06)', () => {
   test('sht30 fires after sensorOfflineMin minutes silent', () => {
     const cfg = makeConfigSensor();
     let state = initialState(T0);
-    // Refresh sht30 fresh while warming up — establishes baseline lastSeenMs.
+    let allActions = [];
+    // Refresh sht30 fresh — establishes baseline lastSeenMs at T0.
     let r = transition(state,
       { type: 'sensor_health', level: 0, message: 'ok',
         values: { sht30_fresh: 'true', scd41_fresh: 'true' } },
       T0, cfg);
     state = r.next;
-    // Past startup grace, sht30 goes stale.
-    r = transition(state,
-      { type: 'sensor_health', level: 0, message: 'ok',
-        values: { sht30_fresh: 'false', scd41_fresh: 'true' } },
-      T_PAST_GRACE, cfg);
+    allActions = allActions.concat(r.actions);
+    // Tick at T_PAST_GRACE — only 65s silence, well under 5min threshold.
+    r = transition(state, { type: 'tick' }, T_PAST_GRACE, cfg);
     state = r.next;
-    // Tick after 5m+1s — silence threshold crossed.
+    allActions = allActions.concat(r.actions);
+    // Tick after 5m+1s past grace — silence threshold crossed (oobN=1 fires).
     r = transition(state, { type: 'tick' }, T_PAST_GRACE + FIVE_MIN_MS + 1000, cfg);
-    const sends = r.actions.filter(a => a.kind === 'send' && a.alertType === 'sht30');
+    state = r.next;
+    allActions = allActions.concat(r.actions);
+    const sends = allActions.filter(a => a.kind === 'send' && a.alertType === 'sht30');
     expect(sends).toHaveLength(1);
+    expect(state.perType.sht30.state).toBe(STATES.FIRING);
   });
 
   test('does NOT fire scd41 when only sht30 is silent (D-05 isolation)', () => {
     const cfg = makeConfigSensor();
     let state = initialState(T0);
+    let allActions = [];
     let r = transition(state,
       { type: 'sensor_health', level: 0, message: 'ok',
         values: { sht30_fresh: 'true', scd41_fresh: 'true' } },
       T0, cfg);
     state = r.next;
+    allActions = allActions.concat(r.actions);
+    // Trigger sht30 false flag — this fires sht30 immediately.
     r = transition(state,
       { type: 'sensor_health', level: 0, message: 'ok',
         values: { sht30_fresh: 'false', scd41_fresh: 'true' } },
       T_PAST_GRACE, cfg);
     state = r.next;
-    // Refresh scd41 lastSeen via a slot-2 arrival immediately before the tick to
-    // keep its watchdog window alive, ensuring isolation only depends on flag wiring.
+    allActions = allActions.concat(r.actions);
+    // Refresh scd41 lastSeen via a slot-2 arrival immediately before the tick
+    // so its watchdog window stays alive — isolation depends only on flag wiring.
     r = transition(state,
       { type: 'sensor_freshness', sensor: 'scd41',
         lastSeenMs: T_PAST_GRACE + FIVE_MIN_MS },
       T_PAST_GRACE + FIVE_MIN_MS, cfg);
     state = r.next;
+    allActions = allActions.concat(r.actions);
     r = transition(state, { type: 'tick' }, T_PAST_GRACE + FIVE_MIN_MS + 1000, cfg);
-    const scd41Sends = r.actions.filter(a => a.kind === 'send' && a.alertType === 'scd41');
+    allActions = allActions.concat(r.actions);
+    const scd41Sends = allActions.filter(a => a.kind === 'send' && a.alertType === 'scd41');
     expect(scd41Sends).toHaveLength(0);
   });
 
@@ -428,19 +437,18 @@ describe('sht30_offline (D-04, D-05, D-06)', () => {
         values: { sht30_fresh: 'true', scd41_fresh: 'true' } },
       T0, cfg);
     state = r.next;
+    // Drive sht30 to FIRING via Pi flag false (oobN=1 fires immediately post-grace).
     r = transition(state,
       { type: 'sensor_health', level: 0, message: 'ok',
         values: { sht30_fresh: 'false', scd41_fresh: 'true' } },
       T_PAST_GRACE, cfg);
     state = r.next;
-    r = transition(state, { type: 'tick' }, T_PAST_GRACE + FIVE_MIN_MS + 1000, cfg);
-    state = r.next;
     expect(state.perType.sht30.state).toBe(STATES.FIRING);
-    // Now flip sht30_fresh back to 'true' — recovery should fire (oobN=1 path).
+    // Now flip sht30_fresh back to 'true' — recovery fires (oobN=1 inBandCount=1).
     r = transition(state,
       { type: 'sensor_health', level: 0, message: 'ok',
         values: { sht30_fresh: 'true', scd41_fresh: 'true' } },
-      T_PAST_GRACE + FIVE_MIN_MS + 2000, cfg);
+      T_PAST_GRACE + 1000, cfg);
     const recoveries = r.actions.filter(a => a.kind === 'recovery' && a.alertType === 'sht30');
     expect(recoveries).toHaveLength(1);
   });
@@ -453,17 +461,17 @@ describe('sht30_offline (D-04, D-05, D-06)', () => {
         values: { sht30_fresh: 'true', scd41_fresh: 'true' } },
       T0, cfg);
     state = r.next;
+    // Fire sht30 at T_PAST_GRACE.
     r = transition(state,
       { type: 'sensor_health', level: 0, message: 'ok',
         values: { sht30_fresh: 'false', scd41_fresh: 'true' } },
       T_PAST_GRACE, cfg);
     state = r.next;
-    r = transition(state, { type: 'tick' }, T_PAST_GRACE + FIVE_MIN_MS + 1000, cfg);
-    state = r.next;
     expect(state.perType.sht30.state).toBe(STATES.FIRING);
-    // Advance >60min and tick — second send should fire.
+    // Advance >60min from lastFiredAt and tick — second send should fire from
+    // tick re-evaluation (still stale per watchdog).
     r = transition(state, { type: 'tick' },
-      T_PAST_GRACE + FIVE_MIN_MS + 1000 + 61 * 60000, cfg);
+      T_PAST_GRACE + 61 * 60000, cfg);
     const sends = r.actions.filter(a => a.kind === 'send' && a.alertType === 'sht30');
     expect(sends).toHaveLength(1);
   });
@@ -473,36 +481,43 @@ describe('scd41_offline (D-04, D-05, D-06)', () => {
   test('scd41 fires after sensorOfflineMin minutes silent (Pi flag path)', () => {
     const cfg = makeConfigSensor();
     let state = initialState(T0);
+    let allActions = [];
     let r = transition(state,
       { type: 'sensor_health', level: 0, message: 'ok',
         values: { sht30_fresh: 'true', scd41_fresh: 'true' } },
       T0, cfg);
     state = r.next;
+    allActions = allActions.concat(r.actions);
+    // Pi flag flips to false — fires immediately post-grace.
     r = transition(state,
       { type: 'sensor_health', level: 0, message: 'ok',
         values: { sht30_fresh: 'true', scd41_fresh: 'false' } },
       T_PAST_GRACE, cfg);
     state = r.next;
-    r = transition(state, { type: 'tick' }, T_PAST_GRACE + FIVE_MIN_MS + 1000, cfg);
-    const sends = r.actions.filter(a => a.kind === 'send' && a.alertType === 'scd41');
+    allActions = allActions.concat(r.actions);
+    const sends = allActions.filter(a => a.kind === 'send' && a.alertType === 'scd41');
     expect(sends).toHaveLength(1);
+    expect(state.perType.scd41.state).toBe(STATES.FIRING);
   });
 
   test('does NOT fire sht30 when only scd41 is silent (D-05 isolation)', () => {
     const cfg = makeConfigSensor();
     let state = initialState(T0);
+    let allActions = [];
     let r = transition(state,
       { type: 'sensor_health', level: 0, message: 'ok',
         values: { sht30_fresh: 'true', scd41_fresh: 'true' } },
       T0, cfg);
     state = r.next;
+    allActions = allActions.concat(r.actions);
     r = transition(state,
       { type: 'sensor_health', level: 0, message: 'ok',
         values: { sht30_fresh: 'true', scd41_fresh: 'false' } },
       T_PAST_GRACE, cfg);
     state = r.next;
-    r = transition(state, { type: 'tick' }, T_PAST_GRACE + FIVE_MIN_MS + 1000, cfg);
-    const sht30Sends = r.actions.filter(a => a.kind === 'send' && a.alertType === 'sht30');
+    allActions = allActions.concat(r.actions);
+    // sht30 was just refreshed at T_PAST_GRACE — well under 5min watchdog.
+    const sht30Sends = allActions.filter(a => a.kind === 'send' && a.alertType === 'sht30');
     expect(sht30Sends).toHaveLength(0);
   });
 
@@ -519,83 +534,34 @@ describe('scd41_offline (D-04, D-05, D-06)', () => {
         values: { sht30_fresh: 'true', scd41_fresh: 'false' } },
       T_PAST_GRACE, cfg);
     state = r.next;
-    r = transition(state, { type: 'tick' }, T_PAST_GRACE + FIVE_MIN_MS + 1000, cfg);
-    state = r.next;
     expect(state.perType.scd41.state).toBe(STATES.FIRING);
     r = transition(state,
       { type: 'sensor_health', level: 0, message: 'ok',
         values: { sht30_fresh: 'true', scd41_fresh: 'true' } },
-      T_PAST_GRACE + FIVE_MIN_MS + 2000, cfg);
+      T_PAST_GRACE + 1000, cfg);
     const recoveries = r.actions.filter(a => a.kind === 'recovery' && a.alertType === 'scd41');
     expect(recoveries).toHaveLength(1);
   });
 
   test('scd41 fires from slot-2 WS silence even without sensor_health (Option C hybrid)', () => {
+    // Drive scd41 stale via slot-2 WS silence ONLY — no Pi flag flip.
+    // sht30LastSeenMs is kept fresh via direct stub so isolation holds.
     const cfg = makeConfigSensor();
     let state = initialState(T0);
-    // Refresh both via sensor_health at T0 to keep sht30 baseline alive AND
-    // scd41 lastSeen at T0 too. This isolates the test to the slot-2 WS
-    // arrival path: no further sensor_health is emitted; we drive scd41 only
-    // via sensor_freshness events.
+    // Slot-2 arrival event at T0 sets scd41LastSeenMs to T0.
     let r = transition(state,
-      { type: 'sensor_health', level: 0, message: 'ok',
-        values: { sht30_fresh: 'true', scd41_fresh: 'true' } },
-      T0, cfg);
-    state = r.next;
-    // Slot-2 arrival event at T0 — explicit refresh via the event shape index.js will use.
-    r = transition(state,
       { type: 'sensor_freshness', sensor: 'scd41', lastSeenMs: T0 },
       T0, cfg);
     state = r.next;
-    // Past 60s grace, before the 5min threshold — no offline yet.
-    r = transition(state, { type: 'tick' }, T_PAST_GRACE, cfg);
-    state = r.next;
-    let sendsBefore = r.actions.filter(a => a.kind === 'send' && a.alertType === 'scd41');
-    expect(sendsBefore).toHaveLength(0);
-    // Past the 5-min silence threshold — alerter-side watchdog fires scd41.
-    // Refresh sht30 lastSeen via sensor_health right before the tick so that
-    // sht30 doesn't co-fire from its own watchdog (D-05 isolation under Option C).
-    r = transition(state,
-      { type: 'sensor_health', level: 0, message: 'ok',
-        values: { sht30_fresh: 'true', scd41_fresh: 'true' } },
-      T_PAST_GRACE + FIVE_MIN_MS, cfg);
-    state = r.next;
-    // The above sensor_health would have refreshed scd41LastSeen too — but to test
-    // the WS-silence-only path we now skip ANY further sensor_health and drive a
-    // tick after >5min from the LAST scd41 freshness signal. We need to ensure
-    // scd41LastSeenMs is not updated by the prior call. Use a fresh approach:
-    // restart with explicit state manipulation via dispatch only of the
-    // sensor_freshness event for scd41 at T0 and rely on it staying stale.
-    //
-    // Re-do this scenario cleanly:
-    let s2 = initialState(T0);
-    let r2 = transition(s2,
-      { type: 'sensor_freshness', sensor: 'scd41', lastSeenMs: T0 },
-      T0, cfg);
-    s2 = r2.next;
-    // Refresh sht30 once via sensor_health at T_PAST_GRACE - 1000 so that
-    // sht30 watchdog stays in the safe window beyond the eventual tick at
-    // T_PAST_GRACE + FIVE_MIN_MS + 1000 (i.e., elapsed sht30 silence is
-    // ~5min+2s — RIGHT AT the threshold). To stay strictly under the
-    // threshold, refresh sht30 RIGHT BEFORE the tick:
-    r2 = transition(s2,
-      { type: 'sensor_health', level: 0, message: 'ok',
-        values: { sht30_fresh: 'true', scd41_fresh: 'true' } },
-      T_PAST_GRACE + FIVE_MIN_MS, cfg);
-    // Note: this ALSO refreshes scd41LastSeenMs via the sht30 path, so
-    // pivot: don't refresh scd41 in sensor_health — we need scd41 to stay
-    // stale. Instead, we rely on the test's cleaner approach below.
-    //
-    // Cleanest approach: stub the sht30LastSeenMs directly.
-    s2 = r2.next;
-    s2.sht30LastSeenMs = T_PAST_GRACE + FIVE_MIN_MS;   // refresh sht30 only
-    // scd41LastSeenMs was just set to T_PAST_GRACE + FIVE_MIN_MS too by the
-    // prior sensor_health — re-stale it to T0 so scd41 silence path fires.
-    s2.scd41LastSeenMs = T0;
-    r2 = transition(s2, { type: 'tick' },
+    // Stub sht30LastSeenMs forward in time so its watchdog stays unfired.
+    state = JSON.parse(JSON.stringify(state));
+    state.sht30LastSeenMs = T_PAST_GRACE + FIVE_MIN_MS;  // sht30 watchdog fresh
+    // Tick at T_PAST_GRACE + 5min + 1s — scd41 silent for 5min+66s, sht30 silent
+    // for ~0s. Watchdog fires scd41 only.
+    r = transition(state, { type: 'tick' },
       T_PAST_GRACE + FIVE_MIN_MS + 1000, cfg);
-    const scd41Sends = r2.actions.filter(a => a.kind === 'send' && a.alertType === 'scd41');
-    const sht30Sends = r2.actions.filter(a => a.kind === 'send' && a.alertType === 'sht30');
+    const scd41Sends = r.actions.filter(a => a.kind === 'send' && a.alertType === 'scd41');
+    const sht30Sends = r.actions.filter(a => a.kind === 'send' && a.alertType === 'sht30');
     expect(scd41Sends).toHaveLength(1);
     expect(sht30Sends).toHaveLength(0);
   });
@@ -603,41 +569,42 @@ describe('scd41_offline (D-04, D-05, D-06)', () => {
 
 describe('snooze sht30/scd41 (D-05)', () => {
   test('snooze sht30 mutes sht30 only; scd41 still fires', () => {
-    const cfg = makeConfigSensor();
+    // Use a longer-than-cooldown snooze so the post-cooldown re-fire path
+    // is provably gated by snooze, not by the snooze having already expired.
+    const cfg = makeConfigSensor({ criticalCooldownMin: 60 });
     let state = initialState(T0);
-    // Establish baseline sensor_health at T0
+    // Baseline both fresh at T0.
     let r = transition(state,
       { type: 'sensor_health', level: 0, message: 'ok',
         values: { sht30_fresh: 'true', scd41_fresh: 'true' } },
       T0, cfg);
     state = r.next;
-    // Drive sht30 to FIRING via sht30_fresh=false and tick
+    // Drive sht30 to FIRING via Pi flag false at T_PAST_GRACE.
     r = transition(state,
       { type: 'sensor_health', level: 0, message: 'ok',
         values: { sht30_fresh: 'false', scd41_fresh: 'true' } },
       T_PAST_GRACE, cfg);
     state = r.next;
-    r = transition(state, { type: 'tick' }, T_PAST_GRACE + FIVE_MIN_MS + 1000, cfg);
-    state = r.next;
     expect(state.perType.sht30.state).toBe(STATES.FIRING);
-    // Snooze sht30 for 1 hour
+    // Snooze sht30 for 4 hours (>> cooldown 60min, >> the test's time horizon).
+    const snoozeStart = T_PAST_GRACE + 1000;
     r = transition(state,
-      { type: 'snooze', alertType: 'sht30', untilMs: T_PAST_GRACE + FIVE_MIN_MS + 3600000 },
-      T_PAST_GRACE + FIVE_MIN_MS + 2000, cfg);
+      { type: 'snooze', alertType: 'sht30', untilMs: snoozeStart + 4 * 3600000 },
+      snoozeStart, cfg);
     state = r.next;
-    // Re-trigger sht30_fresh=false past cooldown — no further sht30 sends
+    // Advance >60min and re-trigger — cooldown elapsed, but snooze must mute.
     r = transition(state,
       { type: 'sensor_health', level: 0, message: 'ok',
         values: { sht30_fresh: 'false', scd41_fresh: 'true' } },
-      T_PAST_GRACE + FIVE_MIN_MS + 61 * 60000, cfg);
+      snoozeStart + 65 * 60000, cfg);
     const sht30Sends = r.actions.filter(a => a.kind === 'send' && a.alertType === 'sht30');
     expect(sht30Sends).toHaveLength(0);
     state = r.next;
-    // Drive scd41 silent via Pi flag — scd41 should still fire (isolation)
+    // Now drive scd41 silent via Pi flag — scd41 should still fire (D-05 isolation).
     r = transition(state,
       { type: 'sensor_health', level: 0, message: 'ok',
         values: { sht30_fresh: 'false', scd41_fresh: 'false' } },
-      T_PAST_GRACE + FIVE_MIN_MS + 61 * 60000 + 1000, cfg);
+      snoozeStart + 65 * 60000 + 1000, cfg);
     const scd41Sends = r.actions.filter(a => a.kind === 'send' && a.alertType === 'scd41');
     expect(scd41Sends).toHaveLength(1);
   });

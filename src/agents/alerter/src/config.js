@@ -34,6 +34,7 @@ function load(env = process.env) {
     cooldownMin:         parseIntEnv(env, 'ALERT_COOLDOWN_MIN', 30),
     criticalCooldownMin: parseIntEnv(env, 'ALERT_CRITICAL_COOLDOWN_MIN', 60),
     piOfflineMin:        parseIntEnv(env, 'ALERT_PI_OFFLINE_MIN', 5),
+    sensorOfflineMin:    parseIntEnv(env, 'ALERT_SENSOR_OFFLINE_MIN', 5),
     humidifierStuckMin:  parseIntEnv(env, 'ALERT_HUMIDIFIER_STUCK_MIN', 30),
     heartbeatHour:       parseIntEnv(env, 'ALERT_HEARTBEAT_HOUR', 8),
     receivePollSec:      parseIntEnv(env, 'ALERT_RECEIVE_POLL_SEC', 30),
