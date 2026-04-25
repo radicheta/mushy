@@ -40,7 +40,7 @@ function load(env = process.env) {
     receivePollSec:      parseIntEnv(env, 'ALERT_RECEIVE_POLL_SEC', 30),
     maxSendsPerHour:     parseIntEnv(env, 'ALERT_MAX_SENDS_PER_HOUR', 20),
     timezone:            env.TZ           || 'America/Toronto',
-    dashboardUrl:        env.DASHBOARD_URL || 'http://elder-plops-ts:8081/farmer',
+    dashboardUrl:        env.DASHBOARD_URL || 'http://100.96.10.66:8081/farmer',
     logLevel:            env.LOG_LEVEL    || 'info',
   });
 }
