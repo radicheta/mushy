@@ -81,6 +81,10 @@ function createAlerter({ env = process.env, clock = Date.now, logger = console }
           message: msg.sensor_health.message,
           values: msg.sensor_health.values,
         });
+      } else if (msg.temperature_2 !== undefined || msg.humidity_2 !== undefined) {
+        // Phase 26 Plan 03: slot-2 WS arrival = SCD41 freshness signal
+        // (Option C hybrid). SHT30 freshness lives in sensor_health.values.
+        applyEvent({ type: 'sensor_freshness', sensor: 'scd41', lastSeenMs: clock() });
       }
     },
     onLiveness({ wsConnected, rosConnected, humidifierLastMsgTs }) {

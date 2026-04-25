@@ -1,14 +1,21 @@
 'use strict';
 
-const { isRhOob, isSensorError, isPiOffline, isHumidifierStuck } = require('./rules');
+const { isRhOob, isSensorError, isPiOffline, isHumidifierStuck, isSensorSilent } = require('./rules');
 const { formatProblem, formatRecovery, formatHeartbeat } = require('./message');
 
 const STATES = Object.freeze({ OK: 'OK', PENDING: 'PENDING', FIRING: 'FIRING', SNOOZED: 'SNOOZED' });
 
-const ALERT_TYPES = ['rh', 'sensor', 'pi', 'humidifier'];
+const ALERT_TYPES = ['rh', 'sensor', 'pi', 'humidifier', 'sht30', 'scd41'];
 
 // Severity per alert type
-const SEVERITY = { rh: 'WARN', sensor: 'CRITICAL', pi: 'CRITICAL', humidifier: 'WARN' };
+const SEVERITY = {
+  rh: 'WARN',
+  sensor: 'CRITICAL',
+  pi: 'CRITICAL',
+  humidifier: 'WARN',
+  sht30: 'CRITICAL',
+  scd41: 'CRITICAL',
+};
 
 function initialState(nowMs = Date.now()) {
   const perType = {};
@@ -39,6 +46,11 @@ function initialState(nowMs = Date.now()) {
     currentCo2: null,          // store-only; consumed by Plan 04 heartbeat summary
     humidifierCyclesLast24h: 0,
     humidifierCycleLog: [],    // timestamps of ON transitions; pruned to last 24h on tick
+    // Phase 26 Plan 03: per-physical-sensor freshness watchdogs.
+    // Initialize to bootedAtMs (NEVER null) so a never-seen sensor doesn't
+    // fire spuriously before the 60s grace + sensorOfflineMin window.
+    sht30LastSeenMs: nowMs,
+    scd41LastSeenMs: nowMs,
     perType,
   };
 }
@@ -225,6 +237,67 @@ function transition(prev, event, now, config) {
         next.perType.sensor = r.next;
         actions.push(...r.actions);
       }
+
+      // Phase 26 Plan 03: per-physical-sensor freshness from KeyValues.
+      // Strict equality on string-bool from Pi side (Pitfall 4 — order-tolerant
+      // but values are always 'true'/'false'). Unknown values fail-safe (no
+      // refresh → eventually trips the watchdog).
+      const v = event.values || {};
+      if (v.sht30_fresh === 'true') {
+        next.sht30LastSeenMs = now;
+      }
+      if (v.scd41_fresh === 'true') {
+        next.scd41LastSeenMs = now;
+      }
+      // Drive sht30/scd41 alerts when value is explicitly 'false' (Pi-side
+      // authoritative) OR alerter-side staleness exceeds threshold (Option C
+      // hybrid — belt-and-braces). Skip during 60s startup grace.
+      if (now - next.bootedAtMs >= 60000) {
+        const sensorCfg = { ...config, oobN: 1, oobWindowMin: 0 };
+
+        const sht30Stale = v.sht30_fresh === 'false'
+          || isSensorSilent({ lastSeenMs: next.sht30LastSeenMs, nowMs: now, config });
+        {
+          const sht30Fields = { lastSeenMs: next.sht30LastSeenMs };
+          const r = driveAlertType(next.perType.sht30, 'sht30', sht30Stale, sht30Fields, now, sensorCfg);
+          next.perType.sht30 = r.next;
+          actions.push(...r.actions);
+        }
+
+        const scd41Stale = v.scd41_fresh === 'false'
+          || isSensorSilent({ lastSeenMs: next.scd41LastSeenMs, nowMs: now, config });
+        {
+          const scd41Fields = { lastSeenMs: next.scd41LastSeenMs };
+          const r = driveAlertType(next.perType.scd41, 'scd41', scd41Stale, scd41Fields, now, sensorCfg);
+          next.perType.scd41 = r.next;
+          actions.push(...r.actions);
+        }
+      }
+      break;
+    }
+
+    case 'sensor_freshness': {
+      // Phase 26 Plan 03: slot-2 WS arrival refreshes scd41LastSeenMs (and the
+      // sht30 path in case index.js ever wires slot-1 frame_id arrivals here).
+      const { sensor, lastSeenMs } = event;
+      if (sensor === 'sht30') {
+        next.sht30LastSeenMs = lastSeenMs != null ? lastSeenMs : now;
+      } else if (sensor === 'scd41') {
+        next.scd41LastSeenMs = lastSeenMs != null ? lastSeenMs : now;
+      } else {
+        break;
+      }
+      // Re-evaluate immediately so an arrival can clear a FIRING state — but
+      // only post-grace, mirroring pi_liveness.
+      if (now - next.bootedAtMs >= 60000) {
+        const sensorCfg = { ...config, oobN: 1, oobWindowMin: 0 };
+        const lastMs = (sensor === 'sht30') ? next.sht30LastSeenMs : next.scd41LastSeenMs;
+        const stale = isSensorSilent({ lastSeenMs: lastMs, nowMs: now, config });
+        const fields = { lastSeenMs: lastMs };
+        const r = driveAlertType(next.perType[sensor], sensor, stale, fields, now, sensorCfg);
+        next.perType[sensor] = r.next;
+        actions.push(...r.actions);
+      }
       break;
     }
 
@@ -340,6 +413,22 @@ function transition(prev, event, now, config) {
         const r = driveAlertType(next.perType.humidifier, 'humidifier', stuck, humFields, now, config);
         next.perType.humidifier = r.next;
         actions.push(...r.actions);
+      }
+
+      // Phase 26 Plan 03: re-evaluate per-physical-sensor freshness watchdog.
+      // Required because during prolonged silence no sensor_health/
+      // sensor_freshness events arrive — without periodic tick re-evaluation,
+      // the FIRING transition would never happen.
+      if (now - next.bootedAtMs >= 60000) {
+        const sensorCfg = { ...config, oobN: 1, oobWindowMin: 0 };
+        for (const sensor of ['sht30', 'scd41']) {
+          const lastMs = sensor === 'sht30' ? next.sht30LastSeenMs : next.scd41LastSeenMs;
+          const stale = isSensorSilent({ lastSeenMs: lastMs, nowMs: now, config });
+          const fields = { lastSeenMs: lastMs };
+          const r = driveAlertType(next.perType[sensor], sensor, stale, fields, now, sensorCfg);
+          next.perType[sensor] = r.next;
+          actions.push(...r.actions);
+        }
       }
       break;
     }

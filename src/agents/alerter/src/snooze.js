@@ -1,6 +1,6 @@
 'use strict';
 
-const VALID_ALERT_TYPES = ['rh', 'sensor', 'pi', 'humidifier', 'all'];
+const VALID_ALERT_TYPES = ['rh', 'sensor', 'pi', 'humidifier', 'sht30', 'scd41', 'all'];
 
 const VALID_DURATIONS = {
   '30m': 30 * 60000,
@@ -12,14 +12,14 @@ const VALID_DURATIONS = {
 };
 
 // Strict whitelist regex — anchored start/end, no extra content allowed.
-const STRICT = /^snooze\s+(rh|sensor|pi|humidifier|all)\s+(30m|1h|2h|4h|8h|24h)\s*$/i;
+const STRICT = /^snooze\s+(rh|sensor|pi|humidifier|sht30|scd41|all)\s+(30m|1h|2h|4h|8h|24h)\s*$/i;
 
 function fuzzyReply() {
   return {
     ok: false,
     reply:
       'Sorry, didn\'t get that. Try: snooze rh 4h\n' +
-      'Valid alert types: rh, sensor, pi, humidifier, all\n' +
+      'Valid alert types: rh, sensor, pi, humidifier, sht30, scd41, all\n' +
       'Valid durations: 30m, 1h, 2h, 4h, 8h, 24h',
   };
 }
