@@ -562,3 +562,71 @@ def test_sensor_health_qos_transient_local(ros_context):
     assert qos.durability == DurabilityPolicy.TRANSIENT_LOCAL
     assert qos.depth == 1
     node.destroy_node()
+
+
+# -----------------------------
+# Phase 26 — per-physical-sensor freshness via frame_id provenance (D-03)
+# -----------------------------
+
+
+def test_sht30_freshness_via_frame_id(ros_context):
+    """frame_id='sht30' on slot-1 messages refreshes _last_sht30_timestamp;
+    frame_id='scd41' does NOT (D-03 contract — per-physical-sensor liveness)."""
+    node = FruitingChamberController()
+    assert node._last_sht30_timestamp is None
+
+    # Slot-1 message stamped 'scd41' -> SHT30 timestamp NOT refreshed
+    msg = Temperature()
+    msg.header.frame_id = 'scd41'
+    msg.temperature = 23.0
+    node.temperature_callback(msg)
+    assert node._last_sht30_timestamp is None
+    assert node._compute_sht30_fresh() is False
+
+    # Slot-1 message stamped 'sht30' -> SHT30 timestamp refreshed
+    msg2 = Temperature()
+    msg2.header.frame_id = 'sht30'
+    msg2.temperature = 23.5
+    node.temperature_callback(msg2)
+    assert node._last_sht30_timestamp is not None
+    assert node._compute_sht30_fresh() is True
+
+    node.destroy_node()
+
+
+def test_scd41_freshness_via_slot2(ros_context):
+    """Arrival on slot-2 (temperature_2 or humidity_2) sets SCD41 fresh."""
+    node = FruitingChamberController()
+    assert node._compute_scd41_fresh() is False
+
+    # Slot-2 humidity arrives -> SCD41 fresh
+    h2 = RelativeHumidity()
+    h2.header.frame_id = 'scd41'
+    h2.relative_humidity = 0.85
+    node.humidity_2_callback(h2)
+    assert node._last_humidity2_timestamp is not None
+    assert node._compute_scd41_fresh() is True
+
+    node.destroy_node()
+
+
+def test_sensor_health_includes_freshness_keys(ros_context):
+    """_publish_sensor_health emits sht30_fresh and scd41_fresh KeyValues
+    alongside (not replacing) the existing four keys (Pitfall 4: append-only)."""
+    node = FruitingChamberController()
+    published = []
+    node.sensor_health_pub.publish = lambda msg: published.append(msg)
+
+    node._publish_sensor_health(warming_up=False)
+
+    assert len(published) == 1
+    kv = {kv.key: kv.value for kv in published[0].values}
+    # Existing keys preserved
+    assert 'warming_up' in kv
+    assert 'grace_elapsed_sec' in kv
+    assert 'grace_total_sec' in kv
+    assert 'buffer_full' in kv
+    # New keys added
+    assert kv['sht30_fresh'] in ('true', 'false')
+    assert kv['scd41_fresh'] in ('true', 'false')
+    node.destroy_node()
