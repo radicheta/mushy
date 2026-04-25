@@ -40,12 +40,20 @@ result: [pending] — receive loop is failing with `signal-cli receive 400` (pre
 expected: `ros2 launch fc_core fc.launch.py sensor_simulation_mode:=true` then echo /fc1/temperature_2 shows `frame_id == 'scd41'`; sensor_health shows `sht30_fresh: 'true'` and `scd41_fresh: 'true'`. Optional — fc1 hardware deploy supersedes.
 result: SKIPPED — superseded by item 1 (real-hardware Pi deploy verified end-to-end).
 
+### 8. SHT30 happy-path verification (BLOCKING — phase motivation unverified)
+expected: Plug the SHT30 back into fc1's I2C bus (or replace if hardware-faulty). Within ~30s of fc-core seeing the sensor:
+  - `ros2 topic echo /fc1/temperature --once` shows `frame_id == 'sht30'` (silent fallback releases — slot-1 sourced from SHT30 again)
+  - `ros2 topic echo /fc1/sensor_health --once` shows `sht30_fresh: 'true'`
+  - Alerter sends `[RECOVERY] FC-1 · Primary Humidity Sensor offline back` on Signal (proves D-06 symmetric recovery)
+  - In Mission Control, plot slot-1 RH (`/fc1/humidity`) vs slot-2 RH (`/fc1/humidity_2`) — verify the delta the phase was built to surface (SCD41 RH suspected ~4% high per ROADMAP). One eyeball on the overlay is the acceptance criterion.
+result: [pending] — phase-motivation verification. SHT30 has been offline for weeks per farmer 2026-04-25; we deployed all the dual-publish code without ever seeing SHT30 actually publish through it. Until this item passes, only the fallback half of the dual-sensor contract has been observed live.
+
 ## Summary
 
-total: 7
+total: 8
 passed: 3
 issues: 0
-pending: 2
+pending: 3
 skipped: 1
 blocked: 1
 
