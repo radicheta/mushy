@@ -95,6 +95,23 @@ When the farmer sends a Signal message (text, audio, or image) to the robot's nu
 - **Pi is not involved** — all capture + transcription + LLM work runs on elder-plops.
 - **Storage path lives on the RAID** — attachments under `/data/signal-capture/` (per `project_data_path_on_raid.md`).
 
+## Pre-Gate (added 2026-04-25)
+
+**Before planning this phase, spike R1 (receive unblock) to prove at least one path works.** R1 is the load-bearing requirement — every other R cascades through it. The 25-SPEC names three candidate paths but none have been proven against the actual `+59891840205` linked-secondary state. Discovered live during Phase 26 deploy: `GET /v1/receive/+59891840205` returns HTTP 400; identity trust state is also wiped by alerter rebuild (memory `project_signal_cli_rebuild_breaks_trust`).
+
+**Recommended path (highest signal):** re-provision `+59891840205` as **primary** from inside signal-cli using the 4G router's SIM-bound SMS verification:
+
+1. `signal-cli register +59891840205` from the container (NOT link mode this time)
+2. Read the verification SMS from the 4G router's admin UI (the SIM lives there per memory `project_4g_hotspot`)
+3. `signal-cli verify +59891840205 <code>`
+4. Confirm `GET /v1/receive/+59891840205` no longer returns 400
+5. Re-trust farmer identity `+59892893012` (Phase 26 trust state will be wiped by re-registration)
+6. Send a test message from farmer's phone → receive-loop logs the envelope
+
+**Spike fallbacks if primary re-registration fails:** upgrade `bbernhard/signal-cli-rest-api` image; switch to native signal-cli daemon. ~3-4h spike across all three paths max — if all fail, redesign required (phone-side helper app, email gateway, alternate messenger).
+
+**Gate criterion:** at least one of the three paths must demonstrate `/v1/receive` returning envelopes (not 400) in elder-plops prod before the planner is invoked. Do NOT plan R2-R7 against an unproven R1.
+
 ## Acceptance Criteria
 
 - [ ] Receive-loop successfully pulls envelopes from the linked Signal account in prod (no HTTP 400)

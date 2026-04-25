@@ -92,22 +92,23 @@ Progress: [████░░░░░░] 40% (2/5 phases complete)
 
 ### Pending Todos
 
+- **Phase 25 pre-gate (NEXT SESSION):** spike `signal-cli` receive-unblock — recommended path is re-register `+59891840205` as primary using 4G router SIM SMS verification (NOT link mode). Receive 400 + identity-trust loss on alerter rebuild discovered live 2026-04-25 during Phase 26 deploy. R1 is load-bearing for the entire bidirectional capture channel; do NOT plan R2-R7 until the spike proves at least one path works. See `.planning/phases/25-bidirectional-signal-farmer-robot-capture-channel/25-SPEC.md` § Pre-Gate.
 - Phase 17 pre-gate: verify 4G router SMS exposure and complete Signal registration before writing alerter.js
 - Phase 18 pre-gate: verify CORS from farmer phone Tailscale IP; audit bridge replay coverage for humidifier initial state
 - Phase 19 pre-gate: confirm farm team readiness for FarmOS admin actions or document proxy-around path
 
 ### Blockers/Concerns
 
+- **Phase 25 R1 unproven:** signal-cli receive returns HTTP 400 today (linked-secondary device limitation); without R1, none of the capture channel's downstream value is reachable. Requires SIM-bearing 4G router for primary re-registration spike.
 - Phase 17: Signal primary-account registration on 4G router SIM is a manual pre-phase step (~1-2h); cannot begin coding until complete
 - Phase 19: FarmOS admin actions (FC-1 asset, farmos_agent permissions) depend on farm team availability — document proxy-around path at phase start if admin access is delayed
 - Phase 20: Cannot begin cooldown tuning until Phase 17 has been live for ≥1 week
 
 ## Session Continuity
 
-Last session: --stopped-at
-Stopped at: Phase 26 context gathered
-Resume file: --resume-file
-Next up: `/gsd:plan-phase 18` (farmer dashboard — parallel-safe with 17)
+Last session: 2026-04-25 — Phase 26 executed end-to-end (3 plans, 12/12 must_haves verified, live deploy on fc1 + bridge + alerter)
+Stopped at: Phase 26 live + waiting for first sht30 alert to land via Signal (trust restored mid-session)
+Next up: Phase 25 pre-gate spike (signal-cli primary re-registration via 4G router SIM) — must close before `/gsd:plan-phase 25`
 
 ---
 *Roadmap phases: v1.0 (1–8), v1.1 (9–10), v1.2 (11–13), v1.2.1 (14–16), v1.3 (17–20)*
