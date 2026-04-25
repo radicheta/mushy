@@ -88,6 +88,18 @@ class FruitingChamberController(Node):
             'fc1/humidity',
             self.humidity_callback,
             10)
+        # Phase 26 D-02: slot-2 subscribers — SCD41-only, used only for
+        # per-physical-sensor freshness in sensor_health (not control).
+        self.temp2_sub = self.create_subscription(
+            Temperature,
+            'fc1/temperature_2',
+            self.temperature_2_callback,
+            10)
+        self.humidity2_sub = self.create_subscription(
+            RelativeHumidity,
+            'fc1/humidity_2',
+            self.humidity_2_callback,
+            10)
 
         # Actuator state publisher — TRANSIENT_LOCAL so late-joiners get last value (D-01, ACTR-03)
         actuator_qos = QoSProfile(
@@ -113,6 +125,13 @@ class FruitingChamberController(Node):
         self._last_humidifier_toggle = None    # rclpy.time.Time, set on state change
         self._safe_state_active = False        # log deduplication flag
         self._dwell_blocked_desired = None     # dedupe DWELL-BLOCK logs per blocked window
+
+        # Phase 26: per-physical-sensor freshness tracking
+        self._last_sht30_timestamp = None       # set when slot-1 callback receives frame_id == 'sht30'
+        self._last_temp2_timestamp = None       # set by temperature_2_callback (always SCD41)
+        self._last_humidity2_timestamp = None   # set by humidity_2_callback (always SCD41)
+        self._last_sht30_fresh = None           # tri-state; None means "not yet evaluated"
+        self._last_scd41_fresh = None
         
         # Startup grace state (SENS-01, WARMUP-01/02/03)
         self._boot_time = self.get_clock().now()
@@ -129,11 +148,25 @@ class FruitingChamberController(Node):
 
     def temperature_callback(self, msg):
         self.current_temp = msg.temperature
+        # Phase 26: SHT30 freshness via frame_id provenance set by fc_sensors.
+        if msg.header.frame_id == 'sht30':
+            self._last_sht30_timestamp = self.get_clock().now()
 
     def humidity_callback(self, msg):
         self._humidity_buffer.append(msg.relative_humidity)
         self.current_humidity = median(self._humidity_buffer)
         self._last_humidity_timestamp = self.get_clock().now()
+        # Phase 26: SHT30 freshness via frame_id provenance set by fc_sensors.
+        if msg.header.frame_id == 'sht30':
+            self._last_sht30_timestamp = self.get_clock().now()
+
+    def temperature_2_callback(self, msg):
+        # Slot-2 is SCD41-only by Plan 26-01 contract; arrival proves SCD41 alive.
+        self._last_temp2_timestamp = self.get_clock().now()
+
+    def humidity_2_callback(self, msg):
+        # Slot-2 is SCD41-only by Plan 26-01 contract; arrival proves SCD41 alive.
+        self._last_humidity2_timestamp = self.get_clock().now()
 
     def should_light_be_on(self):
         current_hour = datetime.now().hour
@@ -253,13 +286,43 @@ class FruitingChamberController(Node):
         msg.name = 'fc1/controller'
         msg.message = 'warming up' if warming_up else 'ok'
         msg.hardware_id = 'fc1'
+        sht30_fresh = self._compute_sht30_fresh()
+        scd41_fresh = self._compute_scd41_fresh()
         msg.values = [
             KeyValue(key='warming_up', value=str(warming_up).lower()),
             KeyValue(key='grace_elapsed_sec', value=f'{elapsed:.1f}'),
             KeyValue(key='grace_total_sec', value=f'{grace_period:.1f}'),
             KeyValue(key='buffer_full', value=str(buffer_full).lower()),
+            # Phase 26 D-03: per-physical-sensor freshness — append-only (Pitfall 4)
+            KeyValue(key='sht30_fresh', value=str(sht30_fresh).lower()),
+            KeyValue(key='scd41_fresh', value=str(scd41_fresh).lower()),
         ]
         self.sensor_health_pub.publish(msg)
+        self._last_sht30_fresh = sht30_fresh
+        self._last_scd41_fresh = scd41_fresh
+
+    def _compute_sht30_fresh(self) -> bool:
+        """Phase 26: SHT30 fresh ⇔ slot-1 has carried frame_id=='sht30' within timeout."""
+        if self._last_sht30_timestamp is None:
+            return False
+        elapsed = (
+            self.get_clock().now() - self._last_sht30_timestamp
+        ).nanoseconds / 1e9
+        return elapsed <= self.get_parameter('sensor_stale_timeout').value
+
+    def _compute_scd41_fresh(self) -> bool:
+        """Phase 26: SCD41 fresh ⇔ slot-2 temp OR humidity arrived within timeout.
+        (gap-acceptable per D-03; either channel proves SCD41 alive.)
+        """
+        candidates = [
+            t for t in (self._last_temp2_timestamp, self._last_humidity2_timestamp)
+            if t is not None
+        ]
+        if not candidates:
+            return False
+        ts = max(candidates)
+        elapsed = (self.get_clock().now() - ts).nanoseconds / 1e9
+        return elapsed <= self.get_parameter('sensor_stale_timeout').value
 
     def control_loop(self):
         # WARMUP-01: startup grace — no actuation until sensors settle
@@ -274,6 +337,14 @@ class FruitingChamberController(Node):
             self._warming_up = False
             self._publish_sensor_health(warming_up=False)
             self.get_logger().info('WARMUP-CLEARED: control loop engaging')
+
+        # Phase 26 D-03: republish sensor_health when sht30_fresh or scd41_fresh
+        # flips, preserving Phase 16's quiet-topic property (state-change only).
+        sht30_fresh = self._compute_sht30_fresh()
+        scd41_fresh = self._compute_scd41_fresh()
+        if (sht30_fresh != self._last_sht30_fresh
+                or scd41_fresh != self._last_scd41_fresh):
+            self._publish_sensor_health(warming_up=False)
 
         if self.current_temp is None or self.current_humidity is None:
             self.set_humidifier(False)

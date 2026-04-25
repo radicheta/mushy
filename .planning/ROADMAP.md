@@ -151,13 +151,15 @@ milestone. Promote with `/gsd:review-backlog` when ready.
 
 ### Phase 26: Dual sensor publishing + offline alarms — SHT30/SCD41 slot topics + Signal alerts
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** SHT30 and SCD41 publish on separate slot topics (slot 1 silent-fallback per D-01; slot 2 SCD41-only per D-02), and Signal alerts fire when either physical sensor goes silent for ≥5 min (D-04/D-05) with symmetric recovery messages (D-06). Closes the 2026-04-11 incident class where a 40-min unnoticed SHT30 outage cost a calibration session.
+**Requirements**: D-01..D-06 (CONTEXT.md decisions used as the de-facto requirement set; no formal REQ-IDs assigned)
 **Depends on:** Phase 25
-**Plans:** 0 plans
+**Plans:** 3 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 26 to break down)
+- [ ] 26-01-PLAN.md — Pi-side dual publishers + freshness (fc_sensors.py refactor, fc_controller.py sensor_health KeyValue extension, pytest test_sensors.py); Wave 1; D-01/D-02/D-03
+- [ ] 26-02-PLAN.md — Bridge slot-2 forwarding (VOLATILE-QoS subs for fc1/temperature_2 & fc1/humidity_2 → WS broadcast + TimescaleDB); Wave 2 (depends on 26-01); D-02/D-03
+- [ ] 26-03-PLAN.md — Alerter sht30/scd41 alert types + snooze grammar + ALERT_SENSOR_OFFLINE_MIN env (state.js, rules.js, index.js, message.js, snooze.js, config.js, jest tests, docker-compose.override.yml); Wave 2 (depends on 26-01); D-04/D-05/D-06
 
 ---
 *Roadmap created 2026-03-28. v1.2.1 shipped 2026-04-18.*
