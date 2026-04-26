@@ -34,8 +34,7 @@ ROUTER_PASS = os.environ.get("ROUTER_PASS")
 def open_client():
     if not ROUTER_PASS:
         sys.exit("ROUTER_PASS not set")
-    auth_url = ROUTER_URL.replace("://", f"://{ROUTER_USER}:{ROUTER_PASS}@", 1)
-    return Connection(auth_url)
+    return Connection(ROUTER_URL, username=ROUTER_USER, password=ROUTER_PASS)
 
 
 def cmd_auth():
