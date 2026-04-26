@@ -346,12 +346,13 @@ app.get('/farmer/summary', (req, res) => {
 const ALLOWED_TOPICS = ['fc.humidity', 'fc.temperature', 'fc.co2', 'fc.humidifier'];
 
 // Server-side downsampling: choose bucket interval based on requested time range (D-06)
-// <=2h -> ~120 points at 1min; <=12h -> ~144 points at 5min; >12h -> ~96/day at 15min
+// <=2h -> ~1440 pts at 5s; <=24h -> ~1440 pts at 1min; <=7d -> ~1008 pts at 10min; >7d -> 1hr
 function bucketInterval(rangeMs) {
     const ONE_HOUR = 3600000;
-    if (rangeMs <= 2 * ONE_HOUR)  return '1 minute';
-    if (rangeMs <= 12 * ONE_HOUR) return '5 minutes';
-    return '15 minutes';
+    if (rangeMs <= 2  * ONE_HOUR)  return '5 seconds';
+    if (rangeMs <= 24 * ONE_HOUR)  return '1 minute';
+    if (rangeMs <= 7  * 24 * ONE_HOUR) return '10 minutes';
+    return '1 hour';
 }
 
 // History endpoint — returns downsampled time-series for OpenMCT request() (D-04)
