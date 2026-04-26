@@ -12,4 +12,4 @@ candidate (no SIM swap), a phone holding the SIM is the fallback.
 
 | # | Name | Validates | Verdict | Tags |
 |---|------|-----------|---------|------|
-| 001 | huawei-router-sms-roundtrip | auth + send + receive via huawei-lte-api lib against 192.168.8.1 from fc1 | PENDING | phase-25, signal-cli, 4g-router, sms, huawei |
+| 001 | huawei-router-sms-roundtrip | auth + send + receive via huawei-lte-api lib against 192.168.8.1 from fc1 | PARTIAL — auth blocked on creds, resume on-site | phase-25, signal-cli, 4g-router, sms, huawei |
