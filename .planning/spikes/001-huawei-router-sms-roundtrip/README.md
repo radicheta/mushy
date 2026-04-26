@@ -87,6 +87,36 @@ Step 5 proves inbound SMS.
 
 ## Results
 
-(filled in after running)
+**VERDICT: PARTIAL — blocked on credentials (2026-04-25)**
 
-VERDICT: PENDING
+Verified:
+- Router is Huawei HiLink at `192.168.8.1` on fc1's wlan0 (default gateway).
+  Confirmed by signature `/api/webserver/SesTokInfo` response and 307 →
+  `/html/index.html` redirect.
+- `huawei-lte-api` 1.11.0 installs cleanly on fc1 (Ubuntu, Python 3.12,
+  needs `--break-system-packages`). Pulls in `pycryptodomex` and
+  `xmltodict`.
+- Password `Shiitake1!` from `elder-plops:/tmp/huawei` reaches the script
+  intact: `len=10, first=S, last=!`. Not a shell-quoting bug.
+- Auth path returns `108006: Username and Password wrong` from the
+  router. Three failed attempts; one or two more before Huawei's typical
+  5-attempt lockout (5 min).
+
+Next action (in person at the farm):
+1. Open `http://192.168.8.1` in a browser on the same SSID and try
+   `admin` / `Shiitake1!`.
+2. Outcomes:
+   - **Browser login works** → lib version / firmware quirk; check
+     `c.user.state_login()['password_type']` and re-test, or upgrade
+     `huawei-lte-api`.
+   - **Browser says wrong password** → recover/reset, update `/tmp/huawei`,
+     re-run.
+   - **Account locked** → wait 5 min, single retry.
+3. Once auth passes, run steps 2–5 from "How to Run" in order.
+
+## Open question
+
+While running this spike, fc1's Tailscale link kept dropping (DERP-relay only
+because the 4G SIM is behind CGNAT). Worth an independent backlog item:
+mosh + tmux, or reverse autossh, to make fc1 SSH reliable enough for
+non-trivial work. Not part of this spike.
