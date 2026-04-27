@@ -2,6 +2,8 @@
 Description=FC-1 Mushroom Farm ROS2 Control
 After=network-online.target fc-update.service tailscaled.service
 Wants=network-online.target fc-update.service tailscaled.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -23,8 +25,8 @@ ExecStartPre=/bin/bash -c '\
   echo "fc-core: tailscale0 did not appear after 30s -- aborting start"; \
   exit 1'
 ExecStart=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && source /home/ubuntu/mushroom_farm_ws/install/setup.bash && ros2 launch fc_core fc.launch.py'
-Restart=on-failure
-RestartSec=5
+Restart=always
+RestartSec=10
 StandardOutput=journal
 StandardError=journal
 
