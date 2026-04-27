@@ -85,6 +85,10 @@ function makeEnv(extras = {}) {
     ALERT_RECEIVE_POLL_SEC: '0.1',
     ALERT_HEARTBEAT_HOUR: '8',
     TZ: 'America/Toronto',
+    // Phase 25 capture pipeline secrets — stubbed for integration tests
+    // (these tests do not exercise capture, but config.js requires them at load)
+    TIMESCALE_PASSWORD: 'test-pw',
+    ANTHROPIC_API_KEY: 'test-key',
     ...extras,
   };
 }
