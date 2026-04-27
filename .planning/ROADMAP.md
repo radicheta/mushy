@@ -70,7 +70,7 @@ farmer-attested "all green" on 2026-04-18. See `.planning/milestones/v1.2.1-ROAD
 
 - [x] **Phase 21: Camera history continuous persistence** (4/4 plans) — 2026-04-19
 - [x] **Phase 22: Timeline scrubber + farmer story view** (4/4 plans) — 2026-04-19
-- [ ] **Phase 23: Time-lapse composition (ffmpeg)** — depends on 21
+- [x] **Phase 23: Time-lapse composition (ffmpeg)** — depends on 21 — 2026-04-27 (CO2 overlay gap: open item)
 - [ ] **Phase 24: ML vision events via ComfyUI** — depends on 21; pre-gate: ComfyUI-as-prod hardening
 - [ ] **Phase 25: Bidirectional Signal — farmer↔robot capture channel** — SPEC locked 2026-04-19 (absorbs retired backlog 999.15); independent of 21→24 chain. Farmer-facing UI label: **Field Notes**. See `.planning/phases/25-bidirectional-signal-farmer-robot-capture-channel/25-SPEC.md`.
 
@@ -104,7 +104,7 @@ Full v1.4 narrative + per-phase scope: `.planning/milestones/v1.4-ROADMAP.md`.
 | 20. Alert cooldown tuning | v1.3 | — | Deferred to v1.5 — calendar-gated | — |
 | 21. Camera history continuous persistence | v1.4 | 4/4 | Complete    | 2026-04-19 |
 | 22. Timeline scrubber + farmer story view | v1.4 | 4/4 | Complete — data-surface shipped on elder-plops; farmOS owns UI (Zoy-side) | 2026-04-19 |
-| 23. Time-lapse composition (ffmpeg) | v1.4 | 0/3 | Planned    | — |
+| 23. Time-lapse composition (ffmpeg) | v1.4 | 3/3 | Complete — timelapse container live, farmer-approved; CO2 overlay gap tracked as open item | 2026-04-27 |
 | 24. ML vision events via ComfyUI | v1.4 | — | Depends on 21; pre-gate: ComfyUI-as-prod hardening | — |
 | 25. Bidirectional Signal — farmer↔robot capture channel | v1.4 | 0/? | Planned — SPEC locked 2026-04-19 (absorbs backlog 999.15); farmOS event writes are a follow-up phase | — |
 
