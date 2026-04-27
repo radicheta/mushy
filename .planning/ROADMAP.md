@@ -104,19 +104,19 @@ Full v1.4 narrative + per-phase scope: `.planning/milestones/v1.4-ROADMAP.md`.
 | 20. Alert cooldown tuning | v1.3 | — | Deferred to v1.5 — calendar-gated | — |
 | 21. Camera history continuous persistence | v1.4 | 4/4 | Complete    | 2026-04-19 |
 | 22. Timeline scrubber + farmer story view | v1.4 | 4/4 | Complete — data-surface shipped on elder-plops; farmOS owns UI (Zoy-side) | 2026-04-19 |
-| 23. Time-lapse composition (ffmpeg) | v1.4 | 3/3 | Complete — timelapse container live, farmer-approved; CO2 overlay gap tracked as open item | 2026-04-27 |
+| 23. Time-lapse composition (ffmpeg) | v1.4 | 3/3 | Complete    | 2026-04-27 |
 | 24. ML vision events via ComfyUI | v1.4 | — | Depends on 21; pre-gate: ComfyUI-as-prod hardening | — |
 | 25. Bidirectional Signal — farmer↔robot capture channel | v1.4 | 0/? | Planned — SPEC locked 2026-04-19 (absorbs backlog 999.15); farmOS event writes are a follow-up phase | — |
 
 ### Phase 23: Time-lapse composition (ffmpeg)
 
 **Goal:** Daily and on-demand time-lapse mp4s generated automatically from Phase 21 snapshots. Full scope in `.planning/milestones/v1.4-ROADMAP.md`.
-**Plans:** 3 plans
+**Plans:** 3/3 plans complete
 
 Plans:
-- [ ] 23-01-PLAN.md — Scaffold timelapse package (Dockerfile, package.json, jest) + pure utility modules (overlay, db, config) with full unit tests; Wave 1; D-01/D-06/D-08/D-10/D-11
-- [ ] 23-02-PLAN.md — Composer pipeline (composeDay + ffmpeg.js spawn wrapper) with DI unit tests covering frame-count guard, atomic rename, ENOENT-tolerance, path-traversal rejection; Wave 2 (depends on 23-01); D-04/D-05/D-07/D-08/D-10/D-11
-- [ ] 23-03-PLAN.md — HTTP server (/health, /timelapse, /timelapse/status/:id) + node-cron + docker-compose wiring + live deploy + manual smoke compose + farmer visual checkpoint; Wave 3 (depends on 23-01, 23-02); D-01/D-02/D-03/D-08/D-10
+- [x] 23-01-PLAN.md — Scaffold timelapse package (Dockerfile, package.json, jest) + pure utility modules (overlay, db, config) with full unit tests; Wave 1; D-01/D-06/D-08/D-10/D-11
+- [x] 23-02-PLAN.md — Composer pipeline (composeDay + ffmpeg.js spawn wrapper) with DI unit tests covering frame-count guard, atomic rename, ENOENT-tolerance, path-traversal rejection; Wave 2 (depends on 23-01); D-04/D-05/D-07/D-08/D-10/D-11
+- [x] 23-03-PLAN.md — HTTP server (/health, /timelapse, /timelapse/status/:id) + node-cron + docker-compose wiring + live deploy + manual smoke compose + farmer visual checkpoint; Wave 3 (depends on 23-01, 23-02); D-01/D-02/D-03/D-08/D-10
 
 ### Phase 24: ML vision events via ComfyUI
 
