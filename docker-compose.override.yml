@@ -22,14 +22,15 @@ services:
     network_mode: "host"
 
   # signal-cli-rest-api: Signal primary-account host
-  # json-rpc-native mode required for /v1/receive (snooze loop).
+  # MODE=normal: /v1/receive is HTTP GET (not WebSocket). Required for receive-loop HTTP polling.
+  # Primary registration required (device_id=1); linked-secondary cannot use /v1/receive.
   # Account state persists in named volume — survive container recreation.
   # Internal only: NOT published to host, NOT Tailscale-served (D-13).
   signal-cli:
     image: bbernhard/signal-cli-rest-api:0.200-dev
     restart: unless-stopped
     environment:
-      - MODE=json-rpc
+      - MODE=normal
     volumes:
       - signal-cli-data:/home/.local/share/signal-cli
     networks:
