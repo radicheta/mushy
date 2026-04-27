@@ -17,6 +17,12 @@ function resMock() {
     return r;
 }
 
+// Helper: find route handler from Express 5 app.router.stack
+function findRoute(app, path) {
+    const layer = app.router.stack.find((l) => l.route && l.route.path === path);
+    return layer.route.stack[0].handle;
+}
+
 describe('validateQuery', () => {
     test('rejects bad camera_id', () => {
         const v = validateQuery({ from: '2026-04-25T00:00:00Z', to: '2026-04-25T23:59:59.999Z', camera_id: '../etc' });
@@ -60,8 +66,7 @@ describe('GET /timelapse', () => {
         const healthState = {};
 
         const app = makeApp({ pool, jobs, runComposition, db, healthState });
-        const layer = app._router.stack.find((l) => l.route && l.route.path === '/timelapse');
-        const handler = layer.route.stack[0].handle;
+        const handler = findRoute(app, '/timelapse');
 
         const req = reqMock({ from: '2026-04-25T00:00:00Z', to: '2026-04-25T23:59:59.999Z', camera_id: 'fc1' });
         const res = resMock();
@@ -80,8 +85,7 @@ describe('GET /timelapse', () => {
         const healthState = {};
 
         const app = makeApp({ pool, jobs, runComposition, db, healthState });
-        const layer = app._router.stack.find((l) => l.route && l.route.path === '/timelapse');
-        const handler = layer.route.stack[0].handle;
+        const handler = findRoute(app, '/timelapse');
 
         const req = reqMock({ from: '2026-04-25T00:00:00Z', to: '2026-04-25T23:59:59.999Z', camera_id: 'fc1' });
         const res = resMock();
@@ -100,8 +104,7 @@ describe('GET /timelapse', () => {
         const healthState = {};
 
         const app = makeApp({ pool, jobs, runComposition, db, healthState });
-        const layer = app._router.stack.find((l) => l.route && l.route.path === '/timelapse');
-        const handler = layer.route.stack[0].handle;
+        const handler = findRoute(app, '/timelapse');
 
         const req = reqMock({ from: '2026-04-25T00:00:00Z', to: '2026-04-25T23:59:59.999Z', camera_id: '../etc' });
         const res = resMock();
@@ -112,15 +115,10 @@ describe('GET /timelapse', () => {
 });
 
 describe('GET /timelapse/status/:id', () => {
-    function getHandler(app) {
-        const layer = app._router.stack.find((l) => l.route && l.route.path === '/timelapse/status/:id');
-        return layer.route.stack[0].handle;
-    }
-
     test('404 for unknown id', () => {
         const jobs = new Map();
         const app = makeApp({ pool: {}, jobs, runComposition: () => {}, db: {}, healthState: {} });
-        const handler = getHandler(app);
+        const handler = findRoute(app, '/timelapse/status/:id');
         const req = reqMock({}, { id: 'unknown' });
         const res = resMock();
         handler(req, res);
@@ -131,7 +129,7 @@ describe('GET /timelapse/status/:id', () => {
         const jobs = new Map();
         jobs.set('abc', { status: 'done', file_path: '/x.mp4' });
         const app = makeApp({ pool: {}, jobs, runComposition: () => {}, db: {}, healthState: {} });
-        const handler = getHandler(app);
+        const handler = findRoute(app, '/timelapse/status/:id');
         const req = reqMock({}, { id: 'abc' });
         const res = resMock();
         handler(req, res);
@@ -144,8 +142,7 @@ describe('GET /health', () => {
     test('returns last_nightly state', () => {
         const healthState = { last_nightly_at: '2026-04-26T04:30:00Z', last_nightly_status: 'ok' };
         const app = makeApp({ pool: {}, jobs: new Map(), runComposition: () => {}, db: {}, healthState });
-        const layer = app._router.stack.find((l) => l.route && l.route.path === '/health');
-        const handler = layer.route.stack[0].handle;
+        const handler = findRoute(app, '/health');
         const res = resMock();
         handler({}, res);
         expect(res._body).toMatchObject({ status: 'ok', last_nightly_at: '2026-04-26T04:30:00Z', last_nightly_status: 'ok' });
