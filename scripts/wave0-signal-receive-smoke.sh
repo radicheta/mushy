@@ -5,9 +5,16 @@ NUM="${SIGNAL_SENDER:-+59891840205}"
 FARMER="${SIGNAL_RECIPIENT:-+59892893012}"
 
 echo "==> /v1/accounts"
-DEV_ID=$(curl -fsS "$API/v1/accounts" | jq -r --arg n "$NUM" '.[] | select(.number==$n) | .device_id')
-if [[ "$DEV_ID" != "1" ]]; then echo "FAIL: device_id=$DEV_ID (expected 1 — primary)"; exit 1; fi
-echo "ok device_id=1"
+ACCOUNTS=$(curl -fsS "$API/v1/accounts")
+if ! jq -e --arg n "$NUM" '. | index($n)' <<<"$ACCOUNTS" >/dev/null; then
+  echo "FAIL: $NUM not in /v1/accounts response: $ACCOUNTS"; exit 1
+fi
+echo "ok account registered"
+
+echo "==> /v1/devices/$NUM (primary check)"
+DEV_ID=$(curl -fsS "$API/v1/devices/$NUM" | jq -r '[.[] | select(.id==1)] | length')
+if [[ "$DEV_ID" != "1" ]]; then echo "FAIL: no device with id=1 (expected primary)"; exit 1; fi
+echo "ok device_id=1 (primary)"
 
 echo "==> /v1/receive HTTP code"
 CODE=$(curl -sS -o /tmp/wave0-recv.json -w "%{http_code}" "$API/v1/receive/$NUM?timeout=1")
