@@ -1,0 +1,16 @@
+[
+  { "envelope": {
+      "source": "+59892893012",
+      "sourceNumber": "+59892893012",
+      "sourceUuid": "11111111-1111-1111-1111-111111111111",
+      "timestamp": 1714240000000,
+      "dataMessage": {
+        "timestamp": 1714240000000,
+        "message": "logged 3 jars in tent A",
+        "expiresInSeconds": 0,
+        "viewOnce": false,
+        "attachments": []
+      }
+    }
+  }
+]
