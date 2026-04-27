@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 23-03-PLAN.md — timelapse container live, first mp4 composed, awaiting Task 4 farmer checkpoint
+stopped_at: Completed 23-03-PLAN.md — timelapse container live, farmer-approved; CO2 overlay gap noted (open item in 23-03-SUMMARY.md)
 last_updated: "2026-04-27T12:25:03.829Z"
 last_activity: 2026-04-27 -- Phase --phase execution started
 progress:
@@ -111,7 +111,7 @@ Progress: [██████████] 100%
 ## Session Continuity
 
 Last session: 2026-04-27T12:25:03.824Z
-Stopped at: Completed 23-03-PLAN.md — timelapse container live, first mp4 composed, awaiting Task 4 farmer checkpoint
+Stopped at: Phase 23 complete — timelapse container live, farmer-approved "looks good"; CO2 overlay gap logged in 23-03-SUMMARY.md open items
 Next up: Phase 25 pre-gate spike (signal-cli primary re-registration via 4G router SIM) — must close before `/gsd:plan-phase 25`
 
 ---

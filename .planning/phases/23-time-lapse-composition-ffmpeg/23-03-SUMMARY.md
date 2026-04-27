@@ -128,6 +128,24 @@ ffprobe reports `yuvj420p` (JPEG full-range 4:2:0) rather than `yuv420p` (limite
 
 None — all endpoints are wired end-to-end. The `last_nightly_at` field in `/health` will be `null` until the cron fires at 00:30 Toronto (expected behavior, not a stub).
 
+## Open Items
+
+### CO2 overlay missing from burn-in
+
+**Farmer feedback (2026-04-27):** "looks good. missing CO2 reading in burnin tho"
+
+The burn-in overlay shows timestamp (top-left) and RH (top-right). CO2 from the `fc.co2` telemetry channel is not included.
+
+**Follow-up needed:**
+- Add `nearestCo2` lookup to `db.js` (mirrors `nearestRh` pattern, queries `telemetry WHERE topic='fc.co2'`)
+- Add CO2 field to `burnOverlay` in `overlay.js` (bottom-left or alongside RH)
+- Update overlay unit tests
+- Recompose a test clip to verify
+
+**Priority:** Low — clip is approved and usable as-is. CO2 is the farmer's favorite channel (v1.0 win) so including it in the overlay would meaningfully improve the artifact.
+
+**Suggested tracking:** New plan `23-04-PLAN.md` or add as a task to Phase 24 scope, whichever is next scheduled.
+
 ## Threat Flags
 
 None — no new trust boundaries beyond those documented in the plan's threat model (T-23-T1, T-23-T2 mitigated by validateQuery; T-23-I1 mitigated by host networking behind pfSense+Tailscale).
