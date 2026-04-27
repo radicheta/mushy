@@ -2,7 +2,7 @@
 spike: 001
 name: huawei-router-sms-roundtrip
 validates: "Given fc1 + Huawei 4G router credentials, when a Python script using huawei-lte-api runs against 192.168.8.1, then it can (a) authenticate, (b) read the SMS inbox, (c) send an SMS, (d) observe an SMS sent to the SIM"
-verdict: PENDING
+verdict: PASS
 related: []
 tags: [phase-25, signal-cli, 4g-router, sms, huawei]
 ---
@@ -20,7 +20,7 @@ This spike answers that with one Python script.
 
 Given:
 - fc1 (Raspberry Pi at 192.168.8.100) is on the LAN of a Huawei HiLink router (192.168.8.1)
-- Router admin credentials (`admin / Shiitake1!`)
+- Router admin credentials (user `admin`; password stored on elder-plops at `/tmp/huawei`, never commit)
 - A target phone (+59892893012, the farmer) for the round-trip
 
 When:
@@ -39,7 +39,7 @@ On fc1 (preferred — direct LAN to the router) **OR** any host that can reach
 ```bash
 pip install --user huawei-lte-api
 
-export ROUTER_PASS='Shiitake1!'      # in /tmp/huawei on elder-plops
+export ROUTER_PASS="$(cat /tmp/huawei | awk '{print $NF}')"   # creds file on elder-plops; do not paste inline
 # (ROUTER_URL/USER default to http://192.168.8.1/ and admin)
 
 # Step 1 — auth only (no farmer-visible side effect)
@@ -87,32 +87,20 @@ Step 5 proves inbound SMS.
 
 ## Results
 
-**VERDICT: PARTIAL — blocked on credentials (2026-04-25)**
+**VERDICT: PASS (2026-04-27)**
 
-Verified:
-- Router is Huawei HiLink at `192.168.8.1` on fc1's wlan0 (default gateway).
-  Confirmed by signature `/api/webserver/SesTokInfo` response and 307 →
-  `/html/index.html` redirect.
-- `huawei-lte-api` 1.11.0 installs cleanly on fc1 (Ubuntu, Python 3.12,
-  needs `--break-system-packages`). Pulls in `pycryptodomex` and
-  `xmltodict`.
-- Password `Shiitake1!` from `elder-plops:/tmp/huawei` reaches the script
-  intact: `len=10, first=S, last=!`. Not a shell-quoting bug.
-- Auth path returns `108006: Username and Password wrong` from the
-  router. Three failed attempts; one or two more before Huawei's typical
-  5-attempt lockout (5 min).
+All four capabilities proven end-to-end on fc1 ↔ farmer's phone:
 
-Next action (in person at the farm):
-1. Open `http://192.168.8.1` in a browser on the same SSID and try
-   `admin` / `Shiitake1!`.
-2. Outcomes:
-   - **Browser login works** → lib version / firmware quirk; check
-     `c.user.state_login()['password_type']` and re-test, or upgrade
-     `huawei-lte-api`.
-   - **Browser says wrong password** → recover/reset, update `/tmp/huawei`,
-     re-run.
-   - **Account locked** → wait 5 min, single retry.
-3. Once auth passes, run steps 2–5 from "How to Run" in order.
+- **Auth:** `AUTH OK` → device `B310s-518`, serial `B9K7S18306002111`, IMSI/ICCID present, WAN IP `10.216.184.55`. Root cause of prior 108006: the password recorded in the spike README was `Shiitake1!` (typo with trailing `!`); actual password in `/tmp/huawei` is `Shiitake1`. Browser-verified before retry to avoid the 5-attempt lockout.
+- **Inbox read:** 4 messages listed (1 from farmer, 3 carrier voicemail notifications).
+- **Send:** `SEND rc=OK` to `+59892893012` with no formatting tweaks needed.
+- **Receive:** Farmer reply observed within ~2min via `wait-for-from` poll: `"Farmer here. Hello. Sending as SMS"`.
+
+LTE signal at fc1's chamber location: rsrp -95dBm, sinr 2dB, mode LTE — usable but on the borderline; worth re-measuring during planning if SMS reliability matters at scale.
+
+fc1 wifi association: had to be nudged to `mossrock-lab` once it became visible (-19 dBm) — wpa_supplicant had been parked on weak `mossrock-west` (-81 dBm) because the lab AP was out of range earlier. Once associated, fc1 gets `192.168.8.100` via DHCP and 4ms ping to `192.168.8.1`.
+
+Pre-gate R1 unblocked. Phase 25 planner is now safe to invoke.
 
 ## Open question
 
