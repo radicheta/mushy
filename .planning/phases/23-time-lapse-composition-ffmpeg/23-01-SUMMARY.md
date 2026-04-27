@@ -153,3 +153,7 @@ None — no new network endpoints, auth paths, or trust boundaries introduced in
 ---
 *Phase: 23-time-lapse-composition-ffmpeg*
 *Completed: 2026-04-27*
+
+## Self-Check: PASSED
+
+All 11 created files confirmed present on disk. All 5 task commits confirmed in git log (7c15394, 4574ccc, 97be517, 97b46ed, e3be207). SUMMARY committed at c1e86ee.
