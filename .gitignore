@@ -12,6 +12,7 @@ __pycache__/
 
 # Misc
 .DS_Store
+.claude/
 
 # Phase 17: agent node_modules
 src/agents/*/node_modules/
