@@ -18,6 +18,9 @@ services:
   farmos-agent:
     network_mode: "host"
 
+  timelapse:
+    network_mode: "host"
+
   # signal-cli-rest-api: Signal primary-account host
   # json-rpc-native mode required for /v1/receive (snooze loop).
   # Account state persists in named volume — survive container recreation.
