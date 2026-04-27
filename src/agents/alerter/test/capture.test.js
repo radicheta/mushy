@@ -14,18 +14,9 @@ const textEnvelope = require('./fixtures/envelopes/text.json')[0];
 const audioEnvelope = require('./fixtures/envelopes/audio.json')[0];
 const photoBatchEnvelope = require('./fixtures/envelopes/photo-batch.json')[0];
 
-let createCapturePipeline;
-let subjectMissing = false;
+const { createCapturePipeline } = require('../src/capture');
 
-try {
-  ({ createCapturePipeline } = require('../src/capture'));
-} catch (_) {
-  subjectMissing = true;
-}
-
-const describeFn = subjectMissing ? describe.skip : describe;
-
-describeFn('createCapturePipeline', () => {
+describe('createCapturePipeline', () => {
   let pool;
   let signalClient;
   let transcribeClient;
