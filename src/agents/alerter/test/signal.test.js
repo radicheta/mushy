@@ -134,6 +134,79 @@ describe('signal.js', () => {
     });
   });
 
+  describe('receive/ignore_attachments', () => {
+    it('defaults to ignore_attachments=false', async () => {
+      // Extend server to capture the last receive URL
+      let capturedUrl = null;
+      const origHandler = server._server;
+      // Push a message so receive returns something parseable
+      server.received.push({ envelope: { source: SENDER, dataMessage: { message: 'hi' } } });
+      // We inspect via a spy: override server to record URL
+      // Instead, check by using the query param via a custom receive call
+      // The fake server drains received[] regardless of query params — we just need
+      // to verify the URL shape by calling receive() and checking it doesn't throw.
+      const result = await client.receive();
+      expect(Array.isArray(result)).toBe(true);
+    });
+
+    it('receive() default URL contains ignore_attachments=false', async () => {
+      // Use a custom server that captures the request URL
+      const http = require('http');
+      let receivedUrl = null;
+      const spy = http.createServer((req, res) => {
+        receivedUrl = req.url;
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end('[]');
+      });
+      await new Promise((resolve) => spy.listen(0, '127.0.0.1', resolve));
+      const { port } = spy.address();
+      const spyClient = createSignalClient({
+        apiUrl: `http://127.0.0.1:${port}`,
+        sender: SENDER,
+        recipient: RECIPIENT,
+        maxSendsPerHour: 20,
+      });
+      await spyClient.receive();
+      await new Promise((resolve) => spy.close(resolve));
+      expect(receivedUrl).toContain('ignore_attachments=false');
+    });
+
+    it('receive({ ignoreAttachments: true }) sends ignore_attachments=true', async () => {
+      const http = require('http');
+      let receivedUrl = null;
+      const spy = http.createServer((req, res) => {
+        receivedUrl = req.url;
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end('[]');
+      });
+      await new Promise((resolve) => spy.listen(0, '127.0.0.1', resolve));
+      const { port } = spy.address();
+      const spyClient = createSignalClient({
+        apiUrl: `http://127.0.0.1:${port}`,
+        sender: SENDER,
+        recipient: RECIPIENT,
+        maxSendsPerHour: 20,
+      });
+      await spyClient.receive({ ignoreAttachments: true });
+      await new Promise((resolve) => spy.close(resolve));
+      expect(receivedUrl).toContain('ignore_attachments=true');
+    });
+  });
+
+  describe('fetchAttachment', () => {
+    it('GETs /v1/attachments/{id} and returns a Buffer', async () => {
+      const buf = await client.fetchAttachment('att-img-001');
+      expect(Buffer.isBuffer(buf)).toBe(true);
+      expect(buf.length).toBeGreaterThan(0);
+      // Fake server returns [0x41, 0x42, 0x43] = "ABC"
+      expect(buf.toString()).toBe('ABC');
+    });
+
+    it('throws on 404 response', async () => {
+      await expect(client.fetchAttachment('not-found-sentinel')).rejects.toThrow('404');
+    });
+  });
+
   describe('no-full-number-in-log', () => {
     it('does not log full sender or recipient phone numbers', async () => {
       const logLines = [];

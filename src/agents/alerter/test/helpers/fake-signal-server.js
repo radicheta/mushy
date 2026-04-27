@@ -71,6 +71,20 @@ function start({ port = 0 } = {}) {
         return;
       }
 
+      if (req.method === 'GET' && path.startsWith('/v1/attachments/')) {
+        const attId = decodeURIComponent(path.slice('/v1/attachments/'.length));
+        if (attId === 'not-found-sentinel') {
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          res.end('not found');
+          return;
+        }
+        // Return a fixed 3-byte buffer body for any other attachment id
+        const body = Buffer.from([0x41, 0x42, 0x43]); // "ABC"
+        res.writeHead(200, { 'Content-Type': 'application/octet-stream' });
+        res.end(body);
+        return;
+      }
+
       res.writeHead(404);
       res.end('not found');
     });

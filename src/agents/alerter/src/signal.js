@@ -40,11 +40,19 @@ function createSignalClient({ apiUrl, sender, recipient, maxSendsPerHour, logger
     }
   }
 
-  async function receive({ timeoutSec = 1 } = {}) {
-    const url = `${apiUrl}/v1/receive/${encodeURIComponent(sender)}?timeout=${timeoutSec}&ignore_attachments=true`;
+  async function receive({ timeoutSec = 1, ignoreAttachments = false } = {}) {
+    const url = `${apiUrl}/v1/receive/${encodeURIComponent(sender)}?timeout=${timeoutSec}&ignore_attachments=${ignoreAttachments}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`signal-cli receive ${res.status}`);
     return await res.json();
+  }
+
+  async function fetchAttachment(id) {
+    const url = `${apiUrl}/v1/attachments/${encodeURIComponent(id)}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`signal-cli attachment ${id} ${res.status}`);
+    const buf = await res.arrayBuffer();
+    return Buffer.from(buf);
   }
 
   async function accounts() {
@@ -58,7 +66,7 @@ function createSignalClient({ apiUrl, sender, recipient, maxSendsPerHour, logger
     return sendHistory.length;
   }
 
-  return { send, receive, accounts, sendsThisHour };
+  return { send, receive, accounts, fetchAttachment, sendsThisHour };
 }
 
 module.exports = { createSignalClient };

@@ -2,7 +2,12 @@
 
 const { load, maskNumber } = require('../src/config');
 
-const BASE_ENV = { SIGNAL_SENDER: '+1', SIGNAL_RECIPIENT: '+2' };
+const BASE_ENV = {
+  SIGNAL_SENDER: '+1',
+  SIGNAL_RECIPIENT: '+2',
+  TIMESCALE_PASSWORD: 'testpw',
+  ANTHROPIC_API_KEY: 'sk-test',
+};
 
 describe('config.load', () => {
   test('Test A: returns object with all fields populated from defaults', () => {
@@ -39,6 +44,51 @@ describe('config.load', () => {
 
   test('Test D: non-numeric ALERT_OOB_N throws', () => {
     expect(() => load({ ...BASE_ENV, ALERT_OOB_N: 'not-a-number' })).toThrow();
+  });
+
+  // Phase 25 tests
+  test('Test F: throws when TIMESCALE_PASSWORD missing', () => {
+    const env = { ...BASE_ENV };
+    delete env.TIMESCALE_PASSWORD;
+    expect(() => load(env)).toThrow('TIMESCALE_PASSWORD');
+  });
+
+  test('Test G: throws when ANTHROPIC_API_KEY missing', () => {
+    const env = { ...BASE_ENV };
+    delete env.ANTHROPIC_API_KEY;
+    expect(() => load(env)).toThrow('ANTHROPIC_API_KEY');
+  });
+
+  test('Test H: Phase 25 defaults', () => {
+    const cfg = load({ ...BASE_ENV });
+    expect(cfg.timescaleHost).toBe('host.docker.internal');
+    expect(cfg.whisperUrl).toBe('http://host.docker.internal:8090');
+    expect(cfg.captureBaseDir).toBe('/data/signal-capture');
+    expect(cfg.bridgeHttpUrl).toBe('http://host.docker.internal:8081');
+    expect(cfg.captureRetentionDays).toBe(30);
+    expect(cfg.captureRetentionCron).toBe('15 3 * * *');
+  });
+
+  test('Test I: Phase 25 env overrides', () => {
+    const cfg = load({
+      ...BASE_ENV,
+      TIMESCALE_HOST: 'myhost',
+      WHISPER_URL: 'http://mywhisper:9000',
+      CAPTURE_BASE_PATH: '/mnt/data/capture',
+      BRIDGE_HTTP_URL: 'http://mybridge:8082',
+      CAPTURE_RETENTION_DAYS: '60',
+      CAPTURE_RETENTION_CRON: '0 2 * * *',
+    });
+    expect(cfg.timescaleHost).toBe('myhost');
+    expect(cfg.whisperUrl).toBe('http://mywhisper:9000');
+    expect(cfg.captureBaseDir).toBe('/mnt/data/capture');
+    expect(cfg.bridgeHttpUrl).toBe('http://mybridge:8082');
+    expect(cfg.captureRetentionDays).toBe(60);
+    expect(cfg.captureRetentionCron).toBe('0 2 * * *');
+  });
+
+  test('Test J: non-integer CAPTURE_RETENTION_DAYS throws', () => {
+    expect(() => load({ ...BASE_ENV, CAPTURE_RETENTION_DAYS: 'bad' })).toThrow();
   });
 });
 

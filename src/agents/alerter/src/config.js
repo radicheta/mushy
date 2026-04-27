@@ -42,6 +42,17 @@ function load(env = process.env) {
     timezone:            env.TZ           || 'America/Toronto',
     dashboardUrl:        env.DASHBOARD_URL || 'http://100.96.10.66:8080/',
     logLevel:            env.LOG_LEVEL    || 'info',
+    // Phase 25 capture pipeline
+    timescaleHost:        env.TIMESCALE_HOST     || 'host.docker.internal',
+    timescaleDb:          env.TIMESCALE_DB       || 'postgres',
+    timescaleUser:        env.TIMESCALE_USER     || 'postgres',
+    timescalePassword:    mustEnv(env, 'TIMESCALE_PASSWORD'),
+    whisperUrl:           env.WHISPER_URL        || 'http://host.docker.internal:8090',
+    anthropicApiKey:      mustEnv(env, 'ANTHROPIC_API_KEY'),
+    captureBaseDir:       env.CAPTURE_BASE_PATH  || '/data/signal-capture',
+    bridgeHttpUrl:        env.BRIDGE_HTTP_URL    || 'http://host.docker.internal:8081',
+    captureRetentionDays: parseIntEnv(env, 'CAPTURE_RETENTION_DAYS', 30),
+    captureRetentionCron: env.CAPTURE_RETENTION_CRON || '15 3 * * *',
   });
 }
 
