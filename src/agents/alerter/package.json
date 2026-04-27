@@ -9,8 +9,11 @@
     "test:watch": "jest --watch"
   },
   "dependencies": {
-    "ws": "^8.16.0",
-    "pg": "^8.20.0"
+    "@anthropic-ai/sdk": "^0.91.1",
+    "node-cron": "^4.0.0",
+    "pg": "^8.20.0",
+    "ulid": "^3.0.2",
+    "ws": "^8.16.0"
   },
   "devDependencies": {
     "jest": "^29.7.0"
