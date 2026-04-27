@@ -1,0 +1,16 @@
+[
+  { "envelope": {
+      "source": "+59892893012", "sourceNumber": "+59892893012",
+      "sourceUuid": "11111111-1111-1111-1111-111111111111",
+      "timestamp": 1714240200000,
+      "dataMessage": {
+        "timestamp": 1714240200000, "message": "tray 4",
+        "attachments": [
+          { "contentType": "image/jpeg", "filename": "IMG_001.jpg", "id": "att-img-001", "size": 204800, "width": 1080, "height": 1920 },
+          { "contentType": "image/jpeg", "filename": "IMG_002.jpg", "id": "att-img-002", "size": 204800, "width": 1080, "height": 1920 },
+          { "contentType": "image/jpeg", "filename": "IMG_003.jpg", "id": "att-img-003", "size": 204800, "width": 1080, "height": 1920 }
+        ]
+      }
+    }
+  }
+]
