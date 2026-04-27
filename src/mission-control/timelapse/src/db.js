@@ -35,12 +35,14 @@ async function lookupTimelapse(pool, camera_id, date) {
 
 // Source: bridge inserts telemetry with topic 'fc.humidity' (dot, not slash).
 // RESEARCH.md Pitfall 1 corrects CONTEXT.md D-11.
+// Telemetry table uses 'time' column (not 'captured_at') — aliased as captured_at for
+// compatibility with nearestRh and composer.js callers.
 async function fetchRhForDay(pool, date) {
     const result = await pool.query(
-        `SELECT captured_at, value FROM telemetry
+        `SELECT time AS captured_at, value FROM telemetry
          WHERE topic = 'fc.humidity'
-           AND captured_at >= $1 AND captured_at < $2
-         ORDER BY captured_at ASC`,
+           AND time >= $1 AND time < $2
+         ORDER BY time ASC`,
         [`${date}T00:00:00Z`, `${date}T23:59:59.999Z`]
     );
     return result.rows;

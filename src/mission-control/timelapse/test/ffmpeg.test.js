@@ -16,7 +16,7 @@ describe('buildArgs', () => {
         expect(buildArgs('/tmp/list.txt', '/out/x.mp4', 12)).toEqual([
             '-y', '-f', 'concat', '-safe', '0', '-i', '/tmp/list.txt',
             '-c:v', 'libx264', '-crf', '23', '-preset', 'fast',
-            '-pix_fmt', 'yuv420p', '-r', '12', '/out/x.mp4',
+            '-pix_fmt', 'yuv420p', '-r', '12', '-f', 'mp4', '/out/x.mp4',
         ]);
     });
     test('default fps is 12', () => {

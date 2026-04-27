@@ -13,6 +13,7 @@ function buildArgs(filelistPath, outputPath, fps = 12) {
         '-preset', 'fast',
         '-pix_fmt', 'yuv420p',
         '-r', String(fps),
+        '-f', 'mp4',
         outputPath,
     ];
 }
