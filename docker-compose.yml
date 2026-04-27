@@ -83,5 +83,34 @@ services:
       - /data/timelapse:/data/timelapse
     restart: unless-stopped
 
+  # Phase 25: dedicated GPU transcription sibling for the alerter.
+  # Lazy-loads faster-whisper medium fp16 (~3GB VRAM held warm). V12 mitigation:
+  # rejects audio_paths that don't resolve under /data/signal-capture (also RO mount).
+  whisper-transcribe:
+    build:
+      context: ./src/whisper-transcribe
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      - WHISPER_MODEL=medium
+      - WHISPER_DEVICE=cuda
+      - WHISPER_COMPUTE_TYPE=float16
+      - ALLOWED_ROOT=/data/signal-capture
+    volumes:
+      - /data/signal-capture:/data/signal-capture:ro   # V13: read-only audio access
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8090/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
 volumes:
   timescale-data:

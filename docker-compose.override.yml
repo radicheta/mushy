@@ -21,6 +21,9 @@ services:
   timelapse:
     network_mode: "host"
 
+  whisper-transcribe:
+    network_mode: "host"
+
   # signal-cli-rest-api: Signal primary-account host
   # MODE=normal: /v1/receive is HTTP GET (not WebSocket). Required for receive-loop HTTP polling.
   # Primary registration required (device_id=1); linked-secondary cannot use /v1/receive.
@@ -67,6 +70,19 @@ services:
       - ALERT_RECEIVE_POLL_SEC=${ALERT_RECEIVE_POLL_SEC:-30}
       - DASHBOARD_URL=${DASHBOARD_URL:-http://100.96.10.66:8080/}
       - TZ=America/Toronto
+      # Phase 25 capture pipeline env (consumed by capture-db, transcribe-client, llm-client)
+      - TIMESCALE_HOST=${TIMESCALE_HOST:-host.docker.internal}
+      - TIMESCALE_DB=${TIMESCALE_DB:-postgres}
+      - TIMESCALE_USER=${TIMESCALE_USER:-postgres}
+      - TIMESCALE_PASSWORD=${TIMESCALE_PASSWORD}
+      - WHISPER_URL=${WHISPER_URL:-http://host.docker.internal:8090}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CAPTURE_BASE_PATH=${CAPTURE_BASE_PATH:-/data/signal-capture}
+      - BRIDGE_HTTP_URL=${BRIDGE_HTTP_URL:-http://host.docker.internal:8081}
+      - CAPTURE_RETENTION_DAYS=${CAPTURE_RETENTION_DAYS:-30}
+      - CAPTURE_RETENTION_CRON=${CAPTURE_RETENTION_CRON:-15 3 * * *}
+    volumes:
+      - /data/signal-capture:/data/signal-capture
     networks:
       - signal-net
 
