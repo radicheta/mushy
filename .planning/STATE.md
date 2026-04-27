@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 26 live + waiting for first sht30 alert to land via Signal (trust restored mid-session)
-last_updated: "2026-04-27T00:02:03.214Z"
+stopped_at: Completed 23-03-PLAN.md — timelapse container live, first mp4 composed, awaiting Task 4 farmer checkpoint
+last_updated: "2026-04-27T12:25:03.829Z"
 last_activity: 2026-04-27 -- Phase --phase execution started
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 3
-  percent: 50
+  completed_plans: 6
+  percent: 100
 ---
 
 # Project State
@@ -31,7 +31,7 @@ Plan: 1 of --name
 Status: Executing Phase --phase
 Last activity: 2026-04-27 -- Phase --phase execution started
 
-Progress: [████░░░░░░] 40% (2/5 phases complete)
+Progress: [██████████] 100%
 
 **Carried from v1.3 (not blocking v1.4):**
 
@@ -89,6 +89,10 @@ Progress: [████░░░░░░] 40% (2/5 phases complete)
 - [v1.4 phase-25]: backlog 999.15 rescoped from "unblock snooze receive" into full capture channel (text + audio + images → local Whisper → Anthropic LLM reply); farmOS event writes deferred to follow-up phase (seed SEED-002)
 - [v1.4 phase-25]: LLM = Anthropic API; transcription = local dedicated container on elder-plops (no audio leaves the box); single-farmer model preserved (no multi-recipient this phase)
 - [v1.4 phase-25]: SPEC.md lives at `.planning/phases/25-bidirectional-signal-farmer-robot-capture-channel/25-SPEC.md` (renamed from `999.15-*` on 2026-04-20 so GSD tooling resolves `phase=25` correctly)
+- Express 5 uses app.router (not app._router) for route stack inspection in tests
+- ffmpeg requires -f mp4 explicit format when output path has non-.mp4 extension
+- telemetry column is 'time' aliased as captured_at for db.js caller compatibility
+- timelapse network_mode: host matches alerter pattern — TIMESCALE_HOST=localhost resolves via host namespace
 
 ### Pending Todos
 
@@ -106,8 +110,8 @@ Progress: [████░░░░░░] 40% (2/5 phases complete)
 
 ## Session Continuity
 
-Last session: 2026-04-25 — Phase 26 executed end-to-end (3 plans, 12/12 must_haves verified, live deploy on fc1 + bridge + alerter)
-Stopped at: Phase 26 live + waiting for first sht30 alert to land via Signal (trust restored mid-session)
+Last session: 2026-04-27T12:25:03.824Z
+Stopped at: Completed 23-03-PLAN.md — timelapse container live, first mp4 composed, awaiting Task 4 farmer checkpoint
 Next up: Phase 25 pre-gate spike (signal-cli primary re-registration via 4G router SIM) — must close before `/gsd:plan-phase 25`
 
 ---
