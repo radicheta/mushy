@@ -148,3 +148,15 @@ The 287 frames span 2026-04-26 00:03 – 23:53 Toronto time. RH data was availab
 - **Commit:** e8506bd
 
 Both bugs were auto-fixed (Rule 1). Tests updated and remain 44/44 green.
+
+---
+
+## Farmer Review
+
+**Reviewed:** 2026-04-27
+**Verdict:** Approved — "looks good"
+**Feedback:** CO2 reading missing from burn-in overlay
+
+The overlay currently shows timestamp (top-left) and RH (top-right). The farmer noted that CO2 is absent from the overlay.
+
+**Resolution:** Gap logged. The clip is approved and composition pipeline is complete. CO2 overlay support (`fc.co2` channel via `nearestCo2` lookup in `db.js` + `burnOverlay` in `overlay.js`) will be addressed in a follow-up plan. Tracked as open item in 23-03-SUMMARY.md.
