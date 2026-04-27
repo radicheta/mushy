@@ -1,0 +1,6 @@
+[
+  { "envelope": { "source": "+59892893012", "timestamp": 1714240300000, "dataMessage": { "timestamp": 1714240300000, "message": "mute", "attachments": [] } } },
+  { "envelope": { "source": "+59892893012", "timestamp": 1714240310000, "dataMessage": { "timestamp": 1714240310000, "message": "snooze", "attachments": [] } } },
+  { "envelope": { "source": "+59892893012", "timestamp": 1714240320000, "dataMessage": { "timestamp": 1714240320000, "message": "quiet", "attachments": [] } } },
+  { "envelope": { "source": "+59892893012", "timestamp": 1714240330000, "dataMessage": { "timestamp": 1714240330000, "message": "snooze rh 4h", "attachments": [] } } }
+]
