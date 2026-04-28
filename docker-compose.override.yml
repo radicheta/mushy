@@ -71,7 +71,9 @@ services:
       - DASHBOARD_URL=${DASHBOARD_URL:-http://100.96.10.66:8080/}
       - TZ=America/Toronto
       # Phase 25 capture pipeline env (consumed by capture-db, transcribe-client, llm-client)
-      - TIMESCALE_HOST=${TIMESCALE_HOST:-host.docker.internal}
+      # TIMESCALE_HOST=timescale resolves via the default compose network (alerter joins it below).
+      # host.docker.internal won't work because timescale binds 127.0.0.1:5432 on the host.
+      - TIMESCALE_HOST=${TIMESCALE_HOST:-timescale}
       - TIMESCALE_DB=${TIMESCALE_DB:-postgres}
       - TIMESCALE_USER=${TIMESCALE_USER:-postgres}
       - TIMESCALE_PASSWORD=${TIMESCALE_PASSWORD}
@@ -85,6 +87,7 @@ services:
       - /data/signal-capture:/data/signal-capture
     networks:
       - signal-net
+      - default
 
 networks:
   signal-net:
