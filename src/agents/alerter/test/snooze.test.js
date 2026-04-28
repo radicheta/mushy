@@ -23,8 +23,10 @@ describe('parseSnoozeCommand', () => {
     expect(result.reply).toMatch(/30m|1h|2h|4h|8h|24h/);
   });
 
-  test('Test D: unrecognized command returns {ok:false} with example in reply', () => {
-    const result = parseSnoozeCommand('mute rh', 0);
+  test('Test D: snooze-prefixed malformed command returns help-text reply (legacy fuzzy path)', () => {
+    // 25-05: only snooze-prefixed malformed input gets fuzzyReply; bare "mute rh" is
+    // a non-snooze message that flows to the capture pipeline (no reply from snooze.js).
+    const result = parseSnoozeCommand('snooze rh banana', 0);
     expect(result.ok).toBe(false);
     expect(result.reply).toContain('snooze rh 4h');
   });

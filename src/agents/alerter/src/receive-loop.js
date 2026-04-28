@@ -22,12 +22,13 @@ function createReceiveLoop({
   signalClient,
   dispatch,
   config,
+  capturePipeline = null,
   logger = console,
   clock = Date.now,
 }) {
   let timer = null;
 
-  // Sender whitelist (T-17-02): only process envelopes from the registered
+  // Sender whitelist (T-17-02 / R7): only process envelopes from the registered
   // Signal sender or recipient. All other sources are dropped.
   const allowedSenders = new Set(
     [config.signalSender, config.signalRecipient].filter(Boolean)
@@ -38,24 +39,45 @@ function createReceiveLoop({
       const envelopes = await signalClient.receive({ timeoutSec: 1 });
       for (const env of envelopes) {
         const source = env?.envelope?.source;
-        const text = env?.envelope?.dataMessage?.message;
+        const dm = env?.envelope?.dataMessage;
+        if (!source) continue;
 
-        if (!source || !text) continue;
-
+        // R7 — whitelist gate BEFORE both snooze and capture branches
         if (!allowedSenders.has(source)) {
           logger.warn(`[receive] rejected sender (not in whitelist)`);
           continue;
         }
 
-        const parsed = parseSnoozeCommand(text, clock());
-        if (parsed.ok) {
-          logger.info(`[receive] snooze ${parsed.alertType} for ${parsed.durationMs}ms`);
-          dispatch({ type: 'snooze', alertType: parsed.alertType, untilMs: parsed.untilMs });
-        } else {
-          logger.info(`[receive] invalid command — replying with help text`);
-          await signalClient.send(parsed.reply).catch((e) =>
-            logger.error(`[receive] reply send failed: ${e.message}`)
-          );
+        const text = dm?.message ?? null;
+        const attachments = dm?.attachments || [];
+
+        // FAST PATH — snooze (R4 / Pitfall 6 / R6 30s budget)
+        if (text) {
+          const parsed = parseSnoozeCommand(text, clock());
+          if (parsed.ok) {
+            logger.info(`[receive] snooze ${parsed.alertType} for ${parsed.durationMs}ms`);
+            dispatch({ type: 'snooze', alertType: parsed.alertType, untilMs: parsed.untilMs });
+            // Send ack reply (≤30s budget; ack only — no capture work in this branch)
+            await signalClient
+              .send(parsed.ackText || 'snoozed')
+              .catch((e) => logger.warn(`[receive] ack send failed: ${e.message}`));
+            continue;
+          }
+          if (parsed.reply) {
+            logger.info(`[receive] invalid snooze — replying with help text`);
+            await signalClient.send(parsed.reply).catch((e) =>
+              logger.warn(`[receive] reply send failed: ${e.message}`)
+            );
+            continue;
+          }
+        }
+
+        // SLOW PATH — capture (D-03 — error-isolated, fire-and-forget)
+        if (capturePipeline && (text || attachments.length)) {
+          // Fire-and-forget: NEVER awaited so snooze ack budget is preserved
+          capturePipeline
+            .handle({ envelope: env, source, text, attachments })
+            .catch((e) => logger.warn(`[capture] pipeline error: ${e.message}`));
         }
       }
     } catch (e) {

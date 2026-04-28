@@ -14,6 +14,9 @@ const VALID_DURATIONS = {
 // Strict whitelist regex — anchored start/end, no extra content allowed.
 const STRICT = /^snooze\s+(rh|sensor|pi|humidifier|sht30|scd41|all)\s+(30m|1h|2h|4h|8h|24h)\s*$/i;
 
+// Phase 25 R4: simple grammar — bare "snooze"/"mute"/"quiet" → 24h all-types mute
+const SIMPLE = /^\s*(snooze|mute|quiet)\b\s*$/i;
+
 function fuzzyReply() {
   return {
     ok: false,
@@ -30,15 +33,31 @@ function fuzzyReply() {
  *   | { ok: false, reply: string }
  */
 function parseSnoozeCommand(text, nowMs) {
-  if (typeof text !== 'string') return fuzzyReply();
-  const m = text.trim().match(STRICT);
+  if (typeof text !== 'string') return { ok: false, reply: null };
+  const t = text.trim();
+
+  // R4 simple grammar: bare snooze/mute/quiet → 24h all-types mute with ack
+  if (SIMPLE.test(t)) {
+    const durationMs = VALID_DURATIONS['24h'];
+    return {
+      ok: true,
+      alertType: 'all',
+      durationMs,
+      untilMs: nowMs + durationMs,
+      ackText: 'alerts muted for 24h',
+    };
+  }
+
+  const m = t.match(STRICT);
   if (m) {
     const alertType = m[1].toLowerCase();
     const durationMs = VALID_DURATIONS[m[2].toLowerCase()];
     return { ok: true, alertType, durationMs, untilMs: nowMs + durationMs };
   }
-  // Anything else — return helpful error with fuzzy reply.
-  return fuzzyReply();
+  // Snooze-prefix-but-malformed → legacy fuzzy help reply
+  if (/^snooze\b/i.test(t)) return fuzzyReply();
+  // Anything else — let receive-loop fan out to capture pipeline (no reply)
+  return { ok: false, reply: null };
 }
 
 module.exports = { parseSnoozeCommand, VALID_ALERT_TYPES, VALID_DURATIONS };
