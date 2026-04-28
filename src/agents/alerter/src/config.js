@@ -27,6 +27,8 @@ function load(env = process.env) {
     signalApiUrl:        env.SIGNAL_API_URL     || 'http://signal-cli:8080',
     signalSender:        mustEnv(env, 'SIGNAL_SENDER'),
     signalRecipient:     mustEnv(env, 'SIGNAL_RECIPIENT'),
+    signalAdditionalSenders: (env.SIGNAL_ADDITIONAL_SENDERS || '')
+                              .split(',').map((s) => s.trim()).filter(Boolean),
     rhTarget:            parseFloatEnv(env, 'ALERT_RH_TARGET', 90),
     rhBand:              parseFloatEnv(env, 'ALERT_RH_BAND', 3),
     oobN:                parseIntEnv(env, 'ALERT_OOB_N', 5),
