@@ -72,12 +72,9 @@ function createReceiveLoop({
           }
         }
 
-        // SLOW PATH — capture (D-03 — error-isolated, fire-and-forget)
+        // SLOW PATH — capture (D-03 — error-isolated, fire-and-forget; NEVER awaited)
         if (capturePipeline && (text || attachments.length)) {
-          // Fire-and-forget: NEVER awaited so snooze ack budget is preserved
-          capturePipeline
-            .handle({ envelope: env, source, text, attachments })
-            .catch((e) => logger.warn(`[capture] pipeline error: ${e.message}`));
+          capturePipeline.handle({ envelope: env, source, text, attachments }).catch((e) => logger.warn(`[capture] pipeline error: ${e.message}`));
         }
       }
     } catch (e) {

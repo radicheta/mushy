@@ -128,7 +128,7 @@ describe('alerter integration', () => {
     const startMs = Date.now();
     const clock = () => startMs;
 
-    alerter = createAlerter({
+    alerter = await createAlerter({
       env: makeEnv({
         BRIDGE_WS_URL: bridge.wsUrl,
         BRIDGE_HEALTH_URL: bridge.healthUrl,
@@ -172,7 +172,7 @@ describe('alerter integration', () => {
 
     const clock = () => Date.now();
 
-    alerter = createAlerter({
+    alerter = await createAlerter({
       env: makeEnv({
         BRIDGE_WS_URL: bridge.wsUrl,
         BRIDGE_HEALTH_URL: bridge.healthUrl,
@@ -205,7 +205,7 @@ describe('alerter integration', () => {
     let nowMs = Date.now();
     const clock = () => nowMs;
 
-    alerter = createAlerter({
+    alerter = await createAlerter({
       env: makeEnv({
         BRIDGE_WS_URL: bridge.wsUrl,
         BRIDGE_HEALTH_URL: bridge.healthUrl,
@@ -267,7 +267,7 @@ describe('alerter integration', () => {
     const heartbeatMs = new Date('2024-04-18T12:00:00Z').getTime();
     const clock = () => heartbeatMs;
 
-    alerter = createAlerter({
+    alerter = await createAlerter({
       env: makeEnv({
         BRIDGE_WS_URL: bridge.wsUrl,
         BRIDGE_HEALTH_URL: bridge.healthUrl,
