@@ -482,4 +482,40 @@ function transition(prev, event, now, config) {
   return { next, actions };
 }
 
-module.exports = { transition, initialState, STATES, ALERT_TYPES, SEVERITY };
+// Phase 25 Plan 05 (D-03 / D-06): capture-pipeline health slot.
+// Mutable, in-process, in-memory (T-25-05-05 accept — restart resets).
+// Pattern mirrors timelapse healthState (src/mission-control/timelapse/src/index.js).
+function createCaptureHealth() {
+  return {
+    last_capture_at: null,
+    last_capture_status: null,
+    last_capture_error_at: null,
+    last_capture_error: null,
+    last_retention_at: null,
+    last_retention_status: null,
+    last_retention_rows: null,
+  };
+}
+
+function recordCaptureSuccess(health, nowMs) {
+  health.last_capture_at = nowMs;
+  health.last_capture_status = 'ok';
+}
+
+function recordCaptureError(health, nowMs, reason) {
+  health.last_capture_error_at = nowMs;
+  health.last_capture_status = 'degraded';
+  health.last_capture_error = String(reason || '').slice(0, 200);
+}
+
+function recordRetentionRun(health, nowMs, status, rowCount) {
+  health.last_retention_at = nowMs;
+  health.last_retention_status = status;
+  health.last_retention_rows = rowCount;
+}
+
+module.exports = {
+  transition, initialState, STATES, ALERT_TYPES, SEVERITY,
+  // captureHealth (Phase 25 Plan 05)
+  createCaptureHealth, recordCaptureSuccess, recordCaptureError, recordRetentionRun,
+};
