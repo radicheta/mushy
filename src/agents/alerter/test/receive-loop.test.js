@@ -283,9 +283,8 @@ describe('createReceiveLoop', () => {
 
     expect(dispatched).toHaveLength(0);
     expect(captureCalls).toHaveLength(1);
-    expect(captureCalls[0].source).toBe('+1111111111');
-    expect(captureCalls[0].text).toBe('hello');
-    expect(Array.isArray(captureCalls[0].attachments)).toBe(true);
+    expect(captureCalls[0].envelope.source).toBe('+1111111111');
+    expect(captureCalls[0].envelope.dataMessage.message).toBe('hello');
   });
 
   test('capture-fanout: attachment-only (no text) → capturePipeline.handle called', async () => {
@@ -319,8 +318,8 @@ describe('createReceiveLoop', () => {
 
     expect(dispatched).toHaveLength(0);
     expect(captureCalls).toHaveLength(1);
-    expect(captureCalls[0].attachments).toHaveLength(1);
-    expect(captureCalls[0].text).toBe(null);
+    expect(captureCalls[0].envelope.dataMessage.attachments).toHaveLength(1);
+    expect(captureCalls[0].envelope.dataMessage.message).toBe(null);
   });
 
   test('capture-fanout: pipeline rejection is caught (logger.warn), loop continues', async () => {
