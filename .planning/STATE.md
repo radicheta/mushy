@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 25 context gathered
-last_updated: "2026-04-27T22:57:41.253Z"
-last_activity: 2026-04-27 -- Phase 25 execution started
+stopped_at: Completed 25-03-PLAN.md (whisper-transcribe live, R3 satisfied, transcribe-client GREEN)
+last_updated: "2026-04-28T00:00:38.716Z"
+last_activity: 2026-04-27 -- Phase --phase execution started
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 11
-  completed_plans: 6
-  percent: 55
+  completed_plans: 9
+  percent: 82
 ---
 
 # Project State
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-18)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 25 — bidirectional-signal-farmer-robot-capture-channel
+**Current focus:** Phase --phase — 25
 
 ## Current Position
 
 Milestone: v1.4 — Vision & Growth Insights (5 phases, 2 complete)
-Phase: 25 (bidirectional-signal-farmer-robot-capture-channel) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 25
-Last activity: 2026-04-27 -- Phase 25 execution started
+Phase: --phase (25) — EXECUTING
+Plan: 1 of --name
+Status: Executing Phase --phase
+Last activity: 2026-04-27 -- Phase --phase execution started
 
-Progress: [██████████] 100%
+Progress: [████████░░] 82%
 
 **Carried from v1.3 (not blocking v1.4):**
 
@@ -93,6 +93,8 @@ Progress: [██████████] 100%
 - ffmpeg requires -f mp4 explicit format when output path has non-.mp4 extension
 - telemetry column is 'time' aliased as captured_at for db.js caller compatibility
 - timelapse network_mode: host matches alerter pattern — TIMESCALE_HOST=localhost resolves via host namespace
+- [Phase 25-03] Lazy faster-whisper import + dual-shape transcribe(string|object) bridges Wave 1 capture.js and Wave 0 RED test contracts
+- [Phase 25-03] Smoke uses literal /data path (no .resolve()) — symlinked /data on elder-plops would defeat in-container V12 ALLOWED_ROOT
 
 ### Pending Todos
 
@@ -110,8 +112,8 @@ Progress: [██████████] 100%
 
 ## Session Continuity
 
-Last session: --stopped-at
-Stopped at: Phase 25 context gathered
+Last session: 2026-04-28T00:00:38.710Z
+Stopped at: Completed 25-03-PLAN.md (whisper-transcribe live, R3 satisfied, transcribe-client GREEN)
 Next up: Phase 25 pre-gate spike (signal-cli primary re-registration via 4G router SIM) — must close before `/gsd:plan-phase 25`
 
 ---
