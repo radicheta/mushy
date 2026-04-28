@@ -72,7 +72,7 @@ farmer-attested "all green" on 2026-04-18. See `.planning/milestones/v1.2.1-ROAD
 - [x] **Phase 22: Timeline scrubber + farmer story view** (4/4 plans) — 2026-04-19
 - [x] **Phase 23: Time-lapse composition (ffmpeg)** — depends on 21 — 2026-04-27 (CO2 overlay gap: open item)
 - [ ] **Phase 24: ML vision events via ComfyUI** — depends on 21; pre-gate: ComfyUI-as-prod hardening
-- [ ] **Phase 25: Bidirectional Signal — farmer↔robot capture channel** — SPEC locked 2026-04-19 (absorbs retired backlog 999.15); independent of 21→24 chain. Farmer-facing UI label: **Field Notes**. See `.planning/phases/25-bidirectional-signal-farmer-robot-capture-channel/25-SPEC.md`.
+- [x] **Phase 25: Bidirectional Signal — farmer↔robot capture channel** — SPEC locked 2026-04-19 (absorbs retired backlog 999.15); independent of 21→24 chain. Farmer-facing UI label: **Field Notes**. See `.planning/phases/25-bidirectional-signal-farmer-robot-capture-channel/25-SPEC.md`. **Shipped 2026-04-28** — 5/5 plans executed, 7/7 farmer UATs PASS (cold-start smoke deferred); deferred items tracked in `25-05-SUMMARY.md` + backlog Phase 999.20.
 
 Full v1.4 narrative + per-phase scope: `.planning/milestones/v1.4-ROADMAP.md`.
 
