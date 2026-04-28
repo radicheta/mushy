@@ -137,8 +137,8 @@ Plans:
 Plans:
 - [x] 25-01-PLAN.md — Wave 0: signal-cli pipe unblock (MODE=normal flip + primary re-registration of +59891840205 + farmer trust restore + Wave-0 fixtures + RED skeleton tests + smoke script); R1; autonomous: false
 - [x] 25-02-PLAN.md — Wave 1: Capture persistence (deps install + config extension + signal.js fetchAttachment + capture-db.js regular table + capture-history.js + capture.js orchestrator); R2,R7
-- [ ] 25-03-PLAN.md — Wave 2: whisper-transcribe container (CUDA 12.3 + cuDNN 9 Dockerfile + FastAPI lazy-load + V12 path safety + transcribe-client.js + GPU compose + live smoke); R3
-- [ ] 25-04-PLAN.md — Wave 3: LLM client + sensor snapshot (llm-client.js with locked prompt shape using claude-sonnet-4-6 + 24h history cap + sensor-snapshot.js with timeout + null-on-failure); R5
+- [x] 25-03-PLAN.md — Wave 2: whisper-transcribe container (CUDA 12.3 + cuDNN 9 Dockerfile + FastAPI lazy-load + V12 path safety + transcribe-client.js + GPU compose + live smoke); R3
+- [x] 25-04-PLAN.md — Wave 3: LLM client + sensor snapshot (llm-client.js with locked prompt shape using claude-sonnet-4-6 + 24h history cap + sensor-snapshot.js with timeout + null-on-failure); R5
 - [ ] 25-05-PLAN.md — Wave 4: Integration + UAT (snooze grammar extension + receive-loop fast-path + retention cron + state captureHealth + index.js wiring + farmer UAT 1–7); R4,R6,R7; autonomous: false
 
 ## Backlog (parking lot)

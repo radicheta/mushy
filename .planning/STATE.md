@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 25-03-PLAN.md (whisper-transcribe live, R3 satisfied, transcribe-client GREEN)
-last_updated: "2026-04-28T00:00:38.716Z"
-last_activity: 2026-04-27 -- Phase --phase execution started
+stopped_at: Completed 25-04-PLAN.md (llm-client + sensor-snapshot, 12 tests green)
+last_updated: "2026-04-28T00:32:32.815Z"
+last_activity: 2026-04-28 — Completed 25-04 (llm-client + sensor-snapshot, 12 tests green)
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 11
-  completed_plans: 9
-  percent: 82
+  completed_plans: 10
+  percent: 91
 ---
 
 # Project State
@@ -26,12 +26,12 @@ See: .planning/PROJECT.md (updated 2026-04-18)
 ## Current Position
 
 Milestone: v1.4 — Vision & Growth Insights (5 phases, 2 complete)
-Phase: --phase (25) — EXECUTING
-Plan: 1 of --name
-Status: Executing Phase --phase
-Last activity: 2026-04-27 -- Phase --phase execution started
+Phase: 25 — EXECUTING
+Plan: 4 of 5
+Status: Executing Phase 25
+Last activity: 2026-04-27 — Completed 25-04 (llm-client + sensor-snapshot, 12 tests green)
 
-Progress: [████████░░] 82%
+Progress: [█████████░] 91%
 
 **Carried from v1.3 (not blocking v1.4):**
 
@@ -95,6 +95,8 @@ Progress: [████████░░] 82%
 - timelapse network_mode: host matches alerter pattern — TIMESCALE_HOST=localhost resolves via host namespace
 - [Phase 25-03] Lazy faster-whisper import + dual-shape transcribe(string|object) bridges Wave 1 capture.js and Wave 0 RED test contracts
 - [Phase 25-03] Smoke uses literal /data path (no .resolve()) — symlinked /data on elder-plops would defeat in-container V12 ALLOWED_ROOT
+- [Phase 25-04] SYSTEM_PROMPT locked verbatim — changes require new plan; max_tokens=150 caps prompt-injection blast radius (D-12)
+- [Phase 25-04] MAX_HISTORY_ROWS=20 cap on 24h history (D-10); slice(-20) keeps oldest-first
 
 ### Pending Todos
 
@@ -112,8 +114,8 @@ Progress: [████████░░] 82%
 
 ## Session Continuity
 
-Last session: 2026-04-28T00:00:38.710Z
-Stopped at: Completed 25-03-PLAN.md (whisper-transcribe live, R3 satisfied, transcribe-client GREEN)
+Last session: 2026-04-28T00:32:32.810Z
+Stopped at: Completed 25-04-PLAN.md (llm-client + sensor-snapshot, 12 tests green)
 Next up: Phase 25 pre-gate spike (signal-cli primary re-registration via 4G router SIM) — must close before `/gsd:plan-phase 25`
 
 ---
