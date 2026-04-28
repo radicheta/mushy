@@ -9,12 +9,20 @@
  * registers unhandledRejection / uncaughtException handlers (Pitfall 4 / T-17-04).
  */
 
+const { Pool } = require('pg');
 const { load, maskNumber } = require('./config');
 const stateLib = require('./state');
 const { createSignalClient } = require('./signal');
 const { createBridgeClient } = require('./bridge-client');
 const { createHeartbeatScheduler } = require('./heartbeat');
 const { createReceiveLoop } = require('./receive-loop');
+const captureDb = require('./capture-db');
+const { createTranscribeClient } = require('./transcribe-client');
+const { createLlmClient } = require('./llm-client');
+const { createCaptureHistory } = require('./capture-history');
+const { createSensorSnapshotFetcher } = require('./sensor-snapshot');
+const { createCapturePipeline } = require('./capture');
+const { createRetentionJob } = require('./capture-retention');
 
 /**
  * createAlerter({ env, clock, logger }) -> { dispatch, close, _state }
@@ -25,11 +33,29 @@ const { createReceiveLoop } = require('./receive-loop');
  * @param {object} [opts.logger] - logger (default: console)
  * @returns {{ dispatch: Function, close: Function, _state: Function }}
  */
-function createAlerter({ env = process.env, clock = Date.now, logger = console } = {}) {
+async function createAlerter({ env = process.env, clock = Date.now, logger = console } = {}) {
   const config = load(env);
 
   logger.info(`[boot] alerter starting — sender=${maskNumber(config.signalSender)} recipient=${maskNumber(config.signalRecipient)}`);
   logger.info(`[boot] bridge=${config.bridgeWsUrl} signal=${config.signalApiUrl} tz=${config.timezone}`);
+
+  // Phase 25 capture pipeline: Pool + DB bootstrap (D-08 idempotent CREATE TABLE IF NOT EXISTS)
+  const pool = new Pool({
+    host: config.timescaleHost,
+    database: config.timescaleDb,
+    user: config.timescaleUser,
+    password: config.timescalePassword,
+    port: 5432,
+  });
+  // initDb is best-effort: if Postgres is unreachable at boot the alerter still
+  // starts (alerts continue to flow). The capture path will degrade per insertCapture
+  // try/catch (capture.js step 3). Tests can run without a real DB.
+  try {
+    await captureDb.initDb(pool);
+    logger.info(`[boot] signal_capture schema initialized (db=${config.timescaleDb} host=${config.timescaleHost})`);
+  } catch (e) {
+    logger.warn(`[boot] signal_capture initDb failed (capture pipeline will degrade): ${e.message}`);
+  }
 
   const signalClient = createSignalClient({
     apiUrl: config.signalApiUrl,
@@ -38,6 +64,29 @@ function createAlerter({ env = process.env, clock = Date.now, logger = console }
     maxSendsPerHour: config.maxSendsPerHour,
     logger,
   });
+
+  // Phase 25 capture pipeline factories
+  const captureHealth = stateLib.createCaptureHealth();
+  const transcribeClient = createTranscribeClient({ apiUrl: config.whisperUrl, timeoutMs: 200000, logger });
+  const llmClient = createLlmClient({ apiKey: config.anthropicApiKey, logger });
+  const captureHistory = createCaptureHistory({ pool });
+  const sensorSnapshot = createSensorSnapshotFetcher({ bridgeUrl: config.bridgeHttpUrl, timeoutMs: 2000, logger });
+
+  const capturePipeline = createCapturePipeline({
+    pool,
+    signalClient,
+    transcribeClient,
+    llmClient,
+    captureHistory,
+    sensorSnapshot,
+    baseDir: config.captureBaseDir,
+    logger,
+    clock,
+  });
+
+  const retentionJob = createRetentionJob({ pool, config, state: captureHealth, logger });
+  retentionJob.start();
+  logger.info(`[boot] retention cron scheduled "${config.captureRetentionCron}" tz=${config.timezone} retention=${config.captureRetentionDays}d`);
 
   let state = stateLib.initialState(clock());
 
@@ -117,6 +166,7 @@ function createAlerter({ env = process.env, clock = Date.now, logger = console }
     signalClient,
     dispatch: applyEvent,
     config,
+    capturePipeline,
     logger,
     clock,
   });
@@ -134,9 +184,12 @@ function createAlerter({ env = process.env, clock = Date.now, logger = console }
       bridge.close();
       heartbeat.stop();
       receiveLoop.stop();
+      retentionJob.stop();
       clearInterval(tickTimer);
+      pool.end().catch(() => {});
     },
     _state() { return state; }, // test-only introspection
+    _captureHealth() { return captureHealth; }, // operator visibility (D-03)
   };
 }
 
@@ -144,8 +197,8 @@ function createAlerter({ env = process.env, clock = Date.now, logger = console }
  * main() — container entrypoint.
  * Registers crash handlers and runs the alerter.
  */
-function main() {
-  const alerter = createAlerter();
+async function main() {
+  const alerter = await createAlerter();
 
   process.on('unhandledRejection', (err) => {
     console.error(`[fatal] unhandledRejection: ${err?.message || err}`);
@@ -162,6 +215,8 @@ function main() {
   console.log('[boot] alerter running');
 }
 
-if (require.main === module) main();
+if (require.main === module) {
+  main().catch((e) => { console.error('[boot] fatal:', e?.stack || e); process.exit(1); });
+}
 
 module.exports = { createAlerter };
