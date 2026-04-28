@@ -74,7 +74,7 @@ function createReceiveLoop({
 
         // SLOW PATH — capture (D-03 — error-isolated, fire-and-forget; NEVER awaited)
         if (capturePipeline && (text || attachments.length)) {
-          capturePipeline.handle({ envelope: env, source, text, attachments }).catch((e) => logger.warn(`[capture] pipeline error: ${e.message}`));
+          capturePipeline.handle(env).catch((e) => logger.warn(`[capture] pipeline error: ${e.message}`));
         }
       }
     } catch (e) {
