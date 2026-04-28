@@ -152,6 +152,203 @@ describe('createReceiveLoop', () => {
     expect(dispatched).toHaveLength(0); // no valid snooze events
   });
 
+  test('R4-fastpath: bare "mute" dispatches snooze, capturePipeline.handle NOT called, ack sent', async () => {
+    const dispatched = [];
+    const captureCalls = [];
+    const sent = [];
+    const clock = () => 1000;
+    const client = {
+      receive: (() => {
+        let n = 0;
+        return async () => {
+          n++;
+          if (n === 1) return [{ envelope: { source: '+1111111111', dataMessage: { message: 'mute' } } }];
+          return [];
+        };
+      })(),
+      send: async (body) => { sent.push(body); return { ok: true }; },
+    };
+    const capturePipeline = { handle: async (env) => { captureCalls.push(env); } };
+    loop = createReceiveLoop({
+      signalClient: client,
+      dispatch: (e) => dispatched.push(e),
+      config: baseConfig,
+      capturePipeline,
+      logger: silentLogger,
+      clock,
+    });
+    loop.start();
+    await new Promise((r) => setTimeout(r, 200));
+    loop.stop();
+
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0].type).toBe('snooze');
+    expect(dispatched[0].alertType).toBe('all');
+    expect(captureCalls).toHaveLength(0);
+    expect(sent.some((b) => /muted for 24h/i.test(b))).toBe(true);
+  });
+
+  test('R6-budget: snooze fast-path NOT awaiting capturePipeline.handle (never-resolves capture)', async () => {
+    const dispatched = [];
+    const clock = () => 1000;
+    let receiveCalls = 0;
+    const client = {
+      receive: async () => {
+        receiveCalls++;
+        return [{ envelope: { source: '+1111111111', dataMessage: { message: 'mute' } } }];
+      },
+      send: async () => ({ ok: true }),
+    };
+    // capture handle returns a promise that never resolves
+    const capturePipeline = { handle: () => new Promise(() => {}) };
+    loop = createReceiveLoop({
+      signalClient: client,
+      dispatch: (e) => dispatched.push(e),
+      config: baseConfig,
+      capturePipeline,
+      logger: silentLogger,
+      clock,
+    });
+    loop.start();
+    await new Promise((r) => setTimeout(r, 250));
+    loop.stop();
+    // Two ticks at 50ms poll → at least 2 dispatches (proves loop did NOT block on capture)
+    expect(dispatched.length).toBeGreaterThanOrEqual(2);
+    expect(dispatched[0].type).toBe('snooze');
+  });
+
+  test('R7: non-whitelisted sender → no dispatch, no capture, logger.warn fired', async () => {
+    const dispatched = [];
+    const captureCalls = [];
+    const warnings = [];
+    const clock = () => 1000;
+    const client = {
+      receive: (() => {
+        let n = 0;
+        return async () => {
+          n++;
+          if (n === 1) return [{ envelope: { source: '+99999999999', dataMessage: { message: 'mute' } } }];
+          return [];
+        };
+      })(),
+      send: async () => ({ ok: true }),
+    };
+    const capturePipeline = { handle: async (env) => { captureCalls.push(env); } };
+    loop = createReceiveLoop({
+      signalClient: client,
+      dispatch: (e) => dispatched.push(e),
+      config: baseConfig,
+      capturePipeline,
+      logger: { info: () => {}, warn: (m) => warnings.push(m), error: () => {} },
+      clock,
+    });
+    loop.start();
+    await new Promise((r) => setTimeout(r, 200));
+    loop.stop();
+
+    expect(dispatched).toHaveLength(0);
+    expect(captureCalls).toHaveLength(0);
+    expect(warnings.some((w) => /rejected sender/i.test(w))).toBe(true);
+  });
+
+  test('capture-fanout: text-only non-snooze envelope → capturePipeline.handle called, no dispatch', async () => {
+    const dispatched = [];
+    const captureCalls = [];
+    const clock = () => 1000;
+    const client = {
+      receive: (() => {
+        let n = 0;
+        return async () => {
+          n++;
+          if (n === 1) return [{ envelope: { source: '+1111111111', dataMessage: { message: 'hello' } } }];
+          return [];
+        };
+      })(),
+      send: async () => ({ ok: true }),
+    };
+    const capturePipeline = { handle: async (env) => { captureCalls.push(env); } };
+    loop = createReceiveLoop({
+      signalClient: client,
+      dispatch: (e) => dispatched.push(e),
+      config: baseConfig,
+      capturePipeline,
+      logger: silentLogger,
+      clock,
+    });
+    loop.start();
+    await new Promise((r) => setTimeout(r, 200));
+    loop.stop();
+
+    expect(dispatched).toHaveLength(0);
+    expect(captureCalls).toHaveLength(1);
+    expect(captureCalls[0].source).toBe('+1111111111');
+    expect(captureCalls[0].text).toBe('hello');
+    expect(Array.isArray(captureCalls[0].attachments)).toBe(true);
+  });
+
+  test('capture-fanout: attachment-only (no text) → capturePipeline.handle called', async () => {
+    const dispatched = [];
+    const captureCalls = [];
+    const clock = () => 1000;
+    const att = { id: 'att1', contentType: 'image/jpeg' };
+    const client = {
+      receive: (() => {
+        let n = 0;
+        return async () => {
+          n++;
+          if (n === 1) return [{ envelope: { source: '+1111111111', dataMessage: { message: null, attachments: [att] } } }];
+          return [];
+        };
+      })(),
+      send: async () => ({ ok: true }),
+    };
+    const capturePipeline = { handle: async (env) => { captureCalls.push(env); } };
+    loop = createReceiveLoop({
+      signalClient: client,
+      dispatch: (e) => dispatched.push(e),
+      config: baseConfig,
+      capturePipeline,
+      logger: silentLogger,
+      clock,
+    });
+    loop.start();
+    await new Promise((r) => setTimeout(r, 200));
+    loop.stop();
+
+    expect(dispatched).toHaveLength(0);
+    expect(captureCalls).toHaveLength(1);
+    expect(captureCalls[0].attachments).toHaveLength(1);
+    expect(captureCalls[0].text).toBe(null);
+  });
+
+  test('capture-fanout: pipeline rejection is caught (logger.warn), loop continues', async () => {
+    const warnings = [];
+    let receiveCalls = 0;
+    const clock = () => 1000;
+    const client = {
+      receive: async () => {
+        receiveCalls++;
+        return [{ envelope: { source: '+1111111111', dataMessage: { message: 'hello' } } }];
+      },
+      send: async () => ({ ok: true }),
+    };
+    const capturePipeline = { handle: async () => { throw new Error('boom'); } };
+    loop = createReceiveLoop({
+      signalClient: client,
+      dispatch: () => {},
+      config: baseConfig,
+      capturePipeline,
+      logger: { info: () => {}, warn: (m) => warnings.push(m), error: () => {} },
+      clock,
+    });
+    loop.start();
+    await new Promise((r) => setTimeout(r, 250));
+    loop.stop();
+
+    expect(receiveCalls).toBeGreaterThanOrEqual(2); // loop kept ticking
+    expect(warnings.some((w) => /capture/i.test(w) && /boom/.test(w))).toBe(true);
+  });
+
   test('Test E: stop() halts further receive() calls', async () => {
     const clock = () => Date.now();
     let callCount = 0;

@@ -41,6 +41,59 @@ describe('parseSnoozeCommand', () => {
   });
 });
 
+describe('parseSnoozeCommand — simple grammar (R4 — 25-05)', () => {
+  test('R4-A: bare "mute" → 24h all-types mute, ackText set', () => {
+    const r = parseSnoozeCommand('mute', 1000);
+    expect(r.ok).toBe(true);
+    expect(r.alertType).toBe('all');
+    expect(r.durationMs).toBe(24 * 3600 * 1000);
+    expect(r.untilMs).toBe(1000 + 24 * 3600 * 1000);
+    expect(r.ackText).toBe('alerts muted for 24h');
+  });
+
+  test('R4-B: bare "snooze" → same shape', () => {
+    const r = parseSnoozeCommand('snooze', 0);
+    expect(r.ok).toBe(true);
+    expect(r.alertType).toBe('all');
+    expect(r.durationMs).toBe(24 * 3600 * 1000);
+    expect(r.ackText).toBe('alerts muted for 24h');
+  });
+
+  test('R4-C: bare "quiet" → same shape', () => {
+    const r = parseSnoozeCommand('quiet', 0);
+    expect(r.ok).toBe(true);
+    expect(r.alertType).toBe('all');
+    expect(r.ackText).toBe('alerts muted for 24h');
+  });
+
+  test('R4-D: case insensitive + whitespace tolerated', () => {
+    expect(parseSnoozeCommand('MUTE', 0).ok).toBe(true);
+    expect(parseSnoozeCommand('Snooze ', 0).ok).toBe(true);
+    expect(parseSnoozeCommand('quiet  ', 0).ok).toBe(true);
+    expect(parseSnoozeCommand('  Mute  ', 0).ok).toBe(true);
+  });
+
+  test('R4-E: legacy strict grammar still works', () => {
+    const r = parseSnoozeCommand('snooze rh 4h', 1000);
+    expect(r.ok).toBe(true);
+    expect(r.alertType).toBe('rh');
+    expect(r.durationMs).toBe(4 * 3600 * 1000);
+  });
+
+  test('R4-F: gibberish text → ok=false, no reply (capture pipeline owns it)', () => {
+    const r = parseSnoozeCommand('logged 5 jars in tent A', 0);
+    expect(r.ok).toBe(false);
+    expect(r.reply == null || r.reply === '').toBe(true);
+  });
+
+  test('R4-G: "snooze pi banana" (snooze-prefix-but-malformed) → fuzzyReply with help text', () => {
+    const r = parseSnoozeCommand('snooze pi banana', 0);
+    expect(r.ok).toBe(false);
+    expect(typeof r.reply).toBe('string');
+    expect(r.reply.length).toBeGreaterThan(0);
+  });
+});
+
 describe('exports', () => {
   test('VALID_ALERT_TYPES is an array with expected types', () => {
     expect(VALID_ALERT_TYPES).toContain('rh');
