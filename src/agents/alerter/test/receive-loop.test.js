@@ -70,12 +70,14 @@ describe('createReceiveLoop', () => {
     expect(dispatched[0].untilMs).toBeGreaterThan(nowMs);
   });
 
-  test('Test B: invalid command triggers help-text reply, no dispatch', async () => {
+  test('Test B: snooze-prefixed malformed command triggers help-text reply, no dispatch', async () => {
+    // 25-05: only snooze-prefixed malformed text triggers fuzzy help; arbitrary text
+    // ("mute rh") now flows to the capture pipeline (covered by capture-fanout test below).
     const dispatched = [];
     const clock = () => Date.now();
 
     server.received.push({
-      envelope: { source: '+1111111111', dataMessage: { message: 'mute rh' } }
+      envelope: { source: '+1111111111', dataMessage: { message: 'snooze rh banana' } }
     });
 
     const client = makeSignalClient(server);

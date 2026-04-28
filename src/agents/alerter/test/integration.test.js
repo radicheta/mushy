@@ -251,8 +251,11 @@ describe('alerter integration', () => {
 
     await new Promise((r) => setTimeout(r, 300));
 
-    // Snooze should block additional sends
-    expect(signalServer.sent).toHaveLength(1);
+    // 25-05: snooze emits an ack reply ("snoozed" or "alerts muted for 24h").
+    // Expect 2 sends: original PROBLEM + ack. No additional alert sends despite
+    // continued OOB humidity events — snooze is gating them.
+    expect(signalServer.sent).toHaveLength(2);
+    expect(signalServer.sent[1].message).toMatch(/snoozed|muted for 24h/i);
   });
 
   test('heartbeat_fires_and_bypasses_cap', async () => {
