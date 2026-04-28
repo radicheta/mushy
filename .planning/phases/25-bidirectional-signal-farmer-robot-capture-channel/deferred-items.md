@@ -1,0 +1,1 @@
+- 25-04 discovery: `config.test.js Test A` fails when DASHBOARD_URL env var is exported by outer shell — test asserts default but `process.env.DASHBOARD_URL=http://100.96.10.66:8080/` leaks in. Pre-existing on main; not caused by this plan. Fix: scrub env in beforeEach or accept default-only assertion conditional on env-unset.
