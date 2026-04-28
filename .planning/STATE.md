@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 25-04-PLAN.md (llm-client + sensor-snapshot, 12 tests green)
-last_updated: "2026-04-28T00:32:32.815Z"
-last_activity: 2026-04-28 — Completed 25-04 (llm-client + sensor-snapshot, 12 tests green)
+stopped_at: Completed 25-05-PLAN.md (bidirectional capture channel — all 7 farmer UATs PASS)
+last_updated: "2026-04-28T17:19:48.764Z"
+last_activity: 2026-04-28
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 11
-  completed_plans: 10
-  percent: 91
+  completed_plans: 11
+  percent: 100
 ---
 
 # Project State
@@ -27,11 +27,11 @@ See: .planning/PROJECT.md (updated 2026-04-18)
 
 Milestone: v1.4 — Vision & Growth Insights (5 phases, 2 complete)
 Phase: 25 — EXECUTING
-Plan: 4 of 5
-Status: Executing Phase 25
-Last activity: 2026-04-27 — Completed 25-04 (llm-client + sensor-snapshot, 12 tests green)
+Plan: 5 of 5
+Status: Ready to execute
+Last activity: 2026-04-28
 
-Progress: [█████████░] 91%
+Progress: [██████████] 100%
 
 **Carried from v1.3 (not blocking v1.4):**
 
@@ -97,6 +97,7 @@ Progress: [█████████░] 91%
 - [Phase 25-03] Smoke uses literal /data path (no .resolve()) — symlinked /data on elder-plops would defeat in-container V12 ALLOWED_ROOT
 - [Phase 25-04] SYSTEM_PROMPT locked verbatim — changes require new plan; max_tokens=150 caps prompt-injection blast radius (D-12)
 - [Phase 25-04] MAX_HISTORY_ROWS=20 cap on 24h history (D-10); slice(-20) keeps oldest-first
+- [Phase 25-05] D-03 capture-error indicator narrowed at ship: row.degraded=true persists for transcribe failures (UAT-7) but NOT for LLM-compose failures (UAT-5) — fallback writes only the reply column. Operationally acceptable; gap tracked in deferred-items.md.
 
 ### Pending Todos
 
@@ -114,8 +115,8 @@ Progress: [█████████░] 91%
 
 ## Session Continuity
 
-Last session: 2026-04-28T00:32:32.810Z
-Stopped at: Completed 25-04-PLAN.md (llm-client + sensor-snapshot, 12 tests green)
+Last session: 2026-04-28T17:19:48.758Z
+Stopped at: Completed 25-05-PLAN.md (bidirectional capture channel — all 7 farmer UATs PASS)
 Next up: Phase 25 pre-gate spike (signal-cli primary re-registration via 4G router SIM) — must close before `/gsd:plan-phase 25`
 
 ---
