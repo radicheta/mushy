@@ -31,7 +31,7 @@ function createReceiveLoop({
   // Sender whitelist (T-17-02 / R7): only process envelopes from the registered
   // Signal sender or recipient. All other sources are dropped.
   const allowedSenders = new Set(
-    [config.signalSender, config.signalRecipient].filter(Boolean)
+    [config.signalSender, config.signalRecipient, ...(config.signalAdditionalSenders || [])].filter(Boolean)
   );
 
   async function tick() {
