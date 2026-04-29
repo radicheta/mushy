@@ -23,3 +23,26 @@ which yields the green 38/38 expected.
 **Why deferred:** Pre-existing (4+ months old), affects only dev-loop pytest. The colcon-pytest production invocation runs each file in its own pytest process via the entrypoint hook, so CI is unaffected. Phase 26 does not introduce or worsen this issue.
 
 **Suggested fix (future):** Refactor `test_camera.py` to use `pytest.fixture(autouse=False)` for sys.modules injection, scoped to test_camera tests only. Tracked under future tech-debt cleanup.
+
+## Process miss: slot-2 was contract-tested at the bridge but invisible to the farmer
+
+**Surfaced:** UAT-8 attempt 2026-04-29.
+
+**Symptom:** `/fc1/humidity_2` and `/fc1/temperature_2` were publishing on the Pi (Plan 26-01 ✓), the bridge was subscribing and writing to Timescale (Plan 26-02 ✓), and `/history/fc.humidity_2` would have worked — *except* that two pieces of plumbing tying it to the user-facing UI were never touched:
+
+1. `src/mission-control/bridge/src/index.js` — `ALLOWED_TOPICS` allowlist for the history endpoint (line 346) listed only the original 4 keys; slot-2 history requests would 400.
+2. `src/mission-control/frontend/plugins/fruiting-chamber/plugin.js` — `SENSORS` array (line 15) and `fieldToKey` map (line 265) advertised only the original 4 sensors; slot-2 had no telemetry object in the OpenMCT tree, so the farmer literally could not pull it onto a plot.
+
+The farmer attempted UAT-8 and reported "I only see one humidity in MC" — that was the diagnostic that surfaced the miss. Patched same session (commit `2b5ae75`).
+
+**Why this happened (process gap, not a code defect):** Plan 26-02 was scoped as "Bridge slot-2 forwarding (VOLATILE-QoS subs for `fc1/temperature_2` & `fc1/humidity_2` → WS broadcast + TimescaleDB)". The plan was completed exactly as written — the bridge does forward, broadcast, and persist. But the *demand* side — what makes the data appear in the farmer's UI — is split across:
+- the bridge's own history endpoint allowlist (server-side gate), and
+- the OpenMCT plugin's sensor/dispatch tables (client-side discovery).
+
+Neither was named in any plan, because plan-26-03 was scoped to alerter changes, not UI plumbing.
+
+**Lesson for future "expose new telemetry" phases:** the unit of work is not "publish + bridge + persist" — it's the full demand chain ending at the UI element the farmer interacts with. A plan that adds a new `/fc1/foo` topic should explicitly enumerate every gate between publisher and a click-able OpenMCT object: ROS publisher → bridge subscriber → DB write → bridge `ALLOWED_TOPICS` (history) → bridge WS broadcast field → OpenMCT plugin `SENSORS` entry → OpenMCT plugin `fieldToKey` entry → tree composition. Six of the eight were touched in 26-01/26-02; the two history+plugin steps weren't.
+
+**Concrete suggestion:** the plan-template (or the plan-checker agent) for "new telemetry" phases should include a checklist verifying *every* gate is named in at least one plan task. Equally, a verification script that diffs `bridge ALLOWED_TOPICS` vs `Timescale topics with rows in last 1h` vs `OpenMCT plugin SENSORS keys` would have caught this in seconds.
+
+**Why captured here, not as a backlog phase:** this is process/template work, not chamber feature work — belongs adjacent to GSD plan templates, not the product roadmap.
