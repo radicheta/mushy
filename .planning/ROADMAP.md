@@ -107,6 +107,7 @@ Full v1.4 narrative + per-phase scope: `.planning/milestones/v1.4-ROADMAP.md`.
 | 23. Time-lapse composition (ffmpeg) | v1.4 | 3/3 | Complete    | 2026-04-27 |
 | 24. ML vision events via ComfyUI | v1.4 | — | Depends on 21; pre-gate: ComfyUI-as-prod hardening | — |
 | 25. Bidirectional Signal — farmer↔robot capture channel | v1.4 | 2/5 | Wave 1 complete (25-01 + 25-02) — receive pipe unblocked, capture persistence backbone GREEN. Waves 2–4 pending. | — |
+| 26. Dual sensor publishing + offline alarms (SHT30/SCD41) | v1.4 | 3/3 | Complete — UAT-8 PASS 2026-04-29 (farmer-eyeballed slot-1/slot-2 overlay, SCD41 clipping confirmed) | 2026-04-29 |
 
 ### Phase 23: Time-lapse composition (ffmpeg)
 
@@ -179,9 +180,9 @@ milestone. Promote with `/gsd:review-backlog` when ready.
 **Plans:** 3 plans
 
 Plans:
-- [ ] 26-01-PLAN.md — Pi-side dual publishers + freshness (fc_sensors.py refactor, fc_controller.py sensor_health KeyValue extension, pytest test_sensors.py); Wave 1; D-01/D-02/D-03
-- [ ] 26-02-PLAN.md — Bridge slot-2 forwarding (VOLATILE-QoS subs for fc1/temperature_2 & fc1/humidity_2 → WS broadcast + TimescaleDB); Wave 2 (depends on 26-01); D-02/D-03
-- [ ] 26-03-PLAN.md — Alerter sht30/scd41 alert types + snooze grammar + ALERT_SENSOR_OFFLINE_MIN env (state.js, rules.js, index.js, message.js, snooze.js, config.js, jest tests, docker-compose.override.yml); Wave 2 (depends on 26-01); D-04/D-05/D-06
+- [x] 26-01-PLAN.md — Pi-side dual publishers + freshness (fc_sensors.py refactor, fc_controller.py sensor_health KeyValue extension, pytest test_sensors.py); Wave 1; D-01/D-02/D-03
+- [x] 26-02-PLAN.md — Bridge slot-2 forwarding (VOLATILE-QoS subs for fc1/temperature_2 & fc1/humidity_2 → WS broadcast + TimescaleDB); Wave 2 (depends on 26-01); D-02/D-03
+- [x] 26-03-PLAN.md — Alerter sht30/scd41 alert types + snooze grammar + ALERT_SENSOR_OFFLINE_MIN env (state.js, rules.js, index.js, message.js, snooze.js, config.js, jest tests, docker-compose.override.yml); Wave 2 (depends on 26-01); D-04/D-05/D-06
 
 ---
 *Roadmap created 2026-03-28. v1.2.1 shipped 2026-04-18.*

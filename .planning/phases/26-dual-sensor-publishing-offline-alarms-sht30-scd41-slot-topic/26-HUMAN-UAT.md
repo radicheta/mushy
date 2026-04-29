@@ -46,14 +46,16 @@ expected: Plug the SHT30 back into fc1's I2C bus (or replace if hardware-faulty)
   - `ros2 topic echo /fc1/sensor_health --once` shows `sht30_fresh: 'true'`
   - Alerter sends `[RECOVERY] FC-1 · Primary Humidity Sensor offline back` on Signal (proves D-06 symmetric recovery)
   - In Mission Control, plot slot-1 RH (`/fc1/humidity`) vs slot-2 RH (`/fc1/humidity_2`) — verify the delta the phase was built to surface (SCD41 RH suspected ~4% high per ROADMAP). One eyeball on the overlay is the acceptance criterion.
-result: [pending] — phase-motivation verification. SHT30 has been offline for weeks per farmer 2026-04-25; we deployed all the dual-publish code without ever seeing SHT30 actually publish through it. Until this item passes, only the fallback half of the dual-sensor contract has been observed live.
+result: [PASS — 2026-04-29] SHT30 reinstalled 2026-04-27 and live-verified this session: `frame_id: sht30` on `/fc1/temperature`, `sht30_fresh: 'true'` in sensor_health. SHT30 RH ~93.4%, SCD41 RH pegged at 100% — SCD41 clipping confirmed by farmer eyeball on the slot-1/slot-2 overlay (delta is more dramatic than the suspected ~4% high because chamber is cold + saturated today; SCD41's RH reading is unreliable past ~95% — exactly the failure mode dual-publish was built to surface). Sign-off from farmer.
+
+**Post-mortem note (carried into deferred-items):** the slot-2 overlay didn't actually exist in MC until UAT-8 was attempted — bridge forwarded slot-2 to Timescale + WS fine, but the bridge history allowlist (`ALLOWED_TOPICS`) and OpenMCT plugin (`SENSORS` array + `fieldToKey`) were never extended for slot-2. Plan-26-02 contract-tested the bridge half but missed the user-visible half. Patched same session (commit `2b5ae75`).
 
 ## Summary
 
 total: 8
-passed: 3
+passed: 4
 issues: 0
-pending: 3
+pending: 2
 skipped: 1
 blocked: 1
 
