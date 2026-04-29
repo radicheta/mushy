@@ -343,7 +343,7 @@ app.get('/farmer/summary', (req, res) => {
 });
 
 // Allowlist for history endpoint topics — prevents SQL injection via topic param (T-07-04)
-const ALLOWED_TOPICS = ['fc.humidity', 'fc.temperature', 'fc.co2', 'fc.humidifier'];
+const ALLOWED_TOPICS = ['fc.humidity', 'fc.temperature', 'fc.co2', 'fc.humidifier', 'fc.humidity_2', 'fc.temperature_2'];
 
 // Server-side downsampling: choose bucket interval based on requested time range (D-06)
 // <=2h -> ~1440 pts at 5s; <=24h -> ~1440 pts at 1min; <=7d -> ~1008 pts at 10min; >7d -> 1hr

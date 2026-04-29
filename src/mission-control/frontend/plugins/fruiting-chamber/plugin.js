@@ -53,6 +53,26 @@
             min: 0,
             max: 1,
             type: 'actuator'
+        },
+        {
+            identifier: { namespace: 'fruiting-chamber', key: 'fc.humidity_2' },
+            name: 'Humidity (SCD41)',
+            unit: '%',
+            topic: '/fc1/humidity_2',
+            msgType: 'sensor_msgs/msg/RelativeHumidity',
+            extract: function (msg) { return msg.relative_humidity * 100; },
+            min: 50,
+            max: 100
+        },
+        {
+            identifier: { namespace: 'fruiting-chamber', key: 'fc.temperature_2' },
+            name: 'Temperature (SCD41)',
+            unit: '°C',
+            topic: '/fc1/temperature_2',
+            msgType: 'sensor_msgs/msg/Temperature',
+            extract: function (msg) { return msg.temperature; },
+            min: 10,
+            max: 35
         }
     ];
 
@@ -263,10 +283,12 @@
                     // Map raw broadcast field names to sensor keys for dispatch
                     // index.js broadcasts {humidity, temperature, co2, humidifier, timestamp}
                     var fieldToKey = {
-                        humidity:    'fc.humidity',
-                        temperature: 'fc.temperature',
-                        co2:         'fc.co2',
-                        humidifier:  'fc.humidifier'
+                        humidity:      'fc.humidity',
+                        temperature:   'fc.temperature',
+                        co2:           'fc.co2',
+                        humidifier:    'fc.humidifier',
+                        humidity_2:    'fc.humidity_2',
+                        temperature_2: 'fc.temperature_2'
                     };
 
                     Object.keys(fieldToKey).forEach(function (field) {
