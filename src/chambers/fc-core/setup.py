@@ -34,6 +34,7 @@ setup(
     entry_points={
         'console_scripts': [
             'fc_controller = fc_core.fc_controller:main',
+            'fc_pwm_driver = fc_core.fc_pwm_driver:main',
             'fc_sensors = fc_core.fc_sensors:main',
             'fc_display = fc_core.fc_display:main',
             'fc_telemetry = fc_core.fc_telemetry:main',
