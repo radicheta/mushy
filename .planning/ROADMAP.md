@@ -129,6 +129,16 @@ PID-first shape (locked 2026-05-01 with farmer): farmer wants condensation/evapo
 | 30. Time-of-day mode scheduling | v1.5 | 0/? | Not started | — |
 | 31. Experimental forcing modes (condensation/evaporation) | v1.5 | 0/? | Not started | — |
 
+### Phase 27: PID + time-proportional duty-cycle primitive
+
+**Goal:** Replace bang-bang humidifier control with a PID loop that emits a 0.0–1.0 duty cycle on `fc1/actuators/humidifier_duty`, driven onto the existing SSR via a slow-PWM actuator (120s window, 10s min ON pulse) plus a "Mode C" full-ON bypass when far from setpoint. Closes the structural ±2% RH ceiling proven 2026-04-11. Acceptance: ±0.5% RH over a 2h farmer-attested soak (HUMID-04). Ships the primitive only — Phase 28 wraps it in named modes.
+
+**Requirements:** HUMID-01, HUMID-02, HUMID-03, HUMID-04.
+
+**CONTEXT.md:** `.planning/phases/27-pid-time-proportional-duty-cycle-primitive/27-CONTEXT.md`. GSD workflows use `phase=27`.
+
+**Dependencies:** independent of v1.4. Builds on Phase 03 safety contracts, Phase 15 grace, Phase 16 sensor_health, Phase 26 slot-1 fallback. Calibration foundation in `.planning/phases/999.9-pid-time-proportional-humidity-control/CALIBRATION-FINDINGS-2026-04-11.md`.
+
 ## Backlog (parking lot)
 
 These are ideas captured during v1.0/v1.1 execution but not yet scoped into a
