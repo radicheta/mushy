@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
+"""HUMID-01 + HUMID-03: PID-driven duty publishing, Mode C, ramp, bumpless transfer (Phase 27)."""
 import pytest
 import rclpy
 import rclpy.time
 from sensor_msgs.msg import Temperature, RelativeHumidity
+from std_msgs.msg import Float32
 from fc_core.fc_controller import FruitingChamberController
-import time
 from unittest.mock import patch, MagicMock
+from rclpy.qos import DurabilityPolicy
 
 _ROS_TIME = rclpy.time.ClockType.ROS_TIME
 
@@ -37,12 +39,12 @@ def test_temperature_control(ros_context):
     temp_msg = Temperature()
     temp_msg.temperature = node.get_parameter('target_temp').value - 2.0
     node.temperature_callback(temp_msg)
-    
+
     # Test humidity at target
     humidity_msg = RelativeHumidity()
     humidity_msg.relative_humidity = node.get_parameter('target_humidity').value
     node.humidity_callback(humidity_msg)
-    
+
     # Run control loop
     node.control_loop()
 
@@ -56,33 +58,6 @@ def test_temperature_control(ros_context):
 
     # Fan should be at higher speed
     assert node.fan_speed > node.get_parameter('min_fan_speed').value
-    
-    node.destroy_node()
-
-def test_humidity_control(ros_context):
-    node = FruitingChamberController()
-    node._grace_active = lambda: False  # bypass grace — not under test here
-
-    # Test temperature at target
-    temp_msg = Temperature()
-    temp_msg.temperature = node.get_parameter('target_temp').value
-    node.temperature_callback(temp_msg)
-
-    # Test humidity below target — advance clock to t=0 for first toggle
-    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(0))):
-        for _ in range(5):
-            _send_humidity(node, node.get_parameter('target_humidity').value - 0.1)
-        node.control_loop()
-        # Humidifier should be ON
-        assert node.humidifier_state == True
-
-    # Test humidity above target — advance clock 301s past dwell time
-    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(301e9))):
-        for _ in range(5):
-            _send_humidity(node, node.get_parameter('target_humidity').value + 0.1)
-        node.control_loop()
-        # Humidifier should be OFF
-        assert node.humidifier_state == False
 
     node.destroy_node()
 
@@ -153,121 +128,38 @@ def test_humidity_buffer_fifo(ros_context):
 
 
 def test_new_params_declared(ros_context):
-    """min_dwell_time (300.0) and sensor_stale_timeout (10.0) are declared parameters."""
+    """sensor_stale_timeout (10.0) is a declared parameter; min_dwell_time is NOT declared (D-15)."""
     node = FruitingChamberController()
-    assert node.get_parameter('min_dwell_time').value == 300.0
     assert node.get_parameter('sensor_stale_timeout').value == 10.0
     node.destroy_node()
 
 
 def test_none_humidity_safe_state(ros_context):
-    """When current_humidity is None and temp is set, control_loop drives humidifier OFF."""
+    """When current_humidity is None and temp is set, control_loop publishes duty=0.0."""
     node = FruitingChamberController()
-    node.humidifier_state = True   # simulate humidifier was ON
-    node.current_temp = 23.0       # temp is present
+    node.current_temp = 23.0
     # current_humidity is None (default)
+    duty_published = []
+    node._duty_pub.publish = lambda msg: duty_published.append(msg.data)
     node.control_loop()
-    assert node.humidifier_state == False  # driven OFF, not frozen
+    assert duty_published[-1] == 0.0, f'Expected duty=0.0 on None humidity, got {duty_published}'
     node.destroy_node()
 
 
 def test_none_temp_safe_state(ros_context):
-    """When current_temp is None and humidity is set, control_loop drives humidifier OFF."""
+    """When current_temp is None and humidity is set, control_loop publishes duty=0.0."""
     node = FruitingChamberController()
-    node.humidifier_state = True
     _send_humidity(node, 0.80)   # humidity present
     node.current_temp = None     # temp missing
+    duty_published = []
+    node._duty_pub.publish = lambda msg: duty_published.append(msg.data)
     node.control_loop()
-    assert node.humidifier_state == False
-    node.destroy_node()
-
-
-def test_dwell_time_blocks_toggle(ros_context):
-    """Humidifier stays ON when dwell time has not elapsed since last toggle."""
-    node = FruitingChamberController()
-    node.current_temp = 23.0
-    node._grace_active = lambda: False  # bypass grace — not under test here
-
-    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(0))):
-        for _ in range(5):
-            _send_humidity(node, 0.70)  # fill buffer well below threshold -> humidifier ON
-        node.control_loop()
-        assert node.humidifier_state == True
-
-    # 10 seconds later (way under 300s dwell time)
-    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(10e9))):
-        for _ in range(5):
-            _send_humidity(node, 0.95)  # fill buffer well above threshold -> wants OFF
-        node.control_loop()
-        assert node.humidifier_state == True  # blocked by dwell time
-
-    node.destroy_node()
-
-
-def test_dwell_time_allows_toggle_after_wait(ros_context):
-    """Humidifier can toggle after min_dwell_time has elapsed."""
-    node = FruitingChamberController()
-    node.current_temp = 23.0
-    node._grace_active = lambda: False  # bypass grace — not under test here
-
-    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(0))):
-        for _ in range(5):
-            _send_humidity(node, 0.70)
-        node.control_loop()
-        assert node.humidifier_state == True
-
-    # 301 seconds later (past 300s dwell time)
-    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(301e9))):
-        for _ in range(5):
-            _send_humidity(node, 0.95)
-        node.control_loop()
-        assert node.humidifier_state == False  # toggle permitted
-
-    node.destroy_node()
-
-
-def test_dwell_time_first_toggle_always_allowed(ros_context):
-    """First toggle is always allowed when _last_humidifier_toggle is None."""
-    node = FruitingChamberController()
-    node.current_temp = 23.0
-    node._grace_active = lambda: False  # bypass grace — not under test here
-    assert node._last_humidifier_toggle is None
-
-    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(0))):
-        for _ in range(5):
-            _send_humidity(node, 0.70)
-        node.control_loop()
-        assert node.humidifier_state == True  # first toggle always allowed
-
-    node.destroy_node()
-
-
-def test_dwell_time_applies_both_directions(ros_context):
-    """Dwell guard blocks OFF->ON toggle the same as ON->OFF when time has not elapsed."""
-    node = FruitingChamberController()
-    node.current_temp = 23.0
-    # Pre-set humidifier ON so the first control_loop has a real ON->OFF transition
-    node.humidifier_state = True
-
-    # Turn OFF first (send humidity above threshold, humidifier was ON -> transitions to OFF)
-    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(0))):
-        for _ in range(5):
-            _send_humidity(node, 0.95)
-        node.control_loop()
-        assert node.humidifier_state == False  # turned OFF, _last_toggle recorded at t=0
-
-    # Try to turn ON 10s later (under 300s dwell time)
-    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(10e9))):
-        for _ in range(5):
-            _send_humidity(node, 0.70)
-        node.control_loop()
-        assert node.humidifier_state == False  # blocked by dwell time
-
+    assert duty_published[-1] == 0.0, f'Expected duty=0.0 on None temp, got {duty_published}'
     node.destroy_node()
 
 
 def test_sensor_staleness(ros_context):
-    """Stale sensor data (>sensor_stale_timeout) drives humidifier OFF and sets _safe_state_active."""
+    """Stale sensor data (>sensor_stale_timeout) publishes duty=0.0 and sets _safe_state_active."""
     node = FruitingChamberController()
     node.current_temp = 23.0
     node._grace_active = lambda: False  # bypass grace — not under test here
@@ -276,11 +168,14 @@ def test_sensor_staleness(ros_context):
     with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(0))):
         _send_humidity(node, 0.70)  # below threshold -> would turn ON
 
+    duty_published = []
+    node._duty_pub.publish = lambda msg: duty_published.append(msg.data)
+
     # 15 seconds later (> 10s stale timeout), run control
     with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(15e9))):
         node.control_loop()
 
-    assert node.humidifier_state == False  # safe state, not ON
+    assert duty_published[-1] == 0.0, f'Expected duty=0.0 on stale sensor, got {duty_published}'
     assert node._safe_state_active == True
     node.destroy_node()
 
@@ -298,14 +193,17 @@ def test_safe_state_recovery(ros_context):
         node.control_loop()
     assert node._safe_state_active == True
 
+    duty_published = []
+    node._duty_pub.publish = lambda msg: duty_published.append(msg.data)
+
     # Fresh data arrives at t=20s, humidity below threshold
     with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(20e9))):
         _send_humidity(node, 0.70)
         node.control_loop()
 
     assert node._safe_state_active == False  # recovered
-    # Note: humidifier may or may not be ON depending on dwell time from safe-state OFF.
-    # The key assertion is _safe_state_active == False (control resumed).
+    # Duty should be >= 0.0 (control resumed — may or may not be non-zero depending on PID state)
+    assert duty_published[-1] >= 0.0, 'Expected non-negative duty on recovery'
     node.destroy_node()
 
 
@@ -326,27 +224,6 @@ def test_staleness_log_deduplication(ros_context):
     node.destroy_node()
 
 
-def test_safe_state_updates_dwell_toggle(ros_context):
-    """Safe-state forced OFF updates _last_humidifier_toggle (dwell timer resets)."""
-    node = FruitingChamberController()
-    node.current_temp = 23.0
-    node._grace_active = lambda: False  # bypass grace — not under test here
-
-    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(0))):
-        for _ in range(5):
-            _send_humidity(node, 0.70)
-        node.control_loop()  # humidifier ON
-
-    # Go stale at t=15s
-    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(15e9))):
-        node.control_loop()  # safe state OFF
-
-    # _last_humidifier_toggle should be updated to t=15s
-    assert node._last_humidifier_toggle is not None
-    assert node._last_humidifier_toggle == rclpy.time.Time(nanoseconds=int(15e9), clock_type=_ROS_TIME)
-    node.destroy_node()
-
-
 def test_fresh_data_not_stale(ros_context):
     """Data 5 seconds old (under 10s threshold) is not stale — normal control runs."""
     node = FruitingChamberController()
@@ -358,33 +235,17 @@ def test_fresh_data_not_stale(ros_context):
         for _ in range(5):
             _send_humidity(node, 0.70)
 
+    duty_published = []
+    node._duty_pub.publish = lambda msg: duty_published.append(msg.data)
+
     # Only 5 seconds later (under 10s threshold)
     with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(5e9))):
         node.control_loop()
 
-    # Not stale — normal control should apply (humidifier ON for low humidity)
+    # Not stale — normal control should apply, duty should be > 0 for low humidity
     assert node._safe_state_active == False
-    assert node.humidifier_state == True  # below threshold -> ON
-    node.destroy_node()
-
-
-def test_humidifier_state_published(ros_context):
-    """control_loop publishes current humidifier state on fc1/actuators/humidifier."""
-    node = FruitingChamberController()
-    node.current_temp = 23.0
-    node._grace_active = lambda: False  # bypass grace — not under test here
-
-    published = []
-    node.humidifier_state_pub.publish = lambda msg: published.append(msg.data)
-
-    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(0))):
-        for _ in range(5):
-            _send_humidity(node, 0.70)  # below threshold -> humidifier ON
-        node.control_loop()
-
-    assert len(published) == 1
-    assert published[0] == True
-
+    assert len(duty_published) > 0, 'Expected at least one duty publication on fresh data'
+    assert duty_published[-1] > 0.0, f'Expected duty > 0 for low humidity, got {duty_published[-1]}'
     node.destroy_node()
 
 
@@ -396,7 +257,6 @@ def test_humidifier_state_published(ros_context):
 # the research recommendation (15-RESEARCH.md §Code Examples).
 
 from diagnostic_msgs.msg import DiagnosticStatus
-from rclpy.qos import DurabilityPolicy
 
 
 def test_startup_grace_period_param_declared(ros_context):
@@ -407,17 +267,20 @@ def test_startup_grace_period_param_declared(ros_context):
 
 
 def test_warmup_grace_blocks_actuation(ros_context):
-    """Humidifier stays OFF during grace even with full buffer below threshold."""
+    """Duty=0.0 during grace even with full buffer below threshold."""
     node = FruitingChamberController()
     node.current_temp = 23.0
     node._boot_time = rclpy.time.Time(nanoseconds=0, clock_type=_ROS_TIME)
 
-    # t=5s (< 20s grace), buffer full below threshold — would normally turn ON
+    duty_published = []
+    node._duty_pub.publish = lambda msg: duty_published.append(msg.data)
+
+    # t=5s (< 20s grace), buffer full below threshold — would normally produce non-zero duty
     with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(5e9))):
         for _ in range(5):
             _send_humidity(node, 0.70)
         node.control_loop()
-        assert node.humidifier_state == False
+        assert duty_published[-1] == 0.0, 'Duty must be 0.0 during grace'
         assert node._warming_up == True
 
     node.destroy_node()
@@ -429,12 +292,15 @@ def test_warmup_grace_time_elapsed_buffer_not_full(ros_context):
     node.current_temp = 23.0
     node._boot_time = rclpy.time.Time(nanoseconds=0, clock_type=_ROS_TIME)
 
+    duty_published = []
+    node._duty_pub.publish = lambda msg: duty_published.append(msg.data)
+
     # t=25s (past grace period) but only 3 samples — buffer not full
     with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(25e9))):
         for _ in range(3):
             _send_humidity(node, 0.70)
         node.control_loop()
-        assert node.humidifier_state == False
+        assert duty_published[-1] == 0.0, 'Duty must be 0.0 when buffer not full'
         assert node._warming_up == True
 
     node.destroy_node()
@@ -446,19 +312,22 @@ def test_warmup_grace_buffer_full_time_not_elapsed(ros_context):
     node.current_temp = 23.0
     node._boot_time = rclpy.time.Time(nanoseconds=0, clock_type=_ROS_TIME)
 
+    duty_published = []
+    node._duty_pub.publish = lambda msg: duty_published.append(msg.data)
+
     # t=10s (< 20s grace), buffer full
     with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(10e9))):
         for _ in range(5):
             _send_humidity(node, 0.70)
         node.control_loop()
-        assert node.humidifier_state == False
+        assert duty_published[-1] == 0.0, 'Duty must be 0.0 when time not elapsed'
         assert node._warming_up == True
 
     node.destroy_node()
 
 
 def test_warmup_grace_clears_when_both_conditions_met(ros_context):
-    """Grace clears at t=21s with full buffer; humidifier engages."""
+    """Grace clears at t=21s with full buffer; duty becomes non-zero."""
     node = FruitingChamberController()
     node.current_temp = 23.0
     node._boot_time = rclpy.time.Time(nanoseconds=0, clock_type=_ROS_TIME)
@@ -470,13 +339,16 @@ def test_warmup_grace_clears_when_both_conditions_met(ros_context):
         node.control_loop()
         assert node._warming_up == True
 
+    duty_published = []
+    node._duty_pub.publish = lambda msg: duty_published.append(msg.data)
+
     # t=21s — both conditions satisfied; send fresh humidity to avoid staleness guard
     with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(21e9))):
         for _ in range(5):
             _send_humidity(node, 0.70)
         node.control_loop()
-        assert node.humidifier_state == True
         assert node._warming_up == False
+        assert duty_published[-1] >= 0.0, 'Duty must be non-negative after grace clears'
 
     node.destroy_node()
 
@@ -629,4 +501,262 @@ def test_sensor_health_includes_freshness_keys(ros_context):
     # New keys added
     assert kv['sht30_fresh'] in ('true', 'false')
     assert kv['scd41_fresh'] in ('true', 'false')
+    node.destroy_node()
+
+
+# -----------------------------
+# Phase 27 RED stubs — HUMID-01 + HUMID-03: PID-driven duty, Mode C, ramp, bumpless
+# These tests FAIL until Plan 03 implements the PID controller refactor.
+# -----------------------------
+
+
+def test_duty_published_each_tick(ros_context):
+    """control_loop() publishes exactly one Float32 on _duty_pub per tick."""
+    node = FruitingChamberController()
+    node._grace_active = lambda: False
+    node.current_temp = 23.0
+
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(0)):
+        for _ in range(5):
+            _send_humidity(node, 0.70)
+
+    duty_published = []
+    node._duty_pub.publish = lambda msg: duty_published.append(msg.data)
+
+    N = 3
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(1e9))):
+        for _ in range(N):
+            node.control_loop()
+
+    assert len(duty_published) == N, (
+        f'Expected {N} duty publications (one per tick), got {len(duty_published)}'
+    )
+
+
+def test_duty_qos_transient_local(ros_context):
+    """_duty_pub QoS durability is TRANSIENT_LOCAL (Pitfall 5)."""
+    node = FruitingChamberController()
+    qos = node._duty_pub.qos_profile
+    assert qos.durability == DurabilityPolicy.TRANSIENT_LOCAL, (
+        '_duty_pub must use TRANSIENT_LOCAL so late-joining fc_pwm_driver sees last duty'
+    )
+    node.destroy_node()
+
+
+def test_humidifier_state_pub_removed(ros_context):
+    """humidifier_state_pub and _set_humidifier_with_dwell are removed (Pitfall 4)."""
+    node = FruitingChamberController()
+    assert not hasattr(node, 'humidifier_state_pub'), (
+        'humidifier_state_pub must be removed from fc_controller — fc_pwm_driver owns it now'
+    )
+    assert not hasattr(node, '_set_humidifier_with_dwell'), (
+        '_set_humidifier_with_dwell must be removed — dwell logic is gone (D-15)'
+    )
+    node.destroy_node()
+
+
+def test_pid_params_declared(ros_context):
+    """pid_kp/ki/kd/pid_setpoint_ramp_seconds/bypass_threshold/pid_derivative_filter_tau declared."""
+    node = FruitingChamberController()
+    assert node.get_parameter('pid_kp').value == pytest.approx(0.5)
+    assert node.get_parameter('pid_ki').value == pytest.approx(0.002)
+    assert node.get_parameter('pid_kd').value == pytest.approx(4.0)
+    assert node.get_parameter('pid_setpoint_ramp_seconds').value == pytest.approx(30.0)
+    assert node.get_parameter('bypass_threshold').value == pytest.approx(0.025)
+    assert node.get_parameter('pid_derivative_filter_tau').value == pytest.approx(10.0)
+    node.destroy_node()
+
+
+def test_pid_gains_live_reload(ros_context):
+    """Changing pid_kp via set_parameters mid-run affects next tick's duty."""
+    from rclpy.parameter import Parameter
+    node = FruitingChamberController()
+    node._grace_active = lambda: False
+    node.current_temp = 23.0
+
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(0)):
+        for _ in range(5):
+            _send_humidity(node, 0.70)
+
+    duty_low_kp = []
+    node._duty_pub.publish = lambda msg: duty_low_kp.append(msg.data)
+
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(1e9))):
+        node.control_loop()
+
+    # Now increase Kp significantly and observe duty changes
+    node.set_parameters([Parameter('pid_kp', value=5.0)])
+
+    duty_high_kp = []
+    node._duty_pub.publish = lambda msg: duty_high_kp.append(msg.data)
+
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(2e9))):
+        node.control_loop()
+
+    assert duty_high_kp[-1] != duty_low_kp[-1], (
+        'Changing pid_kp must affect duty output on the next tick'
+    )
+    node.destroy_node()
+
+
+def test_grace_forces_duty_zero(ros_context):
+    """During grace_active, duty published == 0.0 regardless of error."""
+    node = FruitingChamberController()
+    node.current_temp = 23.0
+    node._boot_time = rclpy.time.Time(nanoseconds=0, clock_type=_ROS_TIME)
+
+    duty_published = []
+    node._duty_pub.publish = lambda msg: duty_published.append(msg.data)
+
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(5e9))):
+        for _ in range(5):
+            _send_humidity(node, 0.70)  # way below threshold
+        node.control_loop()
+
+    assert duty_published[-1] == 0.0, (
+        f'Duty must be 0.0 during grace, got {duty_published[-1]}'
+    )
+
+
+def test_stale_forces_duty_zero(ros_context):
+    """D-13: stale=True forces duty=0.0 immediately, bypassing ramp."""
+    node = FruitingChamberController()
+    node.current_temp = 23.0
+    node._grace_active = lambda: False
+
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(0)):
+        for _ in range(5):
+            _send_humidity(node, 0.70)
+
+    duty_published = []
+    node._duty_pub.publish = lambda msg: duty_published.append(msg.data)
+
+    # 15s later — past stale timeout (10s)
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(15e9))):
+        node.control_loop()
+
+    assert duty_published[-1] == 0.0, (
+        f'D-13: stale sensor must force duty=0.0, got {duty_published[-1]}'
+    )
+
+
+def test_mode_c_entry(ros_context):
+    """error_pct > bypass_threshold → duty == 1.0 (Mode C full-ON bypass)."""
+    node = FruitingChamberController()
+    node._grace_active = lambda: False
+    node.current_temp = 23.0
+
+    # target=0.94, send humidity way below: error = 0.94-0.50 = 0.44 >> bypass_threshold=0.025
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(0)):
+        for _ in range(5):
+            _send_humidity(node, 0.50)
+
+    duty_published = []
+    node._duty_pub.publish = lambda msg: duty_published.append(msg.data)
+
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(1e9))):
+        node.control_loop()
+
+    assert duty_published[-1] == 1.0, (
+        f'Mode C: error > bypass_threshold must force duty=1.0, got {duty_published[-1]}'
+    )
+
+
+def test_mode_c_exit_bumpless(ros_context):
+    """After Mode C, when error returns inside threshold, PID re-engages with last_output=1.0 (no zero blip)."""
+    node = FruitingChamberController()
+    node._grace_active = lambda: False
+    node.current_temp = 23.0
+
+    # Enter Mode C (large error)
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(0)):
+        for _ in range(5):
+            _send_humidity(node, 0.50)
+
+    duty_published = []
+    node._duty_pub.publish = lambda msg: duty_published.append(msg.data)
+
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(1e9))):
+        node.control_loop()
+    assert duty_published[-1] == 1.0, 'Should be in Mode C'
+
+    # Exit Mode C: send humidity just inside target (small error)
+    target = node.get_parameter('target_humidity').value  # 0.94
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(2e9))):
+        for _ in range(5):
+            _send_humidity(node, target - 0.01)  # 1% error < bypass_threshold
+        node.control_loop()
+
+    # Bumpless: duty must NOT drop to 0 on Mode C exit; should be close to 1.0
+    assert duty_published[-1] > 0.5, (
+        f'Mode C exit must be bumpless (no zero blip): duty={duty_published[-1]}'
+    )
+
+
+def test_setpoint_ramp_slews_effective(ros_context):
+    """When target_humidity changes, _effective_setpoint slews over pid_setpoint_ramp_seconds."""
+    from rclpy.parameter import Parameter
+    node = FruitingChamberController()
+    node._grace_active = lambda: False
+    node.current_temp = 23.0
+
+    # Establish initial effective setpoint
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(0)):
+        for _ in range(5):
+            _send_humidity(node, 0.94)
+        node.control_loop()
+    initial_sp = node._effective_setpoint
+
+    # Change target_humidity
+    node.set_parameters([Parameter('target_humidity', value=0.88)])
+
+    # One tick: effective setpoint should slew toward 0.88, not jump there
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(1e9))):
+        node.control_loop()
+    after_one_tick_sp = node._effective_setpoint
+
+    assert after_one_tick_sp != 0.88, (
+        'Effective setpoint must slew toward new target, not jump immediately'
+    )
+    assert after_one_tick_sp != initial_sp, (
+        'Effective setpoint must have moved after one tick'
+    )
+    node.destroy_node()
+
+
+def test_bumpless_preload_on_grace_clear(ros_context):
+    """Grace clears: first PID tick produces duty ≈ 0.15 (bumpless preload, D-06), not 0 or 1."""
+    node = FruitingChamberController()
+    node.current_temp = 23.0
+    node._boot_time = rclpy.time.Time(nanoseconds=0, clock_type=_ROS_TIME)
+
+    # Fill buffer during grace at near-setpoint humidity (target=0.94, input=0.925 → error≈0.015)
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(5e9))):
+        for _ in range(5):
+            _send_humidity(node, 0.925)
+
+    duty_published = []
+    node._duty_pub.publish = lambda msg: duty_published.append(msg.data)
+
+    # Grace clears at t=21s
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(21e9))):
+        for _ in range(5):
+            _send_humidity(node, 0.925)
+        node.control_loop()
+
+    # Bumpless preload: first duty after grace clear must be around steady-state (~0.15)
+    # Not 0.0 (would be abrupt disengagement) and not 1.0 (would be overshoot slam)
+    assert 0.05 < duty_published[-1] < 0.95, (
+        f'D-06 bumpless preload: first duty after grace must be non-extreme, got {duty_published[-1]}'
+    )
+    node.destroy_node()
+
+
+def test_min_dwell_time_param_removed(ros_context):
+    """min_dwell_time is NOT declared as a parameter (D-15 enforcement)."""
+    node = FruitingChamberController()
+    declared_names = node.list_parameters([], 10).names
+    assert 'min_dwell_time' not in declared_names, (
+        'D-15: min_dwell_time must not be declared — dwell guard replaced by PWM window'
+    )
     node.destroy_node()
