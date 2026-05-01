@@ -17,3 +17,12 @@ __pycache__/
 # Phase 17: agent node_modules
 src/agents/*/node_modules/
 src/agents/*/package-lock.json
+
+# Mission Control: bridge + timelapse node_modules
+src/mission-control/*/node_modules/
+src/mission-control/*/package-lock.json
+
+# Colcon build artifacts
+build/
+install/
+log/
