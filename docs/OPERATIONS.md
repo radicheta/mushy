@@ -44,7 +44,6 @@ All runtime parameters live in `src/chambers/fc-core/config/fc_config.yaml`. Cur
 | target_temp | 23.0 | °C | Temperature setpoint |
 | target_humidity | 0.80 | 0.0–1.0 | Humidity setpoint (80%) |
 | humidity_tolerance | 0.05 | 0.0–1.0 | Deadband (±5%) |
-| min_dwell_time | 180.0 | seconds | Min time between humidifier toggles (3 min) |
 | sensor_stale_timeout | 10.0 | seconds | Stale data triggers safe state (OFF) |
 | sensor_read_interval | 2.0 | seconds | Time between sensor reads |
 | control_interval | 1.0 | seconds | Time between control updates |
