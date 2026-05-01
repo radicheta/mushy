@@ -3,17 +3,18 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy, HistoryPolicy
 from sensor_msgs.msg import Temperature, RelativeHumidity
-from std_msgs.msg import Bool
-import time
+from std_msgs.msg import Float32
 from collections import deque
 from diagnostic_msgs.msg import DiagnosticStatus, KeyValue
 from datetime import datetime
 from statistics import median
+from fc_core.vendor.simple_pid import PID
+
 
 class FruitingChamberController(Node):
     def __init__(self):
         super().__init__('fc_controller')
-        
+
         # Declare parameters
         self.declare_parameters(
             namespace='',
@@ -23,7 +24,7 @@ class FruitingChamberController(Node):
                 ('humidifier_pin', 17),
                 ('light_pin', 18),
                 ('target_temp', 23.0),
-                ('target_humidity', 0.85),
+                ('target_humidity', 0.94),
                 ('target_light_hours', 12),
                 ('light_start_hour', 6),
                 ('temp_tolerance', 1.0),
@@ -33,12 +34,17 @@ class FruitingChamberController(Node):
                 ('fan_pwm_channel', 0),
                 ('fan_pwm_freq', 25000),
                 ('control_interval', 1.0),
-                ('min_dwell_time', 300.0),
                 ('sensor_stale_timeout', 10.0),
                 ('startup_grace_period', 20.0),
+                ('pid_kp', 0.5),
+                ('pid_ki', 0.002),
+                ('pid_kd', 4.0),
+                ('pid_derivative_filter_tau', 10.0),
+                ('pid_setpoint_ramp_seconds', 30.0),
+                ('bypass_threshold', 0.025),
             ]
         )
-        
+
         # Initialize hardware or simulation
         if not self.get_parameter('actuator_simulation_mode').value:
             import RPi.GPIO as GPIO
@@ -59,11 +65,6 @@ class FruitingChamberController(Node):
             except Exception as e:
                 self.get_logger().warn(f'Hardware PWM not available, fan disabled: {e}')
 
-            # Humidifier control (GPIO)
-            self.humidifier_pin = self.get_parameter('humidifier_pin').value
-            GPIO.setup(self.humidifier_pin, GPIO.OUT)
-            GPIO.output(self.humidifier_pin, GPIO.LOW)
-
             # Light control (GPIO)
             self.light_pin = self.get_parameter('light_pin').value
             GPIO.setup(self.light_pin, GPIO.OUT)
@@ -73,10 +74,9 @@ class FruitingChamberController(Node):
         else:
             # Simulation mode
             self.fan_speed = 0
-            self.humidifier_state = False
             self.light_state = False
             self.get_logger().info('Actuators in simulation mode')
-        
+
         # Create subscribers
         self.temp_sub = self.create_subscription(
             Temperature,
@@ -101,18 +101,29 @@ class FruitingChamberController(Node):
             self.humidity_2_callback,
             10)
 
-        # Actuator state publisher — TRANSIENT_LOCAL so late-joiners get last value (D-01, ACTR-03)
+        # Actuator QoS — TRANSIENT_LOCAL so late-joiners get last value (D-01, ACTR-03)
         actuator_qos = QoSProfile(
             depth=1,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             reliability=ReliabilityPolicy.RELIABLE,
             history=HistoryPolicy.KEEP_LAST,
         )
-        self.humidifier_state_pub = self.create_publisher(
-            Bool, 'fc1/actuators/humidifier', actuator_qos
+
+        # Phase 27: duty-cycle publisher — fc_pwm_driver subscribes to this (HUMID-01)
+        self._duty_pub = self.create_publisher(
+            Float32, 'fc1/actuators/humidifier_duty', actuator_qos
         )
 
-        # Sensor health publisher — TRANSIENT_LOCAL so late-joiners get last state (SENS-01, WARMUP-02)
+        # Phase 27 telemetry: current effective setpoint (post-ramp) and raw PID output
+        self._humidity_target_pub = self.create_publisher(
+            Float32, 'fc1/control/humidity_target', actuator_qos
+        )
+        self._pid_output_pub = self.create_publisher(
+            Float32, 'fc1/control/pid_output', actuator_qos
+        )
+
+        # Sensor health publisher — TRANSIENT_LOCAL so late-joiners get last state
+        # (SENS-01, WARMUP-02)
         self.sensor_health_pub = self.create_publisher(
             DiagnosticStatus, 'fc1/sensor_health', actuator_qos
         )
@@ -122,28 +133,42 @@ class FruitingChamberController(Node):
         self.current_humidity = None
         self._humidity_buffer = deque(maxlen=5)
         self._last_humidity_timestamp = None   # rclpy.time.Time, set in humidity_callback
-        self._last_humidifier_toggle = None    # rclpy.time.Time, set on state change
         self._safe_state_active = False        # log deduplication flag
-        self._dwell_blocked_desired = None     # dedupe DWELL-BLOCK logs per blocked window
 
         # Phase 26: per-physical-sensor freshness tracking
-        self._last_sht30_timestamp = None       # set when slot-1 callback receives frame_id == 'sht30'
+        self._last_sht30_timestamp = None       # set when slot-1 carries frame_id=='sht30'
         self._last_temp2_timestamp = None       # set by temperature_2_callback (always SCD41)
         self._last_humidity2_timestamp = None   # set by humidity_2_callback (always SCD41)
         self._last_sht30_fresh = None           # tri-state; None means "not yet evaluated"
         self._last_scd41_fresh = None
-        
+
         # Startup grace state (SENS-01, WARMUP-01/02/03)
         self._boot_time = self.get_clock().now()
         self._warming_up = True
         self._warmup_signal_published = False
+
+        # Phase 27: PID state init (HUMID-01, HUMID-03)
+        self._pid = PID(
+            Kp=self.get_parameter('pid_kp').value,
+            Ki=self.get_parameter('pid_ki').value,
+            Kd=self.get_parameter('pid_kd').value,
+            setpoint=0.0,                       # error-form: setpoint=0, input=error
+            sample_time=None,                   # driven manually via dt (Pitfall 6)
+            output_limits=(0.0, 1.0),
+            auto_mode=False,                    # start disengaged; engage after grace
+            proportional_on_measurement=False,
+            differential_on_measurement=True,   # avoid derivative kick on setpoint change
+        )
+        self._pid_engaged = False
+        self._effective_setpoint = self.get_parameter('target_humidity').value
+        self._last_tick_ts = None
 
         # Control timer
         self.timer = self.create_timer(
             self.get_parameter('control_interval').value,
             self.control_loop
         )
-        
+
         self.get_logger().info('Fruiting Chamber Controller Node Started')
 
     def temperature_callback(self, msg):
@@ -172,10 +197,10 @@ class FruitingChamberController(Node):
         current_hour = datetime.now().hour
         start_hour = self.get_parameter('light_start_hour').value
         light_hours = self.get_parameter('target_light_hours').value
-        
+
         # Calculate end hour
         end_hour = (start_hour + light_hours) % 24
-        
+
         if start_hour <= end_hour:
             return start_hour <= current_hour < end_hour
         else:
@@ -189,42 +214,6 @@ class FruitingChamberController(Node):
         else:
             self.fan_speed = speed
 
-    def set_humidifier(self, state):
-        if not self.get_parameter('actuator_simulation_mode').value:
-            self.GPIO.output(self.humidifier_pin, self.GPIO.HIGH if state else self.GPIO.LOW)
-        else:
-            self.humidifier_state = state
-
-    def _set_humidifier_with_dwell(self, state):
-        """Set humidifier state, gated by minimum dwell time (D-05, D-06).
-
-        Only used by bang-bang control. Safe-state calls bypass this
-        and call set_humidifier() directly.
-        """
-        current_state = self.get_humidifier_state()
-        if state == current_state:
-            self._dwell_blocked_desired = None
-            return  # no transition needed
-        if self._last_humidifier_toggle is not None:
-            min_dwell = self.get_parameter('min_dwell_time').value
-            elapsed_sec = (
-                self.get_clock().now() - self._last_humidifier_toggle
-            ).nanoseconds / 1e9
-            if elapsed_sec < min_dwell:
-                if self._dwell_blocked_desired != state:
-                    remaining = min_dwell - elapsed_sec
-                    self.get_logger().info(
-                        f'DWELL-BLOCK: humidifier {"ON" if current_state else "OFF"}->'
-                        f'{"ON" if state else "OFF"} delayed by dwell '
-                        f'(elapsed {elapsed_sec:.1f}s < {min_dwell:.0f}s, '
-                        f'{remaining:.1f}s remaining) | RH={self.current_humidity * 100:.2f}%'
-                    )
-                    self._dwell_blocked_desired = state
-                return
-        self.set_humidifier(state)
-        self._last_humidifier_toggle = self.get_clock().now()
-        self._dwell_blocked_desired = None
-
     def set_light(self, state):
         if not self.get_parameter('actuator_simulation_mode').value:
             self.GPIO.output(self.light_pin, self.GPIO.HIGH if state else self.GPIO.LOW)
@@ -237,11 +226,6 @@ class FruitingChamberController(Node):
                 return self.fan_pwm.get_duty_cycle()
             return 0
         return self.fan_speed
-
-    def get_humidifier_state(self):
-        if not self.get_parameter('actuator_simulation_mode').value:
-            return self.GPIO.input(self.humidifier_pin) == self.GPIO.HIGH
-        return self.humidifier_state
 
     def get_light_state(self):
         if not self.get_parameter('actuator_simulation_mode').value:
@@ -264,6 +248,36 @@ class FruitingChamberController(Node):
         if elapsed < self.get_parameter('startup_grace_period').value:
             return True
         return False
+
+    def _engage_pid_bumplessly(self):
+        self._pid.set_auto_mode(True, last_output=0.15)
+        self._pid_engaged = True
+        self.get_logger().info('PID engaged with bumpless preload: duty=0.15')
+
+    def _disengage_pid(self):
+        if self._pid_engaged:
+            self._pid.set_auto_mode(False)
+            self._pid_engaged = False
+
+    def _publish_duty(self, duty):
+        duty = max(0.0, min(1.0, float(duty)))
+        msg = Float32()
+        msg.data = duty
+        self._duty_pub.publish(msg)
+
+    def _ramp_setpoint(self, dt):
+        target = self.get_parameter('target_humidity').value
+        ramp_seconds = self.get_parameter('pid_setpoint_ramp_seconds').value
+        if ramp_seconds <= 0:
+            self._effective_setpoint = target
+            return
+        delta = target - self._effective_setpoint
+        if abs(delta) < 1e-6:
+            self._effective_setpoint = target
+            return
+        max_step = abs(delta) * (dt / ramp_seconds)
+        step = max(-max_step, min(max_step, delta))
+        self._effective_setpoint += step
 
     def _publish_sensor_health(self, warming_up: bool):
         """Publish a DiagnosticStatus snapshot on fc1/sensor_health.
@@ -312,6 +326,7 @@ class FruitingChamberController(Node):
 
     def _compute_scd41_fresh(self) -> bool:
         """Phase 26: SCD41 fresh ⇔ slot-2 temp OR humidity arrived within timeout.
+
         (gap-acceptable per D-03; either channel proves SCD41 alive.)
         """
         candidates = [
@@ -327,7 +342,8 @@ class FruitingChamberController(Node):
     def control_loop(self):
         # WARMUP-01: startup grace — no actuation until sensors settle
         if self._grace_active():
-            self.set_humidifier(False)
+            self._publish_duty(0.0)
+            self._disengage_pid()
             if not self._warmup_signal_published:
                 self._publish_sensor_health(warming_up=True)
                 self._warmup_signal_published = True
@@ -347,7 +363,8 @@ class FruitingChamberController(Node):
             self._publish_sensor_health(warming_up=False)
 
         if self.current_temp is None or self.current_humidity is None:
-            self.set_humidifier(False)
+            self._publish_duty(0.0)
+            self._disengage_pid()
             return
 
         # Staleness guard (D-09): check if humidity data is too old
@@ -364,48 +381,84 @@ class FruitingChamberController(Node):
             # Adjust fan speed based on temperature difference
             fan_speed = min(100, max(
                 self.get_parameter('min_fan_speed').value,
-                self.get_parameter('min_fan_speed').value + (temp_diff * self.get_parameter('fan_temp_scale').value)
+                self.get_parameter('min_fan_speed').value + (
+                    temp_diff * self.get_parameter('fan_temp_scale').value)
             ))
             self.set_fan_speed(fan_speed)
         else:
             self.set_fan_speed(self.get_parameter('min_fan_speed').value)
 
         if stale:
-            # Safe state: drive humidifier OFF, log on transition only (D-10, D-11)
+            # Safe state: drive duty to 0.0, log on transition only (D-13)
             if not self._safe_state_active:
                 self._safe_state_active = True
                 self.get_logger().warn(
                     'Sensor data stale — humidifier OFF for safety'
                 )
-            self.set_humidifier(False)
-            self._last_humidifier_toggle = self.get_clock().now()
+            self._publish_duty(0.0)
+            self._disengage_pid()
         else:
-            # Recovery: log on transition back to fresh data (D-11)
+            # Recovery: log on transition back to fresh data
             if self._safe_state_active:
                 self._safe_state_active = False
                 self.get_logger().info('Fresh sensor data received — resuming control')
 
-            # Humidity control (humidifier) — routed through dwell guard
-            if self.current_humidity < (self.get_parameter('target_humidity').value - self.get_parameter('humidity_tolerance').value):
-                self._set_humidifier_with_dwell(True)
-            elif self.current_humidity > (self.get_parameter('target_humidity').value + self.get_parameter('humidity_tolerance').value):
-                self._set_humidifier_with_dwell(False)
+            # PID compute (Phase 27 — replaces bang-bang per HUMID-01..03)
+            now = self.get_clock().now()
+            dt = (
+                (now - self._last_tick_ts).nanoseconds / 1e9
+                if self._last_tick_ts is not None
+                else 1.0
+            )
+            self._last_tick_ts = now
+
+            if not self._pid_engaged:
+                self._engage_pid_bumplessly()
+
+            # Live-reload PID gains from ROS params each tick (HUMID-03)
+            self._pid.Kp = self.get_parameter('pid_kp').value
+            self._pid.Ki = self.get_parameter('pid_ki').value
+            self._pid.Kd = self.get_parameter('pid_kd').value
+
+            self._ramp_setpoint(dt)
+            # error_pct: negative when humidity is below setpoint (drives duty up via PID)
+            error_pct = (self.current_humidity - self._effective_setpoint) * 100.0
+            bypass_pct = self.get_parameter('bypass_threshold').value * 100.0
+
+            if abs(error_pct) > bypass_pct:
+                # Mode C: full ON open-loop, freeze integrator
+                if self._pid.auto_mode:
+                    self._pid.set_auto_mode(False)
+                raw_pid_output = 1.0
+                duty = 1.0
+            else:
+                if not self._pid.auto_mode:
+                    # Re-engage bumplessly from Mode C
+                    self._pid.set_auto_mode(True, last_output=1.0)
+                raw_pid_output = self._pid(error_pct, dt=dt)
+                duty = raw_pid_output
+
+            self._publish_duty(duty)
+
+            # Phase 27 telemetry: effective setpoint and raw PID output for Mission Control
+            ht_msg = Float32()
+            ht_msg.data = float(self._effective_setpoint)
+            self._humidity_target_pub.publish(ht_msg)
+
+            po_msg = Float32()
+            po_msg.data = max(0.0, min(1.0, float(raw_pid_output)))
+            self._pid_output_pub.publish(po_msg)
 
         # Light control — runs regardless of staleness (D-13)
         self.set_light(self.should_light_be_on())
 
-        # Publish actuator state every tick (ACTR-03)
-        state_msg = Bool()
-        state_msg.data = self.get_humidifier_state()
-        self.humidifier_state_pub.publish(state_msg)
-
         self.get_logger().debug(
             f'Temp: {self.current_temp:.1f}°C, '
-            f'Humidity: {self.current_humidity*100:.1f}%, '
+            f'Humidity: {self.current_humidity * 100:.1f}%, '
             f'Fan: {self.get_fan_speed():.1f}%, '
-            f'Humidifier: {"ON" if self.get_humidifier_state() else "OFF"}, '
             f'Light: {"ON" if self.get_light_state() else "OFF"}'
         )
+
 
 def main(args=None):
     rclpy.init(args=args)
@@ -422,5 +475,6 @@ def main(args=None):
         node.destroy_node()
         rclpy.shutdown()
 
+
 if __name__ == '__main__':
-    main() 
+    main()
