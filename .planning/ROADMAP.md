@@ -8,7 +8,7 @@
 - ✅ **v1.2.1 Hotfix — camera stall + sensor warmup** — Phases 14–16 (shipped 2026-04-18)
 - ✅ **v1.3 Alerts & Unified Farmer Dashboard** — Phases 17–18 (shipped 2026-04-19; Phases 19/20 externally gated → v1.5)
 - ✅ **v1.4 Vision & Growth Insights** — Phases 21–26 (shipped 2026-05-01; Phase 24 deferred behind backlog 999.26 camera coverage)
-- 📋 **v1.5 Analog Humidity Control & Condensation/Evaporation Forcing** — planned (PID + modes + alerter integration + scheduling + experiment modes); promotes backlog 999.9 + absorbs 999.22/999.23
+- ◆ **v1.5 Analog Humidity Control & Condensation/Evaporation Forcing** — Phases 27–31 (active 2026-05-01); promotes backlog 999.9 + absorbs 999.22/999.23 + SEED-001; carries Phase 20 alert cooldown tuning from v1.3
 
 ## Phases
 
@@ -80,6 +80,19 @@ CV pipeline foundation, bidirectional Signal "Field Notes" channel, dual-sensor 
 
 </details>
 
+<details open>
+<summary>◆ v1.5 Analog Humidity Control & Condensation/Evaporation Forcing (Phases 27-31) — ACTIVE</summary>
+
+- [ ] **Phase 27: PID + time-proportional duty-cycle primitive** — closes the structural ±2% RH ceiling proven 2026-04-11 (calibration data on disk); HUMID-01..04
+- [ ] **Phase 28: Mode primitive + 2 baseline modes (`fruiting`, `pinning`) + runtime config delivery** — incorporates SEED-001 (modes change without redeploy); MODE-01..05
+- [ ] **Phase 29: Alerter mode awareness + cooldown tuning** — alerter reads target/band from controller; sweep other env-hidden knobs; closes 999.22; carries Phase 20; ALRT-08..10
+- [ ] **Phase 30: Time-of-day mode scheduling** — declarative schedule, scheduler issues mode switches at window boundaries; closes 999.23; SCHED-01..03
+- [ ] **Phase 31: Experimental forcing modes (`force-condensation`, `force-evaporation`)** — timed, auto-revert, with TimescaleDB experiment logging; EXPT-01..03
+
+PID-first shape (locked 2026-05-01 with farmer): farmer wants condensation/evaporation experiments soon and they're achievable as a side-effect of the early phases. Calibration findings already on disk: `.planning/phases/999.9-pid-time-proportional-humidity-control/CALIBRATION-FINDINGS-2026-04-11.md`. Modes are kept thin in v1.5 — 2 hardcoded YAML modes; richer mode-editor UI is v1.6.
+
+</details>
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -110,6 +123,11 @@ CV pipeline foundation, bidirectional Signal "Field Notes" channel, dual-sensor 
 | 24. ML vision events via ComfyUI | v1.4 | — | Depends on 21; pre-gate: ComfyUI-as-prod hardening | — |
 | 25. Bidirectional Signal — farmer↔robot capture channel | v1.4 | 2/5 | Wave 1 complete (25-01 + 25-02) — receive pipe unblocked, capture persistence backbone GREEN. Waves 2–4 pending. | — |
 | 26. Dual sensor publishing + offline alarms (SHT30/SCD41) | v1.4 | 3/3 | Complete — UAT-8 PASS 2026-04-29 (farmer-eyeballed slot-1/slot-2 overlay, SCD41 clipping confirmed) | 2026-04-29 |
+| 27. PID + time-proportional duty-cycle primitive | v1.5 | 0/? | Not started | — |
+| 28. Mode primitive + baselines + runtime config delivery | v1.5 | 0/? | Not started | — |
+| 29. Alerter mode awareness + cooldown tuning | v1.5 | 0/? | Not started | — |
+| 30. Time-of-day mode scheduling | v1.5 | 0/? | Not started | — |
+| 31. Experimental forcing modes (condensation/evaporation) | v1.5 | 0/? | Not started | — |
 
 ## Backlog (parking lot)
 
