@@ -79,3 +79,7 @@ Pass criteria (from RESEARCH §HUMID-04):
 - [ ] Grep `journalctl -u fc-core --since "21:50"` for `MODE C engaged|disengaged` count
 - [ ] Pull farmer attestation (Signal)
 - [ ] Mark this file `status: complete` and append PASS/FAIL verdict
+
+## Observations during soak (not blockers)
+
+- **`humidifier_duty` is visibly noisy on the OpenMCT chart.** Root cause is SHT30 ~±0.1% RH measurement noise multiplied by Kp=0.5 → ~0.05 swings in `pid_output` for sub-0.1% RH wobble. D term is already filtered (`pid_derivative_filter_tau: 10.0`). **Physical behavior is not affected** — slow-PWM locks duty at the start of each 120s window and ignores intra-window jitter, so the relay never saw the noise. Cosmetic-plus-edge-case (occasional cap-forecast bump at window roll). Suggested fix for the v1.6 PID-tuning phase: add a `pid_input_filter_tau: 10.0` EMA on humidity before the PID input only (raw stays on dashboards / sensor_health). One param, ~10 lines, no architectural change. Phase lag (~10s) is invisible against the chamber's minutes-scale transport delay. **Not shipping during the soak gate** — bundling with future PID refinement work alongside 999.27 derived metrics.
