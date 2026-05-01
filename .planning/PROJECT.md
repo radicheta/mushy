@@ -75,12 +75,44 @@ Existing codebase provides:
 **v1.1 Tech Debt & Connectivity shipped 2026-04-12.** All carryover tech debt
 closed; fc1 reliably reachable over 4G cellular.
 **v1.2 FarmOS Integration & QoL shipped 2026-04-13.** Compose v2 on elder-plops,
-subscriber-aware camera, FarmOS daily report (`farmos_agent`). Known gaps carried:
-FarmOS admin actions (permissions, FC-1 location), Phase 12 hardware UAT.
+subscriber-aware camera, FarmOS daily report (`farmos_agent`).
 **v1.2.1 Hotfix shipped 2026-04-18.** Camera idle-stall fix (9s recovery),
-sensor warm-up grace (20s WARN→OK), six-light system health panel with
-sensor_health replay shim. Farmer-attested "all green" 2026-04-18.
+sensor warm-up grace, six-light system health panel.
+**v1.3 Alerts & Unified Farmer Dashboard shipped 2026-04-19.** Phases 17 (Signal
+alerter) + 18 (`/farmer/summary` JSON for farmOS). Phases 19/20 deferred (Zoy/
+calendar gates).
+**v1.4 Vision & Growth Insights shipped 2026-05-01.** Continuous camera
+persistence (Phase 21), timeline scrubber data surface (Phase 22), nightly
+time-lapse composition (Phase 23), bidirectional Signal "Field Notes" capture
+channel with local Whisper + Anthropic LLM reply (Phase 25), dual-sensor
+SHT30/SCD41 slot topics + offline alarms (Phase 26). Phase 24 (ML vision)
+deferred behind backlog 999.26 (camera-coverage prerequisite).
 See `.planning/MILESTONES.md`.
+
+## Current Milestone: v1.5 — Analog Humidity Control & Condensation/Evaporation Forcing
+
+**Goal:** Replace bang-bang humidifier control with PID + time-proportional
+duty cycle, exposed to the farmer as named modes (`fruiting`, `pinning`) with
+experimental `force-condensation` / `force-evaporation` override modes for
+forcing experiments. Closes the structural ±2% RH ceiling proven empirically
+2026-04-11 and unifies three previously-independent backlog pains (999.9 PID,
+999.22 alerter source-of-truth, 999.23 dynamic target) into one coherent
+mode primitive.
+
+**Target features:**
+- PID + time-proportional duty cycle on the existing relay (slow-PWM)
+- Mode primitive: named bundles of `(target_RH, band, duty-cycle behavior)`
+- Two baseline modes: `fruiting`, `pinning`; manual switch via ROS service / farmer app
+- Runtime config delivery infrastructure (SEED-001 absorbed) — modes change without redeploy
+- Alerter reads current mode from controller (closes 999.22)
+- Time-of-day mode scheduling (closes 999.23)
+- Experimental modes for condensation / evaporation forcing (timed, auto-revert)
+- Carry from v1.3: alert cooldown tuning (Phase 20)
+
+**Calibration data already on disk:**
+`.planning/phases/999.9-pid-time-proportional-humidity-control/CALIBRATION-FINDINGS-2026-04-11.md`
+
+**Carry deferred to v1.6:** Phase 19 (FarmOS admin actions, Zoy-gated).
 
 ### Out of Scope
 
@@ -162,4 +194,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-04-18 after v1.2.1 milestone*
+*Last updated: 2026-05-01 — v1.4 closed, v1.5 started (Analog Humidity Control)*

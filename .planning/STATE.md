@@ -1,18 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.4
-milestone_name: Vision & Growth Insights
-status: shipped
-stopped_at: v1.4 milestone shipped 2026-05-01 (5/6 phases shipped, Phase 24 deferred behind 999.26)
-last_updated: "2026-05-01T18:29:19.245Z"
+milestone: v1.5
+milestone_name: Analog Humidity Control & Condensation/Evaporation Forcing
+status: defining
+stopped_at: v1.5 roadmap created 2026-05-01 — ready for /gsd:plan-phase 27 (PID + duty-cycle primitive)
+last_updated: "2026-05-01T19:00:00.000Z"
 last_activity: 2026-05-01
 progress:
-  total_phases: 6
-  completed_phases: 5
-  total_plans: 19
-  completed_plans: 19
-  percent: 100
-next_milestone: v1.5 — Analog Humidity Control & Condensation/Evaporation Forcing
+  total_phases: 5
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
