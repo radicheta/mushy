@@ -739,22 +739,25 @@ Phase 27 is a refactor with both code and config changes. State to address:
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should the rolling 5-min cap (D-12) operate on requested duty or emitted duty?**
    - What we know: D-12 says "duty averaged over a 5-minute rolling window is capped." Ambiguous between (a) cap PID's request before publishing, or (b) cap fc_pwm_driver's emitted on-time after the min-pulse round-down.
    - What's unclear: which the operator means.
    - Recommendation: Cap in fc_pwm_driver on emitted on-time. This is the actuator-protection layer; conceptually D-12 is "don't run the humidifier wet for >40% of any 5-min window." If we cap in fc_controller, the slow-PWM round-down rule could push the actual emitted duty *above* the requested-cap (rare but possible). Plan should call this out and confirm with operator if ambiguous.
+   - **RESOLVED 2026-05-01:** Cap on **emitted** duty inside fc_pwm_driver. Implemented in Plan 27-02 (fc_pwm_driver owns the rolling-window accounting; PID's requested duty is unbounded except by `output_limits=(0,1)`).
 
 2. **Does the SHT30 noise floor allow Kd > 0 to do useful work?**
    - What we know: SHT30 ±1.5% accuracy; sample rate ~0.5 Hz; rates of change are ~0.01 %/s near setpoint.
    - What's unclear: whether D-term contribution (Kd × d(error)/dt with 10s low-pass) provides meaningful damping, or just noise injection.
    - Recommendation: Ship with `pid_kd = 4.0` and 10s filter. If HUMID-04 soak shows D-term oscillating against noise (visible as duty jitter at ~0.1Hz), set Kd=0 via param and re-soak. Don't tune Kd at design time; tune in the soak.
+   - **RESOLVED 2026-05-01:** Ship `pid_kd=4.0` with 10s low-pass and derivative-on-measurement (Plan 27-01 fc_config.yaml; Plan 27-03 PID instantiation). Soak-tune fallback (set Kd=0 via `ros2 param set` if jitter visible) captured in Plan 27-05.
 
 3. **Does fc_controller need to re-publish duty=0.0 every tick during stale, or just once on stale entry?**
    - What we know: D-13 forces duty=0.0 on stale.
    - What's unclear: TRANSIENT_LOCAL means a single publish persists for late joiners — so a single publish on stale-entry would be sufficient for new subscribers, but existing subscribers' last-received value would be stale.
    - Recommendation: Publish duty=0.0 every tick during stale (continuous declaration), matching the pattern used for the existing humidifier state. This is what the operator expects to see on the chart (duty drops to and stays at 0). Cost is one extra Float32 publish per second — negligible.
+   - **RESOLVED 2026-05-01:** Publish duty=0.0 **every tick** during stale (continuous declaration). Implemented in Plan 27-03 control_loop stale branch; threat model T-27-03-03 explicitly references this resolution.
 
 ---
 
