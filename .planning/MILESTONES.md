@@ -1,5 +1,45 @@
 # Milestones
 
+## v1.4 Vision & Growth Insights (Shipped: 2026-05-01)
+
+**Phases shipped:** 5 (21, 22, 23, 25, 26) + Phase 24 deferred behind backlog 999.26
+**Plans:** 19 total (21=4, 22=4, 23=3, 25=5, 26=3)
+**Timeline:** 2026-04-19 → 2026-05-01 (~12 days)
+**Tag:** `v1.4`
+
+### Delivered
+
+CV pipeline foundation (continuous camera persistence, time-lapse composition, farmer story view via farmOS hand-off), bidirectional Signal "Field Notes" channel for farmer↔robot capture (text + audio + photos with local Whisper + Anthropic LLM reply), and dual-sensor visibility closing the 2026-04-11 incident class where a 40-min unnoticed SHT30 outage cost a calibration session. Phase 24 (ML vision via ComfyUI) explicitly deferred behind a camera-coverage prerequisite — single-camera footprint = demo, not field utility.
+
+### Key Accomplishments
+
+- **Phase 21 — Camera history continuous persistence** — Bridge becomes the always-on persister regardless of viewer presence. New Timescale `snapshots` hypertable with 365-day retention + 30-day grace. `/camera/history` endpoint + `/health` extension + Mission Control "Snapshots" status chip. 11/11 must-haves verified.
+- **Phase 22 — Timeline scrubber + farmer story view** — Mushy delivers the data surface (`/camera/frame` + burnt-overlay sidecar with sensor values); farmOS owns the UI per Zoy-side hand-off (CLAUDE-SYNC.md addendum committed in farmos repo `933ea85`). 11/11 must-haves verified.
+- **Phase 23 — Time-lapse composition** — Nightly ffmpeg pipeline composes per-day mp4s with timestamp + RH overlay. First real artifact: `/data/timelapse/fc1/2026-04-26.mp4` (287 frames, h264). On-demand `/timelapse` endpoint. Farmer "looks good" 2026-04-27.
+- **Phase 25 — Bidirectional Signal (Field Notes)** — Farmer DMs the robot text/audio/photos; whisper-transcribe container (CUDA, FastAPI) handles audio locally; Anthropic LLM composes contextual reply with 24h sensor-history snapshot; signal-cli pipe unblocked via primary re-registration on the 4G router SIM. 7/7 farmer UATs PASS 2026-04-28.
+- **Phase 26 — Dual sensor publishing + offline alarms** — SHT30 and SCD41 publish on separate slot topics (`fc1/temperature`, `fc1/temperature_2`, etc.) with per-sensor freshness in `sensor_health`. Signal alerts fire on either physical sensor going silent for ≥5 min with symmetric recovery. UAT-8 PASS 2026-04-29 — farmer eyeballed the slot-1/slot-2 RH overlay and confirmed SCD41 clipping at 100%, exactly the failure mode dual-publish was built to surface.
+
+### Deferred / Tech Debt Carried
+
+- **Phase 24** — explicitly deferred 2026-05-01 behind new backlog item **999.26** (roaming or multi-cam coverage). Phase scope preserved in `.planning/milestones/v1.4-ROADMAP.md` for re-promotion when 999.26 ships.
+- **Phase 25 deferred items** (5) — see `25-deferred-items.md`: D-03 LLM-failure degraded-flag persistence, llm_session_tag column never populated, multi-envelope context window, config.test.js DASHBOARD_URL leak, HuggingFace cache not on a named volume. Backlog: 999.20 (multi-farmer routing + group participation).
+- **Phase 23** — CO2 overlay gap (open item); 999.21 timelapse resolution bump filed.
+- **Phase 26** — SCD41 RH known to clip at 100% — SHT30 remains RH source of truth in any future control or alert logic. Process lesson: plan-26-02 contract-tested bridge half but missed the UI surface (allowlist + plugin) — patched same session via commit `2b5ae75`.
+- **Cross-milestone carry from v1.3:** Phases 19 (FarmOS admin actions, Zoy-gated) and 20 (alert cooldown tuning, calendar-gated) deferred to v1.5.
+- **Older-phase documentation gaps acknowledged** (pre-v1.4): VERIFICATION/UAT artifacts for Phases 11/12/13/16/17/23 — see STATE.md Deferred Items.
+
+### Process Findings
+
+- **Lighter-check audit mode is appropriate for milestones without a formal REQ-ID set.** v1.4 used inline goals in `v1.4-ROADMAP.md` rather than a top-level REQUIREMENTS.md; the 3-source cross-reference machinery was therefore inapplicable. Captured in `.planning/v1.4-MILESTONE-AUDIT.md` (option 2 audit).
+- **Phase-26 process miss** — plan template needs a "user-visible surface" check: contract-testing the bridge half is necessary but not sufficient when an OpenMCT allowlist + plugin extension are required for the farmer to see the data. Captured in memory `project_phase26_sht30_happy_path_unverified.md`.
+
+### Archive
+
+- Full roadmap snapshot: `.planning/milestones/v1.4-ROADMAP.md`
+- Audit report: `.planning/milestones/v1.4-MILESTONE-AUDIT.md`
+
+---
+
 ## v1.2.1 Hotfix — camera stall + sensor warmup (Shipped: 2026-04-18)
 
 **Phases completed:** 3 phases (14, 15, 16), 11 plans + Phase 16.1 follow-up

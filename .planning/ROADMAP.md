@@ -6,8 +6,9 @@
 - ✅ **v1.1 Tech Debt & Connectivity** — Phases 9–10 (shipped 2026-04-12)
 - ✅ **v1.2 FarmOS Integration & QoL** — Phases 11–13 (shipped 2026-04-13)
 - ✅ **v1.2.1 Hotfix — camera stall + sensor warmup** — Phases 14–16 (shipped 2026-04-18)
-- ◆ **v1.3 Alerts & Unified Farmer Dashboard** — Phases 17–20 (17/18 ✓ 2026-04-18/19; 19/20 externally gated, deferred to v1.5)
-- ◆ **v1.4 Vision & Growth Insights** — Phases 21–25 (active 2026-04-19) — CV work + farmer↔robot Signal capture channel (Phase 25 added 2026-04-20); demo-able artifacts at every phase
+- ✅ **v1.3 Alerts & Unified Farmer Dashboard** — Phases 17–18 (shipped 2026-04-19; Phases 19/20 externally gated → v1.5)
+- ✅ **v1.4 Vision & Growth Insights** — Phases 21–26 (shipped 2026-05-01; Phase 24 deferred behind backlog 999.26 camera coverage)
+- 📋 **v1.5 Analog Humidity Control & Condensation/Evaporation Forcing** — planned (PID + modes + alerter integration + scheduling + experiment modes); promotes backlog 999.9 + absorbs 999.22/999.23
 
 ## Phases
 
@@ -65,16 +66,17 @@ farmer-attested "all green" on 2026-04-18. See `.planning/milestones/v1.2.1-ROAD
 
 </details>
 
-<details open>
-<summary>◆ v1.4 Vision & Growth Insights (Phases 21-25) — ACTIVE</summary>
+<details>
+<summary>✅ v1.4 Vision & Growth Insights (Phases 21-26) — SHIPPED 2026-05-01</summary>
 
-- [x] **Phase 21: Camera history continuous persistence** (4/4 plans) — 2026-04-19
-- [x] **Phase 22: Timeline scrubber + farmer story view** (4/4 plans) — 2026-04-19
-- [x] **Phase 23: Time-lapse composition (ffmpeg)** — depends on 21 — 2026-04-27 (CO2 overlay gap: open item)
-- [ ] **Phase 24: ML vision events via ComfyUI** — depends on 21; pre-gate: ComfyUI-as-prod hardening
-- [x] **Phase 25: Bidirectional Signal — farmer↔robot capture channel** — SPEC locked 2026-04-19 (absorbs retired backlog 999.15); independent of 21→24 chain. Farmer-facing UI label: **Field Notes**. See `.planning/phases/25-bidirectional-signal-farmer-robot-capture-channel/25-SPEC.md`. **Shipped 2026-04-28** — 5/5 plans executed, 7/7 farmer UATs PASS (cold-start smoke deferred); deferred items tracked in `25-05-SUMMARY.md` + backlog Phase 999.20.
+- [x] Phase 21: Camera history continuous persistence (4/4 plans) — 2026-04-19
+- [x] Phase 22: Timeline scrubber + farmer story view (4/4 plans) — 2026-04-19
+- [x] Phase 23: Time-lapse composition (ffmpeg) (3/3 plans) — 2026-04-27
+- [ ] Phase 24: ML vision events via ComfyUI — **DEFERRED 2026-05-01** behind backlog 999.26 (camera coverage)
+- [x] Phase 25: Bidirectional Signal — farmer↔robot capture channel (5/5 plans) — 2026-04-28 (7/7 farmer UATs PASS)
+- [x] Phase 26: Dual sensor publishing + offline alarms — SHT30/SCD41 (3/3 plans) — 2026-04-29 (UAT-8 PASS)
 
-Full v1.4 narrative + per-phase scope: `.planning/milestones/v1.4-ROADMAP.md`.
+CV pipeline foundation, bidirectional Signal "Field Notes" channel, dual-sensor visibility. SCD41 RH known to clip at 100% — SHT30 is RH source of truth. Phase 24 (ML vision) explicitly deferred behind camera coverage prereq. See `.planning/milestones/v1.4-ROADMAP.md`.
 
 </details>
 
@@ -109,39 +111,6 @@ Full v1.4 narrative + per-phase scope: `.planning/milestones/v1.4-ROADMAP.md`.
 | 25. Bidirectional Signal — farmer↔robot capture channel | v1.4 | 2/5 | Wave 1 complete (25-01 + 25-02) — receive pipe unblocked, capture persistence backbone GREEN. Waves 2–4 pending. | — |
 | 26. Dual sensor publishing + offline alarms (SHT30/SCD41) | v1.4 | 3/3 | Complete — UAT-8 PASS 2026-04-29 (farmer-eyeballed slot-1/slot-2 overlay, SCD41 clipping confirmed) | 2026-04-29 |
 
-### Phase 23: Time-lapse composition (ffmpeg)
-
-**Goal:** Daily and on-demand time-lapse mp4s generated automatically from Phase 21 snapshots. Full scope in `.planning/milestones/v1.4-ROADMAP.md`.
-**Plans:** 3/3 plans complete
-
-Plans:
-- [x] 23-01-PLAN.md — Scaffold timelapse package (Dockerfile, package.json, jest) + pure utility modules (overlay, db, config) with full unit tests; Wave 1; D-01/D-06/D-08/D-10/D-11
-- [x] 23-02-PLAN.md — Composer pipeline (composeDay + ffmpeg.js spawn wrapper) with DI unit tests covering frame-count guard, atomic rename, ENOENT-tolerance, path-traversal rejection; Wave 2 (depends on 23-01); D-04/D-05/D-07/D-08/D-10/D-11
-- [x] 23-03-PLAN.md — HTTP server (/health, /timelapse, /timelapse/status/:id) + node-cron + docker-compose wiring + live deploy + manual smoke compose + farmer visual checkpoint; Wave 3 (depends on 23-01, 23-02); D-01/D-02/D-03/D-08/D-10
-
-### Phase 24: ML vision events via ComfyUI
-
-**Goal:** ComfyUI-backed detection writes pinning + contamination events to Timescale and fires Signal alerts for high-confidence contamination. Full scope in `.planning/milestones/v1.4-ROADMAP.md`.
-
-### Phase 25: Bidirectional Signal — farmer↔robot capture channel
-
-**Goal:** Farmer sends text, audio, and photos via Signal; the robot stores them, transcribes audio locally (Whisper), replies with an LLM-inferred session tag or clarifying question (Anthropic API). Snooze collapses to single "mute 24h" keyword. Absorbs retired backlog 999.15.
-
-**Farmer-facing UI label:** Field Notes.
-
-**SPEC.md location:** `.planning/phases/25-bidirectional-signal-farmer-robot-capture-channel/25-SPEC.md`. GSD workflows use `phase=25`.
-
-**Dependencies:** independent of Phases 21→24 CV chain. Extends Phase 17 alerter. Follow-up phase (farmOS event writer) captured in SEED-002.
-
-**Plans:** 5 plans
-
-Plans:
-- [x] 25-01-PLAN.md — Wave 0: signal-cli pipe unblock (MODE=normal flip + primary re-registration of +59891840205 + farmer trust restore + Wave-0 fixtures + RED skeleton tests + smoke script); R1; autonomous: false
-- [x] 25-02-PLAN.md — Wave 1: Capture persistence (deps install + config extension + signal.js fetchAttachment + capture-db.js regular table + capture-history.js + capture.js orchestrator); R2,R7
-- [x] 25-03-PLAN.md — Wave 2: whisper-transcribe container (CUDA 12.3 + cuDNN 9 Dockerfile + FastAPI lazy-load + V12 path safety + transcribe-client.js + GPU compose + live smoke); R3
-- [x] 25-04-PLAN.md — Wave 3: LLM client + sensor snapshot (llm-client.js with locked prompt shape using claude-sonnet-4-6 + 24h history cap + sensor-snapshot.js with timeout + null-on-failure); R5
-- [ ] 25-05-PLAN.md — Wave 4: Integration + UAT (snooze grammar extension + receive-loop fast-path + retention cron + state captureHealth + index.js wiring + farmer UAT 1–7); R4,R6,R7; autonomous: false
-
 ## Backlog (parking lot)
 
 These are ideas captured during v1.0/v1.1 execution but not yet scoped into a
@@ -172,18 +141,7 @@ milestone. Promote with `/gsd:review-backlog` when ready.
 - **Phase 999.24: fc_camera VideoCapture re-open on cap.read() failure** — Surfaced 2026-04-29: snapshots chip went red after ~24h of zero captures. Root cause was fc_camera spamming `cap.read() failed, skipping frame` continuously since Apr 28 ~13:09 UTC with no recovery — the loop in `fc_camera.py:152-155` just logs warn + returns; never releases or re-opens the `cv2.VideoCapture` handle. USB camera was still enumerated (`/dev/video0` present, `lsusb` showed Microdia 0c45:636b) so a `systemctl restart fc-core` recovered it cleanly — confirms the fix shape is software-only re-open, not hardware reseat. Memory's "Phase 12 9s recovery" covered a *different* stall mode (idle/inactive timer, not cap.read). **Fix:** after N consecutive cap.read() failures (say 5 — i.e. 5 sec at active fps), `cap.release()` + reconstruct `cv2.VideoCapture(device)`, re-apply width/height/buffer settings; if reopen fails, exponential backoff retry. Don't swallow indefinite failure — emit a `sensor_health` KeyValue (`camera_fresh: false`) once the stall exceeds a threshold so the alerter (Phase 999.18-shape) can page. Acceptance: yank+replug the USB cam at the chamber → fc_camera resumes publishing within 30s without a service restart; snapshots chip stays green. Touches `src/chambers/fc-core/fc_core/fc_camera.py` + a small unit test that mocks `cap.read()` returning False and asserts re-open is attempted. Composes with 999.18 (true-age tracking — alerter should know "camera last fresh: X mins ago" not "since alerter boot").
 - **Phase 999.25: fc-core CycloneDDS-over-Tailscale init race at startup** — Surfaced during 2026-04-29 sensor-offline-alarm investigation. Journalctl shows the `rmw_create_node: failed to create domain, error Error` cluster (e.g. Apr 27 18:52 + 19:24 UTC) where all four nodes (`fc_sensors`, `fc_controller`, `fc_display`, `fc_camera`) exit 1 in lockstep, plus periodic `Sensor data stale — humidifier OFF for safety` events when `fc_sensors` alone dies and the controller stays up but goes stale (Apr 24 ~03:43, Apr 28 ~06:42). 7-day rate is roughly 2–3 brief outages/week, each ~1 minute downtime under the new `Restart=always` (which is masking, not fixing). Almost certainly a startup ordering race: fc-core boots before `tailscale0` + `cyclonedds-tailscale.xml`'s peer endpoints are reachable, so `rmw_create_node` fails on the first DDS domain join. The systemd unit (`fc-core.service`) currently has `Restart=always` + a hard 20s `startup_grace_period` in the controller, but no `After=` / `Wants=` / `ExecStartPre=` gate on Tailscale or DDS readiness. Each crash → sensors stale → alerter pages (now ≥10 min, but still pages on a real long outage). **Fix direction:** (a) `After=tailscaled.service` + `Wants=tailscaled.service` on `fc-core.service` so systemd serialises the dependency. (b) `ExecStartPre=/usr/bin/tailscale status --self=true --peers=false` (or a small wait-for-peer script) that polls until the Tailscale data-plane is up. (c) consider giving CycloneDDS a longer `peer.discovery_timeout` for the cold-boot case. (d) emit a `fc_init_failed` boot counter to `sensor_health` so we can graph crash frequency post-fix. Touches `scripts/pi-deploy/systemd/fc-core.service` (the Pi-deployed unit; remember `feedback_diff_repo_vs_pi_systemd` — the live unit may have drifted), possibly a small `scripts/pi-deploy/wait-for-tailscale.sh` helper. Acceptance: zero `rmw_create_node: failed to create domain` events over 14 consecutive days post-deploy; sensor-stale events <1/week (i.e. only real network/i2c hiccups, not init races). Composes with 999.18 (alerter "Last fresh" should make crash-vs-network distinguishable from the farmer's perspective).
 - **Phase 999.19: Alert link → real farmer destination** — Surfaced 2026-04-25: alerter `DASHBOARD_URL` linked to `/farmer` on the bridge, but Phase 18 only built `/farmer/summary` (a JSON API for farmOS to consume) — no HTML page at `/farmer` ever existed. Farmer tapped the link from Signal and got "Cannot GET /farmer." Patched same session by repointing to OpenMCT (`http://100.96.10.66:8080/`) which is reachable on the tailnet and shows live dashboards, but per `project_phase18_22_farmos_proxy_architecture` the long-term farmer destination is the farmOS "story view" (Zoy-side, page path TBD). Decision needed when farmOS story view is ready: switch DASHBOARD_URL to that page so the alert link lands on the farmer-friendly UI, not the operator-facing OpenMCT. Trivial config change — `src/agents/alerter/src/config.js` + `docker-compose.override.yml`. Acceptance: tapping the alert link from the farmer's phone lands on the farmer dashboard (whatever its final URL), not OpenMCT.
-
-### Phase 26: Dual sensor publishing + offline alarms — SHT30/SCD41 slot topics + Signal alerts
-
-**Goal:** SHT30 and SCD41 publish on separate slot topics (slot 1 silent-fallback per D-01; slot 2 SCD41-only per D-02), and Signal alerts fire when either physical sensor goes silent for ≥5 min (D-04/D-05) with symmetric recovery messages (D-06). Closes the 2026-04-11 incident class where a 40-min unnoticed SHT30 outage cost a calibration session.
-**Requirements**: D-01..D-06 (CONTEXT.md decisions used as the de-facto requirement set; no formal REQ-IDs assigned)
-**Depends on:** Phase 25
-**Plans:** 3 plans
-
-Plans:
-- [x] 26-01-PLAN.md — Pi-side dual publishers + freshness (fc_sensors.py refactor, fc_controller.py sensor_health KeyValue extension, pytest test_sensors.py); Wave 1; D-01/D-02/D-03
-- [x] 26-02-PLAN.md — Bridge slot-2 forwarding (VOLATILE-QoS subs for fc1/temperature_2 & fc1/humidity_2 → WS broadcast + TimescaleDB); Wave 2 (depends on 26-01); D-02/D-03
-- [x] 26-03-PLAN.md — Alerter sht30/scd41 alert types + snooze grammar + ALERT_SENSOR_OFFLINE_MIN env (state.js, rules.js, index.js, message.js, snooze.js, config.js, jest tests, docker-compose.override.yml); Wave 2 (depends on 26-01); D-04/D-05/D-06
+- **Phase 999.26: Camera coverage prerequisite for vision (roaming or multi-cam)** — Surfaced 2026-05-01 when farmer reviewed Phase 24 scope and called the blocker: a single fixed FC-1 camera only frames a fraction of substrate, so ML vision alerts (pinning, contamination) on that footprint are a demo, not a field-useful tool. Phase 24 (ML vision via ComfyUI) is deferred behind this. Two viable shapes to weigh during planning: (a) **roaming cam** — the farm-rover seed (999.7) carries a single camera through the chamber on a schedule, captures pose-tagged frames covering all shelves; reuses any servo/motion work; one camera to maintain but mechanical complexity and a moving part in a high-RH environment. (b) **multi-cam** — N fixed cameras (one per shelf or per chamber zone), each publishing to a slot topic; reuses the existing `fc_camera` node pattern (parameterize device + camera_id), Phase 21 persistence and Phase 22 scrubber generalize over multiple `camera_id`s; more hardware + more 4G traffic but no mechanical risk. Either path needs: persistence/index extended to multi-camera (`snapshots` table already has `camera_id`), Mission Control + farmer-app UI extended to pick/switch camera, time-lapse composition extended per-camera, vision-agent (Phase 24 follow-up) able to fan out per-camera. Composes with: Phase 24 (the consumer that unblocks), 999.6 (multi-chamber scaling — same pattern), 999.7 (rover — overlaps with shape-(a)), Phase 21/22/23 (persistence, scrubber, timelapse all need camera_id awareness). Pre-decision when promoted: roaming-vs-multi-cam tradeoff with farmer in the loop (mechanical risk vs hardware/cost vs operational complexity).
 
 ---
-*Roadmap created 2026-03-28. v1.2.1 shipped 2026-04-18.*
+*Roadmap created 2026-03-28. v1.4 shipped 2026-05-01.*

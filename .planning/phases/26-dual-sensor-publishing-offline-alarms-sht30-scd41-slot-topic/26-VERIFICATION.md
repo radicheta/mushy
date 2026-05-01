@@ -1,9 +1,11 @@
 ---
 phase: 26-dual-sensor-publishing-offline-alarms-sht30-scd41-slot-topic
 verified: 2026-04-25T22:50:00Z
-status: human_needed
-score: 12/12 must-haves verified
+verified_finalized: 2026-04-29T00:00:00Z
+status: passed
+score: 12/12 must-haves verified + 8-item HUMAN-UAT closed (5 PASS / 1 SKIPPED / 2 PENDING — pending items are signal-cli-trust blocked, not Phase 26 substance)
 overrides_applied: 0
+final_status_note: "UAT-8 (BLOCKING — phase motivation) PASS 2026-04-29 with farmer sign-off. SCD41 RH clipping behaviour confirmed by farmer eyeball on slot-1/slot-2 overlay (the failure mode dual-publish was built to surface). Pending items 5+6 are gated on signal-cli linked-device trust reset (memory: project_signal_cli_link_gotchas) — out of scope for Phase 26. Process miss: plan-26-02 contract-tested bridge half but missed UI surface (allowlist + plugin extension) — patched same session via commit 2b5ae75; lesson captured in memory project_phase26_sht30_happy_path_unverified.md."
 re_verification:
   previous_status: gaps_found
   previous_score: 4/12

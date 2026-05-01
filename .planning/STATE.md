@@ -1,17 +1,18 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: executing
-stopped_at: Completed 25-05-PLAN.md (bidirectional capture channel — all 7 farmer UATs PASS)
-last_updated: "2026-04-28T17:19:48.764Z"
-last_activity: 2026-04-28
+milestone: v1.4
+milestone_name: Vision & Growth Insights
+status: shipped
+stopped_at: v1.4 milestone shipped 2026-05-01 (5/6 phases shipped, Phase 24 deferred behind 999.26)
+last_updated: "2026-05-01T18:29:19.245Z"
+last_activity: 2026-05-01
 progress:
-  total_phases: 4
-  completed_phases: 3
-  total_plans: 11
-  completed_plans: 11
+  total_phases: 6
+  completed_phases: 5
+  total_plans: 19
+  completed_plans: 19
   percent: 100
+next_milestone: v1.5 — Analog Humidity Control & Condensation/Evaporation Forcing
 ---
 
 # Project State
@@ -29,7 +30,7 @@ Milestone: v1.4 — Vision & Growth Insights (5 phases, 2 complete)
 Phase: 25 — EXECUTING
 Plan: 5 of 5
 Status: Ready to execute
-Last activity: 2026-04-28
+Last activity: 2026-05-01
 
 Progress: [██████████] 100%
 
@@ -112,6 +113,29 @@ Progress: [██████████] 100%
 - Phase 17: Signal primary-account registration on 4G router SIM is a manual pre-phase step (~1-2h); cannot begin coding until complete
 - Phase 19: FarmOS admin actions (FC-1 asset, farmos_agent permissions) depend on farm team availability — document proxy-around path at phase start if admin access is delayed
 - Phase 20: Cannot begin cooldown tuning until Phase 17 has been live for ≥1 week
+
+## Deferred Items
+
+Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
+
+| Category | Item | Status | Note |
+|----------|------|--------|------|
+| verification | 11-VERIFICATION.md | human_needed | pre-v1.4 carry-forward |
+| verification | 12-VERIFICATION.md | human_needed | pre-v1.4 carry-forward |
+| verification | 13-VERIFICATION.md | gaps_found | pre-v1.4 carry-forward |
+| verification | 16-VERIFICATION.md | human_needed | pre-v1.4 carry-forward |
+| verification | 17-VERIFICATION.md | human_needed | pre-v1.4 carry-forward |
+| verification | 23-VERIFICATION.md | human_needed | farmer-attested live; doc artifact pending cron + visual confirmation |
+| uat | 12-HUMAN-UAT.md | partial — 5 pending | pre-v1.4 carry-forward |
+| uat | 16-HUMAN-UAT.md | partial — 0 pending | doc-artifact stale |
+| uat | 23-HUMAN-UAT.md | partial — 0 pending | farmer-attested; doc-artifact stale |
+| uat | 23-UAT.md | partial — 0 pending | doc-artifact stale |
+| uat | 26-HUMAN-UAT.md | partial — 2 pending | both pending items signal-cli-trust blocked, not Phase 26 substance (memory: project_signal_cli_link_gotchas) |
+| seed | SEED-001 runtime config delivery | dormant | future-scoped |
+| seed | SEED-002 farmOS event writer | dormant | Phase 25 follow-up |
+| seed | SEED-003 farmer app MC section | dormant | future-scoped |
+
+**Decision rationale:** all v1.2-era verification/UAT gaps were never material to v1.4 work. v1.4 ships with full farmer attestation on Phases 21-26. Documentation artifacts will be retroactively cleaned up alongside future related work, not as standalone backlog entries.
 
 ## Session Continuity
 
