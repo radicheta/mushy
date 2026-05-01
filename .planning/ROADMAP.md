@@ -123,7 +123,7 @@ PID-first shape (locked 2026-05-01 with farmer): farmer wants condensation/evapo
 | 24. ML vision events via ComfyUI | v1.4 | — | Depends on 21; pre-gate: ComfyUI-as-prod hardening | — |
 | 25. Bidirectional Signal — farmer↔robot capture channel | v1.4 | 2/5 | Wave 1 complete (25-01 + 25-02) — receive pipe unblocked, capture persistence backbone GREEN. Waves 2–4 pending. | — |
 | 26. Dual sensor publishing + offline alarms (SHT30/SCD41) | v1.4 | 3/3 | Complete — UAT-8 PASS 2026-04-29 (farmer-eyeballed slot-1/slot-2 overlay, SCD41 clipping confirmed) | 2026-04-29 |
-| 27. PID + time-proportional duty-cycle primitive | v1.5 | 0/? | Not started | — |
+| 27. PID + time-proportional duty-cycle primitive | v1.5 | 0/5 | Planned (5 plans) | — |
 | 28. Mode primitive + baselines + runtime config delivery | v1.5 | 0/? | Not started | — |
 | 29. Alerter mode awareness + cooldown tuning | v1.5 | 0/? | Not started | — |
 | 30. Time-of-day mode scheduling | v1.5 | 0/? | Not started | — |
@@ -138,6 +138,15 @@ PID-first shape (locked 2026-05-01 with farmer): farmer wants condensation/evapo
 **CONTEXT.md:** `.planning/phases/27-pid-time-proportional-duty-cycle-primitive/27-CONTEXT.md`. GSD workflows use `phase=27`.
 
 **Dependencies:** independent of v1.4. Builds on Phase 03 safety contracts, Phase 15 grace, Phase 16 sensor_health, Phase 26 slot-1 fallback. Calibration foundation in `.planning/phases/999.9-pid-time-proportional-humidity-control/CALIBRATION-FINDINGS-2026-04-11.md`.
+
+**Plans:** 5 plans
+
+Plans:
+- [ ] 27-01-PLAN.md — Wave 0: vendor simple-pid, scaffold RED tests, sweep min_dwell_time, add new pid_*/pwm_* params to fc_config.yaml
+- [ ] 27-02-PLAN.md — Wave 1: implement fc_pwm_driver node (slow-PWM windowing + GPIO27 ownership) + setup.py + fc.launch.py wiring
+- [ ] 27-03-PLAN.md — Wave 2: refactor fc_controller.py — strip bang-bang/dwell/GPIO, add PID + Mode C + ramp + bumpless transfer
+- [ ] 27-04-PLAN.md — Wave 3: bridge subscription on fc1/actuators/humidifier_duty (TRANSIENT_LOCAL, no rescale)
+- [ ] 27-05-PLAN.md — Wave 4: deploy to fc1/prod + rebuild bridge + 2-hour HUMID-04 farmer-attested soak
 
 ## Backlog (parking lot)
 
