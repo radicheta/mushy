@@ -73,6 +73,39 @@
             extract: function (msg) { return msg.temperature; },
             min: 10,
             max: 35
+        },
+        {
+            identifier: { namespace: 'fruiting-chamber', key: 'fc.humidity_target' },
+            name: 'Humidity target',
+            unit: '%',
+            topic: '/fc1/control/humidity_target',
+            msgType: 'std_msgs/msg/Float32',
+            extract: function (msg) { return msg.data * 100; },
+            // Bridge broadcasts raw 0–1; rescale to % so it overlays cleanly on Humidity.
+            displayScale: 100,
+            min: 50,
+            max: 100
+        },
+        {
+            identifier: { namespace: 'fruiting-chamber', key: 'fc.humidifier_duty' },
+            name: 'Humidifier duty',
+            unit: '',
+            topic: '/fc1/actuators/humidifier_duty',
+            msgType: 'std_msgs/msg/Float32',
+            extract: function (msg) { return msg.data; },
+            min: 0,
+            max: 1,
+            type: 'actuator'
+        },
+        {
+            identifier: { namespace: 'fruiting-chamber', key: 'fc.pid_output' },
+            name: 'PID output',
+            unit: '',
+            topic: '/fc1/control/pid_output',
+            msgType: 'std_msgs/msg/Float32',
+            extract: function (msg) { return msg.data; },
+            min: 0,
+            max: 1
         }
     ];
 
@@ -283,12 +316,15 @@
                     // Map raw broadcast field names to sensor keys for dispatch
                     // index.js broadcasts {humidity, temperature, co2, humidifier, timestamp}
                     var fieldToKey = {
-                        humidity:      'fc.humidity',
-                        temperature:   'fc.temperature',
-                        co2:           'fc.co2',
-                        humidifier:    'fc.humidifier',
-                        humidity_2:    'fc.humidity_2',
-                        temperature_2: 'fc.temperature_2'
+                        humidity:        'fc.humidity',
+                        temperature:     'fc.temperature',
+                        co2:             'fc.co2',
+                        humidifier:      'fc.humidifier',
+                        humidity_2:      'fc.humidity_2',
+                        temperature_2:   'fc.temperature_2',
+                        humidifier_duty: 'fc.humidifier_duty',
+                        humidity_target: 'fc.humidity_target',
+                        pid_output:      'fc.pid_output'
                     };
 
                     Object.keys(fieldToKey).forEach(function (field) {
@@ -301,8 +337,12 @@
                             // (bridge sends humidity*100, temperature in C, co2 as float, humidifier as 0/1)
                             // Do NOT reconstruct a synthetic ROS msg and pass through sensor.extract()
                             // — that would cause a double-transform (e.g. humidity already multiplied by 100)
+                            var rawValue = data[field];
+                            var displayValue = sensor.displayScale
+                                ? rawValue * sensor.displayScale
+                                : rawValue;
                             var datum = {
-                                value: data[field],
+                                value: displayValue,
                                 utc: data.timestamp
                             };
 
@@ -366,6 +406,14 @@
                         .then(function (resp) {
                             if (!resp.ok) return [];
                             return resp.json();
+                        })
+                        .then(function (datums) {
+                            if (!sensor.displayScale || !Array.isArray(datums)) return datums;
+                            // History returns DB-raw values; apply the same displayScale
+                            // we use on live subscribe so chart axes match.
+                            return datums.map(function (d) {
+                                return { value: d.value * sensor.displayScale, utc: d.utc };
+                            });
                         })
                         .catch(function () { return []; });
                 },
