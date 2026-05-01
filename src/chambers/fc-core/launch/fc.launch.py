@@ -47,6 +47,15 @@ def generate_launch_description():
             output='screen'
         ),
 
+        # Launch slow-PWM actuator driver (Phase 27 — D-03)
+        Node(
+            package='fc_core',
+            executable='fc_pwm_driver',
+            name='fc_pwm_driver',
+            parameters=[LaunchConfiguration('config_file')],
+            output='screen',
+        ),
+
         # Launch camera node
         Node(
             package='fc_core',
