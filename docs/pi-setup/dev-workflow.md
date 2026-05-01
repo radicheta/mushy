@@ -132,7 +132,6 @@ The primary config file is `src/chambers/fc-core/config/fc_config.yaml`. Key set
 - `humidifier_pin: 27` — GPIO27 for the humidifier SSR
 - `target_humidity: 0.80` — 80% setpoint
 - `humidity_tolerance: 0.05` — ±5% deadband (humidifier on <75%, off >85%)
-- `min_dwell_time: 180.0` — seconds, minimum between humidifier toggles (3 min)
 - `ROS_DOMAIN_ID=69` — set in the systemd service; must match workstation
 
 Edit, commit to `fc1/prod`, push, and run `deploy.sh` — the config file
