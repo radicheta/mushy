@@ -33,8 +33,20 @@
     control_interval: 1.0  # Seconds between control updates
     display_interval: 1.0  # Seconds between display updates
 
+    # PID gains (Phase 27 — Skogestad SIMC defaults from 2026-04-11 calibration; error in %RH, output 0.0–1.0)
+    pid_kp: 0.5
+    pid_ki: 0.002
+    pid_kd: 4.0
+    pid_derivative_filter_tau: 10.0
+    pid_setpoint_ramp_seconds: 30.0  # D-07
+    bypass_threshold: 0.025           # D-10 — Mode C entry when |error| > 2.5% RH
+    # Slow-PWM (fc_pwm_driver — Phase 27)
+    pwm_window_seconds: 120.0         # D-08 LOCKED
+    min_pulse_seconds: 10.0           # D-11 LOCKED — empirical fog-visibility floor
+    max_duty_5min_avg: 0.40           # D-12 — rolling 5-min duty cap
+    duty_topic_timeout_seconds: 5.0   # defensive OFF if duty subscription silent
+
     # Safety guards
-    min_dwell_time: 180.0  # Seconds — 3 minute minimum between humidifier toggles
     sensor_stale_timeout: 10.0  # Seconds — sensor data older than this triggers safe state (humidifier OFF)
     startup_grace_period: 20.0  # Seconds — post-boot grace window; controller takes no actuator action until BOTH this elapses AND _humidity_buffer is full (SENS-01 / Phase 15)
 
