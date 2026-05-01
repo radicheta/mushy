@@ -574,9 +574,12 @@ def test_pid_gains_live_reload(ros_context):
     node._grace_active = lambda: False
     node.current_temp = 23.0
 
+    # Seed humidity inside the bypass band (default target 0.94, threshold 2.5%)
+    # so PID stays in the linear region — Mode C would clamp duty=1.0 and mask
+    # the effect of Kp regardless of value.
     with patch.object(node, 'get_clock', return_value=_mock_clock_at(0)):
         for _ in range(5):
-            _send_humidity(node, 0.70)
+            _send_humidity(node, 0.935)
 
     duty_low_kp = []
     node._duty_pub.publish = lambda msg: duty_low_kp.append(msg.data)
