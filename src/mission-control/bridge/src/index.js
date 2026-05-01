@@ -343,7 +343,8 @@ app.get('/farmer/summary', (req, res) => {
 });
 
 // Allowlist for history endpoint topics — prevents SQL injection via topic param (T-07-04)
-const ALLOWED_TOPICS = ['fc.humidity', 'fc.temperature', 'fc.co2', 'fc.humidifier', 'fc.humidity_2', 'fc.temperature_2'];
+const ALLOWED_TOPICS = ['fc.humidity', 'fc.temperature', 'fc.co2', 'fc.humidifier', 'fc.humidity_2', 'fc.temperature_2',
+                         'fc.humidifier_duty', 'fc.humidity_target', 'fc.pid_output'];
 
 // Server-side downsampling: choose bucket interval based on requested time range (D-06)
 // <=2h -> ~1440 pts at 5s; <=24h -> ~1440 pts at 1min; <=7d -> ~1008 pts at 10min; >7d -> 1hr
@@ -697,6 +698,57 @@ rclnodejs.init().then(async () => {
         }
     );
     console.log('[bridge] Humidifier subscription: TRANSIENT_LOCAL QoS (replays last state on restart)');
+
+    // Phase 27: subscribe to fc1/actuators/humidifier_duty -> fc.humidifier_duty
+    // TRANSIENT_LOCAL matches fc_controller publisher (Pitfall 5).
+    // Value is 0.0–1.0 per D-02 — do NOT rescale to 0–100%.
+    node.createSubscription(
+        'std_msgs/msg/Float32',
+        '/fc1/actuators/humidifier_duty',
+        { qos: humidifierQos },
+        async (msg) => {
+            const value = msg.data;
+            const ts = Date.now();
+            latestTelemetry.humidifier_duty = { value, timestamp: ts };
+            broadcast({ humidifier_duty: value, timestamp: ts });
+            await insertTelemetry('fc.humidifier_duty', value);
+        }
+    );
+    console.log('[bridge] Humidifier-duty subscription: TRANSIENT_LOCAL QoS');
+
+    // Phase 27: subscribe to fc1/control/humidity_target -> fc.humidity_target
+    // TRANSIENT_LOCAL matches fc_controller publisher.
+    // Effective post-ramp setpoint for PID tuning visibility in OpenMCT.
+    node.createSubscription(
+        'std_msgs/msg/Float32',
+        '/fc1/control/humidity_target',
+        { qos: humidifierQos },
+        async (msg) => {
+            const value = msg.data;
+            const ts = Date.now();
+            latestTelemetry.humidity_target = { value, timestamp: ts };
+            broadcast({ humidity_target: value, timestamp: ts });
+            await insertTelemetry('fc.humidity_target', value);
+        }
+    );
+    console.log('[bridge] Humidity-target subscription: TRANSIENT_LOCAL QoS');
+
+    // Phase 27: subscribe to fc1/control/pid_output -> fc.pid_output
+    // TRANSIENT_LOCAL matches fc_controller publisher.
+    // Raw PID output (pre-clamp) for PID tuning visibility in OpenMCT.
+    node.createSubscription(
+        'std_msgs/msg/Float32',
+        '/fc1/control/pid_output',
+        { qos: humidifierQos },
+        async (msg) => {
+            const value = msg.data;
+            const ts = Date.now();
+            latestTelemetry.pid_output = { value, timestamp: ts };
+            broadcast({ pid_output: value, timestamp: ts });
+            await insertTelemetry('fc.pid_output', value);
+        }
+    );
+    console.log('[bridge] PID-output subscription: TRANSIENT_LOCAL QoS');
 
     // Phase 16: forward /fc1/sensor_health (DiagnosticStatus, TRANSIENT_LOCAL) to WS clients
     const sensorHealthQos = new rclnodejs.QoS(
