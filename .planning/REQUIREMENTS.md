@@ -8,9 +8,9 @@
 
 ### HUMID — Analog Humidity Control
 
-- [ ] **HUMID-01** — Controller publishes a 0–100% duty cycle setpoint each control tick (replaces bang-bang on/off decision).
-- [ ] **HUMID-02** — Actuator layer translates duty cycle into time-proportional on/off windows on the existing relay (slow-PWM); window length per calibration findings (`.planning/phases/999.9-pid-time-proportional-humidity-control/CALIBRATION-FINDINGS-2026-04-11.md`).
-- [ ] **HUMID-03** — PID gains tunable as ROS params; defaults derived from 2026-04-11 system-ID data.
+- [x] **HUMID-01** — Controller publishes a 0–100% duty cycle setpoint each control tick (replaces bang-bang on/off decision).
+- [x] **HUMID-02** — Actuator layer translates duty cycle into time-proportional on/off windows on the existing relay (slow-PWM); window length per calibration findings (`.planning/phases/999.9-pid-time-proportional-humidity-control/CALIBRATION-FINDINGS-2026-04-11.md`).
+- [x] **HUMID-03** — PID gains tunable as ROS params; defaults derived from 2026-04-11 system-ID data.
 - [ ] **HUMID-04** — Operating band tightens from interim ±1% to PID-tracked tolerance verifiable on a 2-hour soak at the farm; farmer-attested.
 
 ### MODE — Mode Primitive + Runtime Config Delivery (incorporates SEED-001)
@@ -59,9 +59,9 @@
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| HUMID-01 | 27 | Pending |
-| HUMID-02 | 27 | Pending |
-| HUMID-03 | 27 | Pending |
+| HUMID-01 | 27 | Complete |
+| HUMID-02 | 27 | Complete |
+| HUMID-03 | 27 | Complete |
 | HUMID-04 | 27 | Pending |
 | MODE-01 | 28 | Pending |
 | MODE-02 | 28 | Pending |
