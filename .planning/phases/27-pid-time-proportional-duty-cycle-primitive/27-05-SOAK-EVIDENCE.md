@@ -83,3 +83,45 @@ Pass criteria (from RESEARCH §HUMID-04):
 ## Observations during soak (not blockers)
 
 - **`humidifier_duty` is visibly noisy on the OpenMCT chart.** Root cause is SHT30 ~±0.1% RH measurement noise multiplied by Kp=0.5 → ~0.05 swings in `pid_output` for sub-0.1% RH wobble. D term is already filtered (`pid_derivative_filter_tau: 10.0`). **Physical behavior is not affected** — slow-PWM locks duty at the start of each 120s window and ignores intra-window jitter, so the relay never saw the noise. Cosmetic-plus-edge-case (occasional cap-forecast bump at window roll). Suggested fix for the v1.6 PID-tuning phase: add a `pid_input_filter_tau: 10.0` EMA on humidity before the PID input only (raw stays on dashboards / sensor_health). One param, ~10 lines, no architectural change. Phase lag (~10s) is invisible against the chamber's minutes-scale transport delay. **Not shipping during the soak gate** — bundling with future PID refinement work alongside 999.27 derived metrics.
+
+## Soak window — RESULTS (window 2026-05-01T21:50:00Z → 2026-05-01T23:50:00Z)
+
+**Aggregate stats (full 2h window):**
+
+| topic | min | max | avg | stddev | range | samples |
+|---|---|---|---|---|---|---|
+| `fc.humidity` (%) | **93.596** | **94.638** | 94.132 | 0.222 | **1.042** | 1759 |
+| `fc.humidity_target` (×100) | 94.0 | 94.0 | 94.0 | 0 | 0 | 3440 |
+| `fc.humidifier_duty` | 0 | 0.925 | 0.159 | 0.260 | 0.925 | 3444 |
+| `fc.pid_output` | 0 | 0.925 | 0.159 | 0.260 | 0.925 | 3435 |
+| `fc.temperature` (°C) | 15.272 | 15.665 | 15.483 | 0.118 | 0.393 | 1760 |
+
+**Mode C events** (journalctl `MODE C|engaged|disengag` over the window): **0** ✓
+
+**Min/max timing:**
+- min RH = 93.596% at **2026-05-01T21:50:05Z** — 5 s into the window. Boot transient: humidity below setpoint at deploy, controller had to ramp it up.
+- max RH = 94.638% at **2026-05-01T22:03:17Z** — 13 min in. Slight integral-driven overshoot as PID found the setpoint, then settled.
+
+**Steady-state stats (excluding the first 10 minutes of settling):**
+
+| metric | value |
+|---|---|
+| range | **0.690 %** ✓ |
+| stddev | 0.204 |
+| avg | 94.158 % |
+| samples | 1459 |
+
+### Verdict — borderline FAIL on strict criterion, **PASS in steady state**
+
+- **Strict criterion** (max−min ≤ 0.01 over full 2h window): **FAIL by 0.042 %.** The min sample (93.596 %) is from the first 5 s of the window — i.e. the moment the controller booted, before it had any chance to actuate.
+- **Steady-state (t ≥ 10 min)**: range 0.690 %, comfortably under the 1.0 % strict threshold and inside the ±0.5 % stretch band.
+- **PID + Mode C health**: zero Mode C engagements, zero overshoot beyond 0.65 % above setpoint, max steady-state error 0.34 % below setpoint. Bumpless transfer worked. Sensor health and humidifier behavior exactly as designed.
+
+The strict criterion as written did not exclude startup transient. Two reasonable readings:
+
+1. **Spec was ambiguous** — the intent was "controller holds humidity steady inside band", not "humidity is in band the instant the controller boots". Steady-state PASS satisfies the intent. Action: relax the spec to exclude a stated settling window (e.g. first 10 min) and treat HUMID-04 as PASS.
+2. **Spec was strict** — fail by 0.04 %, soak again with humidity already at setpoint before the 2h window starts. Cleanest evidence; minimal real risk since steady state was clean for ~107 min of the 120 min window.
+
+Reading (1) is well-supported by the data and how PID controllers are evaluated in practice. Reading (2) is conservative but adds ~2 h of wall-clock for a result we already know.
+
+**STOPPING here for human judgment** — not auto-marking the phase complete. Farmer attestation and `gsd-verifier` deferred until the user picks (1) or (2).
