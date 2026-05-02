@@ -1,10 +1,51 @@
-# Requirements — v1.5: Analog Humidity Control & Condensation/Evaporation Forcing
-
-**Milestone goal:** Replace bang-bang humidifier control with PID + time-proportional duty cycle, exposed to the farmer as named modes (`fruiting`, `pinning`) with experimental override modes for condensation/evaporation forcing experiments.
+# Requirements — v1.5.0.1 (active hotfix) + v1.5 (paused)
 
 ---
 
-## v1.5 Requirements
+## v1.5.0.1 — Resilience hotfix from 2026-05-02 incident
+
+**Milestone goal:** Close the resilience gaps the 2026-05-02 blackout + DERP-relay incident exposed (telemetry lost forever during dropouts, fc-core stuck dead 55 min after a boot race, tailscaled saturated under bad DERP) before resuming v1.5 main. Pattern matches v1.2.1.
+
+### BUF — Edge buffering replay-on-reconnect (promotes 999.1)
+
+Wave 1+2 already on `main` (commits `ad44a36..e8d15d0` 2026-05-02); this milestone closes Wave 3.
+
+- [ ] **BUF-01** — fc1 buffers all `fc.*` topics locally (sqlite WAL, 24h retention) during normal operation; survives fc-core restarts.
+- [ ] **BUF-02** — On bridge reconnect, fc1 replays un-acked points oldest-first with original timestamps; bridge ingest is idempotent via UNIQUE `(topic, time)`.
+- [ ] **BUF-03** — Replayed (backfilled) points must NOT poison sensor-health "last fresh" timestamps (composes with 999.18 spirit); alerter ignores backfilled rows per existing WS-only design.
+- [ ] **BUF-04** — Induced 5-minute Tailscale dropout fills OpenMCT chart within 60s of reconnect with original timestamps; farmer-attested.
+
+### SYS — fc-core systemd unit hardening (promotes 999.28)
+
+- [ ] **SYS-01** — `ExecStartPre` waits for `tailscale0` to have an IPv4 address, not just link existence (e.g. loop on `ip -4 addr show tailscale0 | grep -q inet`).
+- [ ] **SYS-02** — `Restart=always` + `RestartSec` + wider `StartLimitInterval`/`StartLimitBurst` applied to fc-core unit per existing `feedback_systemd_restart_ros2_launch` lesson; ros2 launch's "exit 0 on child crash" trap mitigated.
+- [ ] **SYS-03** — `After=`/`Wants=tailscaled.service` relationship audited and applied where appropriate; other fc1 systemd units (fc-update, anything else binding DDS to tailscale0) audited for the same race.
+- [ ] **SYS-04** — Validation: stop `tailscaled` and reboot the Pi; fc-core waits and comes up green without manual `reset-failed && start`. Farmer not paged.
+
+### SAMP — Telemetry sampling-rate reduction (promotes 999.30)
+
+- [ ] **SAMP-01** — `sensor_read_interval` raised from 2.0s to 10.0s in `fc_config.yaml`; `control_interval` kept fast (decoupled — slowing it would change PID dynamics, not just visibility cadence).
+- [ ] **SAMP-02** — Phase 26 alerter `sensor_stale_timeout` and any freshness windows raised to ≥2× new publish cadence so the slower stream doesn't false-fire "sensor stale".
+- [ ] **SAMP-03** — Validation: tailscaled CPU on fc1 measurably drops when poked from elder-plops over the lossy DERP relay; chamber RH chart still readable in Mission Control with 5× coarser samples.
+
+### NET — Repo netplan drift reconciliation
+
+Tonight's manual edits on fc1 (`/etc/netplan/50-cloud-init.yaml` minus mossrock-west, deleted `/etc/netplan/99-static.yaml`, added `99-disable-network-config.cfg`) are not in the repo. Repo's `60-wifi.yaml` also lacks an `ethernets:` block, so wired ethernet to the 4G router currently does nothing.
+
+- [ ] **NET-01** — Repo netplan tracks fc1's currently-running clean state: mossrock-west dropped from `wlan0`, no 99-static.yaml, cloud-init network regen disabled.
+- [ ] **NET-02** — Repo adds `eth0` `dhcp4: true` stanza so the wired path to the 4G router works as a redundant uplink alongside wlan0.
+- [ ] **NET-03** — fc-system-sync applies the reconciled config to fc1 without breaking the currently-running uplink; wired path verified end-to-end (cable in → DHCP → ROS still flowing).
+
+### Out of Scope (this hotfix)
+
+- **999.29 max-continuous-on + cool-down redesign** — stays in v1.5 main; needs mister hardware soak to validate the 45/3 farmer estimate first. Operational risk already covered by the 0.40 → 0.90 PWM cap hotfix on `fc1/prod` (commit `ad949c6`).
+- **DERP relay choice / `--exit-node`** — separate decision tree from the publish-cadence cut.
+- **Compressing DDS payloads** — not the bottleneck.
+- **First reboot validation of tonight's netplan changes** — deliberately deferred until SYS-04 ships, when reboot is no longer scary.
+
+---
+
+## v1.5 Requirements (paused — resumes after v1.5.0.1)
 
 ### HUMID — Analog Humidity Control
 
@@ -57,6 +98,27 @@
 - **Phase 19 (FarmOS admin actions)** — deferred to v1.6; still Zoy/farm-team gated.
 
 ## Traceability
+
+### v1.5.0.1 (active)
+
+| REQ-ID | Phase | Status |
+|--------|-------|--------|
+| BUF-01 | 27.1 | Pending |
+| BUF-02 | 27.1 | Pending |
+| BUF-03 | 27.1 | Pending |
+| BUF-04 | 27.1 | Pending |
+| SYS-01 | 27.2 | Pending |
+| SYS-02 | 27.2 | Pending |
+| SYS-03 | 27.2 | Pending |
+| SYS-04 | 27.2 | Pending |
+| SAMP-01 | 27.3 | Pending |
+| SAMP-02 | 27.3 | Pending |
+| SAMP-03 | 27.3 | Pending |
+| NET-01 | 27.4 | Pending |
+| NET-02 | 27.4 | Pending |
+| NET-03 | 27.4 | Pending |
+
+### v1.5 (paused)
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|

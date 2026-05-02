@@ -8,7 +8,8 @@
 - ✅ **v1.2.1 Hotfix — camera stall + sensor warmup** — Phases 14–16 (shipped 2026-04-18)
 - ✅ **v1.3 Alerts & Unified Farmer Dashboard** — Phases 17–18 (shipped 2026-04-19; Phases 19/20 externally gated → v1.5)
 - ✅ **v1.4 Vision & Growth Insights** — Phases 21–26 (shipped 2026-05-01; Phase 24 deferred behind backlog 999.26 camera coverage)
-- ◆ **v1.5 Analog Humidity Control & Condensation/Evaporation Forcing** — Phases 27–31 (active 2026-05-01); promotes backlog 999.9 + absorbs 999.22/999.23 + SEED-001; carries Phase 20 alert cooldown tuning from v1.3
+- ⏸ **v1.5 Analog Humidity Control & Condensation/Evaporation Forcing** — Phases 27–31 (Phase 27 shipped 2026-05-02; PAUSED behind v1.5.0.1 hotfix); promotes backlog 999.9 + absorbs 999.22/999.23 + SEED-001; carries Phase 20 alert cooldown tuning from v1.3
+- ◆ **v1.5.0.1 Resilience hotfix from 2026-05-02 incident** — Phases 27.1–27.4 (active 2026-05-02); promotes backlog 999.1 + 999.28 + 999.30 + repo netplan drift cleanup; pattern matches v1.2.1
 
 ## Phases
 
@@ -81,22 +82,27 @@ CV pipeline foundation, bidirectional Signal "Field Notes" channel, dual-sensor 
 </details>
 
 <details open>
-<summary>◆ v1.5 Analog Humidity Control & Condensation/Evaporation Forcing (Phases 27-31) — ACTIVE</summary>
+<summary>◆ v1.5.0.1 Resilience hotfix from 2026-05-02 incident (Phases 27.1-27.4) — ACTIVE</summary>
 
-- [ ] **Phase 27: PID + time-proportional duty-cycle primitive** — closes the structural ±2% RH ceiling proven 2026-04-11 (calibration data on disk); HUMID-01..04
+- [ ] **Phase 27.1: Edge buffering — fc1 telemetry replay-on-reconnect (Wave 3 carryover)** — Wave 1+2 already on `main` (commits `ad44a36..e8d15d0` 2026-05-02); this phase closes Wave 3: deploy fc_buffer + bridge replay poller, induced 5-min Tailscale dropout soak, farmer attestation. Promotes 999.1; BUF-01..04
+- [ ] **Phase 27.2: fc-core systemd unit hardening — survive blackout/boot races** — `ExecStartPre` waits for tailscale0 IPv4 (not just link); apply `Restart=always` + wider `StartLimitInterval/Burst` per existing systemd lesson; audit `After=tailscaled.service`. Promotes 999.28; SYS-01..04
+- [ ] **Phase 27.3: Telemetry sampling-rate reduction** — `sensor_read_interval` 2.0s → 10.0s (decoupled from `control_interval`); update alerter `sensor_stale_timeout` to ≥2× new cadence. Cuts tailscaled CPU 5× under bad DERP. Promotes 999.30; SAMP-01..03
+- [ ] **Phase 27.4: Repo netplan drift reconciliation** — align repo to fc1's currently-running clean state (drop mossrock-west on wlan0, remove 99-static.yaml, disable cloud-init network regen) + add `eth0 dhcp4` stanza so wired path to 4G router actually works. NET-01..03
+
+Hotfix shape (2026-05-02 evening): the 2026-05-02 blackout + DERP-relay incident exposed three resilience gaps (telemetry lost forever during dropouts, fc-core stuck dead 55 min after a boot race, tailscaled saturated under bad DERP) plus a repo/runtime drift on netplan. Pattern matches v1.2.1: small focused hotfix milestone, shipped as a coherent unit before resuming v1.5 main. Out of scope: 999.29 (max-continuous-on cap redesign — needs mister hardware soak first; operational risk already covered by `ad949c6` PWM cap raise on `fc1/prod`).
+
+</details>
+
+<details>
+<summary>⏸ v1.5 Analog Humidity Control & Condensation/Evaporation Forcing (Phases 27-31) — PAUSED behind v1.5.0.1 hotfix</summary>
+
+- [x] **Phase 27: PID + time-proportional duty-cycle primitive** — shipped 2026-05-02; HUMID-01..04
 - [ ] **Phase 28: Mode primitive + 2 baseline modes (`fruiting`, `pinning`) + runtime config delivery** — incorporates SEED-001 (modes change without redeploy); MODE-01..05
 - [ ] **Phase 29: Alerter mode awareness + cooldown tuning** — alerter reads target/band from controller; sweep other env-hidden knobs; closes 999.22; carries Phase 20; ALRT-08..10
 - [ ] **Phase 30: Time-of-day mode scheduling** — declarative schedule, scheduler issues mode switches at window boundaries; closes 999.23; SCHED-01..03
 - [ ] **Phase 31: Experimental forcing modes (`force-condensation`, `force-evaporation`)** — timed, auto-revert, with TimescaleDB experiment logging; EXPT-01..03
 
-PID-first shape (locked 2026-05-01 with farmer): farmer wants condensation/evaporation experiments soon and they're achievable as a side-effect of the early phases. Calibration findings already on disk: `.planning/phases/999.9-pid-time-proportional-humidity-control/CALIBRATION-FINDINGS-2026-04-11.md`. Modes are kept thin in v1.5 — 2 hardcoded YAML modes; richer mode-editor UI is v1.6.
-
-</details>
-
-<details open>
-<summary>◆ Backlog phases in progress (active out-of-milestone work)</summary>
-
-- [ ] **Phase 999.1: Edge buffering — fc1 telemetry replay-on-reconnect** — fc_buffer ROS node + bridge replay poller; closes the visibility-during-Tailscale-dropout gap proven 2026-05-02 (~13min blackout, control unaffected). Acceptance: induced 5-min dropout fills OpenMCT chart within 60s of reconnect with original timestamps.
+PID-first shape (locked 2026-05-01 with farmer): farmer wants condensation/evaporation experiments soon and they're achievable as a side-effect of the early phases. Calibration findings already on disk: `.planning/phases/999.9-pid-time-proportional-humidity-control/CALIBRATION-FINDINGS-2026-04-11.md`. Modes are kept thin in v1.5 — 2 hardcoded YAML modes; richer mode-editor UI is v1.6. Resumes after v1.5.0.1 ships.
 
 </details>
 
@@ -131,11 +137,15 @@ PID-first shape (locked 2026-05-01 with farmer): farmer wants condensation/evapo
 | 25. Bidirectional Signal — farmer↔robot capture channel | v1.4 | 2/5 | Wave 1 complete (25-01 + 25-02) — receive pipe unblocked, capture persistence backbone GREEN. Waves 2–4 pending. | — |
 | 26. Dual sensor publishing + offline alarms (SHT30/SCD41) | v1.4 | 3/3 | Complete — UAT-8 PASS 2026-04-29 (farmer-eyeballed slot-1/slot-2 overlay, SCD41 clipping confirmed) | 2026-04-29 |
 | 27. PID + time-proportional duty-cycle primitive | v1.5 | 5/5 | Complete    | 2026-05-02 |
-| 999.1. Edge buffering — fc1 telemetry replay-on-reconnect | backlog | 0/4 | Planned 2026-05-02 — wave 0 + 2 fc1/bridge code + soak | — |
-| 28. Mode primitive + baselines + runtime config delivery | v1.5 | 0/? | Not started | — |
-| 29. Alerter mode awareness + cooldown tuning | v1.5 | 0/? | Not started | — |
-| 30. Time-of-day mode scheduling | v1.5 | 0/? | Not started | — |
-| 31. Experimental forcing modes (condensation/evaporation) | v1.5 | 0/? | Not started | — |
+| 27.1. Edge buffering — fc1 telemetry replay-on-reconnect (Wave 3) | v1.5.0.1 | 3/4 | Wave 1+2 on main (8 commits ad44a36..e8d15d0); Wave 3 = deploy + soak + attest | — |
+| 27.2. fc-core systemd unit hardening | v1.5.0.1 | 0/? | Not started | — |
+| 27.3. Telemetry sampling-rate reduction | v1.5.0.1 | 0/? | Not started | — |
+| 27.4. Repo netplan drift reconciliation | v1.5.0.1 | 0/? | Not started | — |
+| 999.1. Edge buffering | backlog | — | Promoted to Phase 27.1 (v1.5.0.1) on 2026-05-02 | — |
+| 28. Mode primitive + baselines + runtime config delivery | v1.5 | 0/? | Paused behind v1.5.0.1 | — |
+| 29. Alerter mode awareness + cooldown tuning | v1.5 | 0/? | Paused behind v1.5.0.1 | — |
+| 30. Time-of-day mode scheduling | v1.5 | 0/? | Paused behind v1.5.0.1 | — |
+| 31. Experimental forcing modes (condensation/evaporation) | v1.5 | 0/? | Paused behind v1.5.0.1 | — |
 
 ### Phase 27: PID + time-proportional duty-cycle primitive
 
@@ -156,23 +166,59 @@ Plans:
 - [x] 27-04-PLAN.md — Wave 3: bridge subscription on fc1/actuators/humidifier_duty (TRANSIENT_LOCAL, no rescale)
 - [x] 27-05-PLAN.md — Wave 4: deploy to fc1/prod + rebuild bridge + 2-hour HUMID-04 farmer-attested soak
 
-### Phase 999.1: Edge buffering — fc1 telemetry replay-on-reconnect
+### Phase 27.1: Edge buffering — fc1 telemetry replay-on-reconnect (Wave 3 carryover)
 
-**Goal:** fc1 captures all `fc1/*` telemetry to a local SQLite ring buffer during Tailscale/connectivity gaps. On bridge reconnect, the bridge polls fc1's stateless `GET /telemetry/since?ts=<ns>` HTTP endpoint and inserts the buffered points into Timescale with their original DDS timestamps and `ON CONFLICT (topic, time) DO NOTHING`. Mission Control history charts gap-fill instead of showing holes. Triggering event: 2026-05-02 ~13-min Tailscale dropout (São Paulo DERP relay) caused full telemetry blackout while PID held the chamber in lock — control was unaffected, only visibility was lost.
+**Goal:** Close the visibility-during-Tailscale-dropout gap proven by the 2026-05-02 incident (~2h cumulative blackout where PID held the chamber but Mission Control had no idea what it was doing). Wave 1+2 already on `main` (commits `ad44a36..e8d15d0`, 8 commits, fc_buffer node + bridge replay poller GREEN); this phase ships Wave 3: deploy fc1 via `git push fc1/prod` + `deploy.sh`, rebuild bridge with `--build`, induce a 5-min Tailscale dropout, attest farmer.
 
-**Requirements:** none formal (backlog phase). Acceptance is the farmer-attestable scenario: induce a 5-min Tailscale dropout (`sudo tailscale down` on fc1), wait, `sudo tailscale up`. Within ~60s of reconnect, the gap in OpenMCT humidity chart fills with original-timestamped points.
+**Requirements:** BUF-01, BUF-02, BUF-03, BUF-04. Acceptance = induced 5-min Tailscale dropout (`sudo tailscale down` on fc1, wait, `sudo tailscale up`) fills the OpenMCT humidity chart within ~60s of reconnect with original timestamps; no false-fire on alerter; sensor-health "last fresh" not poisoned by backfilled rows.
 
-**CONTEXT.md:** `.planning/phases/999.1-edge-buffering-local-telemetry-storage-on-pi-with-store-and-/999.1-CONTEXT.md`. GSD workflows use `phase=999.1`.
+**CONTEXT.md:** `.planning/phases/999.1-edge-buffering-local-telemetry-storage-on-pi-with-store-and-/999.1-CONTEXT.md` (preserved from backlog promotion). GSD workflows use `phase=27.1` (resolves to the same dir; rename if the resolver requires).
 
-**Dependencies:** Independent of v1.5 milestone. Composes with 999.27 (derived telemetry — auto-buffered via shared YAML), 999.25 (fc-core init race — buffer survives by design), 999.18 (true "last fresh" — backfill never reaches alerter, verified).
+**Dependencies:** None within v1.5.0.1 (independent of 27.2/27.3/27.4 — composes naturally with 27.3 since less raw traffic per buffered minute = longer effective retention in same SQLite size).
 
-**Plans:** 4 plans
+**Plans:** 4 plans (3 already executed on `main`)
 
 Plans:
-- [ ] 999.1-01-PLAN.md — Wave 1: pre-flight Timescale dedupe + idempotent UNIQUE (topic, time) migration in initDb() + shared config/buffered_topics.yaml manifest
-- [ ] 999.1-02-PLAN.md — Wave 2: implement fc_buffer ROS node (sqlite WAL + http.server on 100.96.239.75:8765 + 24h pruner) + setup.py entry_point + fc.launch.py wiring + systemd /var/lib/fc-core dir setup
-- [ ] 999.1-03-PLAN.md — Wave 2: bridge buffer_replay.js (30s poll, 15s timeout, ON CONFLICT DO NOTHING) + insertTelemetry timestamp refactor + msg.header.stamp on live RH/T paths + last_ingested_ns persistence to host volume
+- [x] 999.1-01-PLAN.md — Wave 1: pre-flight Timescale dedupe + idempotent UNIQUE (topic, time) migration in initDb() + shared config/buffered_topics.yaml manifest
+- [x] 999.1-02-PLAN.md — Wave 2: implement fc_buffer ROS node (sqlite WAL + http.server on 100.96.239.75:8765 + 24h pruner) + setup.py entry_point + fc.launch.py wiring + systemd /var/lib/fc-core dir setup
+- [x] 999.1-03-PLAN.md — Wave 2: bridge buffer_replay.js (30s poll, 15s timeout, ON CONFLICT DO NOTHING) + insertTelemetry timestamp refactor + msg.header.stamp on live RH/T paths + last_ingested_ns persistence to host volume
 - [ ] 999.1-04-PLAN.md — Wave 3: deploy fc1 via git push fc1/prod + deploy.sh + rebuild bridge with --build + induce 5-min Tailscale dropout soak + farmer attestation
+
+### Phase 27.2: fc-core systemd unit hardening — survive blackout/boot races
+
+**Goal:** Make fc-core's systemd unit survive the boot-time race the 2026-05-02 farm power outage exposed: tailscale0 link came up before acquiring an IPv4, fc-core's `ExecStartPre` only checked link presence, all 5 ROS nodes failed `rcl_create_node`, `ros2 launch` exited 0 (the known systemd trap), 5 retries in ~10s tripped `start-limit-hit`, service stayed dead 55min until manual `reset-failed && start`. Farmer-visible: "fc never came back after black out."
+
+**Requirements:** SYS-01, SYS-02, SYS-03, SYS-04. Acceptance = stop tailscaled and reboot the Pi; fc-core waits and comes up green without manual intervention.
+
+**CONTEXT.md:** `.planning/phases/27.2-fc-core-systemd-unit-hardening/27.2-CONTEXT.md` (to be created in plan-phase).
+
+**Dependencies:** Independent. Same family as 27.1 (outages should leave control intact and visibility recoverable, not require human intervention) and as 999.25 (fc-core init race — sister boot-time fragility on fc1).
+
+**Plans:** TBD (defined during `/gsd-plan-phase 27.2`)
+
+### Phase 27.3: Telemetry sampling-rate reduction
+
+**Goal:** Cut the per-second packet volume across the Tailscale → DERP → elder-plops path 5× by raising `sensor_read_interval` from 2.0s (0.5Hz) to 10.0s (0.1Hz). Keep `control_interval` fast — Phase 27 PID tuning was done at the existing control cadence; slowing the control loop changes discrete-time dynamics, slowing only the publish cadence does not (verify via `fc_sensors.py`/`fc_controller.py` decoupling read during plan-phase). Should drop tailscaled from 240% CPU under bad DERP back below saturation.
+
+**Requirements:** SAMP-01, SAMP-02, SAMP-03. Acceptance = before/after tailscaled CPU + load-avg measurement on fc1 when poked from elder-plops; chamber RH chart still readable in Mission Control with 5× coarser samples; alerter does not false-fire "sensor stale" with the new `sensor_stale_timeout`.
+
+**CONTEXT.md:** `.planning/phases/27.3-telemetry-sampling-rate-reduction/27.3-CONTEXT.md` (to be created).
+
+**Dependencies:** Plan AFTER 27.1 ships (cleaner before/after measurement once buffering is live; also so SAMP-02 can pick alerter timeouts knowing replay behavior). Composes with 27.1 (longer effective buffer retention), 27.2 (same family of "make fc1 robust against bad uplink").
+
+**Plans:** TBD (defined during `/gsd-plan-phase 27.3`)
+
+### Phase 27.4: Repo netplan drift reconciliation
+
+**Goal:** Reconcile the repo's tracked netplan with fc1's currently-running clean state, and add a wired ethernet path that today does nothing because the repo has no `ethernets:` block. Tonight's manual edits on fc1 (mossrock-west dropped from `wlan0`, `99-static.yaml` deleted, cloud-init network regen disabled via `99-disable-network-config.cfg`) are not in the repo — fc-system-sync would clobber them on next push.
+
+**Requirements:** NET-01, NET-02, NET-03. Acceptance = repo netplan matches fc1's currently-running state, fc-system-sync applies cleanly without breaking the live uplink, and a cable plugged into the 4G router's LAN port DHCPs and routes ROS as a redundant uplink alongside wlan0.
+
+**CONTEXT.md:** `.planning/phases/27.4-repo-netplan-drift-reconciliation/27.4-CONTEXT.md` (to be created).
+
+**Dependencies:** Plan AFTER 27.2 ships — once fc-core boot is no longer a coin flip, validating netplan changes via reboot is safe again.
+
+**Plans:** TBD (defined during `/gsd-plan-phase 27.4`)
 
 ## Backlog (parking lot)
 

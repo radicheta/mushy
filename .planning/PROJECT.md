@@ -89,7 +89,36 @@ SHT30/SCD41 slot topics + offline alarms (Phase 26). Phase 24 (ML vision)
 deferred behind backlog 999.26 (camera-coverage prerequisite).
 See `.planning/MILESTONES.md`.
 
-## Current Milestone: v1.5 — Analog Humidity Control & Condensation/Evaporation Forcing
+## Current Milestone: v1.5.0.1 — Resilience hotfix from 2026-05-02 incident
+
+**Goal:** Close the resilience gaps exposed by the 2026-05-02 blackout +
+DERP-relay incident (telemetry lost forever during dropouts, fc-core stuck
+dead 55 min after a boot race, tailscaled saturated under bad DERP) before
+resuming v1.5 main. Pattern matches v1.2.1.
+
+**Target features (4 phases, decimal-numbered to preserve v1.5's reserved 28–31):**
+- Phase 27.1 — Edge buffering Wave 3: deploy fc_buffer + bridge replay
+  poller (Wave 1+2 already on `main`), induced 5-min Tailscale dropout soak,
+  farmer attestation (promotes 999.1)
+- Phase 27.2 — fc-core systemd unit hardening: ExecStartPre waits for
+  tailscale0 IPv4, Restart=always + wider StartLimitInterval/Burst,
+  After=tailscaled audit (promotes 999.28)
+- Phase 27.3 — Telemetry sampling-rate reduction: `sensor_read_interval`
+  2.0 → 10.0 (decoupled from control_interval); 5× drop in tailscaled CPU
+  under bad DERP (promotes 999.30)
+- Phase 27.4 — Repo netplan drift reconciliation: align repo to fc1's
+  current clean state (drop mossrock-west, remove 99-static.yaml, disable
+  cloud-init network regen) + add eth0 dhcp4 stanza so wired path to 4G
+  router actually works
+
+**NOT in this hotfix (stays in v1.5 main):**
+- 999.29 — max-continuous-on + forced cool-down cap redesign; needs mister
+  hardware soak to validate the 45/3 farmer estimate first
+
+**Already shipped operationally (covers immediate risk):**
+- pwm cap raised 0.40 → 0.90 on `fc1/prod` (commit `ad949c6`, 2026-05-02)
+
+## Parent Milestone (paused): v1.5 — Analog Humidity Control & Condensation/Evaporation Forcing
 
 **Goal:** Replace bang-bang humidifier control with PID + time-proportional
 duty cycle, exposed to the farmer as named modes (`fruiting`, `pinning`) with
@@ -194,4 +223,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-05-01 — v1.4 closed, v1.5 started (Analog Humidity Control)*
+*Last updated: 2026-05-02 — v1.5 paused, v1.5.0.1 hotfix started (Resilience from 2026-05-02 incident)*
