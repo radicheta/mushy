@@ -14,6 +14,10 @@ services:
     volumes:
       - /home/santi/.config/cyclonedds-tailscale.xml:/etc/cyclonedds-tailscale.xml:ro
       - /data/snapshots-burnt:/data/snapshots-burnt
+      # Phase 999.1 Plan 03: bridge-side buffer-replay state (last_ingested_ns).
+      # Loss is recoverable (one extra 24h refetch) but graceful — survives
+      # `docker compose up -d --build bridge`. Source dir created by deploy.
+      - ./bridge-state:/var/lib/bridge
 
   farmos-agent:
     network_mode: "host"

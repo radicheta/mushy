@@ -11,6 +11,7 @@ const migration = require('./schema_migration');
 const { validateHistoryParams } = require('./history_validate');
 const { validateFrameParams } = require('./frame_validate');
 const { burnBar, formatBarText } = require('./burn_bar');
+const buffer_replay = require('./buffer_replay');
 
 // Fail fast if database password is not configured
 if (!process.env.TIMESCALE_PASSWORD) {
@@ -589,14 +590,28 @@ function broadcast(data) {
     });
 }
 
-// Insert a telemetry row — never throws; DB errors are logged only
-async function insertTelemetry(topic, value) {
+// Insert a telemetry row — never throws; DB errors are logged only.
+// Phase 999.1 Plan 03: tsMs/tsNs are optional. When passed, tsMs is written to
+// the time column instead of new Date() (so backfilled rows from buffer_replay
+// land at their original DDS timestamp), and tsNs advances the buffer-replay
+// cursor so the first post-restart poll doesn't re-fetch the entire 24h buffer.
+// Live ON CONFLICT DO NOTHING is required because backfill races with live
+// inserts when reconnect happens mid-second (the unique constraint added in
+// Plan 01 would otherwise raise on the live insert too).
+async function insertTelemetry(topic, value, tsMs, tsNs) {
     if (!dbReady) return;
+    const tsMsResolved = tsMs || Date.now();
     try {
         await pool.query(
-            'INSERT INTO telemetry (time, topic, value) VALUES ($1, $2, $3)',
-            [new Date(), topic, value]
+            'INSERT INTO telemetry (time, topic, value) VALUES (to_timestamp($1::double precision / 1000), $2, $3) ON CONFLICT (topic, time) DO NOTHING',
+            [tsMsResolved, topic, value]
         );
+        // Advance the buffer-replay cursor on every successful live insert so
+        // a post-restart poll doesn't re-fetch the 24h buffer (RESEARCH §Q5).
+        // tsNs MUST be passed by every caller — null defaults silently skip advance.
+        if (tsNs !== null && tsNs !== undefined) {
+            buffer_replay.advanceLastIngested(buffer_replay.DEFAULT_STATE_FILE, tsNs);
+        }
     } catch (err) {
         console.error('[db] insert failed:', err.message);
     }
@@ -616,28 +631,34 @@ rclnodejs.init().then(async () => {
     }
 
     // Subscribe: fc1/humidity -> fc.humidity
+    // 999.1 Plan 03: pass msg.header.stamp so DB time matches the original DDS sample.
     node.createSubscription(
         'sensor_msgs/msg/RelativeHumidity',
         '/fc1/humidity',
         async (msg) => {
             const value = msg.relative_humidity * 100;
-            const ts = Date.now();
+            const tsMs = msg.header.stamp.sec * 1000 + Math.floor(msg.header.stamp.nanosec / 1e6);
+            const tsNs = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec;
+            const ts = tsMs || Date.now();
             latestTelemetry.humidity = { value, timestamp: ts };
             broadcast({ humidity: value, timestamp: ts });
-            await insertTelemetry('fc.humidity', value);
+            await insertTelemetry('fc.humidity', value, tsMs, tsNs);
         }
     );
 
     // Subscribe: fc1/temperature -> fc.temperature
+    // 999.1 Plan 03: pass msg.header.stamp so DB time matches the original DDS sample.
     node.createSubscription(
         'sensor_msgs/msg/Temperature',
         '/fc1/temperature',
         async (msg) => {
             const value = msg.temperature;
-            const ts = Date.now();
+            const tsMs = msg.header.stamp.sec * 1000 + Math.floor(msg.header.stamp.nanosec / 1e6);
+            const tsNs = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec;
+            const ts = tsMs || Date.now();
             latestTelemetry.temperature = { value, timestamp: ts };
             broadcast({ temperature: value, timestamp: ts });
-            await insertTelemetry('fc.temperature', value);
+            await insertTelemetry('fc.temperature', value, tsMs, tsNs);
         }
     );
 
@@ -651,10 +672,12 @@ rclnodejs.init().then(async () => {
         '/fc1/temperature_2',
         async (msg) => {
             const value = msg.temperature;
-            const ts = Date.now();
+            const tsMs = msg.header.stamp.sec * 1000 + Math.floor(msg.header.stamp.nanosec / 1e6);
+            const tsNs = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec;
+            const ts = tsMs || Date.now();
             latestTelemetry.temperature_2 = { value, timestamp: ts };
             broadcast({ temperature_2: value, timestamp: ts });
-            await insertTelemetry('fc.temperature_2', value);
+            await insertTelemetry('fc.temperature_2', value, tsMs, tsNs);
         }
     );
 
@@ -663,10 +686,12 @@ rclnodejs.init().then(async () => {
         '/fc1/humidity_2',
         async (msg) => {
             const value = msg.relative_humidity * 100;
-            const ts = Date.now();
+            const tsMs = msg.header.stamp.sec * 1000 + Math.floor(msg.header.stamp.nanosec / 1e6);
+            const tsNs = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec;
+            const ts = tsMs || Date.now();
             latestTelemetry.humidity_2 = { value, timestamp: ts };
             broadcast({ humidity_2: value, timestamp: ts });
-            await insertTelemetry('fc.humidity_2', value);
+            await insertTelemetry('fc.humidity_2', value, tsMs, tsNs);
         }
     );
 
@@ -677,9 +702,10 @@ rclnodejs.init().then(async () => {
         async (msg) => {
             const value = msg.data;
             const ts = Date.now();
+            const tsNs = ts * 1_000_000;
             latestTelemetry.co2 = { value, timestamp: ts };
             broadcast({ co2: value, timestamp: ts });
-            await insertTelemetry('fc.co2', value);
+            await insertTelemetry('fc.co2', value, ts, tsNs);
         }
     );
 
@@ -700,11 +726,12 @@ rclnodejs.init().then(async () => {
         { qos: humidifierQos },
         async (msg) => {
             const ts = Date.now();
+            const tsNs = ts * 1_000_000;
             humidifierLastMsgTs = ts;
             const value = msg.data ? 1 : 0;
             latestTelemetry.humidifier = { value, timestamp: ts };
             broadcast({ humidifier: value, timestamp: ts });
-            await insertTelemetry('fc.humidifier', value);
+            await insertTelemetry('fc.humidifier', value, ts, tsNs);
         }
     );
     console.log('[bridge] Humidifier subscription: TRANSIENT_LOCAL QoS (replays last state on restart)');
@@ -719,9 +746,10 @@ rclnodejs.init().then(async () => {
         async (msg) => {
             const value = msg.data;
             const ts = Date.now();
+            const tsNs = ts * 1_000_000;
             latestTelemetry.humidifier_duty = { value, timestamp: ts };
             broadcast({ humidifier_duty: value, timestamp: ts });
-            await insertTelemetry('fc.humidifier_duty', value);
+            await insertTelemetry('fc.humidifier_duty', value, ts, tsNs);
         }
     );
     console.log('[bridge] Humidifier-duty subscription: TRANSIENT_LOCAL QoS');
@@ -736,9 +764,10 @@ rclnodejs.init().then(async () => {
         async (msg) => {
             const value = msg.data;
             const ts = Date.now();
+            const tsNs = ts * 1_000_000;
             latestTelemetry.humidity_target = { value, timestamp: ts };
             broadcast({ humidity_target: value, timestamp: ts });
-            await insertTelemetry('fc.humidity_target', value);
+            await insertTelemetry('fc.humidity_target', value, ts, tsNs);
         }
     );
     console.log('[bridge] Humidity-target subscription: TRANSIENT_LOCAL QoS');
@@ -753,9 +782,10 @@ rclnodejs.init().then(async () => {
         async (msg) => {
             const value = msg.data;
             const ts = Date.now();
+            const tsNs = ts * 1_000_000;
             latestTelemetry.pid_output = { value, timestamp: ts };
             broadcast({ pid_output: value, timestamp: ts });
-            await insertTelemetry('fc.pid_output', value);
+            await insertTelemetry('fc.pid_output', value, ts, tsNs);
         }
     );
     console.log('[bridge] PID-output subscription: TRANSIENT_LOCAL QoS');
@@ -800,6 +830,17 @@ rclnodejs.init().then(async () => {
     // Start snapshot timer (D-10: periodic snapshots, default 15 min)
     setInterval(saveSnapshot, SNAPSHOT_INTERVAL_MS);
     console.log(`[camera] Snapshot timer started: every ${SNAPSHOT_INTERVAL_MS / 60000} min to ${SNAPSHOT_DIR}/${CAMERA_ID}/`);
+
+    // Phase 999.1 Plan 03: start the buffer-replay poller — fetches buffered
+    // points from fc1's /telemetry/since every 30s with a 15s HTTP timeout
+    // and INSERTs with ON CONFLICT DO NOTHING. Only meaningful when dbReady
+    // (otherwise pollOnce's INSERT would fail; the loop survives because
+    // start() catches errors per tick).
+    if (dbReady) {
+        buffer_replay.start({ pool });
+    } else {
+        console.warn('[buffer-replay] DB not ready — skipping poller start');
+    }
 
     // Phase 21 D-04: daily retention tick + startup shot 60s after bridge comes up.
     // Runs in-process (no new container) per D-01.
