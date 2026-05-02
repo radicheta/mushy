@@ -172,7 +172,7 @@ Plans:
 
 **Requirements:** BUF-01, BUF-02, BUF-03, BUF-04. Acceptance = induced 5-min Tailscale dropout (`sudo tailscale down` on fc1, wait, `sudo tailscale up`) fills the OpenMCT humidity chart within ~60s of reconnect with original timestamps; no false-fire on alerter; sensor-health "last fresh" not poisoned by backfilled rows.
 
-**CONTEXT.md:** `.planning/phases/999.1-edge-buffering-local-telemetry-storage-on-pi-with-store-and-/999.1-CONTEXT.md` (preserved from backlog promotion). GSD workflows use `phase=27.1` (resolves to the same dir; rename if the resolver requires).
+**CONTEXT.md:** `.planning/phases/27.1-edge-buffering-fc1-telemetry-replay-on-reconnect/27.1-CONTEXT.md` (renamed from `999.1-...` 2026-05-02 during v1.5.0.1 init; commits on `main` referencing 999.1 plans are preserved as historical audit trail).
 
 **Dependencies:** None within v1.5.0.1 (independent of 27.2/27.3/27.4 — composes naturally with 27.3 since less raw traffic per buffered minute = longer effective retention in same SQLite size).
 
