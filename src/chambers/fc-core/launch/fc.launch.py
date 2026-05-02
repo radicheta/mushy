@@ -56,6 +56,15 @@ def generate_launch_description():
             output='screen',
         ),
 
+        # Launch local telemetry buffer (Phase 999.1 — D-05/D-06/D-07/D-09/D-10/D-11)
+        Node(
+            package='fc_core',
+            executable='fc_buffer',
+            name='fc_buffer',
+            parameters=[LaunchConfiguration('config_file')],
+            output='screen',
+        ),
+
         # Launch camera node
         Node(
             package='fc_core',

@@ -13,6 +13,7 @@ Environment="ROS_LOCALHOST_ONLY=0"
 Environment="RMW_IMPLEMENTATION=rmw_cyclonedds_cpp"
 Environment="CYCLONEDDS_URI=file:///etc/cyclonedds-tailscale.xml"
 Environment="HOME=/home/ubuntu"
+ExecStartPre=/bin/bash -c 'install -d -o ubuntu -g ubuntu -m 0755 /var/lib/fc-core'
 ExecStartPre=/bin/bash -c '\
   echo "fc-core: waiting for tailscale0 interface..."; \
   for i in $(seq 1 30); do \

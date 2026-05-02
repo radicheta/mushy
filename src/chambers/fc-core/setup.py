@@ -23,7 +23,8 @@ setup(
         'std_msgs',
         'rpi_hardware_pwm',
         'RPi.GPIO',
-        'adafruit-circuitpython-dht'
+        'adafruit-circuitpython-dht',
+        'pyyaml',
     ],
     zip_safe=True,
     maintainer='Santi',
@@ -39,6 +40,7 @@ setup(
             'fc_display = fc_core.fc_display:main',
             'fc_telemetry = fc_core.fc_telemetry:main',
             'fc_camera = fc_core.fc_camera:main',
+            'fc_buffer = fc_core.fc_buffer:main',
         ],
     },
 )
