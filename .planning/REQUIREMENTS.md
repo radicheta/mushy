@@ -29,7 +29,8 @@
 
 ### SCHED — Time-Of-Day Mode Scheduling
 
-- [ ] **SCHED-01** — Declarative schedule definition (YAML/JSON) maps time-of-day windows to mode names (e.g. "06:00–22:00 → fruiting; 22:00–06:00 → pinning").
+- [x] **SCHED-01
+** — Declarative schedule definition (YAML/JSON) maps time-of-day windows to mode names (e.g. "06:00–22:00 → fruiting; 22:00–06:00 → pinning").
 - [ ] **SCHED-02** — A scheduler issues mode-switch service calls at window boundaries; closes backlog 999.23 groundwork (canonical target becomes a function of time).
 - [ ] **SCHED-03** — Default profile is the existing constant single-mode case (no schedule) — backward compatible with HUMID-* and MODE-* defaults.
 
