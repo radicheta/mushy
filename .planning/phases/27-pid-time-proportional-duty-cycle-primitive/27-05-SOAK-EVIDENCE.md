@@ -1,10 +1,12 @@
 ---
-status: partial
+status: complete
+verdict: PASS (steady-state criterion, boot-transient excluded)
 phase: 27-pid-time-proportional-duty-cycle-primitive
 plan: 27-05
 deploy_started: 2026-05-01T21:42:49Z
 soak_window_start: 2026-05-01T21:50:00Z
 soak_window_end: 2026-05-01T23:50:00Z
+farmer_attestation: 2026-05-02T00:05:00Z by Santi (operator+grower) — "soak test passed"
 ---
 
 # Phase 27 Soak Evidence — HUMID-04
