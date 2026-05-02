@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { decideSource } = require('./snapshot_helpers');
 const retention = require('./retention');
+const migration = require('./schema_migration');
 const { validateHistoryParams } = require('./history_validate');
 const { validateFrameParams } = require('./frame_validate');
 const { burnBar, formatBarText } = require('./burn_bar');
@@ -218,6 +219,15 @@ async function initDb() {
             CREATE INDEX IF NOT EXISTS idx_telemetry_topic_time
             ON telemetry (topic, time DESC)
         `);
+        // Phase 999.1 Plan 01: pre-flight dedupe scan + idempotent UNIQUE constraint.
+        // Backfill in Plan 03 uses ON CONFLICT (topic, time) DO NOTHING which requires this constraint.
+        const dupes = await migration.findTopicTimeDuplicates(pool, 5);
+        if (dupes.length > 0) {
+            console.error('[db] BLOCKING: telemetry has duplicate (topic, time) rows; cannot add UNIQUE. First few:', dupes);
+            throw new Error('telemetry duplicates present — manual dedupe required before UNIQUE migration');
+        }
+        await migration.applyTelemetryUniqueConstraint(pool);
+        console.log('[db] telemetry_topic_time_unique constraint ensured');
         await pool.query(`
             CREATE TABLE IF NOT EXISTS snapshots (
                 captured_at TIMESTAMPTZ NOT NULL,
