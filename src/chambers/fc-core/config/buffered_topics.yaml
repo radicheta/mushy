@@ -1,0 +1,14 @@
+# Phase 999.1 Plan 01: shared topic manifest consumed by fc_buffer (fc1) and bridge (elder-plops).
+# Edit ONE file when adding a new buffered topic; both subscribers reload on next restart.
+# Camera topics excluded by D-11 — frame size unsuitable for ring buffer; handled by Phase 22 / 999.10.
+# sensor_health excluded — DiagnosticStatus is not a scalar; revisit in v2 if needed.
+buffered:
+  - { ros_topic: /fc1/humidity,                  msg_type: sensor_msgs/RelativeHumidity, bridge_topic: fc.humidity,         qos: default }
+  - { ros_topic: /fc1/temperature,               msg_type: sensor_msgs/Temperature,      bridge_topic: fc.temperature,      qos: default }
+  - { ros_topic: /fc1/humidity_2,                msg_type: sensor_msgs/RelativeHumidity, bridge_topic: fc.humidity_2,       qos: default }
+  - { ros_topic: /fc1/temperature_2,             msg_type: sensor_msgs/Temperature,      bridge_topic: fc.temperature_2,    qos: default }
+  - { ros_topic: /fc1/co2,                       msg_type: std_msgs/Float32,             bridge_topic: fc.co2,              qos: default }
+  - { ros_topic: /fc1/actuators/humidifier,      msg_type: std_msgs/Bool,                bridge_topic: fc.humidifier,       qos: transient_local }
+  - { ros_topic: /fc1/actuators/humidifier_duty, msg_type: std_msgs/Float32,             bridge_topic: fc.humidifier_duty,  qos: transient_local }
+  - { ros_topic: /fc1/control/humidity_target,   msg_type: std_msgs/Float32,             bridge_topic: fc.humidity_target,  qos: transient_local }
+  - { ros_topic: /fc1/control/pid_output,        msg_type: std_msgs/Float32,             bridge_topic: fc.pid_output,       qos: transient_local }
