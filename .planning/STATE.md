@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: completed
-stopped_at: Completed 999.1-01-PLAN.md
-last_updated: "2026-05-02T15:49:22.864Z"
+stopped_at: Completed 999.1-03-PLAN.md
+last_updated: "2026-05-02T16:21:06.227Z"
 last_activity: 2026-05-02
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 9
-  completed_plans: 6
-  percent: 67
+  completed_plans: 8
+  percent: 89
 ---
 
 # Project State
@@ -31,7 +31,7 @@ Plan: Not started
 Status: Milestone complete
 Last activity: 2026-05-02
 
-Progress: [███████░░░] 67%
+Progress: [█████████░] 89%
 
 **Carried from v1.3 (not blocking v1.4):**
 
@@ -99,6 +99,7 @@ Progress: [███████░░░] 67%
 - [Phase 25-04] MAX_HISTORY_ROWS=20 cap on 24h history (D-10); slice(-20) keeps oldest-first
 - [Phase 25-05] D-03 capture-error indicator narrowed at ship: row.degraded=true persists for transcribe failures (UAT-7) but NOT for LLM-compose failures (UAT-5) — fallback writes only the reply column. Operationally acceptable; gap tracked in deferred-items.md.
 - [999.1-01] Extract migration helpers into schema_migration.js (vs guarding module.exports in index.js) — keeps test require pure since index.js calls rclnodejs.init() at top level
+- Bridge buffer-replay poller live-path also uses ON CONFLICT DO NOTHING — backfill races with live inserts when reconnect happens mid-second.
 
 ### Pending Todos
 
@@ -137,11 +138,12 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 **Decision rationale:** all v1.2-era verification/UAT gaps were never material to v1.4 work. v1.4 ships with full farmer attestation on Phases 21-26. Documentation artifacts will be retroactively cleaned up alongside future related work, not as standalone backlog entries.
 | Phase 999.1 P01 | 6 | 2 tasks | 4 files |
+| Phase 999.1 P03 | 5m25s | 2 tasks | 4 files |
 
 ## Session Continuity
 
-Last session: 2026-05-02T15:49:22.858Z
-Stopped at: Completed 999.1-01-PLAN.md
+Last session: 2026-05-02T16:20:59.330Z
+Stopped at: Completed 999.1-03-PLAN.md
 Next up: Phase 25 pre-gate spike (signal-cli primary re-registration via 4G router SIM) — must close before `/gsd:plan-phase 25`
 
 ---
