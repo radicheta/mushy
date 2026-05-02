@@ -1,37 +1,37 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: completed
-stopped_at: Completed 999.1-03-PLAN.md
-last_updated: "2026-05-02T16:21:06.227Z"
+milestone: v1.5.0.1
+milestone_name: Resilience hotfix from 2026-05-02 incident
+status: defining_requirements
+stopped_at: null
+last_updated: "2026-05-02T23:59:00.000Z"
 last_activity: 2026-05-02
 progress:
-  total_phases: 2
-  completed_phases: 1
-  total_plans: 9
-  completed_plans: 8
-  percent: 89
+  total_phases: 4
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-18)
+See: .planning/PROJECT.md (updated 2026-05-02)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 27 — pid-time-proportional-duty-cycle-primitive
+**Current focus:** v1.5.0.1 hotfix — close resilience gaps from 2026-05-02 incident before resuming v1.5 main
 
 ## Current Position
 
-Milestone: v1.4 — Vision & Growth Insights (5 phases, 2 complete)
-Phase: 27
-Plan: Not started
-Status: Milestone complete
-Last activity: 2026-05-02
+Milestone: v1.5.0.1 — Resilience hotfix (4 phases, 0 complete)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-05-02 — Milestone v1.5.0.1 started
 
-Progress: [█████████░] 89%
+Progress: [░░░░░░░░░░] 0%
 
 **Carried from v1.3 (not blocking v1.4):**
 
