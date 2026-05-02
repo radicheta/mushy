@@ -43,7 +43,7 @@
     # Slow-PWM (fc_pwm_driver — Phase 27)
     pwm_window_seconds: 120.0         # D-08 LOCKED
     min_pulse_seconds: 10.0           # D-11 LOCKED — empirical fog-visibility floor
-    max_duty_5min_avg: 0.40           # D-12 — rolling 5-min duty cap
+    max_duty_5min_avg: 0.90           # D-12 — rolling 5-min duty cap (raised 0.40→0.90 2026-05-02 after blackout-recovery RH stuck at 79% with PID demanding duty=1.0; see 999.x backlog re: cap-aware recovery mode)
     duty_topic_timeout_seconds: 5.0   # defensive OFF if duty subscription silent
 
     # Safety guards
@@ -59,3 +59,13 @@
     camera_jpeg_quality: 65         # 0-100 (D-06: 60-70% default)
     camera_active_fps: 1.0            # FPS when Mission Control viewers are connected (Phase 12 D-01)
     camera_subscriber_grace_sec: 5.0  # Seconds before dropping to idle after last viewer disconnects (Phase 12 D-07)
+
+# Phase 999.1: edge buffer (fc_buffer node) — local SQLite ring + HTTP /telemetry/since
+fc_buffer:
+  ros__parameters:
+    db_path: /var/lib/fc-core/buffer.sqlite
+    http_bind: 100.96.239.75      # fc1 tailscale0 — never bind 0.0.0.0 (D-09)
+    http_port: 8765
+    retention_seconds: 86400      # 24h ring (D-05)
+    prune_interval_seconds: 60.0  # Pruner cadence
+    # topics_config intentionally omitted — resolved from package share at startup

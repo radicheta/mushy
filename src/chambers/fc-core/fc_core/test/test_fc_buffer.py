@@ -77,8 +77,9 @@ def test_duplicate_ignored(db):
 # ---------------------------------------------------------------------------
 
 def test_pruner_evicts(db):
-    now_ns = 3_000_000_000_000  # ~3000 s in ns
-    # Two old rows (way outside 86400s window) and one recent one (== now).
+    # 100,000 s in ns — comfortably past the 86,400 s retention window.
+    now_ns = 100_000 * 1_000_000_000
+    # Two old rows (≈ now − 100,000 s, beyond window) and one current row.
     fc_buffer._write_row(db, 'fc.humidity', 1000, 50.0, None)
     fc_buffer._write_row(db, 'fc.humidity', 2000, 50.0, None)
     fc_buffer._write_row(db, 'fc.humidity', now_ns, 60.0, None)
