@@ -217,7 +217,7 @@ milestone. Promote with `/gsd:review-backlog` when ready.
 
   **Validation:** induce a 25% RH deficit (door open then closed), confirm chamber recovers at ≥ ~1.0%/min vs the ~0.5%/min seen today with cap=0.40; confirm during a real long demand period that the forced 3-min off does happen on schedule.
 
-  **TBD before planning — capture source for the numbers:** is 45 min / 3 min from mister hardware spec sheet, prior empirical experience, or a gut estimate? Document the source in the plan so future-us doesn't re-litigate.
+  **Source for 45/3 numbers:** farmer's gut estimate (confirmed 2026-05-02), not from a hardware spec or empirical thermal test. Treat as starting point, not gospel — pre-planning task: check the actual mister hardware spec for max-continuous-duty rating + run a single soak test (run the mister for 60+ min, watch for thermal trip / output degradation / water-pump strain) before locking values into the plan.
 
   **Fallback design** (if the max-on approach turns out to have an edge case): the original conditional-recovery-mode shape — keep cap=0.40 steady-state but auto-lift to ~0.95 when `|humidity_error| > 0.05` with hysteresis. Documented here for contrast; not the primary plan.
 
