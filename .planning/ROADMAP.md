@@ -93,6 +93,13 @@ PID-first shape (locked 2026-05-01 with farmer): farmer wants condensation/evapo
 
 </details>
 
+<details open>
+<summary>◆ Backlog phases in progress (active out-of-milestone work)</summary>
+
+- [ ] **Phase 999.1: Edge buffering — fc1 telemetry replay-on-reconnect** — fc_buffer ROS node + bridge replay poller; closes the visibility-during-Tailscale-dropout gap proven 2026-05-02 (~13min blackout, control unaffected). Acceptance: induced 5-min dropout fills OpenMCT chart within 60s of reconnect with original timestamps.
+
+</details>
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -124,6 +131,7 @@ PID-first shape (locked 2026-05-01 with farmer): farmer wants condensation/evapo
 | 25. Bidirectional Signal — farmer↔robot capture channel | v1.4 | 2/5 | Wave 1 complete (25-01 + 25-02) — receive pipe unblocked, capture persistence backbone GREEN. Waves 2–4 pending. | — |
 | 26. Dual sensor publishing + offline alarms (SHT30/SCD41) | v1.4 | 3/3 | Complete — UAT-8 PASS 2026-04-29 (farmer-eyeballed slot-1/slot-2 overlay, SCD41 clipping confirmed) | 2026-04-29 |
 | 27. PID + time-proportional duty-cycle primitive | v1.5 | 5/5 | Complete    | 2026-05-02 |
+| 999.1. Edge buffering — fc1 telemetry replay-on-reconnect | backlog | 0/4 | Planned 2026-05-02 — wave 0 + 2 fc1/bridge code + soak | — |
 | 28. Mode primitive + baselines + runtime config delivery | v1.5 | 0/? | Not started | — |
 | 29. Alerter mode awareness + cooldown tuning | v1.5 | 0/? | Not started | — |
 | 30. Time-of-day mode scheduling | v1.5 | 0/? | Not started | — |
@@ -147,6 +155,24 @@ Plans:
 - [x] 27-03-PLAN.md — Wave 2: refactor fc_controller.py — strip bang-bang/dwell/GPIO, add PID + Mode C + ramp + bumpless transfer
 - [x] 27-04-PLAN.md — Wave 3: bridge subscription on fc1/actuators/humidifier_duty (TRANSIENT_LOCAL, no rescale)
 - [x] 27-05-PLAN.md — Wave 4: deploy to fc1/prod + rebuild bridge + 2-hour HUMID-04 farmer-attested soak
+
+### Phase 999.1: Edge buffering — fc1 telemetry replay-on-reconnect
+
+**Goal:** fc1 captures all `fc1/*` telemetry to a local SQLite ring buffer during Tailscale/connectivity gaps. On bridge reconnect, the bridge polls fc1's stateless `GET /telemetry/since?ts=<ns>` HTTP endpoint and inserts the buffered points into Timescale with their original DDS timestamps and `ON CONFLICT (topic, time) DO NOTHING`. Mission Control history charts gap-fill instead of showing holes. Triggering event: 2026-05-02 ~13-min Tailscale dropout (São Paulo DERP relay) caused full telemetry blackout while PID held the chamber in lock — control was unaffected, only visibility was lost.
+
+**Requirements:** none formal (backlog phase). Acceptance is the farmer-attestable scenario: induce a 5-min Tailscale dropout (`sudo tailscale down` on fc1), wait, `sudo tailscale up`. Within ~60s of reconnect, the gap in OpenMCT humidity chart fills with original-timestamped points.
+
+**CONTEXT.md:** `.planning/phases/999.1-edge-buffering-local-telemetry-storage-on-pi-with-store-and-/999.1-CONTEXT.md`. GSD workflows use `phase=999.1`.
+
+**Dependencies:** Independent of v1.5 milestone. Composes with 999.27 (derived telemetry — auto-buffered via shared YAML), 999.25 (fc-core init race — buffer survives by design), 999.18 (true "last fresh" — backfill never reaches alerter, verified).
+
+**Plans:** 4 plans
+
+Plans:
+- [ ] 999.1-01-PLAN.md — Wave 1: pre-flight Timescale dedupe + idempotent UNIQUE (topic, time) migration in initDb() + shared config/buffered_topics.yaml manifest
+- [ ] 999.1-02-PLAN.md — Wave 2: implement fc_buffer ROS node (sqlite WAL + http.server on 100.96.239.75:8765 + 24h pruner) + setup.py entry_point + fc.launch.py wiring + systemd /var/lib/fc-core dir setup
+- [ ] 999.1-03-PLAN.md — Wave 2: bridge buffer_replay.js (30s poll, 15s timeout, ON CONFLICT DO NOTHING) + insertTelemetry timestamp refactor + msg.header.stamp on live RH/T paths + last_ingested_ns persistence to host volume
+- [ ] 999.1-04-PLAN.md — Wave 3: deploy fc1 via git push fc1/prod + deploy.sh + rebuild bridge with --build + induce 5-min Tailscale dropout soak + farmer attestation
 
 ## Backlog (parking lot)
 
