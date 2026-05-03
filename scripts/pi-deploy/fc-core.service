@@ -1,7 +1,7 @@
 [Unit]
 Description=FC-1 Mushroom Farm ROS2 Control
-After=network-online.target fc-update.service tailscaled.service
-Wants=network-online.target fc-update.service tailscaled.service
+After=network-online.target fc-update.service
+Wants=network-online.target fc-update.service
 StartLimitIntervalSec=300
 StartLimitBurst=5
 
@@ -15,15 +15,15 @@ Environment="CYCLONEDDS_URI=file:///etc/cyclonedds-tailscale.xml"
 Environment="HOME=/home/ubuntu"
 ExecStartPre=/bin/bash -c 'install -d -o ubuntu -g ubuntu -m 0755 /var/lib/fc-core'
 ExecStartPre=/bin/bash -c '\
-  echo "fc-core: waiting for tailscale0 interface..."; \
+  echo "fc-core: waiting for wg0 interface..."; \
   for i in $(seq 1 30); do \
-    if ip link show tailscale0 > /dev/null 2>&1; then \
-      echo "fc-core: tailscale0 ready (attempt $i)"; \
+    if ip link show wg0 > /dev/null 2>&1; then \
+      echo "fc-core: wg0 ready (attempt $i)"; \
       exit 0; \
     fi; \
     sleep 1; \
   done; \
-  echo "fc-core: tailscale0 did not appear after 30s -- aborting start"; \
+  echo "fc-core: wg0 did not appear after 30s -- aborting start"; \
   exit 1'
 ExecStart=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && source /home/ubuntu/mushroom_farm_ws/install/setup.bash && ros2 launch fc_core fc.launch.py'
 Restart=always

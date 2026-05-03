@@ -1,20 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- CycloneDDS unicast config for ROS2 over Tailscale VPN -->
-<!-- Bridge container uses host networking to access tailscale0 -->
+<!-- CycloneDDS unicast config for ROS2 over WireGuard VPN -->
+<!-- Bridge container uses host networking to access wg0 (host-side WG tunnel via pfSense) -->
+<!-- 2026-05-03: switched from tailscale0 to wg0 — Tailscale wireguard-go was 200% CPU on fc1 -->
 <CycloneDDS xmlns="https://cdds.io/config"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:schemaLocation="https://cdds.io/config https://raw.githubusercontent.com/eclipse-cyclonedds/cyclonedds/master/etc/cyclonedds.xsd">
     <Domain Id="any">
         <General>
             <Interfaces>
-                <NetworkInterface name="tailscale0" multicast="false" />
+                <NetworkInterface name="wg0" multicast="false" />
             </Interfaces>
             <AllowMulticast>false</AllowMulticast>
         </General>
         <Discovery>
             <Peers>
-                <Peer address="100.96.10.66"/>  <!-- elder-plops Tailscale IP -->
-                <Peer address="100.96.239.75"/> <!-- FC-1 Pi Tailscale IP -->
+                <Peer address="172.16.10.3"/>  <!-- elder-plops WG IP -->
+                <Peer address="172.16.10.5"/>  <!-- FC-1 Pi WG IP -->
             </Peers>
         </Discovery>
     </Domain>
