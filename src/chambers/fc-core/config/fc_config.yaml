@@ -64,7 +64,7 @@
 fc_buffer:
   ros__parameters:
     db_path: /var/lib/fc-core/buffer.sqlite
-    http_bind: 100.96.239.75      # fc1 tailscale0 — never bind 0.0.0.0 (D-09)
+    http_bind: 172.16.10.5        # fc1 wg0 — never bind 0.0.0.0 (D-09); switched from 100.96.239.75 (tailscale0) on 2026-05-03
     http_port: 8765
     retention_seconds: 86400      # 24h ring (D-05)
     prune_interval_seconds: 60.0  # Pruner cadence
