@@ -31,7 +31,7 @@ CAMERA_PATTERN = re.compile(r'/fc1/camera')
 HTTP_LIMIT_CAP = 50000  # absolute ceiling on /telemetry/since rows per request
 
 DEFAULT_DB_PATH = '/var/lib/fc-core/buffer.sqlite'
-DEFAULT_HTTP_BIND = '100.96.239.75'  # fc1 tailscale0 (D-09); never the wildcard interface
+DEFAULT_HTTP_BIND = '172.16.10.5'  # fc1 wg0 (D-09); never the wildcard interface — was tailscale0 100.96.239.75 until 2026-05-03
 DEFAULT_HTTP_PORT = 8765
 DEFAULT_RETENTION_SECONDS = 86400
 DEFAULT_PRUNE_INTERVAL_SECONDS = 60.0
