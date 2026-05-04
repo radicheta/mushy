@@ -14,7 +14,7 @@
     
     # Target values
     target_temp: 23.0  # °C
-    target_humidity: 0.94  # 94% — farmer-set 2026-04-28
+    target_humidity: 0.96  # 96% — farmer-set 2026-05-04 during PID calibration session 2
     target_light_hours: 12  # Hours of light per day
     light_start_hour: 6  # Start light at 6 AM
     
@@ -34,7 +34,7 @@
     display_interval: 1.0  # Seconds between display updates
 
     # PID gains (Phase 27 — Skogestad SIMC defaults from 2026-04-11 calibration; error in %RH, output 0.0–1.0)
-    pid_kp: 0.5
+    pid_kp: 0.35  # dropped from 0.5 → 0.35 2026-05-04 during calibration session 2; morning ±0.6% limit cycle decayed to ±0.1%
     pid_ki: 0.002
     pid_kd: 4.0
     pid_derivative_filter_tau: 10.0
