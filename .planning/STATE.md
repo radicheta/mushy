@@ -2,16 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.5.0.1
 milestone_name: Resilience hotfix from 2026-05-02 incident
-status: defining_requirements
+status: realigned_after_detour
 stopped_at: null
-last_updated: "2026-05-02T23:59:00.000Z"
-last_activity: 2026-05-02
+last_updated: "2026-05-04T00:00:00.000Z"
+last_activity: 2026-05-03
 progress:
-  total_phases: 4
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_phases: 2
+  completed_phases: 1
+  total_plans: 4
+  completed_plans: 4
+  percent: 50
+  notes: "27.1 shipped via wg0 detour (BUF-04 attestation pending); 27.2 partial; 27.3 + 27.4 mooted"
 ---
 
 # Project State
@@ -25,13 +26,16 @@ See: .planning/PROJECT.md (updated 2026-05-02)
 
 ## Current Position
 
-Milestone: v1.5.0.1 — Resilience hotfix (4 phases, 0 complete)
-Phase: Not started (defining requirements)
+Milestone: v1.5.0.1 — Resilience hotfix (realigned 2026-05-03)
+- Phase 27.1 — Edge buffering: SHIPPED 2026-05-03 over wg0 (BUF-04 attestation pending natural-event)
+- Phase 27.2 — fc-core systemd hardening: PARTIAL (SYS-02 complete; SYS-01 + SYS-04 open)
+- Phase 27.3 — Sampling-rate reduction: MOOTED by transport switch
+- Phase 27.4 — Netplan reconciliation: MOOTED in planned form (fc1 off farm-4G)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-05-02 — Milestone v1.5.0.1 started
+Status: Realigned post-detour; choosing next move
+Last activity: 2026-05-03 — Phase 27.1 Wave 3 deploy COMPLETE via wg0; PID calibration notes filed (limit cycle, drop Kp 0.5→0.35)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████░░░░░] ~50%
 
 **Carried from v1.3 (not blocking v1.4):**
 
@@ -142,12 +146,10 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 ## Session Continuity
 
-Last session: 2026-05-02T16:20:59.330Z
-Stopped at: Completed 999.1-03-PLAN.md
-Next up: Phase 25 pre-gate spike (signal-cli primary re-registration via 4G router SIM) — must close before `/gsd:plan-phase 25`
+Last session: 2026-05-03 — Phase 27.1 Wave 3 deployed via wg0 detour; v1.5.0.1 milestone scope realigned 2026-05-04 (this session)
+Stopped at: v1.5.0.1 realignment complete; cyclonedds rename + 27.2 IPv4-wait remain as light cleanup
+Next up: pick from { (a) close 27.2 SYS-01 + SYS-04, (b) cyclonedds-tailscale.xml → cyclonedds.xml rename, (c) PID Kp 0.5 → 0.35 retune per 2026-05-03 calibration notes, (d) resume v1.5 main with /gsd:discuss-phase 28 }
 
 ---
-*Roadmap phases: v1.0 (1–8), v1.1 (9–10), v1.2 (11–13), v1.2.1 (14–16), v1.3 (17–20)*
-*Last updated: 2026-04-18 — v1.3 roadmap created*
-
-**Planned Phase:** 999.1 (edge-buffering) — 4 plans — 2026-05-02T03:07:24.774Z
+*Roadmap phases: v1.0 (1–8), v1.1 (9–10), v1.2 (11–13), v1.2.1 (14–16), v1.3 (17–20), v1.4 (21–26), v1.5 (27–31), v1.5.0.1 (27.1, 27.2)*
+*Last updated: 2026-05-04 — v1.5.0.1 realignment after wg0 architectural detour*

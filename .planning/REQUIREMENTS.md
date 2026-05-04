@@ -4,44 +4,35 @@
 
 ## v1.5.0.1 — Resilience hotfix from 2026-05-02 incident
 
-**Milestone goal:** Close the resilience gaps the 2026-05-02 blackout + DERP-relay incident exposed (telemetry lost forever during dropouts, fc-core stuck dead 55 min after a boot race, tailscaled saturated under bad DERP) before resuming v1.5 main. Pattern matches v1.2.1.
+**Milestone goal (post-realignment 2026-05-03):** Close the resilience gaps the 2026-05-02 blackout + DERP-relay incident exposed. The original 4-phase shape was overtaken by an architectural detour: fc1's microSD failed during diagnosis; fc1 was rebuilt and brought back on home-LAN wifi with a kernel-WG tunnel through pfSense (172.16.10.0/24); DDS switched from `tailscale0` to `wg0`. The transport switch was the real fix — it absorbs SAMP entirely, partly absorbs SYS, and parks NET until fc1 returns to the farm-4G setup.
 
-### BUF — Edge buffering replay-on-reconnect (promotes 999.1)
+### BUF — Edge buffering replay-on-reconnect (promotes 999.1) — SHIPPED 2026-05-03 over wg0
 
-Wave 1+2 already on `main` (commits `ad44a36..e8d15d0` 2026-05-02); this milestone closes Wave 3.
+- [x] **BUF-01** — fc1 buffers all `fc.*` topics locally (sqlite WAL, 24h retention) during normal operation; survives fc-core restarts.
+- [x] **BUF-02** — On bridge reconnect, fc1 replays un-acked points oldest-first with original timestamps; bridge ingest is idempotent via UNIQUE `(topic, time)`.
+- [x] **BUF-03** — Replayed (backfilled) points must NOT poison sensor-health "last fresh" timestamps; alerter ignores backfilled rows per existing WS-only design.
+- [ ] **BUF-04** — Acceptance pending natural-event attestation. Original "induced 5-min Tailscale dropout" recipe no longer applicable (DDS not on Tailscale any more); D-12 deferral chosen instead. fc_buffer + replay verified live by farmer eyeball 2026-05-03.
 
-- [ ] **BUF-01** — fc1 buffers all `fc.*` topics locally (sqlite WAL, 24h retention) during normal operation; survives fc-core restarts.
-- [ ] **BUF-02** — On bridge reconnect, fc1 replays un-acked points oldest-first with original timestamps; bridge ingest is idempotent via UNIQUE `(topic, time)`.
-- [ ] **BUF-03** — Replayed (backfilled) points must NOT poison sensor-health "last fresh" timestamps (composes with 999.18 spirit); alerter ignores backfilled rows per existing WS-only design.
-- [ ] **BUF-04** — Induced 5-minute Tailscale dropout fills OpenMCT chart within 60s of reconnect with original timestamps; farmer-attested.
+### SYS — fc-core systemd unit hardening (promotes 999.28) — partially shipped via transport switch
 
-### SYS — fc-core systemd unit hardening (promotes 999.28)
+- [x] **SYS-02** — `Restart=always` + `RestartSec=10` + `StartLimitIntervalSec=300` + `StartLimitBurst=5` applied to `scripts/pi-deploy/fc-core.service`. ros2 launch's "exit 0 on child crash" trap mitigated by Restart=always.
+- [x] **SYS-03 (partial)** — fc-core unit no longer references tailscaled (now `After=network-online.target fc-update.service`). Outstanding work: explicit `After=`/`Wants=` on whichever unit brings up `wg0` (kernel-WG `wg-quick@wg0` or systemd-networkd).
+- [ ] **SYS-01** — `ExecStartPre` currently waits on `ip link show wg0` (link only). Tighten to wait for IPv4 on `wg0` (loop on `ip -4 addr show wg0 | grep -q inet`).
+- [ ] **SYS-04** — Validation reboot pending. Now cheap to do (fresh microSD, stable home-LAN connectivity).
 
-- [ ] **SYS-01** — `ExecStartPre` waits for `tailscale0` to have an IPv4 address, not just link existence (e.g. loop on `ip -4 addr show tailscale0 | grep -q inet`).
-- [ ] **SYS-02** — `Restart=always` + `RestartSec` + wider `StartLimitInterval`/`StartLimitBurst` applied to fc-core unit per existing `feedback_systemd_restart_ros2_launch` lesson; ros2 launch's "exit 0 on child crash" trap mitigated.
-- [ ] **SYS-03** — `After=`/`Wants=tailscaled.service` relationship audited and applied where appropriate; other fc1 systemd units (fc-update, anything else binding DDS to tailscale0) audited for the same race.
-- [ ] **SYS-04** — Validation: stop `tailscaled` and reboot the Pi; fc-core waits and comes up green without manual `reset-failed && start`. Farmer not paged.
+### SAMP — Telemetry sampling-rate reduction — MOOTED 2026-05-03
 
-### SAMP — Telemetry sampling-rate reduction (promotes 999.30)
+The 240% tailscaled CPU on fc1 was the SAMP justification. With DDS on kernel-WG and tailscaled disabled, fc1 load avg is 0.41. SAMP-01..03 retired in this milestone. The "0.1Hz publish cadence is fine for chamber" idea remains a valid backlog candidate (4G-credit / chart-resolution motivations), just no longer load-bearing here.
 
-- [ ] **SAMP-01** — `sensor_read_interval` raised from 2.0s to 10.0s in `fc_config.yaml`; `control_interval` kept fast (decoupled — slowing it would change PID dynamics, not just visibility cadence).
-- [ ] **SAMP-02** — Phase 26 alerter `sensor_stale_timeout` and any freshness windows raised to ≥2× new publish cadence so the slower stream doesn't false-fire "sensor stale".
-- [ ] **SAMP-03** — Validation: tailscaled CPU on fc1 measurably drops when poked from elder-plops over the lossy DERP relay; chamber RH chart still readable in Mission Control with 5× coarser samples.
+### NET — Repo netplan drift reconciliation — MOOTED 2026-05-03 in planned form
 
-### NET — Repo netplan drift reconciliation
-
-Tonight's manual edits on fc1 (`/etc/netplan/50-cloud-init.yaml` minus mossrock-west, deleted `/etc/netplan/99-static.yaml`, added `99-disable-network-config.cfg`) are not in the repo. Repo's `60-wifi.yaml` also lacks an `ethernets:` block, so wired ethernet to the 4G router currently does nothing.
-
-- [ ] **NET-01** — Repo netplan tracks fc1's currently-running clean state: mossrock-west dropped from `wlan0`, no 99-static.yaml, cloud-init network regen disabled.
-- [ ] **NET-02** — Repo adds `eth0` `dhcp4: true` stanza so the wired path to the 4G router works as a redundant uplink alongside wlan0.
-- [ ] **NET-03** — fc-system-sync applies the reconciled config to fc1 without breaking the currently-running uplink; wired path verified end-to-end (cable in → DHCP → ROS still flowing).
+fc1 is on home-LAN wifi with kernel-WG, not at the farm on 4G. The drifted netplan state captured in the original plan was a farm-4G snapshot; both the reconciliation and the new `eth0 dhcp4` stanza wait until fc1 is back at the farm. The underlying anti-pattern (manual fc1 netplan edits not in repo; fc-system-sync would clobber them) re-surfaces at that point.
 
 ### Out of Scope (this hotfix)
 
 - **999.29 max-continuous-on + cool-down redesign** — stays in v1.5 main; needs mister hardware soak to validate the 45/3 farmer estimate first. Operational risk already covered by the 0.40 → 0.90 PWM cap hotfix on `fc1/prod` (commit `ad949c6`).
-- **DERP relay choice / `--exit-node`** — separate decision tree from the publish-cadence cut.
-- **Compressing DDS payloads** — not the bottleneck.
-- **First reboot validation of tonight's netplan changes** — deliberately deferred until SYS-04 ships, when reboot is no longer scary.
+- **microSD wear from fc_buffer SQLite WAL** — separate work item, gated on user procuring USB-SSD hardware.
+- **`cyclonedds-tailscale.xml` filename rename** — cosmetic, tracked separately.
 
 ---
 
@@ -103,20 +94,20 @@ Tonight's manual edits on fc1 (`/etc/netplan/50-cloud-init.yaml` minus mossrock-
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| BUF-01 | 27.1 | Pending |
-| BUF-02 | 27.1 | Pending |
-| BUF-03 | 27.1 | Pending |
-| BUF-04 | 27.1 | Pending |
-| SYS-01 | 27.2 | Pending |
-| SYS-02 | 27.2 | Pending |
-| SYS-03 | 27.2 | Pending |
-| SYS-04 | 27.2 | Pending |
-| SAMP-01 | 27.3 | Pending |
-| SAMP-02 | 27.3 | Pending |
-| SAMP-03 | 27.3 | Pending |
-| NET-01 | 27.4 | Pending |
-| NET-02 | 27.4 | Pending |
-| NET-03 | 27.4 | Pending |
+| BUF-01 | 27.1 | Complete (2026-05-03 over wg0) |
+| BUF-02 | 27.1 | Complete (2026-05-03 over wg0) |
+| BUF-03 | 27.1 | Complete (2026-05-03 over wg0) |
+| BUF-04 | 27.1 | Pending — natural-event attestation |
+| SYS-01 | 27.2 | Pending — wait for IPv4 on wg0, not just link |
+| SYS-02 | 27.2 | Complete — fc-core.service has Restart=always + StartLimit* |
+| SYS-03 | 27.2 | Partial — no longer After=tailscaled; consider After=wg-quick@wg0 |
+| SYS-04 | 27.2 | Pending — reboot validation |
+| SAMP-01 | 27.3 | Mooted by transport switch |
+| SAMP-02 | 27.3 | Mooted by transport switch |
+| SAMP-03 | 27.3 | Mooted by transport switch |
+| NET-01 | 27.4 | Mooted (parked until fc1 returns to farm-4G) |
+| NET-02 | 27.4 | Mooted (parked until fc1 returns to farm-4G) |
+| NET-03 | 27.4 | Mooted (parked until fc1 returns to farm-4G) |
 
 ### v1.5 (paused)
 
