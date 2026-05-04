@@ -10,11 +10,11 @@ services:
     restart: always
     environment:
       - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-      - CYCLONEDDS_URI=file:///etc/cyclonedds-tailscale.xml
+      - CYCLONEDDS_URI=file:///etc/cyclonedds.xml
       # Phase 999.1 buffer-replay endpoint — points at fc1's WG IP (was 100.96.239.75 / Tailscale, retired 2026-05-03)
       - FC1_BUFFER_URL=http://172.16.10.5:8765
     volumes:
-      - /home/santi/.config/cyclonedds-tailscale.xml:/etc/cyclonedds-tailscale.xml:ro
+      - /home/santi/.config/cyclonedds.xml:/etc/cyclonedds.xml:ro
       - /data/snapshots-burnt:/data/snapshots-burnt
       # Phase 999.1 Plan 03: bridge-side buffer-replay state (last_ingested_ns).
       # Loss is recoverable (one extra 24h refetch) but graceful — survives

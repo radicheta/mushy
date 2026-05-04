@@ -29,6 +29,13 @@ ExecStart=/bin/bash -c '\
       CHANGED=1; \
     fi; \
   fi; \
+  if [ -f "$REPO/cyclonedds.xml" ]; then \
+    if ! cmp -s "$REPO/cyclonedds.xml" /etc/cyclonedds.xml 2>/dev/null; then \
+      install -m 644 -o root -g root "$REPO/cyclonedds.xml" /etc/cyclonedds.xml; \
+      echo "fc-system-sync: installed /etc/cyclonedds.xml"; \
+      CHANGED=1; \
+    fi; \
+  fi; \
   if [ "$CHANGED" = "0" ]; then \
     echo "fc-system-sync: nothing changed, skipping reload"; \
     exit 0; \
