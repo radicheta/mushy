@@ -35,7 +35,7 @@
 
     # PID gains (Phase 27 — Skogestad SIMC defaults from 2026-04-11 calibration; error in %RH, output 0.0–1.0)
     pid_kp: 0.35  # dropped from 0.5 → 0.35 2026-05-04 during calibration session 2; morning ±0.6% limit cycle decayed to ±0.1%
-    pid_ki: 0.002
+    pid_ki: 0.001  # halved from 0.002 → 0.001 2026-05-04 to address ~28-min integrator-driven limit cycle observed during afternoon falling-temp regime
     pid_kd: 4.0
     pid_derivative_filter_tau: 10.0
     pid_setpoint_ramp_seconds: 30.0  # D-07
