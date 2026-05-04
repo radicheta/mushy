@@ -299,5 +299,36 @@ milestone. Promote with `/gsd:review-backlog` when ready.
 
   **Filed 2026-05-04 evening** — the day's calibration session was rate-limited by ambient temperature, weather, and farmer availability. Sim would change that.
 
+- **Phase 999.34: Periodic SHT30 heater cycle to clear membrane condensation** — Surfaced 2026-05-04 evening. SHT30 datasheet recommends running the on-die heater periodically when the sensor is exposed to sustained high humidity; FC-1 sits at 94–96% RH effectively 24/7, exactly the stress regime where membrane condensation causes the RH reading to drift positive (sensor reads near-saturated even when the air isn't). The heater is **already accessible** — `adafruit_sht31d` exposes it as `self.sht.heater = True/False`, no driver work needed. Heater raises *sensor* T by ~0.5–1.5 °C for ~3.6 mA at 3.3 V; chamber bulk T is unaffected, but the sensor's own T+RH readings are corrupted during heating + ~30 s recovery before they re-equilibrate. Fits cleanly into our quiet-window cadence (chamber inertia τ ≈ 10 min means controller can hold last-duty for 30 s with negligible RH impact).
+
+  **Implementation surface:** `src/chambers/fc-core/fc_core/fc_sensors.py` (new periodic-heater scheduler + `sensor_health.heater_active` flag), `src/chambers/fc-core/fc_core/fc_controller.py` (hold-last-duty when `heater_active=true`, do not enter safe-state), `src/agents/alerter/src/rules.js` (suppress "sensor stale" / OOB alarms during heater + recovery window), bridge / Mission Control plugin (annotate or mask heater windows on charts so the corrupted readings don't look like real anomalies).
+
+  **Open design questions for planning** (each with a recommended default; resolve during discuss-phase):
+
+  1. **Cadence:** nightly fixed schedule (default: 03:00 UYT, chamber quiet, low duty, no farmer attention) vs condition-triggered (e.g., RH > 95% sustained 24h, or "RH reading hasn't moved more than 0.05% in N minutes" as a stuck-membrane heuristic) vs both. Recommended default: nightly fixed first; add condition-trigger later if drift evidence emerges.
+
+  2. **Pulse duration + recovery:** 1 s heater on, then ignore sensor readings post-heat. Datasheet ranges 1–3 s pulses. **Live test 2026-05-04 22:02 UTC measured numbers** with 3 s pulse: sensor T peak +0.73 °C (14.58 vs 13.85 baseline, well within datasheet 0.5–1.5 °C); RH dipped -0.55 % (95.83 vs 96.39); **T recovery to baseline: ~60 s; RH recovery to baseline trend: ~150 s (2.5 min)**. RH recovery is the binding constraint — *not* 30 s as initially specified. Default updated: **1 s pulse, hold-last-duty for 180 s** (3 min), or condition-driven release (T within 0.05 °C of pre-pulse and slope ~0). 1 s pulse on a clean (uncondensed) sensor likely shortens RH recovery somewhat — re-measure after first nightly pulse on production sensor.
+
+  3. **Controller behavior during cycle:** hold last duty (recommended — chamber inertia tolerates 3 min of open-loop fine) vs go to safe-state OFF (rejected — would cause unnecessary RH dip) vs continue PID against last-good-reading (rejected — controller would drift on stale data). Default: hold-last-duty for the full heater + recovery window. **Live test confirmed this is non-optional**: the same 22:02 UTC pulse, with no controller guard in place, caused the PID to spike duty from 0 → ~**0.85** for ~60 s in response to the synthetic RH dip. In active control during a daytime warm-up regime, that spurious 0.85 spike for ~1 min would inject ~5 g of extra water and produce a ~0.6 % real RH overshoot — directly re-triggering the integrator-driven cycle the day's tuning work was meant to fix. **Heater feature without controller guard is net-negative**; both must ship together. (Bug 999.32 unfiltered derivative compounds this — D-term saw the synthetic falling-RH and slammed duty up; once 999.32 ships the spurious spike will be smaller but still present from P+I terms.)
+
+  4. **Sensor health propagation:** new `sensor_health` field `heater_active: bool` and `heater_recovery_until: timestamp` so consumers (controller, alerter, bridge, derivation pipelines from 999.27) all know to ignore that window. Single source of truth, set/cleared by `fc_sensors`.
+
+  5. **Multi-sensor failover behavior during cycle:** Phase 26's slot-1 fallback chain currently goes SHT30 → SCD41. If SCD41 is alive, should we fail over to it during the SHT30 heater window? Caveat: SCD41 RH clips at 100% (`project_phase26_sht30_happy_path_unverified`), so during high-humidity (which is exactly when we want to run the heater), the SCD41 fallback is *worse* than holding last-duty. Recommended default: do NOT fail over to SCD41 during heater window; just freeze readings. Compose with: any future multi-SHT30 setup (a redundant SHT30 head would let us heater-cycle one while reading the other — explicit multi-sensor design).
+
+  6. **Telemetry visibility:** publish a `fc.sensor_heater_active` boolean topic so Mission Control can show vertical-line annotations on charts; Timescale rows during the window get marked (either skip insert, or insert with quality flag). Default: skip insert during heater + recovery → users see a small data gap rather than a corrupt spike. Composes with 999.27 derived telemetry — derivations must respect the gap.
+
+  **Composes with:**
+  - **Phase 26** (sensor freshness / dual-sensor) — heater_active is a freshness state, fits the same pattern
+  - **999.22** (alerter must read ops state from controller, not env) — heater suppression must be controller-driven, can't be env-pinned
+  - **999.27** (derived telemetry) — VPD/dew_point/humidity_rate must skip heater windows
+  - **999.32** (derivative filter) — must reset / pause derivative computation across heater windows so the post-recovery jump doesn't get treated as a real RH transient
+  - **Phase 28** (mode primitive) — heater cadence could be per-mode (more aggressive in `fruiting`, dormant in `incubation`)
+
+  **Out of scope:** any change to SCD41 behavior (it has its own self-calibration; not part of this phase). Any cross-sensor reasoning ("infer SHT30 drift by comparing to SCD41") — that's its own backlog if it's worth it.
+
+  **Acceptance:** (1) nightly heater pulse at 03:00 UYT visible in Timescale as a marked gap; (2) RH chart in Mission Control shows annotation, not corrupt spike; (3) controller duty stays at pre-cycle value through window; (4) alerter does not fire during the heater window; (5) post-window RH reading is within 0.1 % of pre-window value (i.e., heater isn't introducing observable drift in a non-condensed sensor); (6) over a 30-day soak, observe whether the *delta* between SHT30 and SCD41 RH narrows (evidence the heater is clearing real condensation drift) — this is the long-run proof.
+
+  **Filed 2026-05-04 evening** — adjacent to the calibration work but architecturally orthogonal to the PID retune. Could ship independently of the Saturday filter+Kd retune work.
+
 ---
 *Roadmap created 2026-03-28. v1.4 shipped 2026-05-01.*
