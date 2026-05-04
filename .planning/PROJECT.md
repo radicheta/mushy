@@ -89,27 +89,23 @@ SHT30/SCD41 slot topics + offline alarms (Phase 26). Phase 24 (ML vision)
 deferred behind backlog 999.26 (camera-coverage prerequisite).
 See `.planning/MILESTONES.md`.
 
-## Current Milestone: v1.5.0.1 — Resilience hotfix from 2026-05-02 incident
+## Current Milestone: v1.5.0.1 — Resilience hotfix from 2026-05-02 incident (realigned 2026-05-03)
 
 **Goal:** Close the resilience gaps exposed by the 2026-05-02 blackout +
-DERP-relay incident (telemetry lost forever during dropouts, fc-core stuck
-dead 55 min after a boot race, tailscaled saturated under bad DERP) before
-resuming v1.5 main. Pattern matches v1.2.1.
+DERP-relay incident.
 
-**Target features (4 phases, decimal-numbered to preserve v1.5's reserved 28–31):**
-- Phase 27.1 — Edge buffering Wave 3: deploy fc_buffer + bridge replay
-  poller (Wave 1+2 already on `main`), induced 5-min Tailscale dropout soak,
-  farmer attestation (promotes 999.1)
-- Phase 27.2 — fc-core systemd unit hardening: ExecStartPre waits for
-  tailscale0 IPv4, Restart=always + wider StartLimitInterval/Burst,
-  After=tailscaled audit (promotes 999.28)
-- Phase 27.3 — Telemetry sampling-rate reduction: `sensor_read_interval`
-  2.0 → 10.0 (decoupled from control_interval); 5× drop in tailscaled CPU
-  under bad DERP (promotes 999.30)
-- Phase 27.4 — Repo netplan drift reconciliation: align repo to fc1's
-  current clean state (drop mossrock-west, remove 99-static.yaml, disable
-  cloud-init network regen) + add eth0 dhcp4 stanza so wired path to 4G
-  router actually works
+**What actually shipped (2026-05-03 architectural detour):**
+- During fc1 diagnosis, the microSD card was discovered failed and replaced. fc1 was rebuilt and brought back on home-LAN wifi (not 4G), then put on the same L2 as elder-plops via a kernel-WG tunnel through pfSense (172.16.10.0/24).
+- DDS transport switched from `tailscale0` to `wg0` (commits `b79d9e4`, `24533a9`). fc1 load avg dropped 5+ → 0.41. Tailscaled disabled.
+- Phase 27.1 (edge buffering) shipped on the new transport: fc_buffer on `172.16.10.5:8765`, bridge replay-poller backfilling on demand. BUF-04 attestation deferred to natural-event observation.
+
+**Phases retired/mooted by the transport switch:**
+- Phase 27.3 (sampling-rate reduction) — original justification (tailscaled CPU under bad DERP) eliminated by kernel-WG transport.
+- Phase 27.4 (netplan reconciliation) — fc1 no longer on farm-4G; both reconciliation and the new `eth0 dhcp4` stanza wait until fc1 returns to the farm.
+
+**Remaining open in this milestone:**
+- Phase 27.2 — partly absorbed by transport switch (fc-core unit already Restart=always + StartLimit*). Outstanding: SYS-01 (wait for IPv4 on `wg0`, not just link) + SYS-04 (reboot validation).
+- Phase 27.1 BUF-04 — natural-event farmer attestation.
 
 **NOT in this hotfix (stays in v1.5 main):**
 - 999.29 — max-continuous-on + forced cool-down cap redesign; needs mister
@@ -117,6 +113,7 @@ resuming v1.5 main. Pattern matches v1.2.1.
 
 **Already shipped operationally (covers immediate risk):**
 - pwm cap raised 0.40 → 0.90 on `fc1/prod` (commit `ad949c6`, 2026-05-02)
+- DDS transport switched to wg0 (commits `b79d9e4`, `24533a9`, 2026-05-03)
 
 ## Parent Milestone (paused): v1.5 — Analog Humidity Control & Condensation/Evaporation Forcing
 
@@ -223,4 +220,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-05-02 — v1.5 paused, v1.5.0.1 hotfix started (Resilience from 2026-05-02 incident)*
+*Last updated: 2026-05-03 — v1.5.0.1 realigned: 27.1 shipped via wg0 detour, 27.3+27.4 mooted by transport switch, 27.2 partly absorbed*
