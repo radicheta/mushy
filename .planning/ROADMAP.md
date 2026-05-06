@@ -330,5 +330,26 @@ milestone. Promote with `/gsd:review-backlog` when ready.
 
   **Filed 2026-05-04 evening** — adjacent to the calibration work but architecturally orthogonal to the PID retune. Could ship independently of the Saturday filter+Kd retune work.
 
+- **Phase 999.35: Daily maintenance agent — log triage + alerter self-pathology detection + TLDR digest** — Surfaced 2026-05-06 by farmer/lead-dev's "I waited to see how long until you noticed" test, which we failed: the alerter spammed identical hourly CRITICALs for 10+ hours and *we* (the system, not the human) did not catch it. Pattern borrowed from other Santi projects: a once-daily agent that reads logs across the stack (alerter, bridge, fc-core journal, timescale, signal-cli) and emits a TLDR digest (email or Signal) summarizing health, anomalies, and "things you'd want to know but might miss." Two distinct value props bundled here because they share the same agent surface:
+
+  **(a) Alerter self-pathology detection** (this incident's direct ask). Identical-message clockwork alarms — same body text, same severity, fired at exact `cooldownMin` spacing for ≥3 cycles with no underlying-state change in the data — are a self-evident bug. The agent should detect this pattern and either auto-snooze the type, or emit a meta-alert ("alerter is misbehaving on alertType=sht30: 10 consecutive CRITICALs at 60-min spacing, zero state change in /fc1/sensor_health values"). This is the cheapest, highest-value check; do it first.
+
+  **(b) Daily maintenance digest.** Broader pattern: scan last 24h of `journalctl -u fc-core`, `docker logs mushy-{alerter,bridge}`, signal-cli logs, timescale ingest stats, and produce a one-page TLDR. Sections to include (recommended defaults; refine in discuss-phase): unexpected restarts, error/warn-rate deltas vs prior 7-day baseline, alert volume per type with trend, sensor freshness anomalies, telemetry gaps (Timescale row-count per topic per hour vs baseline), DERP relay / Tailscale CPU spikes, disk usage on /data and /var, container restart counts, signal-cli send failures. Delivery: email (already have SMTP? check) or Signal as a single low-priority digest message ("[DAILY] FC-1 health 2026-05-06 — 3 nuggets, 0 concerns. Open: ..."). Cadence: 03:00 UYT (chamber quiet, fits the 999.34 nightly slot).
+
+  **Implementation surface options** (each with tradeoffs — resolve in discuss-phase):
+  1. **Standalone container** `mushy-maintenance-1` (Node or Python), reads container logs via Docker socket + ssh fc1 for journalctl + Timescale via SQL. Sends one digest. Cleanest separation; new container.
+  2. **New responsibility on existing alerter** — alerter already has Signal egress + bridge subscription + Timescale; add a daily cron + log-tail handlers. Less new infra; conflates "real-time alerts" with "daily report" (probably bad — different failure modes).
+  3. **Anthropic-API-backed agent** — feed last 24h of logs into Claude with a "produce a maintenance TLDR" prompt; LLM does pattern detection. Already have `ANTHROPIC_API_KEY` in `.env`. Riskier (cost + reliability + nondeterminism) but matches the "agent" framing from other projects and would catch novel pathologies the rule-based version misses. Could ship rule-based first (a) + LLM digest later (b).
+
+  **Recommended shape:** standalone container; rule-based detector for (a) ships first (one-week win); LLM-summarizer for (b) ships second once we have the log-pipeline. Compose: rules surface concrete pathology, LLM writes the prose summary.
+
+  **Composes with:** this whole backlog cluster — 999.22 (alerter ops thresholds in env, hard to tune, agent should flag staleness), 999.27 (derived telemetry — agent consumes the same series), 999.28 (systemd hardening — agent should flag start-limit-hit / unexpected restart loops), today's `project_alerter_watchdog_quiet_topic_bug` (the agent would have caught this in <24h instead of waiting on a human).
+
+  **Out of scope:** real-time alerting (alerter owns that); UI dashboards (Mission Control owns that); auto-remediation (read-only digest first; auto-actions are a separate decision tree).
+
+  **Acceptance:** (1) detector fires when the alerter sends ≥3 identical CRITICALs at exact cooldownMin spacing with no underlying state change → emits meta-alert + auto-snoozes the type; (2) daily digest delivered at 03:00 UYT covering the 8 baseline sections above; (3) digest delivery survives a 24h fc1 outage (i.e., it runs from elder-plops, not the Pi); (4) farmer can read the digest in <60s and know whether to investigate; (5) **negative test:** stage a synthetic identical-clockwork alarm pattern in a soak environment and confirm the agent catches it in <2 cycles.
+
+  **Filed 2026-05-06 evening** — incident-driven; user noted "on other projects we have an automatic 'maintenance agent' that goes around once a day or so, reads logs and sends an email with a TLDR etc" — pattern is proven, not greenfield design.
+
 ---
 *Roadmap created 2026-03-28. v1.4 shipped 2026-05-01.*
