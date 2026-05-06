@@ -70,7 +70,12 @@ services:
       - ALERT_COOLDOWN_MIN=${ALERT_COOLDOWN_MIN:-30}
       - ALERT_CRITICAL_COOLDOWN_MIN=${ALERT_CRITICAL_COOLDOWN_MIN:-60}
       - ALERT_PI_OFFLINE_MIN=${ALERT_PI_OFFLINE_MIN:-5}
-      - ALERT_SENSOR_OFFLINE_MIN=${ALERT_SENSOR_OFFLINE_MIN:-5}
+      # 2026-05-06 hotfix: default raised from 5 → 1440 to disable the alerter-side
+      # sensor watchdog. fc_controller publishes /fc1/sensor_health only on flips, so
+      # the 10-min watchdog tripped on a stable SHT30 and re-fired hourly via critical
+      # cooldown. Pi-authoritative `sht30_fresh==='false'` path still detects real
+      # failures. Revert when 999.35 (maintenance agent) or a controller heartbeat lands.
+      - ALERT_SENSOR_OFFLINE_MIN=${ALERT_SENSOR_OFFLINE_MIN:-1440}
       - ALERT_HUMIDIFIER_STUCK_MIN=${ALERT_HUMIDIFIER_STUCK_MIN:-30}
       - ALERT_HEARTBEAT_HOUR=${ALERT_HEARTBEAT_HOUR:-8}
       - ALERT_RECEIVE_POLL_SEC=${ALERT_RECEIVE_POLL_SEC:-30}
