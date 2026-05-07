@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 27.2 plan-01 Task 1 complete; paused at Task 2 (cold-reboot validation requires user action)
-last_updated: "2026-05-07T02:30:00Z"
-last_activity: 2026-05-07 -- Phase 27.2 plan-01 Task 1 verified shipped (commit 3ec8d19); paused at Task 2 checkpoint
+stopped_at: Phase 27.2 plan-01 Tasks 1+2 complete; Task 3 deferred (wg0-down-at-boot scenario requires lab LAN access for recovery; declined 2026-05-07 — operator out of farm-rain budget)
+last_updated: "2026-05-07T15:00:00Z"
+last_activity: 2026-05-07 -- Phase 27.2 plan-01 Task 2 PASS (cold-reboot SYS-04 scenario 1; commit b7828d1; 41s boot→active, zero manual intervention); Task 3 deferred
 progress:
   total_phases: 5
   completed_phases: 2
