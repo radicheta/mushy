@@ -87,7 +87,7 @@ CV pipeline foundation, bidirectional Signal "Field Notes" channel, dual-sensor 
 **What actually shipped (2026-05-03 realignment):** the original 4-phase hotfix shape was overtaken by an architectural detour. While diagnosing fc1's tailscaled at 200% CPU on the ARM core (DERP-only path forced by ANTEL CGNAT, every packet double-encrypted in userspace wireguard-go), fc1's microSD card failed and was replaced. fc1 was brought back on home-LAN wifi and put on the same L2 as elder-plops via a kernel-WG tunnel through pfSense (172.16.10.0/24). DDS was switched from `tailscale0` to `wg0` (commits `b79d9e4`, `24533a9`). fc1 load avg: 5+ → 0.41. Tailscaled disabled. The transport switch was the real fix; it makes 27.3 and 27.4 unnecessary in their planned form.
 
 - [x] **Phase 27.1: Edge buffering — fc1 telemetry replay-on-reconnect** — Shipped 2026-05-03 over the new wg0 transport. fc_buffer running on fc1 (`172.16.10.5:8765`); bridge replay-poller backfilling on demand; first backfill confirmed live. BUF-04 induced-dropout test deferred to natural-event observation per plan-04 D-12. BUF-01..04 (BUF-04 attestation pending).
-- [ ] **Phase 27.2: fc-core systemd unit hardening — survive blackout/boot races** — Unit now waits for IPv4 on `wg0` via 60-attempt × 1s `ExecStartPre` loop and has explicit `After=wg-quick@wg0.service` + `Wants=wg-quick@wg0.service` (defense-in-depth alongside the IPv4 polling loop), plus `Restart=always` + `StartLimitIntervalSec=300` + `StartLimitBurst=5`. **Still open:** SYS-04 validation reboot. SYS-01, SYS-02, SYS-03 satisfied.
+- [x] **Phase 27.2: fc-core systemd unit hardening — survive blackout/boot races (PARTIAL — SHIPPED 2026-05-07)** — Unit waits for IPv4 on `wg0` via 60×1s `ExecStartPre` loop + explicit `After=wg-quick@wg0.service` + `Wants=wg-quick@wg0.service`, plus `Restart=always` + `StartLimitIntervalSec=300` + `StartLimitBurst=5`. SYS-01/02/03 satisfied; SYS-04 scenario 1 (cold reboot) PASS attested 41s. SYS-04 scenario 2 (wg0-down-at-boot) deferred to 999.28 — needs lab LAN access (validating that exact failure mode is unrecoverable over wg0).
 - [ ] ~~**Phase 27.3: Telemetry sampling-rate reduction**~~ — **MOOTED 2026-05-03** by transport switch. Original justification was tailscaled CPU saturation under bad DERP; with DDS now on kernel-WG `wg0` and tailscaled disabled, the saturation is gone (fc1 load avg 5+ → 0.41). The "10s cadence is fine for chamber" idea remains valid but no longer load-bearing — re-promote to backlog if needed.
 - [ ] ~~**Phase 27.4: Repo netplan drift reconciliation**~~ — **MOOTED 2026-05-03** in its planned form. fc1 is currently on home-LAN wifi via kernel-WG, not at the farm on 4G; the dropped-mossrock-west / no-99-static.yaml / disable-cloud-init-network-regen drift was a farm-4G-setup story. When fc1 returns to the farm, the netplan reconciliation question returns with it (re-promote as backlog). New eth0-dhcp4 stanza for the 4G router LAN port also waits until fc1 is back at the farm.
 
@@ -198,7 +198,7 @@ Plans:
 - [x] **SYS-02** — `Restart=always` + `RestartSec=10` + `StartLimitIntervalSec=300` + `StartLimitBurst=5` already in `scripts/pi-deploy/fc-core.service` (live on fc1 after Wave 3 deploy).
 - [x] **SYS-03** — Unit has explicit `After=wg-quick@wg0.service` and `Wants=wg-quick@wg0.service` (kernel-WG brings up wg0 at boot). IPv4 polling loop kept as belt-and-braces.
 - [x] **SYS-01** — `ExecStartPre` waits for IPv4 on `wg0` via 60-attempt × 1s loop on `ip -4 addr show wg0 | grep -q inet` (already shipped via 27.1 transport switch commits; previous ROADMAP text describing `ip link show wg0` was stale).
-- [ ] **SYS-04** — Validation: stop the wg0 endpoint (or just reboot the Pi) and confirm fc-core waits + comes up green without manual `reset-failed && start`. Cheap to do now that fc1 is on a fresh microSD with stable home-LAN connectivity.
+- [~] **SYS-04** — Cold-reboot scenario 1: PASS attested 2026-05-07 (41s boot→active, evidence `.planning/phases/27.2-.../evidence/2026-05-07-cold-reboot-journal.log`). wg0-down-at-boot scenario 2: DEFERRED to 999.28 — validating the exact 2026-05-02 failure class is unrecoverable over wg0 (the link being tested is the recovery path); requires lab keyboard access.
 
 **CONTEXT.md:** `.planning/phases/27.2-fc-core-systemd-unit-hardening/27.2-CONTEXT.md` (to be created in plan-phase).
 
@@ -207,7 +207,7 @@ Plans:
 **Plans:** 1 plan
 
 Plans:
-- [ ] 27.2-01-PLAN.md — Edit fc-core.service (explicit After=/Wants=wg-quick@wg0.service), fix ROADMAP/REQUIREMENTS text, deploy, validate via cold reboot + wg0-down-at-boot scenarios, capture journalctl evidence
+- [x] 27.2-01-PLAN.md — Edit fc-core.service (explicit After=/Wants=wg-quick@wg0.service), fix ROADMAP/REQUIREMENTS text, deploy, validate via cold reboot + wg0-down-at-boot scenarios, capture journalctl evidence (PARTIAL — Tasks 1+2 PASS; Task 3 wg0-down-at-boot deferred to 999.28; SUMMARY.md 2026-05-07)
 
 ### Phase 27.3: Telemetry sampling-rate reduction — MOOTED 2026-05-03
 

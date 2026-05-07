@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Phase 27.2 plan-01 Tasks 1+2 complete; Task 3 deferred (wg0-down-at-boot scenario requires lab LAN access for recovery; declined 2026-05-07 — operator out of farm-rain budget)
-last_updated: "2026-05-07T15:00:00Z"
-last_activity: 2026-05-07 -- Phase 27.2 plan-01 Task 2 PASS (cold-reboot SYS-04 scenario 1; commit b7828d1; 41s boot→active, zero manual intervention); Task 3 deferred
+status: ready-to-plan
+stopped_at: null
+last_updated: "2026-05-07T16:30:00Z"
+last_activity: 2026-05-07 -- Phase 27.2 closed PARTIAL (Tasks 1+2 PASS, Task 3 wg0-down-at-boot deferred to 999.28); v1.5.0.1 milestone advancing; next is Phase 28 (mode primitive)
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 10
-  completed_plans: 9
-  percent: 90
+  completed_plans: 10
+  percent: 100
 ---
 
 # Project State
@@ -21,23 +21,24 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-02)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 27.2 — fc-core-systemd-unit-hardening-survive-blackout-boot-races
+**Current focus:** Phase 28 — Mode primitive + 2 baseline modes (`fruiting`, `pinning`) + runtime config delivery
 
 ## Current Position
 
-Phase: 27.2 (fc-core-systemd-unit-hardening-survive-blackout-boot-races) — EXECUTING
-Milestone: v1.5.0.1 — Resilience hotfix (realigned 2026-05-03)
+Phase: 28 (mode-primitive) — READY TO PLAN
+Milestone: v1.5.0.1 → v1.5 — milestone v1.5.0.1 resilience-hotfix work complete; advancing to mode work
 
-- Phase 27.1 — Edge buffering: SHIPPED 2026-05-03 over wg0 (BUF-04 attestation pending natural-event)
-- Phase 27.2 — fc-core systemd hardening: PARTIAL (SYS-02 complete; SYS-01 + SYS-04 open)
-- Phase 27.3 — Sampling-rate reduction: MOOTED by transport switch
-- Phase 27.4 — Netplan reconciliation: MOOTED in planned form (fc1 off farm-4G)
+- Phase 27 — PID + slow-PWM: SHIPPED 2026-05-02
+- Phase 27.1 — Edge buffering: SHIPPED 2026-05-03 over wg0 (BUF-04 organic attestation still pending — see 999.36)
+- Phase 27.2 — fc-core systemd hardening: PARTIAL-SHIPPED 2026-05-07 (cold-reboot scenario 1 PASS; wg0-down-at-boot scenario re-filed under 999.28)
+- Phase 27.3 — Sampling-rate reduction: MOOTED by wg0 transport switch
+- Phase 27.4 — Netplan reconciliation: MOOTED in planned form
 
-Plan: 1 of 1
-Status: Executing Phase 27.2
-Last activity: 2026-05-07 -- Phase 27.2 execution started
+Plan: pending
+Status: Ready to plan Phase 28
+Last activity: 2026-05-07 -- Phase 27.2 closed PARTIAL; routing to Phase 28
 
-Progress: [█████░░░░░] ~50%
+Progress: [██████████] 100% (v1.5.0.1 milestone)
 
 **Carried from v1.3 (not blocking v1.4):**
 
