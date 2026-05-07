@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-stopped_at: Phase 27.2 context gathered
-last_updated: "2026-05-07T22:48:42.395Z"
-last_activity: 2026-05-07 -- Phase 27.2 closed PARTIAL; routing to Phase 28
+status: executing
+stopped_at: Completed 28-01-PLAN.md
+last_updated: "2026-05-07T23:26:02.339Z"
+last_activity: 2026-05-07
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 17
-  completed_plans: 10
-  percent: 59
+  completed_plans: 11
+  percent: 65
 ---
 
 # Project State
@@ -21,11 +21,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-02)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 28 — Mode primitive + 2 baseline modes (`fruiting`, `pinning`) + runtime config delivery
+**Current focus:** Phase 28 — mode-primitive-2-baseline-modes-fruiting-pinning-runtime-con
 
 ## Current Position
 
-Phase: 28 (mode-primitive) — READY TO PLAN
+Phase: 28 (mode-primitive-2-baseline-modes-fruiting-pinning-runtime-con) — EXECUTING
 Milestone: v1.5.0.1 → v1.5 — milestone v1.5.0.1 resilience-hotfix work complete; advancing to mode work
 
 - Phase 27 — PID + slow-PWM: SHIPPED 2026-05-02
@@ -34,11 +34,11 @@ Milestone: v1.5.0.1 → v1.5 — milestone v1.5.0.1 resilience-hotfix work compl
 - Phase 27.3 — Sampling-rate reduction: MOOTED by wg0 transport switch
 - Phase 27.4 — Netplan reconciliation: MOOTED in planned form
 
-Plan: pending
-Status: Ready to plan Phase 28
-Last activity: 2026-05-07 -- Phase 27.2 closed PARTIAL; routing to Phase 28
+Plan: 2 of 7
+Status: Ready to execute
+Last activity: 2026-05-07
 
-Progress: [██████████] 100% (v1.5.0.1 milestone)
+Progress: [███████░░░] 65%
 
 **Carried from v1.3 (not blocking v1.4):**
 
@@ -146,11 +146,12 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 **Decision rationale:** all v1.2-era verification/UAT gaps were never material to v1.4 work. v1.4 ships with full farmer attestation on Phases 21-26. Documentation artifacts will be retroactively cleaned up alongside future related work, not as standalone backlog entries.
 | Phase 999.1 P01 | 6 | 2 tasks | 4 files |
 | Phase 999.1 P03 | 5m25s | 2 tasks | 4 files |
+| Phase 28 P01 | 25min | 4 tasks | 8 files |
 
 ## Session Continuity
 
-Last session: --stopped-at
-Stopped at: Phase 27.2 context gathered
+Last session: 2026-05-07T23:26:02.332Z
+Stopped at: Completed 28-01-PLAN.md
 Next up: pick from { (a) close 27.2 SYS-01 + SYS-04, (b) cyclonedds-tailscale.xml → cyclonedds.xml rename, (c) PID Kp 0.5 → 0.35 retune per 2026-05-03 calibration notes, (d) resume v1.5 main with /gsd:discuss-phase 28 }
 
 ---
