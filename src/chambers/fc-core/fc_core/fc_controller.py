@@ -5,10 +5,26 @@ from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy, HistoryPo
 from sensor_msgs.msg import Temperature, RelativeHumidity
 from std_msgs.msg import Float32
 from collections import deque
+from dataclasses import dataclass
 from diagnostic_msgs.msg import DiagnosticStatus, KeyValue
 from datetime import datetime
+from math import isnan, nan
 from statistics import median
 from fc_core.vendor.simple_pid import PID
+
+
+@dataclass
+class ModeView:
+    """Phase 28 D-08: snapshot of the active mode resolved once per control tick.
+
+    `t_target` is NaN when unset (D-02 — reserved for VPD-anchoring in Phase 31+).
+    """
+    name: str
+    target: float
+    band_low: float
+    band_high: float
+    defend_side: str   # 'low' | 'high' | 'both'
+    t_target: float    # NaN when unset
 
 
 class FruitingChamberController(Node):
@@ -42,6 +58,30 @@ class FruitingChamberController(Node):
                 ('pid_derivative_filter_tau', 10.0),
                 ('pid_setpoint_ramp_seconds', 30.0),
                 ('bypass_threshold', 0.025),
+            ]
+        )
+
+        # Phase 28 D-03 + D-04: declare mode params. Defaults are placeholders —
+        # real values come from fc_config.yaml's fc_controller scope. NaN sentinels
+        # on band_low/band_high trigger the D-04 back-compat path in
+        # _resolve_active_mode (synthesize fruiting from target_humidity +
+        # humidity_tolerance) when the modes block is absent. Strict declaration
+        # is preserved (Pitfall 7) — adding new named modes (incubation etc.) is
+        # a deploy per D-03; both fruiting and pinning are declared here.
+        self.declare_parameters(
+            namespace='',
+            parameters=[
+                ('active_mode', 'fruiting'),
+                ('modes.fruiting.target_humidity', 0.94),
+                ('modes.fruiting.band_low', float('nan')),
+                ('modes.fruiting.band_high', float('nan')),
+                ('modes.fruiting.defend_side', 'both'),
+                ('modes.fruiting.t_target', float('nan')),
+                ('modes.pinning.target_humidity', 0.85),
+                ('modes.pinning.band_low', float('nan')),
+                ('modes.pinning.band_high', float('nan')),
+                ('modes.pinning.defend_side', 'low'),
+                ('modes.pinning.t_target', float('nan')),
             ]
         )
 
@@ -248,6 +288,55 @@ class FruitingChamberController(Node):
         if elapsed < self.get_parameter('startup_grace_period').value:
             return True
         return False
+
+    def _declared_mode_names(self) -> set:
+        """Phase 28 D-08 helper: introspect declared params for 'modes.<name>.*'.
+
+        Uses the public `get_parameters_by_prefix('modes.')` API rather than
+        underscore-prefixed `_parameters`. Returns the set of <name> tokens
+        that have at least one declared field under their namespace.
+        """
+        names = set()
+        for full in self.get_parameters_by_prefix('modes.').keys():
+            # 'modes.fruiting.band_low'.split('.') -> ['modes','fruiting','band_low']
+            # but get_parameters_by_prefix strips the prefix, so we receive
+            # 'fruiting.band_low' here. Account for both shapes defensively.
+            parts = full.split('.')
+            if len(parts) >= 2:
+                # If first token is 'modes' (full path returned), name is parts[1].
+                # If first token is the mode name (prefix stripped), name is parts[0].
+                names.add(parts[1] if parts[0] == 'modes' else parts[0])
+        return names
+
+    def _resolve_active_mode(self) -> ModeView:
+        """Phase 28 D-08: resolve the active mode to a ModeView once per tick.
+
+        D-04 back-compat: if `modes.{name}.band_low` or `band_high` is NaN
+        (sentinel = "modes block absent in YAML"), synthesize a fruiting-shape
+        ModeView from legacy `target_humidity` + `humidity_tolerance`.
+        """
+        name = self.get_parameter('active_mode').value
+        bl = self.get_parameter(f'modes.{name}.band_low').value
+        bh = self.get_parameter(f'modes.{name}.band_high').value
+        if isnan(bl) or isnan(bh):
+            tgt = self.get_parameter('target_humidity').value
+            tol = self.get_parameter('humidity_tolerance').value
+            return ModeView(
+                name=name,
+                target=tgt,
+                band_low=tgt - tol,
+                band_high=tgt + tol,
+                defend_side='both',
+                t_target=nan,
+            )
+        return ModeView(
+            name=name,
+            target=self.get_parameter(f'modes.{name}.target_humidity').value,
+            band_low=bl,
+            band_high=bh,
+            defend_side=self.get_parameter(f'modes.{name}.defend_side').value,
+            t_target=self.get_parameter(f'modes.{name}.t_target').value,
+        )
 
     def _engage_pid_bumplessly(self):
         self._pid.set_auto_mode(True, last_output=0.15)
