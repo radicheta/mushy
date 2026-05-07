@@ -248,7 +248,7 @@ Original justification: align repo netplan with fc1's currently-running farm-4G 
 **Plans:** 7 plans
 
 - [ ] 28-01-PLAN.md — fc_msgs skeleton (Mode.msg + SetMode.srv) + Wave 0 test scaffolds + spike (rclnodejs SetParameters shape, bridge→fc1 SSH path)
-- [ ] 28-02-PLAN.md — fc_config.yaml modes block (D-05 fruiting / D-06 pinning) + fc_core depends on fc_msgs
+- [x] 28-02-PLAN.md — fc_config.yaml modes block (D-05 fruiting / D-06 pinning) + fc_core depends on fc_msgs
 - [ ] 28-03-PLAN.md — fc_controller.py surgery: ModeView + _resolve_active_mode (D-08), band-aware error projection (D-09), ramp-to-defended-edge (D-10), nearest-defended-edge bypass (D-11)
 - [ ] 28-04-PLAN.md — current_mode topic + on_set_parameters_callback validator + set_mode service + bumpless mode-swap (D-12, D-13, D-14, D-15, D-16)
 - [ ] 28-05-PLAN.md — bridge POST /control/param (Layer 1) with allowlist + batched-coupled-band edits (Pitfall 4) — control_param.js
