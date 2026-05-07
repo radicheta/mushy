@@ -4,8 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 status: ready-to-plan
 stopped_at: null
-last_updated: "2026-05-07T16:30:00Z"
-last_activity: 2026-05-07 -- Phase 27.2 closed PARTIAL (Tasks 1+2 PASS, Task 3 wg0-down-at-boot deferred to 999.28); v1.5.0.1 milestone advancing; next is Phase 28 (mode primitive)
+last_updated: "2026-05-07T17:30:00Z"
+last_activity: 2026-05-07 -- Phase 28 CONTEXT.md gathered (mode schema reconciled with SEED-004; pinning v0 floor 0.90 / ceiling 0.99; UI surface = farmOS not MC; alerter scope deferred to Phase 29). Ready for /gsd-plan-phase 28.
+session:
+  resume_file: .planning/phases/28-mode-primitive-2-baseline-modes-fruiting-pinning-runtime-con/28-CONTEXT.md
+  stopped_at: Phase 28 context gathered
 progress:
   total_phases: 5
   completed_phases: 3
