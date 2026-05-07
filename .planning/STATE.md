@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Realigned post-detour; choosing next move
-stopped_at: Phase 27.2 context gathered
-last_updated: "2026-05-07T02:17:45.456Z"
-last_activity: 2026-05-03 — Phase 27.1 Wave 3 deploy COMPLETE via wg0; PID calibration notes filed (limit cycle, drop Kp 0.5→0.35)
+status: executing
+stopped_at: Phase 27.2 plan-01 Task 1 complete; paused at Task 2 (cold-reboot validation requires user action)
+last_updated: "2026-05-07T02:30:00Z"
+last_activity: 2026-05-07 -- Phase 27.2 plan-01 Task 1 verified shipped (commit 3ec8d19); paused at Task 2 checkpoint
 progress:
   total_phases: 5
   completed_phases: 2
@@ -21,10 +21,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-02)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** v1.5.0.1 hotfix — close resilience gaps from 2026-05-02 incident before resuming v1.5 main
+**Current focus:** Phase 27.2 — fc-core-systemd-unit-hardening-survive-blackout-boot-races
 
 ## Current Position
 
+Phase: 27.2 (fc-core-systemd-unit-hardening-survive-blackout-boot-races) — EXECUTING
 Milestone: v1.5.0.1 — Resilience hotfix (realigned 2026-05-03)
 
 - Phase 27.1 — Edge buffering: SHIPPED 2026-05-03 over wg0 (BUF-04 attestation pending natural-event)
@@ -32,9 +33,9 @@ Milestone: v1.5.0.1 — Resilience hotfix (realigned 2026-05-03)
 - Phase 27.3 — Sampling-rate reduction: MOOTED by transport switch
 - Phase 27.4 — Netplan reconciliation: MOOTED in planned form (fc1 off farm-4G)
 
-Plan: —
-Status: Realigned post-detour; choosing next move
-Last activity: 2026-05-03 — Phase 27.1 Wave 3 deploy COMPLETE via wg0; PID calibration notes filed (limit cycle, drop Kp 0.5→0.35)
+Plan: 1 of 1
+Status: Executing Phase 27.2
+Last activity: 2026-05-07 -- Phase 27.2 execution started
 
 Progress: [█████░░░░░] ~50%
 
