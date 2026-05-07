@@ -6,6 +6,9 @@ network:
       dhcp6: false
       optional: true
       access-points:
+        "mossrock-west":
+          auth:
+            key-management: none
         # 4G MiFi at the farm chamber — preferred when in range.
         # PSK is a wpa_passphrase hash (64-char hex), not plaintext.
         "mossrock-lab":
