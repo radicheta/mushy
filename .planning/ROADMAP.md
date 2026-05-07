@@ -87,7 +87,7 @@ CV pipeline foundation, bidirectional Signal "Field Notes" channel, dual-sensor 
 **What actually shipped (2026-05-03 realignment):** the original 4-phase hotfix shape was overtaken by an architectural detour. While diagnosing fc1's tailscaled at 200% CPU on the ARM core (DERP-only path forced by ANTEL CGNAT, every packet double-encrypted in userspace wireguard-go), fc1's microSD card failed and was replaced. fc1 was brought back on home-LAN wifi and put on the same L2 as elder-plops via a kernel-WG tunnel through pfSense (172.16.10.0/24). DDS was switched from `tailscale0` to `wg0` (commits `b79d9e4`, `24533a9`). fc1 load avg: 5+ → 0.41. Tailscaled disabled. The transport switch was the real fix; it makes 27.3 and 27.4 unnecessary in their planned form.
 
 - [x] **Phase 27.1: Edge buffering — fc1 telemetry replay-on-reconnect** — Shipped 2026-05-03 over the new wg0 transport. fc_buffer running on fc1 (`172.16.10.5:8765`); bridge replay-poller backfilling on demand; first backfill confirmed live. BUF-04 induced-dropout test deferred to natural-event observation per plan-04 D-12. BUF-01..04 (BUF-04 attestation pending).
-- [ ] **Phase 27.2: fc-core systemd unit hardening — survive blackout/boot races** — Partially addressed by transport switch (unit now `Restart=always` + `StartLimitIntervalSec=300` + `StartLimitBurst=5` + `ExecStartPre` wait for `wg0` link). **Still open:** SYS-01 (wait for IPv4 on `wg0`, not just link presence) + SYS-04 validation reboot. Pi was rebuilt onto a fresh SD card so a clean boot validation is now cheap. SYS-02 satisfied; SYS-03 partially addressed (no longer depends on tailscaled).
+- [ ] **Phase 27.2: fc-core systemd unit hardening — survive blackout/boot races** — Unit now waits for IPv4 on `wg0` via 60-attempt × 1s `ExecStartPre` loop and has explicit `After=wg-quick@wg0.service` + `Wants=wg-quick@wg0.service` (defense-in-depth alongside the IPv4 polling loop), plus `Restart=always` + `StartLimitIntervalSec=300` + `StartLimitBurst=5`. **Still open:** SYS-04 validation reboot. SYS-01, SYS-02, SYS-03 satisfied.
 - [ ] ~~**Phase 27.3: Telemetry sampling-rate reduction**~~ — **MOOTED 2026-05-03** by transport switch. Original justification was tailscaled CPU saturation under bad DERP; with DDS now on kernel-WG `wg0` and tailscaled disabled, the saturation is gone (fc1 load avg 5+ → 0.41). The "10s cadence is fine for chamber" idea remains valid but no longer load-bearing — re-promote to backlog if needed.
 - [ ] ~~**Phase 27.4: Repo netplan drift reconciliation**~~ — **MOOTED 2026-05-03** in its planned form. fc1 is currently on home-LAN wifi via kernel-WG, not at the farm on 4G; the dropped-mossrock-west / no-99-static.yaml / disable-cloud-init-network-regen drift was a farm-4G-setup story. When fc1 returns to the farm, the netplan reconciliation question returns with it (re-promote as backlog). New eth0-dhcp4 stanza for the 4G router LAN port also waits until fc1 is back at the farm.
 
@@ -142,7 +142,7 @@ PID-first shape (locked 2026-05-01 with farmer): farmer wants condensation/evapo
 | 26. Dual sensor publishing + offline alarms (SHT30/SCD41) | v1.4 | 3/3 | Complete — UAT-8 PASS 2026-04-29 (farmer-eyeballed slot-1/slot-2 overlay, SCD41 clipping confirmed) | 2026-04-29 |
 | 27. PID + time-proportional duty-cycle primitive | v1.5 | 5/5 | Complete    | 2026-05-02 |
 | 27.1. Edge buffering — fc1 telemetry replay-on-reconnect | v1.5.0.1 | 4/4 | Complete — shipped via wg0 detour 2026-05-03 (BUF-04 attestation pending natural dropout) | 2026-05-03 |
-| 27.2. fc-core systemd unit hardening | v1.5.0.1 | partial | Partially addressed by wg0 switch — SYS-01 (IPv4 wait) + SYS-04 (reboot validation) still open | — |
+| 27.2. fc-core systemd unit hardening | v1.5.0.1 | 1/1 | Unit hardened (explicit wg-quick@wg0 dep + IPv4 wait); SYS-04 validation reboot pending | — |
 | 27.3. Telemetry sampling-rate reduction | v1.5.0.1 | — | MOOTED 2026-05-03 by transport switch | — |
 | 27.4. Repo netplan drift reconciliation | v1.5.0.1 | — | MOOTED 2026-05-03 in planned form (fc1 no longer on farm-4G); re-promote when fc1 returns to farm | — |
 | 999.1. Edge buffering | backlog | — | Promoted to Phase 27.1 (v1.5.0.1) on 2026-05-02; shipped 2026-05-03 | — |
@@ -196,8 +196,8 @@ Plans:
 
 **Requirements (post-realignment 2026-05-03):**
 - [x] **SYS-02** — `Restart=always` + `RestartSec=10` + `StartLimitIntervalSec=300` + `StartLimitBurst=5` already in `scripts/pi-deploy/fc-core.service` (live on fc1 after Wave 3 deploy).
-- [x] **SYS-03 (partial)** — Unit no longer depends on tailscaled (now `After=network-online.target fc-update.service`). Consider explicit `After=`/`Wants=` on whichever unit brings up `wg0` (kernel-WG via `wg-quick@wg0` or systemd-networkd).
-- [ ] **SYS-01** — `ExecStartPre` currently waits on `ip link show wg0` (link only). Tighten to wait for IPv4 on `wg0` (loop on `ip -4 addr show wg0 | grep -q inet`).
+- [x] **SYS-03** — Unit has explicit `After=wg-quick@wg0.service` and `Wants=wg-quick@wg0.service` (kernel-WG brings up wg0 at boot). IPv4 polling loop kept as belt-and-braces.
+- [x] **SYS-01** — `ExecStartPre` waits for IPv4 on `wg0` via 60-attempt × 1s loop on `ip -4 addr show wg0 | grep -q inet` (already shipped via 27.1 transport switch commits; previous ROADMAP text describing `ip link show wg0` was stale).
 - [ ] **SYS-04** — Validation: stop the wg0 endpoint (or just reboot the Pi) and confirm fc-core waits + comes up green without manual `reset-failed && start`. Cheap to do now that fc1 is on a fresh microSD with stable home-LAN connectivity.
 
 **CONTEXT.md:** `.planning/phases/27.2-fc-core-systemd-unit-hardening/27.2-CONTEXT.md` (to be created in plan-phase).

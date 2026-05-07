@@ -16,8 +16,8 @@
 ### SYS — fc-core systemd unit hardening (promotes 999.28) — partially shipped via transport switch
 
 - [x] **SYS-02** — `Restart=always` + `RestartSec=10` + `StartLimitIntervalSec=300` + `StartLimitBurst=5` applied to `scripts/pi-deploy/fc-core.service`. ros2 launch's "exit 0 on child crash" trap mitigated by Restart=always.
-- [x] **SYS-03 (partial)** — fc-core unit no longer references tailscaled (now `After=network-online.target fc-update.service`). Outstanding work: explicit `After=`/`Wants=` on whichever unit brings up `wg0` (kernel-WG `wg-quick@wg0` or systemd-networkd).
-- [ ] **SYS-01** — `ExecStartPre` currently waits on `ip link show wg0` (link only). Tighten to wait for IPv4 on `wg0` (loop on `ip -4 addr show wg0 | grep -q inet`).
+- [x] **SYS-03** — Unit has explicit `After=wg-quick@wg0.service` and `Wants=wg-quick@wg0.service` (kernel-WG `wg-quick@wg0` brings up wg0 at boot). IPv4 polling loop kept as belt-and-braces.
+- [x] **SYS-01** — `ExecStartPre` waits for IPv4 on `wg0` via 60-attempt × 1s loop on `ip -4 addr show wg0 | grep -q inet`. (Previous ROADMAP text describing `ip link show wg0` was stale.)
 - [ ] **SYS-04** — Validation reboot pending. Now cheap to do (fresh microSD, stable home-LAN connectivity).
 
 ### SAMP — Telemetry sampling-rate reduction — MOOTED 2026-05-03
@@ -98,9 +98,9 @@ fc1 is on home-LAN wifi with kernel-WG, not at the farm on 4G. The drifted netpl
 | BUF-02 | 27.1 | Complete (2026-05-03 over wg0) |
 | BUF-03 | 27.1 | Complete (2026-05-03 over wg0) |
 | BUF-04 | 27.1 | Pending — natural-event attestation |
-| SYS-01 | 27.2 | Pending — wait for IPv4 on wg0, not just link |
+| SYS-01 | 27.2 | Complete — IPv4-on-wg0 60×1s ExecStartPre loop |
 | SYS-02 | 27.2 | Complete — fc-core.service has Restart=always + StartLimit* |
-| SYS-03 | 27.2 | Partial — no longer After=tailscaled; consider After=wg-quick@wg0 |
+| SYS-03 | 27.2 | Complete — explicit After=/Wants=wg-quick@wg0.service |
 | SYS-04 | 27.2 | Pending — reboot validation |
 | SAMP-01 | 27.3 | Mooted by transport switch |
 | SAMP-02 | 27.3 | Mooted by transport switch |
