@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 28-01-PLAN.md
-last_updated: "2026-05-07T23:26:02.339Z"
+stopped_at: Completed 28-02-PLAN.md
+last_updated: "2026-05-07T23:33:04.937Z"
 last_activity: 2026-05-07
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 17
-  completed_plans: 11
-  percent: 65
+  completed_plans: 12
+  percent: 71
 ---
 
 # Project State
@@ -34,11 +34,11 @@ Milestone: v1.5.0.1 → v1.5 — milestone v1.5.0.1 resilience-hotfix work compl
 - Phase 27.3 — Sampling-rate reduction: MOOTED by wg0 transport switch
 - Phase 27.4 — Netplan reconciliation: MOOTED in planned form
 
-Plan: 2 of 7
+Plan: 3 of 7
 Status: Ready to execute
 Last activity: 2026-05-07
 
-Progress: [███████░░░] 65%
+Progress: [███████░░░] 71%
 
 **Carried from v1.3 (not blocking v1.4):**
 
@@ -107,6 +107,8 @@ Progress: [███████░░░] 65%
 - [Phase 25-05] D-03 capture-error indicator narrowed at ship: row.degraded=true persists for transcribe failures (UAT-7) but NOT for LLM-compose failures (UAT-5) — fallback writes only the reply column. Operationally acceptable; gap tracked in deferred-items.md.
 - [999.1-01] Extract migration helpers into schema_migration.js (vs guarding module.exports in index.js) — keeps test require pure since index.js calls rclnodejs.init() at top level
 - Bridge buffer-replay poller live-path also uses ON CONFLICT DO NOTHING — backfill races with live inserts when reconnect happens mid-second.
+- [Phase 28-02] Modes block landed under new fc_controller: scope (alongside /**:) — preserves D-04 back-compat for nodes that don't read modes; last-section-wins for any duplicates
+- [Phase 28-02] active_mode: fruiting declared explicitly; D-04 fallback reserved only for stripped-modes-block forks
 
 ### Pending Todos
 
@@ -147,11 +149,12 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 | Phase 999.1 P01 | 6 | 2 tasks | 4 files |
 | Phase 999.1 P03 | 5m25s | 2 tasks | 4 files |
 | Phase 28 P01 | 25min | 4 tasks | 8 files |
+| Phase 28 P02 | 2m31s | 2 tasks | 2 files |
 
 ## Session Continuity
 
-Last session: 2026-05-07T23:26:02.332Z
-Stopped at: Completed 28-01-PLAN.md
+Last session: 2026-05-07T23:33:04.930Z
+Stopped at: Completed 28-02-PLAN.md
 Next up: pick from { (a) close 27.2 SYS-01 + SYS-04, (b) cyclonedds-tailscale.xml → cyclonedds.xml rename, (c) PID Kp 0.5 → 0.35 retune per 2026-05-03 calibration notes, (d) resume v1.5 main with /gsd:discuss-phase 28 }
 
 ---
