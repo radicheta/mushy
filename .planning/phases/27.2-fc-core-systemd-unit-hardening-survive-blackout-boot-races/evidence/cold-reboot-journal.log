@@ -1,0 +1,64 @@
+2026-05-07T14:57:23+00:00 fc1 systemd[1]: Starting fc-core.service - FC-1 Mushroom Farm ROS2 Control...
+2026-05-07T14:57:23+00:00 fc1 bash[1339]: fc-core: waiting for wg0 IPv4...
+2026-05-07T14:57:23+00:00 fc1 bash[1339]: fc-core: wg0 has IPv4 (attempt 1)
+2026-05-07T14:57:23+00:00 fc1 systemd[1]: Started fc-core.service - FC-1 Mushroom Farm ROS2 Control.
+2026-05-07T14:57:27+00:00 fc1 bash[1344]: [INFO] [launch]: All log files can be found below /home/ubuntu/.ros/log/2026-05-07-14-57-27-864806-fc1-1344
+2026-05-07T14:57:27+00:00 fc1 bash[1344]: [INFO] [launch]: Default logging verbosity is set to INFO
+2026-05-07T14:57:28+00:00 fc1 bash[1344]: [INFO] [fc_sensors-1]: process started with pid [1481]
+2026-05-07T14:57:28+00:00 fc1 bash[1344]: [INFO] [fc_controller-2]: process started with pid [1482]
+2026-05-07T14:57:28+00:00 fc1 bash[1344]: [INFO] [fc_display-3]: process started with pid [1483]
+2026-05-07T14:57:28+00:00 fc1 bash[1344]: [INFO] [fc_pwm_driver-4]: process started with pid [1484]
+2026-05-07T14:57:28+00:00 fc1 bash[1344]: [INFO] [fc_buffer-5]: process started with pid [1485]
+2026-05-07T14:57:28+00:00 fc1 bash[1344]: [INFO] [fc_camera-6]: process started with pid [1486]
+2026-05-07T14:57:29+00:00 fc1 bash[1344]: [fc_buffer-5] [WARN] [1778165849.771298030] [rcl]: ROS_LOCALHOST_ONLY is deprecated but still honored if it is enabled. Use ROS_AUTOMATIC_DISCOVERY_RANGE and ROS_STATIC_PEERS instead.
+2026-05-07T14:57:29+00:00 fc1 bash[1344]: [fc_buffer-5] [WARN] [1778165849.771409067] [rcl]: 'localhost_only' is disabled, 'automatic_discovery_range' and 'static_peers' will be used.
+2026-05-07T14:57:30+00:00 fc1 bash[1344]: [fc_pwm_driver-4] [WARN] [1778165850.663868419] [rcl]: ROS_LOCALHOST_ONLY is deprecated but still honored if it is enabled. Use ROS_AUTOMATIC_DISCOVERY_RANGE and ROS_STATIC_PEERS instead.
+2026-05-07T14:57:30+00:00 fc1 bash[1344]: [fc_pwm_driver-4] [WARN] [1778165850.663958696] [rcl]: 'localhost_only' is disabled, 'automatic_discovery_range' and 'static_peers' will be used.
+2026-05-07T14:57:31+00:00 fc1 bash[1344]: [fc_camera-6] [WARN] [1778165851.589460511] [rcl]: ROS_LOCALHOST_ONLY is deprecated but still honored if it is enabled. Use ROS_AUTOMATIC_DISCOVERY_RANGE and ROS_STATIC_PEERS instead.
+2026-05-07T14:57:31+00:00 fc1 bash[1344]: [fc_camera-6] [WARN] [1778165851.589536418] [rcl]: 'localhost_only' is disabled, 'automatic_discovery_range' and 'static_peers' will be used.
+2026-05-07T14:57:31+00:00 fc1 bash[1344]: [fc_display-3] [WARN] [1778165851.599231844] [rcl]: ROS_LOCALHOST_ONLY is deprecated but still honored if it is enabled. Use ROS_AUTOMATIC_DISCOVERY_RANGE and ROS_STATIC_PEERS instead.
+2026-05-07T14:57:31+00:00 fc1 bash[1344]: [fc_display-3] [WARN] [1778165851.599529714] [rcl]: 'localhost_only' is disabled, 'automatic_discovery_range' and 'static_peers' will be used.
+2026-05-07T14:57:31+00:00 fc1 bash[1344]: [fc_sensors-1] [WARN] [1778165851.928617603] [rcl]: ROS_LOCALHOST_ONLY is deprecated but still honored if it is enabled. Use ROS_AUTOMATIC_DISCOVERY_RANGE and ROS_STATIC_PEERS instead.
+2026-05-07T14:57:31+00:00 fc1 bash[1344]: [fc_sensors-1] [WARN] [1778165851.928743473] [rcl]: 'localhost_only' is disabled, 'automatic_discovery_range' and 'static_peers' will be used.
+2026-05-07T14:57:32+00:00 fc1 bash[1344]: [fc_controller-2] [WARN] [1778165852.020621159] [rcl]: ROS_LOCALHOST_ONLY is deprecated but still honored if it is enabled. Use ROS_AUTOMATIC_DISCOVERY_RANGE and ROS_STATIC_PEERS instead.
+2026-05-07T14:57:32+00:00 fc1 bash[1344]: [fc_controller-2] [WARN] [1778165852.020697955] [rcl]: 'localhost_only' is disabled, 'automatic_discovery_range' and 'static_peers' will be used.
+2026-05-07T14:57:32+00:00 fc1 bash[1344]: [fc_controller-2] [WARN] [1778165852.575934492] [fc_controller]: Hardware PWM not available, fan disabled: No module named 'rpi_hardware_pwm'
+2026-05-07T14:57:32+00:00 fc1 bash[1344]: [fc_display-3] [INFO] [1778165852.633295806] [fc_display]: Fruiting Chamber Display Node Started
+2026-05-07T14:57:32+00:00 fc1 bash[1344]: [fc_controller-2] [INFO] [1778165852.670789325] [fc_controller]: Fruiting Chamber Controller Node Started
+2026-05-07T14:57:32+00:00 fc1 bash[1344]: [fc_buffer-5] [INFO] [1778165852.693903306] [fc_buffer]: [fc_buffer] HTTP listening on 172.16.10.5:8765, db=/var/lib/fc-core/buffer.sqlite, topics=9
+2026-05-07T14:57:32+00:00 fc1 bash[1344]: [fc_sensors-1] [INFO] [1778165852.839304417] [fc_sensors]: SHT30 initialized at 0x44
+2026-05-07T14:57:33+00:00 fc1 bash[1344]: [fc_sensors-1] [INFO] [1778165853.348435306] [fc_sensors]: SCD41 initialized at 0x62
+2026-05-07T14:57:33+00:00 fc1 bash[1344]: [fc_sensors-1] [INFO] [1778165853.378049213] [fc_sensors]: Fruiting Chamber Sensors Node Started
+2026-05-07T14:57:35+00:00 fc1 bash[1344]: [fc_sensors-1] [INFO] [1778165855.421619749] [fc_sensors]: 15.4°C | 96.1%
+2026-05-07T14:57:35+00:00 fc1 bash[1344]: [fc_display-3] [INFO] [1778165855.475703064] [fc_display]: Chamber Status:
+2026-05-07T14:57:35+00:00 fc1 bash[1344]: [fc_display-3]   Temperature: 15.4°C
+2026-05-07T14:57:35+00:00 fc1 bash[1344]: [fc_display-3]   Humidity: 96.1%
+2026-05-07T14:57:36+00:00 fc1 bash[1344]: [fc_display-3] [INFO] [1778165856.476074860] [fc_display]: Chamber Status:
+2026-05-07T14:57:36+00:00 fc1 bash[1344]: [fc_display-3]   Temperature: 15.4°C
+2026-05-07T14:57:36+00:00 fc1 bash[1344]: [fc_display-3]   Humidity: 96.1%
+2026-05-07T14:57:37+00:00 fc1 bash[1344]: [fc_camera-6] [ WARN:0@0.209] global ./modules/videoio/src/cap_gstreamer.cpp (862) isPipelinePlaying OpenCV | GStreamer warning: GStreamer: pipeline have not been created
+2026-05-07T14:57:37+00:00 fc1 bash[1344]: [fc_camera-6] [ WARN:0@0.212] global ./modules/videoio/src/cap_v4l.cpp (902) open VIDEOIO(V4L2:/dev/video0): can't open camera by index
+2026-05-07T14:57:37+00:00 fc1 bash[1344]: [fc_sensors-1] [INFO] [1778165857.420855248] [fc_sensors]: 15.4°C | 96.1%
+2026-05-07T14:57:37+00:00 fc1 bash[1344]: [fc_display-3] [INFO] [1778165857.475505563] [fc_display]: Chamber Status:
+2026-05-07T14:57:37+00:00 fc1 bash[1344]: [fc_display-3]   Temperature: 15.4°C
+2026-05-07T14:57:37+00:00 fc1 bash[1344]: [fc_display-3]   Humidity: 96.1%
+2026-05-07T14:57:37+00:00 fc1 bash[1344]: [fc_camera-6] [WARN] [1778165857.676934915] [fc_camera]: fc_camera: camera device 0 not available (VideoCapture.isOpened()=False). Capture will be skipped.
+2026-05-07T14:57:37+00:00 fc1 bash[1344]: [fc_camera-6] [INFO] [1778165857.867864155] [fc_camera]: FcCamera node started (idle: 0.000278 fps, active: 1.0 fps, grace: 5.0s)
+2026-05-07T14:57:38+00:00 fc1 bash[1344]: [fc_display-3] [INFO] [1778165858.475025358] [fc_display]: Chamber Status:
+2026-05-07T14:57:38+00:00 fc1 bash[1344]: [fc_display-3]   Temperature: 15.4°C
+2026-05-07T14:57:38+00:00 fc1 bash[1344]: [fc_display-3]   Humidity: 96.1%
+2026-05-07T14:57:38+00:00 fc1 bash[1344]: [fc_camera-6] [INFO] [1778165858.868138358] [fc_camera]: fc_camera: active (1.0 fps, writer=1 graph=1 subscriber(s))
+2026-05-07T14:57:39+00:00 fc1 bash[1344]: [fc_sensors-1] [INFO] [1778165859.427927706] [fc_sensors]: 15.4°C | 96.0% | 445ppm
+2026-05-07T14:57:39+00:00 fc1 bash[1344]: [fc_display-3] [INFO] [1778165859.475551801] [fc_display]: Chamber Status:
+2026-05-07T14:57:39+00:00 fc1 bash[1344]: [fc_display-3]   Temperature: 15.4°C
+2026-05-07T14:57:39+00:00 fc1 bash[1344]: [fc_display-3]   Humidity: 96.0%
+2026-05-07T14:57:40+00:00 fc1 bash[1344]: [fc_display-3] [INFO] [1778165860.478190335] [fc_display]: Chamber Status:
+2026-05-07T14:57:40+00:00 fc1 bash[1344]: [fc_display-3]   Temperature: 15.4°C
+2026-05-07T14:57:40+00:00 fc1 bash[1344]: [fc_display-3]   Humidity: 96.0%
+2026-05-07T14:57:41+00:00 fc1 bash[1344]: [fc_sensors-1] [INFO] [1778165861.420607361] [fc_sensors]: 15.4°C | 96.1%
+2026-05-07T14:57:41+00:00 fc1 bash[1344]: [fc_display-3] [INFO] [1778165861.477338181] [fc_display]: Chamber Status:
+2026-05-07T14:57:41+00:00 fc1 bash[1344]: [fc_display-3]   Temperature: 15.4°C
+2026-05-07T14:57:41+00:00 fc1 bash[1344]: [fc_display-3]   Humidity: 96.1%
+
+--- SUMMARY ---
+Boot at 2026-05-07 14:56:42 UTC; fc-core active at 2026-05-07 14:57:23 UTC; delta = 41s. Zero manual intervention.
