@@ -2,19 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: ready-to-plan
-stopped_at: null
-last_updated: "2026-05-07T17:30:00Z"
-last_activity: 2026-05-07 -- Phase 28 CONTEXT.md gathered (mode schema reconciled with SEED-004; pinning v0 floor 0.90 / ceiling 0.99; UI surface = farmOS not MC; alerter scope deferred to Phase 29). Ready for /gsd-plan-phase 28.
-session:
-  resume_file: .planning/phases/28-mode-primitive-2-baseline-modes-fruiting-pinning-runtime-con/28-CONTEXT.md
-  stopped_at: Phase 28 context gathered
+status: planning
+stopped_at: Phase 27.2 context gathered
+last_updated: "2026-05-07T22:48:42.395Z"
+last_activity: 2026-05-07 -- Phase 27.2 closed PARTIAL; routing to Phase 28
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 3
-  total_plans: 10
+  total_plans: 17
   completed_plans: 10
-  percent: 100
+  percent: 59
 ---
 
 # Project State
@@ -160,4 +157,4 @@ Next up: pick from { (a) close 27.2 SYS-01 + SYS-04, (b) cyclonedds-tailscale.xm
 *Roadmap phases: v1.0 (1–8), v1.1 (9–10), v1.2 (11–13), v1.2.1 (14–16), v1.3 (17–20), v1.4 (21–26), v1.5 (27–31), v1.5.0.1 (27.1, 27.2)*
 *Last updated: 2026-05-04 — v1.5.0.1 realignment after wg0 architectural detour*
 
-**Planned Phase:** 27.2 (fc-core-systemd-unit-hardening-survive-blackout-boot-races) — 1 plans — 2026-05-07T02:17:45.451Z
+**Planned Phase:** 28 (mode-primitive-2-baseline-modes-fruiting-pinning-runtime-con) — 7 plans — 2026-05-07T22:48:42.388Z
