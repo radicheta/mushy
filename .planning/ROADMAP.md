@@ -204,7 +204,10 @@ Plans:
 
 **Dependencies:** Independent. Same family as 27.1 (outages should leave control intact and visibility recoverable, not require human intervention) and as 999.25 (fc-core init race — sister boot-time fragility on fc1).
 
-**Plans:** TBD — much smaller scope after 27.1's transport switch absorbed half the original work.
+**Plans:** 1 plan
+
+Plans:
+- [ ] 27.2-01-PLAN.md — Edit fc-core.service (explicit After=/Wants=wg-quick@wg0.service), fix ROADMAP/REQUIREMENTS text, deploy, validate via cold reboot + wg0-down-at-boot scenarios, capture journalctl evidence
 
 ### Phase 27.3: Telemetry sampling-rate reduction — MOOTED 2026-05-03
 

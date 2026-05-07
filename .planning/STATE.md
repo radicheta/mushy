@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: Realigned post-detour; choosing next move
 stopped_at: Phase 27.2 context gathered
-last_updated: "2026-05-07T00:00:38.653Z"
+last_updated: "2026-05-07T02:17:45.456Z"
 last_activity: 2026-05-03 — Phase 27.1 Wave 3 deploy COMPLETE via wg0; PID calibration notes filed (limit cycle, drop Kp 0.5→0.35)
 progress:
   total_phases: 5
   completed_phases: 2
-  total_plans: 9
+  total_plans: 10
   completed_plans: 9
-  percent: 100
+  percent: 90
 ---
 
 # Project State
@@ -154,3 +154,5 @@ Next up: pick from { (a) close 27.2 SYS-01 + SYS-04, (b) cyclonedds-tailscale.xm
 ---
 *Roadmap phases: v1.0 (1–8), v1.1 (9–10), v1.2 (11–13), v1.2.1 (14–16), v1.3 (17–20), v1.4 (21–26), v1.5 (27–31), v1.5.0.1 (27.1, 27.2)*
 *Last updated: 2026-05-04 — v1.5.0.1 realignment after wg0 architectural detour*
+
+**Planned Phase:** 27.2 (fc-core-systemd-unit-hardening-survive-blackout-boot-races) — 1 plans — 2026-05-07T02:17:45.451Z
