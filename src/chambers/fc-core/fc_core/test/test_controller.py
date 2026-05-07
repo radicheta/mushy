@@ -574,12 +574,15 @@ def test_pid_gains_live_reload(ros_context):
     node._grace_active = lambda: False
     node.current_temp = 23.0
 
-    # Seed humidity inside the bypass band (default target 0.94, threshold 2.5%)
-    # so PID stays in the linear region — Mode C would clamp duty=1.0 and mask
-    # the effect of Kp regardless of value.
+    # Phase 28: error_pct uses band-aware projection. Default test config has
+    # no `modes:` block, so D-04 fallback synthesizes ModeView from
+    # target_humidity=0.94 + humidity_tolerance=0.05 → band [0.89, 0.99].
+    # In-band rh produces error_pct=0 and Kp has no effect. Seed rh=0.88 — just
+    # below band_low (distance 0.01 < bypass 0.025 → linear PID, not Mode C) —
+    # so error_pct is non-zero and Kp directly affects output.
     with patch.object(node, 'get_clock', return_value=_mock_clock_at(0)):
         for _ in range(5):
-            _send_humidity(node, 0.935)
+            _send_humidity(node, 0.88)
 
     duty_low_kp = []
     node._duty_pub.publish = lambda msg: duty_low_kp.append(msg.data)

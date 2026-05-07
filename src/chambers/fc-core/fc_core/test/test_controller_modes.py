@@ -150,20 +150,191 @@ def test_param_callback_batched_band_edit_atomic():
 
 # --- MODE-02: fruiting + pinning baseline behavior ---------------------------
 
-def test_fruiting_preserves_humid04():
-    """plan 28-03; MODE-02 — fruiting v0 reproduces Phase 27 narrow-band PID; HUMID-04 holds."""
-    pytest.fail("RED — landed in plan 28-03")
+# Helper fixtures for Task 2 control-loop tests.
+# Pattern (mirrors test_controller.py): bypass grace via _grace_active=lambda:False;
+# pre-fill _humidity_buffer with 5 samples so freshness/staleness guards are happy;
+# spy _publish_duty to inspect the published duty value.
+
+def _prep_controller(node, current_temp=23.0):
+    """Bypass grace, set temp, spy duty + telemetry pubs."""
+    node._grace_active = lambda: False
+    node.current_temp = current_temp
+    duty_published = []
+    node._duty_pub.publish = lambda msg: duty_published.append(msg.data)
+    target_pub = []
+    node._humidity_target_pub.publish = lambda msg: target_pub.append(msg.data)
+    pid_out_pub = []
+    node._pid_output_pub.publish = lambda msg: pid_out_pub.append(msg.data)
+    return duty_published, target_pub, pid_out_pub
 
 
-def test_pinning_clamps_on_high_excursion():
+def _seed_buffer(node, value, t_ns=0):
+    """Fill the median buffer with `value` at clock=t_ns so staleness guard is satisfied."""
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(t_ns)):
+        for _ in range(5):
+            _send_humidity(node, value)
+
+
+def _set_pinning_v0(node):
+    node.set_parameters([
+        Parameter('active_mode', value='pinning'),
+        Parameter('modes.pinning.target_humidity', value=0.85),
+        Parameter('modes.pinning.band_low', value=0.90),
+        Parameter('modes.pinning.band_high', value=0.99),
+        Parameter('modes.pinning.defend_side', value='low'),
+    ])
+
+
+def _set_fruiting_v0(node):
+    node.set_parameters([
+        Parameter('active_mode', value='fruiting'),
+        Parameter('modes.fruiting.target_humidity', value=0.96),
+        Parameter('modes.fruiting.band_low', value=0.945),
+        Parameter('modes.fruiting.band_high', value=0.975),
+        Parameter('modes.fruiting.defend_side', value='both'),
+    ])
+
+
+def test_fruiting_preserves_humid04(ros_context):
+    """plan 28-03; MODE-02 — fruiting v0 reproduces Phase 27 narrow-band PID; HUMID-04.
+
+    With band [0.945, 0.975] defend_side=both:
+    - rh=0.96 (in-band) → error_pct=0; duty stays bounded (no Mode C entry).
+    - rh=0.93 (below band_low) → error_pct=(0.93-0.945)*100=-1.5; PID demands
+      non-zero duty (preserves Phase 27 HUMID-04 contract).
+    """
+    node = _make_node()
+    _set_fruiting_v0(node)
+    duty_published, _, _ = _prep_controller(node)
+
+    # In-band: error 0, no Mode C, duty bounded (PID returns ~bumpless preload).
+    _seed_buffer(node, 0.96, t_ns=0)
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(1e9))):
+        node.control_loop()
+    assert duty_published, 'expected at least one duty publication'
+    duty_in_band = duty_published[-1]
+    assert 0.0 <= duty_in_band <= 1.0, f'duty out of [0,1]: {duty_in_band}'
+
+    # Below band_low: PID demands duty > 0 (HUMID-04).
+    _seed_buffer(node, 0.93, t_ns=int(2e9))
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(3e9))):
+        node.control_loop()
+    duty_below = duty_published[-1]
+    assert duty_below > 0.0, (
+        f'fruiting must demand duty>0 when rh<band_low; got {duty_below}'
+    )
+    node.destroy_node()
+
+
+def test_pinning_clamps_on_high_excursion(ros_context):
     """plan 28-03; MODE-02 D-09 — defend_side=low: rh > band_high → duty=0,
-    integrator frozen, bumpless re-engage on return into band."""
-    pytest.fail("RED — landed in plan 28-03")
+    integrator frozen, telemetry trio still published.
+    """
+    node = _make_node()
+    _set_pinning_v0(node)
+    duty_published, target_pub, pid_out_pub = _prep_controller(node)
+
+    # rh=0.995 above band_high=0.99 with defend_side=low → clamp to 0.
+    _seed_buffer(node, 0.995, t_ns=0)
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(1e9))):
+        node.control_loop()
+
+    assert duty_published[-1] == 0.0, (
+        f'pinning high excursion: duty must clamp to 0.0, got {duty_published[-1]}'
+    )
+    assert node._pid.auto_mode is False, 'integrator must be frozen on high-side clamp'
+    assert pid_out_pub and pid_out_pub[-1] == 0.0, 'pid_output telemetry must publish 0.0'
+    assert target_pub, 'humidity_target telemetry must still publish (Mission Control visibility)'
+    node.destroy_node()
 
 
-def test_pinning_defends_floor():
+def test_pinning_defends_floor(ros_context):
     """plan 28-03; MODE-02 — pinning still drives humidifier when rh < band_low (0.90)."""
-    pytest.fail("RED — landed in plan 28-03")
+    node = _make_node()
+    _set_pinning_v0(node)
+    duty_published, _, _ = _prep_controller(node)
+
+    # rh=0.85 below band_low=0.90 → error_pct=(0.85-0.90)*100=-5.0, but |rh - 0.90|=0.05
+    # = 5%RH > bypass_threshold(2.5%) AND rh<nearest_defended → Mode C → duty=1.0.
+    _seed_buffer(node, 0.85, t_ns=0)
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(1e9))):
+        node.control_loop()
+    assert duty_published[-1] > 0.0, (
+        f'pinning must defend floor (rh<band_low) with duty>0, got {duty_published[-1]}'
+    )
+
+    # Also try mild floor breach (rh=0.895, just 0.005 below floor) → linear PID,
+    # error_pct=-0.5, distance from band_low=0.005 < bypass_threshold → no Mode C
+    # but error<0 → PID demands non-zero duty.
+    node2 = _make_node()
+    _set_pinning_v0(node2)
+    duty2, _, _ = _prep_controller(node2)
+    _seed_buffer(node2, 0.895, t_ns=0)
+    with patch.object(node2, 'get_clock', return_value=_mock_clock_at(int(1e9))):
+        node2.control_loop()
+    assert duty2[-1] > 0.0, (
+        f'pinning mild floor breach: PID must demand duty>0, got {duty2[-1]}'
+    )
+    node.destroy_node()
+    node2.destroy_node()
+
+
+def test_ramp_targets_defended_edge(ros_context):
+    """plan 28-03; MODE-02 D-10 — ramp targets defended band edge, not midpoint.
+
+    Pinning defend_side=low. Start _effective_setpoint=0.85 (cosmetic target
+    midpoint), feed rh=0.92 (in-band). After one 1s tick with ramp_seconds=30,
+    _effective_setpoint must move TOWARD band_low=0.90, NOT toward target 0.85.
+    """
+    node = _make_node()
+    _set_pinning_v0(node)
+    duty_published, _, _ = _prep_controller(node)
+
+    # Set effective_setpoint to 0.85 (the cosmetic target — pre-mode-aware location).
+    node._effective_setpoint = 0.85
+
+    _seed_buffer(node, 0.92, t_ns=0)
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(1e9))):
+        node.control_loop()
+
+    # After ramp: should have moved toward 0.90, not toward 0.85 or below.
+    assert node._effective_setpoint > 0.85, (
+        f'ramp must target defended edge (band_low=0.90), but stayed at/below 0.85: '
+        f'{node._effective_setpoint}'
+    )
+    # Step magnitude: |0.90-0.85|*(1/30) ≈ 0.00167; effective ≈ 0.8517.
+    assert node._effective_setpoint == pytest.approx(0.85 + 0.05 * (1.0 / 30.0), abs=1e-4), (
+        f'expected slew ~0.00167 toward 0.90, got effective={node._effective_setpoint}'
+    )
+    node.destroy_node()
+
+
+def test_mode_c_bypass_keys_off_nearest_defended_edge(ros_context):
+    """plan 28-03; MODE-02 D-11 — Mode C bypass uses nearest defended edge, not target.
+
+    Pinning: target=0.85, band_low=0.90, defend_side=low. RH=0.60.
+    Distance from band_low (the only defended edge) = 0.30 = 30% RH.
+    bypass_threshold=0.025=2.5%. edge_distance > bypass → Mode C → duty=1.0.
+
+    The OLD (target-keyed) bypass would have computed |0.60-0.85|=0.25 — also
+    Mode C, but for the wrong reason. The pinning band geometry (target<band_low)
+    makes the test name's invariant load-bearing: the new code computes against
+    the defended edge, not the cosmetic target.
+    """
+    node = _make_node()
+    _set_pinning_v0(node)
+    duty_published, _, _ = _prep_controller(node)
+
+    _seed_buffer(node, 0.60, t_ns=0)
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(1e9))):
+        node.control_loop()
+
+    assert duty_published[-1] == 1.0, (
+        f'pinning crash to 0.60: distance from band_low (0.90)=0.30 > bypass(0.025) '
+        f'→ Mode C duty=1.0; got {duty_published[-1]}'
+    )
+    assert node._pid.auto_mode is False, 'integrator frozen during Mode C'
+    node.destroy_node()
 
 
 # --- MODE-03: set_mode service ------------------------------------------------
