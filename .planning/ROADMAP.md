@@ -142,7 +142,7 @@ PID-first shape (locked 2026-05-01 with farmer): farmer wants condensation/evapo
 | 26. Dual sensor publishing + offline alarms (SHT30/SCD41) | v1.4 | 3/3 | Complete — UAT-8 PASS 2026-04-29 (farmer-eyeballed slot-1/slot-2 overlay, SCD41 clipping confirmed) | 2026-04-29 |
 | 27. PID + time-proportional duty-cycle primitive | v1.5 | 5/5 | Complete    | 2026-05-02 |
 | 27.1. Edge buffering — fc1 telemetry replay-on-reconnect | v1.5.0.1 | 4/4 | Complete — shipped via wg0 detour 2026-05-03 (BUF-04 attestation pending natural dropout) | 2026-05-03 |
-| 27.2. fc-core systemd unit hardening | v1.5.0.1 | 1/1 | Unit hardened (explicit wg-quick@wg0 dep + IPv4 wait); SYS-04 validation reboot pending | — |
+| 27.2. fc-core systemd unit hardening | v1.5.0.1 | 1/1 | Complete (PARTIAL — cold-reboot SYS-04 PASS 2026-05-07; wg0-down-at-boot scenario deferred to 999.28) | 2026-05-07 |
 | 27.3. Telemetry sampling-rate reduction | v1.5.0.1 | — | MOOTED 2026-05-03 by transport switch | — |
 | 27.4. Repo netplan drift reconciliation | v1.5.0.1 | — | MOOTED 2026-05-03 in planned form (fc1 no longer on farm-4G); re-promote when fc1 returns to farm | — |
 | 999.1. Edge buffering | backlog | — | Promoted to Phase 27.1 (v1.5.0.1) on 2026-05-02; shipped 2026-05-03 | — |
@@ -224,6 +224,26 @@ Original justification: align repo netplan with fc1's currently-running farm-4G 
 **Why mooted in planned form:** fc1 is no longer at the farm on 4G — it's on home-LAN wifi with kernel-WG to elder-plops while the SSD is procured. The drifted state captured in the original plan was a snapshot of the farm-4G config; that config will be re-applied when fc1 returns to the farm. Re-promote at that point.
 
 **Carry-forward note:** the underlying anti-pattern (manual netplan edits on fc1 not reflected in the repo, fc-system-sync would clobber them) is permanent and worth re-addressing whenever fc1 returns to a 4G uplink.
+
+### Phase 28: Mode primitive + 2 baseline modes (`fruiting`, `pinning`) + runtime config delivery
+
+**Goal:** Wrap Phase 27's PID primitive in a named-mode abstraction so the controller's behavior is parametrized by a declarative bundle (`target`, band, duty-cycle behavior) instead of a single scalar `target_humidity`. Ship `fruiting` and `pinning` as the first two baseline modes, expose live mode-switching via ROS service, publish `current_mode`, and deliver a runtime config path so mode definitions can be edited without a deploy cycle. Closes the SEED-001 pain (config edits require redeploy) and lays the groundwork for SEED-004 (pinning is a *cycle*, not a setpoint — bands + defend_side + VPD).
+
+**Requirements:** MODE-01, MODE-02, MODE-03, MODE-04, MODE-05.
+
+> ⚠️ **MODE-01 wording conflicts with SEED-004** — current REQUIREMENTS.md text bundles `(target_RH, band, duty-cycle behavior)` but SEED-004 demands `(target, band_low, band_high, defend_side, T_target_optional)`. **Reconcile MODE-01 wording before schema locks** — discuss-phase entry should surface this and route to either rewriting MODE-01 in REQUIREMENTS.md or capturing the schema decision in CONTEXT.md as the canonical source.
+
+**CONTEXT.md:** to be created in discuss-phase. Use `phase=28`.
+
+**Research already on disk:** `.planning/research/2026-05-06-phase28-mode-schema-and-runtime-config.md` (515 lines covering proposed YAML schema, smallest controller change, `current_mode` topic shape, VPD calculation, and runtime config delivery evaluation).
+
+**Seeds to read:**
+- `.planning/seeds/SEED-001-runtime-config-delivery.md` (drives MODE-05)
+- `.planning/seeds/SEED-004-pinning-cycle-and-vpd-mode-schema.md` (drives MODE-01 schema reconciliation)
+
+**Dependencies:** Builds on Phase 27 (PID primitive + slow-PWM); composes with Phase 29 (alerter mode-awareness — alerter must read target/band from controller, not env), Phase 30 (scheduler — issues mode switches at window boundaries), Phase 31 (forcing modes — same mode primitive used for `force-condensation`/`force-evaporation`), 999.22 (alerter ops thresholds — same root cause: farmer-tunable knobs hidden in env).
+
+**Plans:** TBD via `/gsd-plan-phase 28`.
 
 ## Backlog (parking lot)
 

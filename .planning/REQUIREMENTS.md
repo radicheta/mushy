@@ -47,7 +47,7 @@ fc1 is on home-LAN wifi with kernel-WG, not at the farm on 4G. The drifted netpl
 
 ### MODE — Mode Primitive + Runtime Config Delivery (incorporates SEED-001)
 
-- [ ] **MODE-01** — Controller exposes a mode registry: named bundles of `(target_RH, band, duty-cycle behavior)` defined in declarative YAML/JSON.
+- [ ] **MODE-01** — Controller exposes a mode registry: named bundles of `(target_humidity, band_low, band_high, defend_side: low|high|both, T_target_optional)` defined in declarative YAML, with mode definitions flattened into dotted-key ROS2 params (e.g. `modes.fruiting.band_low`). Schema reconciled with SEED-004 at Phase 28 discuss-phase 2026-05-07; old `(target_RH, band, duty-cycle behavior)` wording retired. `T_target` reserved for future VPD anchoring; loop stays RH-targeted in v0.
 - [ ] **MODE-02** — Two baseline modes shipped: `fruiting` and `pinning`, with per-mode targets/bands chosen with farmer.
 - [ ] **MODE-03** — Farmer can switch active mode via ROS service call (and farmer-app button when surfaced); switch takes effect on next control tick.
 - [ ] **MODE-04** — Controller publishes `current_mode` topic so downstream consumers (alerter, dashboards, scheduler) read live mode without restart.
