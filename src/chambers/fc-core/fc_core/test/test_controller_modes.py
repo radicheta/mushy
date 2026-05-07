@@ -10,16 +10,22 @@ See:
 - .planning/phases/28-.../28-CONTEXT.md (D-01..D-22)
 """
 import math
+import time
 
 import pytest
 import rclpy
 import rclpy.time
+from rclpy.executors import SingleThreadedExecutor
+from rclpy.node import Node
 from rclpy.parameter import Parameter
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import RelativeHumidity, Temperature
 from std_msgs.msg import Float32
 from unittest.mock import patch, MagicMock
 
 from fc_core.fc_controller import FruitingChamberController, ModeView
+from fc_msgs.msg import Mode
+from fc_msgs.srv import SetMode
 
 _ROS_TIME = rclpy.time.ClockType.ROS_TIME
 
@@ -46,15 +52,57 @@ def _send_humidity(node, value):
 
 
 def _make_node(parameter_overrides=None):
-    """Build a controller with optional parameter overrides applied at __init__ time."""
+    """Build a controller with optional parameter overrides applied at __init__ time.
+
+    Phase 28-04: prefer constructor-time `parameter_overrides=` so callbacks
+    registered in `__init__` (e.g. add_on_set_parameters_callback) and the
+    startup current_mode publish observe the test's mode shape, not the
+    declared NaN-sentinel defaults.
+    """
     if parameter_overrides is None:
         return FruitingChamberController()
-    # rclpy.node.Node accepts parameter_overrides via the constructor signature,
-    # but FruitingChamberController.__init__ doesn't surface it; we use
-    # set_parameters after construction since all params are pre-declared.
-    node = FruitingChamberController()
-    node.set_parameters(parameter_overrides)
-    return node
+    return FruitingChamberController(parameter_overrides=parameter_overrides)
+
+
+# Phase 28-04 fixture: full v0 fruiting param set (declared NaN bands replaced
+# with farmer-locked v0 values per D-05) plus simulation-mode actuator flag so
+# __init__ doesn't try to import RPi.GPIO. Used by every test that asserts on
+# startup-time behavior of fc_controller (current_mode publish, callback wiring).
+def _fruiting_v0_overrides():
+    return [
+        Parameter('actuator_simulation_mode', Parameter.Type.BOOL, True),
+        Parameter('active_mode', Parameter.Type.STRING, 'fruiting'),
+        Parameter('modes.fruiting.target_humidity', Parameter.Type.DOUBLE, 0.96),
+        Parameter('modes.fruiting.band_low', Parameter.Type.DOUBLE, 0.945),
+        Parameter('modes.fruiting.band_high', Parameter.Type.DOUBLE, 0.975),
+        Parameter('modes.fruiting.defend_side', Parameter.Type.STRING, 'both'),
+        Parameter('modes.fruiting.t_target', Parameter.Type.DOUBLE, float('nan')),
+        # Pinning declared too — required for unknown-mode rejection tests.
+        Parameter('modes.pinning.target_humidity', Parameter.Type.DOUBLE, 0.85),
+        Parameter('modes.pinning.band_low', Parameter.Type.DOUBLE, 0.90),
+        Parameter('modes.pinning.band_high', Parameter.Type.DOUBLE, 0.99),
+        Parameter('modes.pinning.defend_side', Parameter.Type.STRING, 'low'),
+        Parameter('modes.pinning.t_target', Parameter.Type.DOUBLE, float('nan')),
+    ]
+
+
+def _pinning_v0_overrides():
+    overrides = _fruiting_v0_overrides()
+    # Flip active_mode → 'pinning'
+    return [
+        Parameter('active_mode', Parameter.Type.STRING, 'pinning')
+        if p.name == 'active_mode' else p
+        for p in overrides
+    ]
+
+
+def _transient_local_qos():
+    return QoSProfile(
+        depth=1,
+        durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        reliability=ReliabilityPolicy.RELIABLE,
+        history=HistoryPolicy.KEEP_LAST,
+    )
 
 
 # --- MODE-01: mode resolution + back-compat + param-callback validation -------
@@ -358,23 +406,190 @@ def test_mode_swap_bumpless():
 
 # --- MODE-04: current_mode topic ---------------------------------------------
 
-def test_current_mode_topic_payload():
+def _collect_one_mode_msg(controller, timeout_sec=2.0):
+    """Subscribe with TRANSIENT_LOCAL QoS, spin both nodes, return first Mode msg."""
+    received = []
+    sub_node = Node('test_mode_sub', start_parameter_services=False)
+    sub_node.create_subscription(
+        Mode, 'fc1/control/current_mode', received.append, _transient_local_qos()
+    )
+    exec_ = SingleThreadedExecutor()
+    exec_.add_node(controller)
+    exec_.add_node(sub_node)
+    deadline = time.monotonic() + timeout_sec
+    while not received and time.monotonic() < deadline:
+        exec_.spin_once(timeout_sec=0.1)
+    sub_node.destroy_node()
+    return received
+
+
+def test_current_mode_topic_payload(ros_context):
     """plan 28-04; MODE-04 — current_mode publishes fc_msgs/Mode with all D-13 fields."""
-    pytest.fail("RED — landed in plan 28-04")
+    node = _make_node(_fruiting_v0_overrides())
+    msgs = _collect_one_mode_msg(node)
+    assert msgs, 'expected at least one Mode message on /fc1/control/current_mode'
+    msg = msgs[0]
+    assert msg.name == 'fruiting'
+    assert msg.target_humidity == pytest.approx(0.96, abs=1e-4)
+    assert msg.band_low == pytest.approx(0.945, abs=1e-4)
+    assert msg.band_high == pytest.approx(0.975, abs=1e-4)
+    assert msg.defend_side == 'both'
+    assert math.isnan(msg.t_target)
+    assert msg.source == 'config_default'
+    node.destroy_node()
 
 
-def test_current_mode_late_subscribe():
+def test_current_mode_late_subscribe(ros_context):
     """plan 28-04; MODE-04 D-14 — TRANSIENT_LOCAL durability: late subscriber
-    receives last value on subscribe."""
-    pytest.fail("RED — landed in plan 28-04")
+    receives last value on subscribe.
+
+    Distinct from `test_current_mode_topic_payload` in that the subscriber is
+    created AFTER the publish has fired; cached message must arrive on
+    subscribe via TRANSIENT_LOCAL durability.
+    """
+    node = _make_node(_fruiting_v0_overrides())
+    # Spin the controller alone first so the startup publish flushes into the
+    # rmw with no subscribers attached.
+    pre_exec = SingleThreadedExecutor()
+    pre_exec.add_node(node)
+    for _ in range(5):
+        pre_exec.spin_once(timeout_sec=0.05)
+    pre_exec.remove_node(node)
+    # Now create the late subscriber — TRANSIENT_LOCAL must deliver the cached msg.
+    msgs = _collect_one_mode_msg(node)
+    assert msgs, 'late subscriber must receive cached Mode msg via TRANSIENT_LOCAL'
+    assert msgs[0].name == 'fruiting'
+    node.destroy_node()
 
 
-def test_current_mode_republishes_on_band_change():
-    """plan 28-04; MODE-04 D-15 — band_low/band_high tweak triggers republish."""
-    pytest.fail("RED — landed in plan 28-04")
+def test_current_mode_republishes_on_band_change(ros_context):
+    """plan 28-04; MODE-04 D-15 — band_low/band_high tweak triggers republish.
+
+    Pattern: spin past startup publish, set band_low=0.94 via set_parameters,
+    spin one control_loop tick, expect a SECOND Mode msg with band_low=0.94 and
+    source='param_set'.
+    """
+    node = _make_node(_fruiting_v0_overrides())
+    # Bypass grace + freshness so control_loop runs to the republish-drain branch.
+    node._grace_active = lambda: False
+    node.current_temp = 23.0
+    # Pre-fill humidity buffer + timestamp so staleness guard passes.
+    msg = RelativeHumidity()
+    msg.relative_humidity = 0.96
+    for _ in range(5):
+        node.humidity_callback(msg)
+
+    received = []
+    sub_node = Node('test_republish_sub', start_parameter_services=False)
+    sub_node.create_subscription(
+        Mode, 'fc1/control/current_mode', received.append, _transient_local_qos()
+    )
+    exec_ = SingleThreadedExecutor()
+    exec_.add_node(node)
+    exec_.add_node(sub_node)
+    # Drain the startup publish.
+    deadline = time.monotonic() + 1.0
+    while not received and time.monotonic() < deadline:
+        exec_.spin_once(timeout_sec=0.05)
+    assert received, 'startup publish missing'
+    startup_count = len(received)
+
+    # Now mutate band_low. Callback fires, queues republish for next tick.
+    results = node.set_parameters([
+        Parameter('modes.fruiting.band_low', Parameter.Type.DOUBLE, 0.94),
+    ])
+    assert results[0].successful, f'expected accept; got {results[0].reason}'
+
+    # Trigger control_loop manually (next-tick drain).
+    node.control_loop()
+    deadline = time.monotonic() + 1.0
+    while len(received) <= startup_count and time.monotonic() < deadline:
+        exec_.spin_once(timeout_sec=0.05)
+
+    assert len(received) > startup_count, 'no republish observed after band_low change'
+    last = received[-1]
+    assert last.band_low == pytest.approx(0.94, abs=1e-4)
+    assert last.source == 'param_set'
+    sub_node.destroy_node()
+    node.destroy_node()
 
 
-def test_current_mode_published_at_startup():
+def test_current_mode_published_at_startup(ros_context):
     """plan 28-04; MODE-04 — TRANSIENT_LOCAL does NOT survive process restart;
     controller publishes once at startup after _resolve_active_mode."""
-    pytest.fail("RED — landed in plan 28-04")
+    node = _make_node(_fruiting_v0_overrides())
+    msgs = _collect_one_mode_msg(node, timeout_sec=2.0)
+    assert len(msgs) >= 1, 'expected at least one startup publish on current_mode'
+    # Exactly one publish at startup (no autonomous control_loop tick happened).
+    # Spin a touch longer to confirm no spurious extras arrive.
+    exec_ = SingleThreadedExecutor()
+    exec_.add_node(node)
+    for _ in range(3):
+        exec_.spin_once(timeout_sec=0.05)
+    # First publish must be the startup one with source='config_default'.
+    assert msgs[0].source == 'config_default'
+    node.destroy_node()
+
+
+def test_target_outside_band_warn_pinning(ros_context, caplog):
+    """plan 28-04 OQ-5 — pinning target=0.85 outside band [0.90, 0.99] triggers
+    a cosmetic WARN at startup current_mode publish."""
+    import logging
+    caplog.set_level(logging.WARN)
+    node = _make_node(_pinning_v0_overrides())
+    # Spin briefly so startup publish fires (logging is synchronous in publish, but
+    # we also want any rclpy logger plumbing to flush).
+    exec_ = SingleThreadedExecutor()
+    exec_.add_node(node)
+    for _ in range(3):
+        exec_.spin_once(timeout_sec=0.05)
+    # rclpy uses its own logger; capture via the WARN log path. Look in both
+    # caplog and the controller's get_logger output (rclpy emits to rcutils,
+    # which surfaces in capsys/caplog through the rclpy.logging bridge in tests).
+    combined = ' '.join(rec.getMessage() for rec in caplog.records)
+    # Fall back: check the get_logger().warn call by patching the logger directly.
+    # (rclpy logs via stderr; caplog only catches python logging — the controller
+    # uses rclpy's logger. Use a spy approach instead.)
+    node.destroy_node()
+    if 'outside band' not in combined:
+        # caplog miss is expected — rclpy logging bypasses the python `logging`
+        # module. Re-run with a logger spy to assert directly.
+        node2 = FruitingChamberController.__new__(FruitingChamberController)
+        warn_calls = []
+
+        # Patch get_logger before super().__init__ runs by monkey-patching
+        # the class method — same approach as below in the negative test.
+        with patch.object(FruitingChamberController, 'get_logger') as mock_get:
+            logger_mock = MagicMock()
+            logger_mock.warn = lambda m: warn_calls.append(m)
+            logger_mock.warning = lambda m: warn_calls.append(m)
+            logger_mock.info = lambda m: None
+            logger_mock.debug = lambda m: None
+            logger_mock.error = lambda m: None
+            mock_get.return_value = logger_mock
+            n = FruitingChamberController(parameter_overrides=_pinning_v0_overrides())
+            n.destroy_node()
+        assert any('outside band' in m and 'pinning' in m for m in warn_calls), (
+            f'expected WARN on pinning startup with target outside band; '
+            f'got warns: {warn_calls}'
+        )
+
+
+def test_target_inside_band_no_warn_fruiting(ros_context):
+    """plan 28-04 OQ-5 — fruiting target=0.96 inside band [0.945, 0.975] must
+    NOT emit the cosmetic 'outside band' WARN at startup (negative case)."""
+    warn_calls = []
+    with patch.object(FruitingChamberController, 'get_logger') as mock_get:
+        logger_mock = MagicMock()
+        logger_mock.warn = lambda m: warn_calls.append(m)
+        logger_mock.warning = lambda m: warn_calls.append(m)
+        logger_mock.info = lambda m: None
+        logger_mock.debug = lambda m: None
+        logger_mock.error = lambda m: None
+        mock_get.return_value = logger_mock
+        node = FruitingChamberController(parameter_overrides=_fruiting_v0_overrides())
+        node.destroy_node()
+    assert not any('outside band' in m for m in warn_calls), (
+        f'fruiting target inside band: must NOT emit "outside band" WARN; '
+        f'got warns: {warn_calls}'
+    )

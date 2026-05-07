@@ -11,6 +11,7 @@ from datetime import datetime
 from math import isnan, nan
 from statistics import median
 from fc_core.vendor.simple_pid import PID
+from fc_msgs.msg import Mode
 
 
 @dataclass
@@ -28,8 +29,13 @@ class ModeView:
 
 
 class FruitingChamberController(Node):
-    def __init__(self):
-        super().__init__('fc_controller')
+    def __init__(self, **kwargs):
+        # Phase 28-04: forward kwargs (e.g. parameter_overrides=, namespace=) to
+        # rclpy.node.Node so tests can inject mode params at __init__ time —
+        # required for startup-republish of current_mode to observe the
+        # test-supplied mode shape rather than the declared NaN-sentinel
+        # defaults.
+        super().__init__('fc_controller', **kwargs)
 
         # Declare parameters
         self.declare_parameters(
@@ -168,6 +174,16 @@ class FruitingChamberController(Node):
             DiagnosticStatus, 'fc1/sensor_health', actuator_qos
         )
 
+        # Phase 28 D-13/D-14: current_mode topic. TRANSIENT_LOCAL so late
+        # subscribers (alerter Phase 29, scheduler Phase 30, bridge dashboard)
+        # get the last value on subscribe — same QoS pattern as Phase 27
+        # telemetry trio. Pitfall 2: TRANSIENT_LOCAL does NOT survive process
+        # restart, so the controller MUST publish once at startup (end of
+        # __init__) AFTER active_mode is resolvable.
+        self._current_mode_pub = self.create_publisher(
+            Mode, 'fc1/control/current_mode', actuator_qos
+        )
+
         # Current values
         self.current_temp = None
         self.current_humidity = None
@@ -210,6 +226,12 @@ class FruitingChamberController(Node):
         )
 
         self.get_logger().info('Fruiting Chamber Controller Node Started')
+
+        # Phase 28 Pitfall 2: TRANSIENT_LOCAL durability does NOT persist across
+        # process restart. Publish current_mode once at startup AFTER the param
+        # store is initialized so late subscribers (Phase 29 alerter, future
+        # scheduler) see the active mode without polling.
+        self._publish_current_mode(source='config_default')
 
     def temperature_callback(self, msg):
         self.current_temp = msg.temperature
@@ -338,10 +360,64 @@ class FruitingChamberController(Node):
             t_target=self.get_parameter(f'modes.{name}.t_target').value,
         )
 
-    def _engage_pid_bumplessly(self):
-        self._pid.set_auto_mode(True, last_output=0.15)
+    def _build_mode_msg(self, mv: ModeView, source: str) -> Mode:
+        """Phase 28 D-13: assemble fc_msgs/Mode from a ModeView snapshot.
+
+        `effective_since` is stamped at build time with the controller clock.
+        `t_target` is forwarded NaN-or-finite per D-02; rclpy round-trips both
+        through float32 without coercion.
+        """
+        msg = Mode()
+        msg.name = mv.name
+        msg.target_humidity = float(mv.target)
+        msg.band_low = float(mv.band_low)
+        msg.band_high = float(mv.band_high)
+        msg.defend_side = mv.defend_side
+        msg.t_target = float(mv.t_target)
+        msg.effective_since = self.get_clock().now().to_msg()
+        msg.source = source
+        return msg
+
+    def _publish_current_mode(self, source: str = 'config_default'):
+        """Resolve the active mode and publish on /fc1/control/current_mode.
+
+        Called from three sites:
+          (1) end of __init__ with source='config_default' (Pitfall 2 mitigation),
+          (2) on_set_parameters_callback's next-tick drain with source='param_set'
+              (D-15 — band-edge tweak republish),
+          (3) set_mode service handler synchronously with source='service_call'
+              (D-15 — service-driven mode swap).
+
+        Also emits a cosmetic WARN when target lies outside [band_low, band_high]
+        (D-06: pinning's target=0.85 lives below band_low=0.90 by design — the
+        message is operational signal, not a config rejection per OQ-5).
+        """
+        mv = self._resolve_active_mode()
+        msg = self._build_mode_msg(mv, source)
+        self._current_mode_pub.publish(msg)
+        self.get_logger().info(
+            f'current_mode → {mv.name} '
+            f'[band {mv.band_low:.3f}–{mv.band_high:.3f}, defend={mv.defend_side}, '
+            f'source={source}]'
+        )
+        # OQ-5 / D-06: target outside band is intentional for pinning. Surface as
+        # WARN so the operator sees it but don't reject the config.
+        if not (mv.band_low <= mv.target <= mv.band_high):
+            self.get_logger().warn(
+                f'target {mv.target} outside band [{mv.band_low},{mv.band_high}] '
+                f'for mode {mv.name} — cosmetic, by D-06'
+            )
+
+    def _engage_pid_bumplessly(self, last_output: float = 0.15):
+        """D-12: bumpless engage with optional carry-over duty.
+
+        Default 0.15 preserves the post-grace fresh-engage behavior. The
+        set_mode service handler (Task 3) passes `last_output=current_duty`
+        so a band-change mid-flight doesn't kick the integrator.
+        """
+        self._pid.set_auto_mode(True, last_output=last_output)
         self._pid_engaged = True
-        self.get_logger().info('PID engaged with bumpless preload: duty=0.15')
+        self.get_logger().info(f'PID engaged with bumpless preload: duty={last_output:.3f}')
 
     def _disengage_pid(self):
         if self._pid_engaged:
