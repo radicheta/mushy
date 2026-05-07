@@ -233,7 +233,9 @@ Original justification: align repo netplan with fc1's currently-running farm-4G 
 
 > ⚠️ **MODE-01 wording conflicts with SEED-004** — current REQUIREMENTS.md text bundles `(target_RH, band, duty-cycle behavior)` but SEED-004 demands `(target, band_low, band_high, defend_side, T_target_optional)`. **Reconcile MODE-01 wording before schema locks** — discuss-phase entry should surface this and route to either rewriting MODE-01 in REQUIREMENTS.md or capturing the schema decision in CONTEXT.md as the canonical source.
 
-**CONTEXT.md:** to be created in discuss-phase. Use `phase=28`.
+**CONTEXT.md:** `.planning/phases/28-mode-primitive-2-baseline-modes-fruiting-pinning-runtime-con/28-CONTEXT.md` (gathered 2026-05-07; D-01..D-25 locked; MODE-01 rewritten by this phase per D-01).
+
+**RESEARCH.md:** `.planning/phases/28-mode-primitive-2-baseline-modes-fruiting-pinning-runtime-con/28-RESEARCH.md` (researched 2026-05-07; 8 pitfalls + Validation Architecture + Wave 0 spike requirements).
 
 **Research already on disk:** `.planning/research/2026-05-06-phase28-mode-schema-and-runtime-config.md` (515 lines covering proposed YAML schema, smallest controller change, `current_mode` topic shape, VPD calculation, and runtime config delivery evaluation).
 
@@ -243,7 +245,15 @@ Original justification: align repo netplan with fc1's currently-running farm-4G 
 
 **Dependencies:** Builds on Phase 27 (PID primitive + slow-PWM); composes with Phase 29 (alerter mode-awareness — alerter must read target/band from controller, not env), Phase 30 (scheduler — issues mode switches at window boundaries), Phase 31 (forcing modes — same mode primitive used for `force-condensation`/`force-evaporation`), 999.22 (alerter ops thresholds — same root cause: farmer-tunable knobs hidden in env).
 
-**Plans:** TBD via `/gsd-plan-phase 28`.
+**Plans:** 7 plans
+
+- [ ] 28-01-PLAN.md — fc_msgs skeleton (Mode.msg + SetMode.srv) + Wave 0 test scaffolds + spike (rclnodejs SetParameters shape, bridge→fc1 SSH path)
+- [ ] 28-02-PLAN.md — fc_config.yaml modes block (D-05 fruiting / D-06 pinning) + fc_core depends on fc_msgs
+- [ ] 28-03-PLAN.md — fc_controller.py surgery: ModeView + _resolve_active_mode (D-08), band-aware error projection (D-09), ramp-to-defended-edge (D-10), nearest-defended-edge bypass (D-11)
+- [ ] 28-04-PLAN.md — current_mode topic + on_set_parameters_callback validator + set_mode service + bumpless mode-swap (D-12, D-13, D-14, D-15, D-16)
+- [ ] 28-05-PLAN.md — bridge POST /control/param (Layer 1) with allowlist + batched-coupled-band edits (Pitfall 4) — control_param.js
+- [ ] 28-06-PLAN.md — bridge POST /control/persist (Layer 2) atomic overlay write to /var/lib/fc-core/runtime_overrides.yaml (transport per spike §B) — control_persist.js
+- [ ] 28-07-PLAN.md — fc.launch.py conditional overlay load + deploy.sh fixes (Pitfall 5 fc_msgs build, wg0 PI_HOST) + integration verification on fc1
 
 ## Backlog (parking lot)
 
