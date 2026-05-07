@@ -1,0 +1,5 @@
+string name
+---
+bool success
+string reason
+fc_msgs/Mode active_mode
