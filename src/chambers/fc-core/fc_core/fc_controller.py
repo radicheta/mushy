@@ -355,6 +355,8 @@ class FruitingChamberController(Node):
         self._duty_pub.publish(msg)
 
     def _ramp_setpoint(self, dt):
+        """Legacy ramp toward `target_humidity` — preserved for callers/tests
+        that haven't migrated to mode-aware ramping (Phase 27 contract)."""
         target = self.get_parameter('target_humidity').value
         ramp_seconds = self.get_parameter('pid_setpoint_ramp_seconds').value
         if ramp_seconds <= 0:
@@ -363,6 +365,36 @@ class FruitingChamberController(Node):
         delta = target - self._effective_setpoint
         if abs(delta) < 1e-6:
             self._effective_setpoint = target
+            return
+        max_step = abs(delta) * (dt / ramp_seconds)
+        step = max(-max_step, min(max_step, delta))
+        self._effective_setpoint += step
+
+    def _ramp_setpoint_to_band(self, dt, mode: ModeView):
+        """Phase 28 D-10: ramp toward the DEFENDED band edge, not midpoint.
+
+        Midpoint is fiction when bands are wide (pinning has 0.85 cosmetic
+        target inside a [0.90, 0.99] band — that's geometrically inverted).
+        """
+        ramp_seconds = self.get_parameter('pid_setpoint_ramp_seconds').value
+        rh = self.current_humidity
+        if rh < mode.band_low:
+            edge_target = mode.band_low
+        elif rh > mode.band_high and mode.defend_side in ('high', 'both'):
+            edge_target = mode.band_high
+        else:
+            # In-band, or above-band-with-low-defense: park ramp at the nearest
+            # defended edge. defend_side=low → band_low (drift back into band on
+            # a fall); defend_side=high → band_high; defend_side=both → band_low
+            # by default (the floor is always defended; symmetric to pre-Phase-28
+            # behavior).
+            edge_target = mode.band_high if mode.defend_side == 'high' else mode.band_low
+        if ramp_seconds <= 0:
+            self._effective_setpoint = edge_target
+            return
+        delta = edge_target - self._effective_setpoint
+        if abs(delta) < 1e-6:
+            self._effective_setpoint = edge_target
             return
         max_step = abs(delta) * (dt / ramp_seconds)
         step = max(-max_step, min(max_step, delta))
@@ -501,6 +533,9 @@ class FruitingChamberController(Node):
             )
             self._last_tick_ts = now
 
+            # Phase 28 D-08: resolve active mode once per tick.
+            mode = self._resolve_active_mode()
+
             if not self._pid_engaged:
                 self._engage_pid_bumplessly()
 
@@ -509,20 +544,62 @@ class FruitingChamberController(Node):
             self._pid.Ki = self.get_parameter('pid_ki').value
             self._pid.Kd = self.get_parameter('pid_kd').value
 
-            self._ramp_setpoint(dt)
-            # error_pct: negative when humidity is below setpoint (drives duty up via PID)
-            error_pct = (self.current_humidity - self._effective_setpoint) * 100.0
-            bypass_pct = self.get_parameter('bypass_threshold').value * 100.0
+            # Phase 28 D-10: ramp toward defended band edge (not target midpoint).
+            self._ramp_setpoint_to_band(dt, mode)
+            rh = self.current_humidity
 
-            if abs(error_pct) > bypass_pct:
-                # Mode C: full ON open-loop, freeze integrator
+            # Phase 28 D-09: band-aware error projection.
+            # error_pct < 0 when below the defended floor → drives duty up via PID.
+            if rh < mode.band_low:
+                error_pct = (rh - mode.band_low) * 100.0
+            elif rh > mode.band_high:
+                if mode.defend_side in ('high', 'both'):
+                    error_pct = (rh - mode.band_high) * 100.0
+                else:
+                    # defend_side=low: don't fight upward. Clamp duty + freeze
+                    # integrator. Bumpless re-engage on return into band uses
+                    # the same primitive as Mode C exit (next tick re-enters
+                    # the in-band branch which calls set_auto_mode(True, ...)).
+                    if self._pid.auto_mode:
+                        self._pid.set_auto_mode(False)
+                    self._publish_duty(0.0)
+                    ht_msg = Float32()
+                    ht_msg.data = float(self._effective_setpoint)
+                    self._humidity_target_pub.publish(ht_msg)
+                    po_msg = Float32()
+                    po_msg.data = 0.0
+                    self._pid_output_pub.publish(po_msg)
+                    return
+            else:
+                error_pct = 0.0
+
+            # Phase 28 D-11: Mode C bypass keys off NEAREST DEFENDED edge,
+            # not target_humidity. Otherwise pinning's cosmetic target=0.85
+            # below band_low=0.90 makes the bypass distance metric meaningless.
+            if mode.defend_side == 'low':
+                nearest_defended = mode.band_low
+            elif mode.defend_side == 'high':
+                nearest_defended = mode.band_high
+            else:  # 'both' (or any unrecognized value falls through here safely)
+                nearest_defended = mode.band_low if rh <= mode.target else mode.band_high
+            edge_distance = abs(rh - nearest_defended)
+            bypass_pct = self.get_parameter('bypass_threshold').value * 100.0
+            edge_distance_pct = edge_distance * 100.0
+
+            if edge_distance_pct > bypass_pct and rh < nearest_defended:
+                # Mode C: full ON open-loop, freeze integrator. Only fires when
+                # RH is below a defended floor by more than bypass_threshold —
+                # the crash-recovery case. High-side excursions on defend_side=low
+                # already returned above; high-side excursions on {high, both}
+                # produce positive error_pct and stay in the linear PID branch
+                # (PID output_limits=(0,1) clamp handles the rest).
                 if self._pid.auto_mode:
                     self._pid.set_auto_mode(False)
                 raw_pid_output = 1.0
                 duty = 1.0
             else:
                 if not self._pid.auto_mode:
-                    # Re-engage bumplessly from Mode C
+                    # Re-engage bumplessly from Mode C / clamp.
                     self._pid.set_auto_mode(True, last_output=1.0)
                 raw_pid_output = self._pid(error_pct, dt=dt)
                 duty = raw_pid_output
