@@ -26,3 +26,6 @@ src/mission-control/*/package-lock.json
 build/
 install/
 log/
+
+# Bridge runtime state (buffer-replay cursor)
+bridge-state/
