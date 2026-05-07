@@ -69,3 +69,22 @@ fc_buffer:
     retention_seconds: 86400      # 24h ring (D-05)
     prune_interval_seconds: 60.0  # Pruner cadence
     # topics_config intentionally omitted — resolved from package share at startup
+
+# Phase 28: Mode primitive (D-01..D-06). Dotted-key flat params per D-03 — rclpy has no
+# native dict params; adding a NEW named mode beyond fruiting/pinning is a deploy in v0.
+# Active mode resolves to ModeView in fc_controller._resolve_active_mode (plan 03).
+fc_controller:
+  ros__parameters:
+    active_mode: fruiting
+    # Fruiting v0 — D-05 — preserves Phase 27 HUMID-04 narrow-band PID behavior
+    modes.fruiting.target_humidity: 0.96
+    modes.fruiting.band_low: 0.945
+    modes.fruiting.band_high: 0.975
+    modes.fruiting.defend_side: both
+    modes.fruiting.t_target: .nan
+    # Pinning v0 — D-06 — passive only; defends floor 0.90 only, ceiling 0.99 silent (D-07)
+    modes.pinning.target_humidity: 0.85
+    modes.pinning.band_low: 0.90
+    modes.pinning.band_high: 0.99
+    modes.pinning.defend_side: low
+    modes.pinning.t_target: .nan
