@@ -13,6 +13,7 @@ const { validateFrameParams } = require('./frame_validate');
 const { burnBar, formatBarText } = require('./burn_bar');
 const buffer_replay = require('./buffer_replay');
 const control_param = require('./control_param');
+const control_persist = require('./control_persist');
 
 // Fail fast if database password is not configured
 if (!process.env.TIMESCALE_PASSWORD) {
@@ -572,6 +573,14 @@ app.post('/control/param', express.json(), async (req, res) => {
     const handler = control_param.makeHandler(rosNode, { timeoutMs: 3000 });
     return handler(req, res);
 });
+
+// Phase 28 D-17 Layer 2: explicit Save-to-repo (D-19). Separate endpoint from
+// /control/param so the farmOS UI surfaces it as an explicit button, not an
+// auto-debounced side effect of every slider drag. Transport locked in
+// 28-01-SPIKE.md §C / D-B1: fc_buffer HTTP relay (bridge container has no ssh
+// binary; fc_buffer already runs on fc1 and owns /var/lib/fc-core/).
+const persistTransport = control_persist.makeHttpTransport({});
+app.post('/control/persist', express.json(), control_persist.makeHandler(persistTransport, {}));
 
 // Store connected WebSocket clients
 const clients = new Set();
