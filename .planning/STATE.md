@@ -1,44 +1,50 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: milestone_complete
-stopped_at: Phase 29 context gathered
-last_updated: "2026-05-08T12:08:41.467Z"
-last_activity: 2026-05-08 -- Phase 29 execution started
+milestone: v1.5
+milestone_name: analog-humidity-control-and-modes
+status: active
+stopped_at: v1.5.0.1 archived; Phase 30 not yet started
+last_updated: "2026-05-08T13:00:00.000Z"
+last_activity: 2026-05-08 -- v1.5.0.1 milestone archived; v1.5 resumes
 progress:
-  total_phases: 7
-  completed_phases: 5
-  total_plans: 24
-  completed_plans: 17
-  percent: 71
+  total_phases: 5
+  completed_phases: 3
+  total_plans: 13
+  completed_plans: 13
+  percent: 60
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-02)
+See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 29 — alerter-mode-awareness-cooldown-tuning
+**Current focus:** v1.5 modes work — Phase 30 (time-of-day mode scheduling) is next.
 
 ## Current Position
 
-Phase: 29
-Milestone: v1.5.0.1 → v1.5 — milestone v1.5.0.1 resilience-hotfix work complete; advancing to mode work
+Phase: 30 (not started)
+Milestone: v1.5 — Analog Humidity Control & Condensation/Evaporation Forcing
 
+**v1.5.0.1 archived 2026-05-08 (see `.planning/milestones/v1.5.0.1-ROADMAP.md`):**
+- Phase 27.1 — Edge buffering: SHIPPED 2026-05-03 over wg0 (BUF-04 → 999.36)
+- Phase 27.2 — fc-core systemd hardening: SHIPPED 2026-05-07 PARTIAL (SYS-04 scenario 2 → 999.28)
+- Phase 27.3 + 27.4 — MOOTED by transport switch
+
+**v1.5 progress:**
 - Phase 27 — PID + slow-PWM: SHIPPED 2026-05-02
-- Phase 27.1 — Edge buffering: SHIPPED 2026-05-03 over wg0 (BUF-04 organic attestation still pending — see 999.36)
-- Phase 27.2 — fc-core systemd hardening: PARTIAL-SHIPPED 2026-05-07 (cold-reboot scenario 1 PASS; wg0-down-at-boot scenario re-filed under 999.28)
-- Phase 27.3 — Sampling-rate reduction: MOOTED by wg0 transport switch
-- Phase 27.4 — Netplan reconciliation: MOOTED in planned form
+- Phase 28 — Mode primitive + baselines + runtime config delivery: SHIPPED 2026-05-07/08 (MODE-01..05)
+- Phase 29 — Alerter mode awareness + cooldown tuning: SHIPPED 2026-05-08 (ALRT-08/09; ALRT-10 carries)
+- Phase 30 — Time-of-day mode scheduling: NOT STARTED (SCHED-01..03)
+- Phase 31 — Experimental forcing modes: NOT STARTED (EXPT-01..03)
 
 Plan: Not started
-Status: Milestone complete
+Status: Active — between phases
 Last activity: 2026-05-08
 
-Progress: [██████████] 100%
+Progress: [██████░░░░] 60%
 
 **Carried from v1.3 (not blocking v1.4):**
 
