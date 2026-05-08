@@ -20,6 +20,17 @@ function parseFloatEnv(env, key, def) {
   return n;
 }
 
+// Phase 29 (D-03 / D-05) tier classification:
+//   Tier A (mode-driven, BOOTSTRAP-ONLY): rhTarget, rhBand
+//   Tier B (per-mode override, BOOTSTRAP-ONLY): oobN, oobWindowMin, cooldownMin,
+//          criticalCooldownMin, humidifierStuckMin
+//   Tier C (global override, BOOTSTRAP-ONLY): piOfflineMin, sensorOfflineMin,
+//          heartbeatHour, maxSendsPerHour
+//   Tier D (env-only, ALWAYS LIVE): bridgeWsUrl, signalApiUrl, modeStaleMin,
+//          modeBootGraceMs, all CAPTURE_*, all TIMESCALE_*
+// Tier A/B/C values returned here are FALLBACKS used only during D-03 state-3
+// cold-start grace; runtime decisions consume `resolveEffectiveConfig(state, env, now)`
+// from state.js (Phase 29 plan 04).
 function load(env = process.env) {
   return Object.freeze({
     bridgeWsUrl:         env.BRIDGE_WS_URL      || 'ws://host.docker.internal:8081',
@@ -39,6 +50,9 @@ function load(env = process.env) {
     sensorOfflineMin:    parseIntEnv(env, 'ALERT_SENSOR_OFFLINE_MIN', 5),
     humidifierStuckMin:  parseIntEnv(env, 'ALERT_HUMIDIFIER_STUCK_MIN', 30),
     heartbeatHour:       parseIntEnv(env, 'ALERT_HEARTBEAT_HOUR', 8),
+    // Phase 29 plan 29-04 — D-03 freshness ceiling + cold-start grace (Tier D).
+    modeStaleMin:        parseIntEnv(env, 'ALERT_MODE_STALE_MIN', 5),
+    modeBootGraceMs:     parseIntEnv(env, 'ALERT_MODE_BOOT_GRACE_SEC', 60) * 1000,
     receivePollSec:      parseIntEnv(env, 'ALERT_RECEIVE_POLL_SEC', 30),
     maxSendsPerHour:     parseIntEnv(env, 'ALERT_MAX_SENDS_PER_HOUR', 20),
     timezone:            env.TZ           || 'America/Toronto',

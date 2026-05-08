@@ -18,6 +18,7 @@
  */
 function createHeartbeatScheduler({
   config,
+  getEffective,
   getSummary,
   dispatch,
   intervalMs = 15 * 60 * 1000,
@@ -47,7 +48,10 @@ function createHeartbeatScheduler({
       const day = `${parts.year}-${parts.month}-${parts.day}`;
       const hour = parseInt(parts.hour, 10);
 
-      if (hour >= config.heartbeatHour && day !== lastFiredDay) {
+      // Phase 29 plan 29-04: prefer Tier C runtime override when accessor wired.
+      const heartbeatHour = (getEffective ? getEffective().heartbeatHour : config.heartbeatHour);
+
+      if (hour >= heartbeatHour && day !== lastFiredDay) {
         lastFiredDay = day;
         dispatch({ type: 'heartbeat_tick', summary: getSummary() });
         logger.info(`[heartbeat] fired for ${day}`);

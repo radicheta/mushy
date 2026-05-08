@@ -2,7 +2,7 @@
 
 const { maskNumber } = require('./config');
 
-function createSignalClient({ apiUrl, sender, recipient, maxSendsPerHour, logger = console, timeoutMs = 10000 }) {
+function createSignalClient({ apiUrl, sender, recipient, maxSendsPerHour, getMaxSendsPerHour, logger = console, timeoutMs = 10000 }) {
   const sendHistory = []; // array of ms timestamps within the last hour
 
   function pruneHistory(now) {
@@ -10,11 +10,24 @@ function createSignalClient({ apiUrl, sender, recipient, maxSendsPerHour, logger
     while (sendHistory.length && sendHistory[0] < cutoff) sendHistory.shift();
   }
 
+  // Phase 29 plan 29-04 BLOCKER 3 — resolve cap dynamically so Tier C
+  // alerter_globals.max_sends_per_hour takes effect on the next send().
+  function currentCap() {
+    if (typeof getMaxSendsPerHour === 'function') {
+      try {
+        const v = getMaxSendsPerHour();
+        if (typeof v === 'number' && Number.isFinite(v)) return v;
+      } catch (_) { /* fall through */ }
+    }
+    return maxSendsPerHour;
+  }
+
   async function send(body, { bypassCap = false } = {}) {
     const now = Date.now();
     pruneHistory(now);
-    if (!bypassCap && sendHistory.length >= maxSendsPerHour) {
-      logger.warn(`[signal] cap reached (${sendHistory.length}/${maxSendsPerHour}/h) — dropping`);
+    const cap = currentCap();
+    if (!bypassCap && sendHistory.length >= cap) {
+      logger.warn(`[signal] cap reached (${sendHistory.length}/${cap}/h) — dropping`);
       return { ok: false, reason: 'rate-cap' };
     }
 
