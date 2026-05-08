@@ -681,7 +681,9 @@ describe('Phase 29 mode + freshness', () => {
     const cfg = { ...envCfg, oobN: 1, oobWindowMin: 0, cooldownMin: 30 };
     // FIRING at t=0
     let s = stateMod.initialState(0);
-    let r = stateMod.transition(s, { type: 'mode_update', mode: freshMode() }, 0, cfg);
+    let r = stateMod.transition(s, { type: 'pi_liveness', wsConnected: true, rosConnected: true }, 0, cfg);
+    s = r.next;
+    r = stateMod.transition(s, { type: 'mode_update', mode: freshMode() }, 0, cfg);
     s = r.next;
     r = stateMod.transition(s, { type: 'humidity', value: 50 }, 0, cfg);
     s = r.next;
@@ -704,7 +706,7 @@ describe('Phase 29 mode + freshness', () => {
     let s = stateMod.initialState(0);
     s.perType.rh.oobCount = 2;
     s.perType.rh.firstOobAt = 100;
-    expect(s.currentMode).toBeUndefined();
+    expect(s.currentMode == null).toBe(true);
     const r = stateMod.transition(s, { type: 'mode_update', mode: freshMode() }, 1000, envCfg);
     expect(r.next.perType.rh.oobCount).toBe(0);
     expect(r.next.perType.rh.firstOobAt).toBeNull();
@@ -820,24 +822,26 @@ describe('Phase 29 mode + freshness', () => {
   // Test 16 (BLOCKER 2) — pi_liveness piFields.lastKnown when state has data
   test('pi_liveness fires alert with piFields.lastKnown when sensor data present', () => {
     const formatSpy = jest.spyOn(messageMod, 'formatProblem');
+    // oobN=1 to fire pi on first OOB tick (we're testing piFields plumbing).
+    const cfg = { ...envCfg, oobN: 1, oobWindowMin: 0 };
     let s = stateMod.initialState(0);
     // Establish ws connected then disconnect
-    let r = stateMod.transition(s, { type: 'pi_liveness', wsConnected: true, rosConnected: true }, 0, envCfg);
+    let r = stateMod.transition(s, { type: 'pi_liveness', wsConnected: true, rosConnected: true }, 0, cfg);
     s = r.next;
     // populate sensor data
-    r = stateMod.transition(s, { type: 'temperature', value: 21.4 }, 100, envCfg);
+    r = stateMod.transition(s, { type: 'temperature', value: 21.4 }, 100, cfg);
     s = r.next;
-    r = stateMod.transition(s, { type: 'humidity', value: 87.2 }, 200, envCfg);
+    r = stateMod.transition(s, { type: 'humidity', value: 87.2 }, 200, cfg);
     s = r.next;
-    r = stateMod.transition(s, { type: 'humidifier', value: 1 }, 300, envCfg);
+    r = stateMod.transition(s, { type: 'humidifier', value: 1 }, 300, cfg);
     s = r.next;
     // Disconnect at t=400
-    r = stateMod.transition(s, { type: 'pi_liveness', wsConnected: false, rosConnected: true }, 400, envCfg);
+    r = stateMod.transition(s, { type: 'pi_liveness', wsConnected: false, rosConnected: true }, 400, cfg);
     s = r.next;
     // Past startup grace (60s) AND past piOfflineMin (5 min from wsLastConnectedMs=0)
     const future = 60_000 + 6 * 60_000;
     formatSpy.mockClear();
-    r = stateMod.transition(s, { type: 'pi_liveness', wsConnected: false, rosConnected: true }, future, envCfg);
+    r = stateMod.transition(s, { type: 'pi_liveness', wsConnected: false, rosConnected: true }, future, cfg);
     const piCall = formatSpy.mock.calls.find(c => c[0].alertType === 'pi');
     expect(piCall).toBeDefined();
     const piFields = piCall[0].fields;
@@ -853,14 +857,15 @@ describe('Phase 29 mode + freshness', () => {
   // Test 17 (BLOCKER 2) — pi_liveness piFields.lastKnown is null when no data
   test('pi_liveness fires alert with piFields.lastKnown null when no data', () => {
     const formatSpy = jest.spyOn(messageMod, 'formatProblem');
+    const cfg = { ...envCfg, oobN: 1, oobWindowMin: 0 };
     let s = stateMod.initialState(0);
-    let r = stateMod.transition(s, { type: 'pi_liveness', wsConnected: true, rosConnected: true }, 0, envCfg);
+    let r = stateMod.transition(s, { type: 'pi_liveness', wsConnected: true, rosConnected: true }, 0, cfg);
     s = r.next;
-    r = stateMod.transition(s, { type: 'pi_liveness', wsConnected: false, rosConnected: true }, 400, envCfg);
+    r = stateMod.transition(s, { type: 'pi_liveness', wsConnected: false, rosConnected: true }, 400, cfg);
     s = r.next;
     formatSpy.mockClear();
     const future = 60_000 + 6 * 60_000;
-    r = stateMod.transition(s, { type: 'pi_liveness', wsConnected: false, rosConnected: true }, future, envCfg);
+    r = stateMod.transition(s, { type: 'pi_liveness', wsConnected: false, rosConnected: true }, future, cfg);
     const piCall = formatSpy.mock.calls.find(c => c[0].alertType === 'pi');
     expect(piCall).toBeDefined();
     const piFields = piCall[0].fields;
@@ -872,7 +877,10 @@ describe('Phase 29 mode + freshness', () => {
   test('rh OOB uses effective.oobN from Tier B override', () => {
     const cfg = { ...envCfg, oobN: 5, oobWindowMin: 3 };
     let s = stateMod.initialState(0);
-    let r = stateMod.transition(s, { type: 'mode_update', mode: freshMode() }, 1, cfg);
+    // Establish ws connection so resolveEffectiveConfig considers mode FRESH.
+    let r = stateMod.transition(s, { type: 'pi_liveness', wsConnected: true, rosConnected: true }, 0, cfg);
+    s = r.next;
+    r = stateMod.transition(s, { type: 'mode_update', mode: freshMode() }, 1, cfg);
     s = r.next;
     r = stateMod.transition(s, {
       type: 'overrides_update',
@@ -891,7 +899,9 @@ describe('Phase 29 mode + freshness', () => {
 
   // Test 19 (BLOCKER 3) — tick re-evaluation uses effective.piOfflineMin from globals
   test('tick re-evaluation uses effective.piOfflineMin from Tier C globals', () => {
-    const cfg = { ...envCfg, piOfflineMin: 5 };
+    // Use oobN=1, oobWindowMin=0 so a single tick that crosses the threshold flips
+    // pi to FIRING (the test target is the threshold itself, not the dedup ladder).
+    const cfg = { ...envCfg, oobN: 1, oobWindowMin: 0, piOfflineMin: 5 };
     let s = stateMod.initialState(0);
     let r = stateMod.transition(s, { type: 'mode_update', mode: freshMode() }, 1, cfg);
     s = r.next;
@@ -905,12 +915,12 @@ describe('Phase 29 mode + freshness', () => {
     s = r.next;
     r = stateMod.transition(s, { type: 'pi_liveness', wsConnected: false, rosConnected: true }, 200, cfg);
     s = r.next;
-    // tick at 6min — env default 5 min would fire; Tier C 10 min should NOT
-    r = stateMod.transition(s, { type: 'tick' }, 60_000 + 6 * 60_000, cfg);
+    // tick at 6min from boot — env default 5 min would fire; Tier C 10 min should NOT
+    r = stateMod.transition(s, { type: 'tick' }, 6 * 60_000, cfg);
     s = r.next;
     expect(s.perType.pi.state).not.toBe(STATES.FIRING);
     // tick at 11 min — Tier C 10 min threshold elapsed
-    r = stateMod.transition(s, { type: 'tick' }, 60_000 + 11 * 60_000, cfg);
+    r = stateMod.transition(s, { type: 'tick' }, 11 * 60_000, cfg);
     s = r.next;
     expect(s.perType.pi.state).toBe(STATES.FIRING);
   });

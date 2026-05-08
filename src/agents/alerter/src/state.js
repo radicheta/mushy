@@ -1,7 +1,10 @@
 'use strict';
 
 const { isRhOob, isSensorError, isPiOffline, isHumidifierStuck, isSensorSilent } = require('./rules');
-const { formatProblem, formatRecovery, formatHeartbeat } = require('./message');
+// Phase 29 plan 29-04: keep message module reference (not destructure) so jest
+// spies on `formatProblem` intercept calls from state.js (BLOCKER 2 piFields tests).
+const messageLib = require('./message');
+const { formatProblem, formatRecovery, formatHeartbeat } = messageLib;
 
 const STATES = Object.freeze({ OK: 'OK', PENDING: 'PENDING', FIRING: 'FIRING', SNOOZED: 'SNOOZED' });
 
@@ -31,6 +34,13 @@ function initialState(nowMs = Date.now()) {
   }
   return {
     bootedAtMs: nowMs,
+    // Phase 29 plan 29-04 — mode + Tier B/C runtime overrides cache slots.
+    currentMode: null,
+    modeReceivedAtMs: null,
+    alerterOverrides: null,
+    overridesReceivedAtMs: null,
+    alerterGlobals: null,
+    globalsReceivedAtMs: null,
     warmingUp: false,
     lastHeartbeatDay: null,
     wsConnected: false,
@@ -98,7 +108,7 @@ function driveAlertType(entry, alertType, oobNow, fields, now, config) {
             kind: 'send',
             alertType,
             severity,
-            body: formatProblem({ alertType, severity, fields, config, nowMs: now }),
+            body: messageLib.formatProblem({ alertType, severity, fields, config, nowMs: now }),
           });
         }
       }
@@ -115,7 +125,7 @@ function driveAlertType(entry, alertType, oobNow, fields, now, config) {
             kind: 'send',
             alertType,
             severity,
-            body: formatProblem({ alertType, severity, fields, config, nowMs: now }),
+            body: messageLib.formatProblem({ alertType, severity, fields, config, nowMs: now }),
           });
         }
       }
@@ -128,7 +138,7 @@ function driveAlertType(entry, alertType, oobNow, fields, now, config) {
           kind: 'send',
           alertType,
           severity,
-          body: formatProblem({ alertType, severity, fields, config, nowMs: now }),
+          body: messageLib.formatProblem({ alertType, severity, fields, config, nowMs: now }),
         });
       }
     }
@@ -164,6 +174,76 @@ function driveAlertType(entry, alertType, oobNow, fields, now, config) {
 }
 
 /**
+ * resolveEffectiveConfig(state, envConfig, nowMs) -> effectiveConfig
+ *
+ * Phase 29 plan 29-04 (D-03 / D-05). Returns a config-shaped object whose
+ * Tier A (rhTarget/rhBand), Tier B (oobN, oobWindowMin, cooldownMin,
+ * criticalCooldownMin, humidifierStuckMin) and Tier C (piOfflineMin,
+ * sensorOfflineMin, heartbeatHour, maxSendsPerHour) values reflect the
+ * currently-cached runtime mode + alerter overrides + alerter globals when
+ * mode is FRESH; otherwise falls back to envConfig.
+ *
+ * freshness = { state: 'fresh'|'stale'|'cold', source: 'mode'|'env' }
+ */
+function resolveEffectiveConfig(state, envConfig, nowMs) {
+  const MODE_STALE_MS = (envConfig.modeStaleMin || 5) * 60 * 1000;
+  const COLD_GRACE_MS = envConfig.modeBootGraceMs || 60000;
+  const wsConnected = state.wsConnected !== false; // tolerate undefined as connected (existing tests)
+  const modeAge = state.modeReceivedAtMs != null ? (nowMs - state.modeReceivedAtMs) : Infinity;
+  const globals = state.alerterGlobals || {};
+
+  // Tier C globals (process-global runtime overrides) are independent of mode
+  // freshness — they apply even when ws is disconnected (e.g. piOfflineMin must
+  // be honored precisely when fc1 is offline).
+  const globalLayer = {
+    piOfflineMin:     globals.pi_offline_min     != null ? globals.pi_offline_min     : envConfig.piOfflineMin,
+    sensorOfflineMin: globals.sensor_offline_min != null ? globals.sensor_offline_min : envConfig.sensorOfflineMin,
+    heartbeatHour:    globals.heartbeat_hour     != null ? globals.heartbeat_hour     : envConfig.heartbeatHour,
+    maxSendsPerHour:  globals.max_sends_per_hour != null ? globals.max_sends_per_hour : envConfig.maxSendsPerHour,
+  };
+
+  // D-03 state 1: mode known and fresh — Tier A (mode-anchored) + Tier B (per-mode overrides) apply.
+  if (state.currentMode && wsConnected && modeAge <= MODE_STALE_MS) {
+    const m = state.currentMode;
+    const overrides = (state.alerterOverrides && state.alerterOverrides[m.name]) || {};
+    return {
+      ...envConfig,
+      ...globalLayer,
+      rhTarget: m.target_humidity * 100,
+      rhBand: ((m.band_high - m.band_low) / 2) * 100,
+      bandLow: m.band_low * 100,
+      bandHigh: m.band_high * 100,
+      defendSide: m.defend_side,
+      modeName: m.name,
+      oobN:                overrides.oob_n              != null ? overrides.oob_n              : envConfig.oobN,
+      oobWindowMin:        overrides.oob_window_min     != null ? overrides.oob_window_min     : envConfig.oobWindowMin,
+      cooldownMin:         overrides.cooldown_min       != null ? overrides.cooldown_min       : envConfig.cooldownMin,
+      criticalCooldownMin: overrides.critical_cooldown_min != null ? overrides.critical_cooldown_min : envConfig.criticalCooldownMin,
+      humidifierStuckMin:  overrides.humidifier_stuck_min  != null ? overrides.humidifier_stuck_min  : envConfig.humidifierStuckMin,
+      freshness: { state: 'fresh', source: 'mode' },
+    };
+  }
+  // D-03 state 3: cold start grace.
+  const bootAge = state.bootedAtMs != null ? (nowMs - state.bootedAtMs) : Infinity;
+  if (state.currentMode == null && bootAge <= COLD_GRACE_MS) {
+    return { ...envConfig, ...globalLayer, freshness: { state: 'cold', source: 'env' } };
+  }
+  // D-03 state 2: stale or never-arrived past grace.
+  return { ...envConfig, ...globalLayer, freshness: { state: 'stale', source: 'env' } };
+}
+
+/**
+ * Internal: returns true once the alerter has observed any mode/overrides/globals
+ * envelope. Used to gate effective-config wiring so pre-Phase-29 tests / pre-29
+ * deployments retain their pre-effective behavior (raw envConfig fed to rules).
+ */
+function hasModeContext(state) {
+  return state.modeReceivedAtMs != null
+      || state.overridesReceivedAtMs != null
+      || state.globalsReceivedAtMs != null;
+}
+
+/**
  * transition(prev, event, now, config) -> { next, actions }
  */
 function transition(prev, event, now, config) {
@@ -175,11 +255,17 @@ function transition(prev, event, now, config) {
       next.currentRh = event.value;
       next.lastRhMsgTs = now;
 
+      // Phase 29 plan 29-04: when mode/overrides/globals have arrived, route
+      // rules through the effective config so Tier B overrides apply. Pre-29
+      // call sites (no mode context yet) keep using raw envConfig — preserves
+      // pre-existing test behavior and pre-29 production semantics.
+      const effective = hasModeContext(next) ? resolveEffectiveConfig(next, config, now) : config;
+
       // RH alert (suppressed during warm-up)
       if (!next.warmingUp) {
-        const oobNow = isRhOob(event.value, config);
+        const oobNow = isRhOob(event.value, effective);
         const rhFields = { value: event.value, firstOobMs: next.perType.rh.firstOobAt };
-        const r = driveAlertType(next.perType.rh, 'rh', oobNow, rhFields, now, config);
+        const r = driveAlertType(next.perType.rh, 'rh', oobNow, rhFields, now, effective);
         next.perType.rh = r.next;
         actions.push(...r.actions);
 
@@ -190,14 +276,46 @@ function transition(prev, event, now, config) {
             rhAtOn: next.rhAtOn,
             currentRh: event.value,
             nowMs: now,
-            config,
+            config: effective,
           });
           const humFields = { onSinceMs: next.humidifierOnSinceMs, rhAtOn: next.rhAtOn, currentRh: event.value };
-          const rh = driveAlertType(next.perType.humidifier, 'humidifier', stuck, humFields, now, config);
+          const rh = driveAlertType(next.perType.humidifier, 'humidifier', stuck, humFields, now, effective);
           next.perType.humidifier = rh.next;
           actions.push(...rh.actions);
         }
       }
+      break;
+    }
+
+    case 'mode_update': {
+      next.currentMode = event.mode;
+      next.modeReceivedAtMs = now;
+      // D-09: reset in-progress dedup but PRESERVE lastFiredAt.
+      // Pitfall 4 — first mode_update after cold start ALSO resets dedup
+      // (env-fallback OOB accumulated during boot grace must not bleed into
+      // mode-anchored decisions).
+      for (const t of ['rh', 'humidifier']) {
+        if (next.perType[t]) {
+          next.perType[t].oobCount = 0;
+          next.perType[t].firstOobAt = null;
+          if (next.perType[t].ctx) {
+            next.perType[t].ctx.inBandCount = 0;
+          }
+          // lastFiredAt INTENTIONALLY NOT reset — cooldown carries across mode swaps.
+        }
+      }
+      break;
+    }
+
+    case 'overrides_update': {
+      next.alerterOverrides = event.overrides;
+      next.overridesReceivedAtMs = now;
+      break;
+    }
+
+    case 'globals_update': {
+      next.alerterGlobals = event.globals;
+      next.globalsReceivedAtMs = now;
       break;
     }
 
@@ -363,17 +481,29 @@ function transition(prev, event, now, config) {
       // Startup grace: skip Pi-offline evaluation for first 60s
       if (now - next.bootedAtMs < 60000) break;
 
+      const effective = hasModeContext(next) ? resolveEffectiveConfig(next, config, now) : config;
       const offline = isPiOffline({
         wsConnected: next.wsConnected,
         rosConnected: next.rosConnected,
         nowMs: now,
         wsLastConnectedMs: next.wsLastConnectedMs,
         rosDisconnectedSinceMs: next.rosDisconnectedSinceMs,
-        config,
+        config: effective,
       });
 
-      const piFields = { lastSeenMs: next.wsLastConnectedMs };
-      const r = driveAlertType(next.perType.pi, 'pi', offline, piFields, now, config);
+      // Phase 29 plan 29-04 BLOCKER 2 (999.39): build last-known sample summary
+      // for pi-alert message body. Schema mirrors 29-05 message.js
+      // formatProblem(pi) lastKnown shape.
+      const lastKnown = (next.currentRh != null && next.currentTemp != null && next.lastRhMsgTs != null)
+        ? {
+            rh: next.currentRh,
+            temp: next.currentTemp,
+            humidifier: next.humidifierOnSinceMs != null ? 'ON' : 'OFF',
+            tsMs: next.lastRhMsgTs,
+          }
+        : null;
+      const piFields = { lastSeenMs: next.wsLastConnectedMs, lastKnown };
+      const r = driveAlertType(next.perType.pi, 'pi', offline, piFields, now, effective);
       next.perType.pi = r.next;
       actions.push(...r.actions);
       break;
@@ -384,33 +514,43 @@ function transition(prev, event, now, config) {
       next.humidifierCycleLog = next.humidifierCycleLog.filter(ts => now - ts <= 86400000);
       next.humidifierCyclesLast24h = next.humidifierCycleLog.length;
 
-      // Re-evaluate Pi offline
+      // Re-evaluate Pi offline (Phase 29 plan 29-04 — effective config + lastKnown)
       if (now - next.bootedAtMs >= 60000) {
+        const effective = hasModeContext(next) ? resolveEffectiveConfig(next, config, now) : config;
         const offline = isPiOffline({
           wsConnected: next.wsConnected,
           rosConnected: next.rosConnected,
           nowMs: now,
           wsLastConnectedMs: next.wsLastConnectedMs,
           rosDisconnectedSinceMs: next.rosDisconnectedSinceMs,
-          config,
+          config: effective,
         });
-        const piFields = { lastSeenMs: next.wsLastConnectedMs };
-        const r = driveAlertType(next.perType.pi, 'pi', offline, piFields, now, config);
+        const lastKnown = (next.currentRh != null && next.currentTemp != null && next.lastRhMsgTs != null)
+          ? {
+              rh: next.currentRh,
+              temp: next.currentTemp,
+              humidifier: next.humidifierOnSinceMs != null ? 'ON' : 'OFF',
+              tsMs: next.lastRhMsgTs,
+            }
+          : null;
+        const piFields = { lastSeenMs: next.wsLastConnectedMs, lastKnown };
+        const r = driveAlertType(next.perType.pi, 'pi', offline, piFields, now, effective);
         next.perType.pi = r.next;
         actions.push(...r.actions);
       }
 
-      // Re-evaluate humidifier stuck
+      // Re-evaluate humidifier stuck (Phase 29 plan 29-04 — effective.humidifierStuckMin)
       if (!next.warmingUp && next.humidifierOnSinceMs != null && next.currentRh != null) {
+        const effective = hasModeContext(next) ? resolveEffectiveConfig(next, config, now) : config;
         const stuck = isHumidifierStuck({
           humidifierOnSinceMs: next.humidifierOnSinceMs,
           rhAtOn: next.rhAtOn,
           currentRh: next.currentRh,
           nowMs: now,
-          config,
+          config: effective,
         });
         const humFields = { onSinceMs: next.humidifierOnSinceMs, rhAtOn: next.rhAtOn, currentRh: next.currentRh };
-        const r = driveAlertType(next.perType.humidifier, 'humidifier', stuck, humFields, now, config);
+        const r = driveAlertType(next.perType.humidifier, 'humidifier', stuck, humFields, now, effective);
         next.perType.humidifier = r.next;
         actions.push(...r.actions);
       }
@@ -516,6 +656,8 @@ function recordRetentionRun(health, nowMs, status, rowCount) {
 
 module.exports = {
   transition, initialState, STATES, ALERT_TYPES, SEVERITY,
+  // Phase 29 plan 29-04 — effective config resolver (mode + Tier B/C overrides)
+  resolveEffectiveConfig,
   // captureHealth (Phase 25 Plan 05)
   createCaptureHealth, recordCaptureSuccess, recordCaptureError, recordRetentionRun,
 };
