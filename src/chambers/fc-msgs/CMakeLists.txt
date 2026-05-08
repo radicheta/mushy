@@ -8,6 +8,8 @@ find_package(rosidl_default_generators REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Mode.msg"
   "srv/SetMode.srv"
+  "srv/StartExperiment.srv"
+  "srv/CancelExperiment.srv"
   DEPENDENCIES builtin_interfaces
 )
 
