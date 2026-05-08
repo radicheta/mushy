@@ -272,6 +272,26 @@ Plans:
 - [x] 29-06-PLAN.md — Wave 3: cooldown tuning analysis (29-COOLDOWN-TUNING.md from docker logs) + commit tuned defaults to fc_config.yaml
 - [x] 29-07-PLAN.md — Wave 4: deploy fc1+bridge+alerter, on-host smoke (mode swap, 999.39 reproduction, band-aid revert), mark 999.22 + 999.39 resolved in ROADMAP
 
+### Phase 30: Time-of-day mode scheduling
+
+**Goal:** Add a declarative time-of-day schedule that drives mode switches at window boundaries. Closes backlog 999.23 (target/band varies with time-of-day; canonical target becomes a function of clock instead of a static config). Default profile remains the existing constant-single-mode case so behavior is backward-compatible with HUMID-* and MODE-*.
+
+**Requirements:** SCHED-01, SCHED-02, SCHED-03.
+
+**Dependencies:** Builds on Phase 28 (mode primitive + `set_mode` service + `current_mode` topic + Layer 2 runtime overlay) and Phase 29 (alerter consumes `current_mode` — schedule-driven mode switches retarget alerter automatically). Composes with 999.27 (derived telemetry — `current_mode` is already a published series; scheduler writes to the same channel).
+
+**Plans:** Not yet planned.
+
+### Phase 31: Experimental forcing modes (`force-condensation`, `force-evaporation`)
+
+**Goal:** Add two timed override modes the farmer can trigger for short experiments: `force-condensation` (100% duty for N minutes) and `force-evaporation` (0% duty for N minutes), both with auto-revert to the prior mode on timeout. Start/end + measured RH delta logged to TimescaleDB so the farmer can review experiment outcomes after the fact.
+
+**Requirements:** EXPT-01, EXPT-02, EXPT-03.
+
+**Dependencies:** Builds on Phase 28 mode primitive (override modes are just additional mode definitions with auto-revert). Surface integration with Phase 25 (Signal command for trigger) and the farmer-app (button trigger; backlog 999.11). Auto-revert pattern echoes Phase 28's `set_mode` service.
+
+**Plans:** Not yet planned.
+
 ## Backlog (parking lot)
 
 These are ideas captured during v1.0/v1.1 execution but not yet scoped into a
