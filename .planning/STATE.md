@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Analog Humidity Control & Condensation/Evaporation Forcing
-status: Active — between phases
+status: executing
 stopped_at: Phase 29 context gathered
-last_updated: "2026-05-08T14:24:39.819Z"
-last_activity: 2026-05-08
+last_updated: "2026-05-08T19:18:25.827Z"
+last_activity: 2026-05-08 -- Phase --phase execution started
 progress:
   total_phases: 9
-  completed_phases: 5
-  total_plans: 27
-  completed_plans: 24
-  percent: 89
+  completed_phases: 6
+  total_plans: 31
+  completed_plans: 27
+  percent: 87
 ---
 
 # Project State
@@ -21,11 +21,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** v1.5 modes work — Phase 30 (time-of-day mode scheduling) is next.
+**Current focus:** Phase --phase — 30
 
 ## Current Position
 
-Phase: 30 (not started)
+Phase: --phase (30) — EXECUTING
 Milestone: v1.5 — Analog Humidity Control & Condensation/Evaporation Forcing
 
 **v1.5.0.1 archived 2026-05-08 (see `.planning/milestones/v1.5.0.1-ROADMAP.md`):**
@@ -42,9 +42,9 @@ Milestone: v1.5 — Analog Humidity Control & Condensation/Evaporation Forcing
 - Phase 30 — Time-of-day mode scheduling: NOT STARTED (SCHED-01..03)
 - Phase 31 — Experimental forcing modes: NOT STARTED (EXPT-01..03)
 
-Plan: Not started
-Status: Active — between phases
-Last activity: 2026-05-08
+Plan: 1 of --name
+Status: Executing Phase --phase
+Last activity: 2026-05-08 -- Phase --phase execution started
 
 Progress: [██████░░░░] 60%
 
@@ -185,4 +185,4 @@ Next up: pick from { (a) close 27.2 SYS-01 + SYS-04, (b) cyclonedds-tailscale.xm
 *Roadmap phases: v1.0 (1–8), v1.1 (9–10), v1.2 (11–13), v1.2.1 (14–16), v1.3 (17–20), v1.4 (21–26), v1.5 (27–31), v1.5.0.1 (27.1, 27.2)*
 *Last updated: 2026-05-04 — v1.5.0.1 realignment after wg0 architectural detour*
 
-**Planned Phase:** 30 (time-of-day-mode-scheduling) — 3 plans — 2026-05-08T14:24:39.813Z
+**Planned Phase:** 31 (experimental-forcing-modes) — 4 plans — 2026-05-08T19:18:25.821Z
