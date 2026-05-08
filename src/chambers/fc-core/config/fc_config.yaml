@@ -88,3 +88,20 @@ fc_controller:
     modes.pinning.band_high: 0.99
     modes.pinning.defend_side: low
     modes.pinning.t_target: .nan
+    # Phase 29 Tier B — per-mode alerter overrides (D-05).
+    # Bootstrap defaults; replaced with tuned values in plan 29-06 (29-COOLDOWN-TUNING.md).
+    modes.fruiting.alerter.cooldown_min:          30
+    modes.fruiting.alerter.critical_cooldown_min: 60
+    modes.fruiting.alerter.humidifier_stuck_min:  30
+    modes.fruiting.alerter.oob_n:                 5
+    modes.fruiting.alerter.oob_window_min:        3
+    modes.pinning.alerter.cooldown_min:           30
+    modes.pinning.alerter.critical_cooldown_min:  60
+    modes.pinning.alerter.humidifier_stuck_min:   60   # pinning intentionally swings; default looser
+    modes.pinning.alerter.oob_n:                  5
+    modes.pinning.alerter.oob_window_min:         5
+    # Phase 29 Tier C — global liveness/cadence (runtime-mutable via SetParameters).
+    pi_offline_min:     5
+    sensor_offline_min: 5
+    heartbeat_hour:     8
+    max_sends_per_hour: 20
