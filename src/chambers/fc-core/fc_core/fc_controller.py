@@ -7,15 +7,18 @@ from std_msgs.msg import Float32, String
 from collections import deque
 from dataclasses import dataclass
 from diagnostic_msgs.msg import DiagnosticStatus, KeyValue
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from math import isnan, nan
+from typing import Optional
 from statistics import median
 from fc_core import scheduler
 from fc_core.vendor.simple_pid import PID
 from fc_msgs.msg import Mode
-from fc_msgs.srv import SetMode
+from fc_msgs.srv import SetMode, StartExperiment, CancelExperiment
 from rcl_interfaces.msg import SetParametersResult
 from rclpy.parameter import Parameter
+import json
+import time as _time
 
 
 @dataclass
@@ -23,6 +26,9 @@ class ModeView:
     """Phase 28 D-08: snapshot of the active mode resolved once per control tick.
 
     `t_target` is NaN when unset (D-02 — reserved for VPD-anchoring in Phase 31+).
+    `force_duty` is NaN when unset (Phase 31 D-02 sentinel — PID-driven, no
+    short-circuit). When finite (0.0..1.0), control_loop bypasses PID + Mode C
+    and emits the literal duty value.
     """
     name: str
     target: float
@@ -30,6 +36,24 @@ class ModeView:
     band_high: float
     defend_side: str   # 'low' | 'high' | 'both'
     t_target: float    # NaN when unset
+    force_duty: float  # Phase 31 D-02: NaN=PID-driven; finite=force short-circuit
+
+
+@dataclass
+class ActiveExperiment:
+    """Phase 31 D-05: in-memory state for an in-flight forcing experiment.
+
+    TTL math is anchored on monotonic clock (D-06) — NTP correction has zero
+    effect on revert timing. Wall-clock ISO strings are recorded only for
+    human-readable timestamps in the experiment_event JSON envelope.
+    """
+    experiment_mode: str            # 'force-condensation' | 'force-evaporation'
+    prior_mode: str                 # mode to revert to on TTL expiry / cancel
+    started_at_monotonic: float     # time.monotonic() at start; for TTL math
+    reverts_at_monotonic: float     # started_at_monotonic + duration*60
+    started_at_wall_iso: str        # ISO 8601 UTC at start (human-readable)
+    reverts_at_wall_iso: str        # ISO 8601 UTC at start + duration
+    requested_duration_min: int
 
 
 class FruitingChamberController(Node):
@@ -87,11 +111,29 @@ class FruitingChamberController(Node):
                 ('modes.fruiting.band_high', float('nan')),
                 ('modes.fruiting.defend_side', 'both'),
                 ('modes.fruiting.t_target', float('nan')),
+                ('modes.fruiting.force_duty', float('nan')),
                 ('modes.pinning.target_humidity', 0.85),
                 ('modes.pinning.band_low', float('nan')),
                 ('modes.pinning.band_high', float('nan')),
                 ('modes.pinning.defend_side', 'low'),
                 ('modes.pinning.t_target', float('nan')),
+                ('modes.pinning.force_duty', float('nan')),
+                # Phase 31 D-01: force modes — wide-open bands [0.0, 1.0],
+                # force_duty short-circuit (1.0=continuous-on, 0.0=continuous-off).
+                # YAML overrides target_humidity/band_*/defend_side/t_target/
+                # force_duty per Plan 31-01.
+                ('modes.force-condensation.target_humidity', 1.0),
+                ('modes.force-condensation.band_low', 0.0),
+                ('modes.force-condensation.band_high', 1.0),
+                ('modes.force-condensation.defend_side', 'both'),
+                ('modes.force-condensation.t_target', float('nan')),
+                ('modes.force-condensation.force_duty', 1.0),
+                ('modes.force-evaporation.target_humidity', 0.0),
+                ('modes.force-evaporation.band_low', 0.0),
+                ('modes.force-evaporation.band_high', 1.0),
+                ('modes.force-evaporation.defend_side', 'both'),
+                ('modes.force-evaporation.t_target', float('nan')),
+                ('modes.force-evaporation.force_duty', 0.0),
                 # Phase 30 D-01: JSON-encoded list of {start,end,mode}; default
                 # '[]' = scheduling disabled (SCHED-03 backward compat). Real
                 # value comes from fc_config.yaml / runtime_overrides.yaml.
@@ -234,6 +276,16 @@ class FruitingChamberController(Node):
             String, 'fc1/control/alerter_globals', actuator_qos
         )
 
+        # Phase 31 D-22 / D-31: experiment_event JSON-in-String topic.
+        # JSON-in-String over std_msgs/String mirrors the Phase 29-07 precedent
+        # — the bridge container ships ros:jazzy-ros-core only (no fc_msgs
+        # build), so a typed Mode-style topic would force a second build cycle.
+        # Same TRANSIENT_LOCAL/RELIABLE/depth=1 QoS as current_mode (D-15) so
+        # late subscribers (UI poll, audit) get the last value on subscribe.
+        self._experiment_event_pub = self.create_publisher(
+            String, 'fc1/control/experiment_event', actuator_qos
+        )
+
         # Phase 28 D-15 + Pitfall 4: validate SetParameters batches atomically
         # (whole batch passes or fails — no partial application). Defense-in-depth
         # against the bridge allowlist (Phase 28-05): even if a bad value slips
@@ -247,6 +299,15 @@ class FruitingChamberController(Node):
         # param values AFTER _validate_params returns successful=True).
         self._pending_alerter_overrides_republish = None
         self._pending_alerter_globals_republish = None
+        # Phase 31 D-03/D-05: gate flag for service-orchestrated set_parameters
+        # into a force mode. _validate_params permits 'active_mode'='force-*'
+        # ONLY when this flag is True (toggled by _handle_start_experiment /
+        # _handle_cancel_experiment / _experiment_tick / _check_force_mode_at_boot).
+        # _active_experiment is the in-memory record of the in-flight experiment
+        # (None when idle). Phase 31 D-12 — _active_experiment is also the
+        # single source of truth for scheduler suppression (D-08).
+        self._experiment_set_in_progress = False
+        self._active_experiment: Optional[ActiveExperiment] = None
         self.add_on_set_parameters_callback(self._validate_params)
 
         # Phase 28 D-16: mode-switch service. Custom srv in fc_msgs. The handler
@@ -254,6 +315,21 @@ class FruitingChamberController(Node):
         # also fires — single source of truth for "is this name a declared mode?".
         self._set_mode_srv = self.create_service(
             SetMode, 'set_mode', self._handle_set_mode
+        )
+
+        # Phase 31 D-10/D-13: forcing-experiment services. start_experiment
+        # gates entry into a force-* mode behind validation (name, duration
+        # range, no-active-experiment lockout, controller readiness) and
+        # registers an in-memory ActiveExperiment with monotonic-clock TTL.
+        # cancel_experiment early-reverts via the same in-process set_parameters
+        # path. Both helpers toggle _experiment_set_in_progress around the
+        # gated set_parameters call so _validate_params permits the force-*
+        # transition (D-03).
+        self._start_experiment_srv = self.create_service(
+            StartExperiment, 'start_experiment', self._handle_start_experiment
+        )
+        self._cancel_experiment_srv = self.create_service(
+            CancelExperiment, 'cancel_experiment', self._handle_cancel_experiment
         )
 
         # Current values
@@ -301,7 +377,21 @@ class FruitingChamberController(Node):
             self.control_loop
         )
 
+        # Phase 31 D-05: 1 Hz TTL check for in-flight experiments. Monotonic
+        # clock (not wall clock) per D-06 — NTP correction cannot extend or
+        # truncate an experiment unexpectedly.
+        self._experiment_timer = self.create_timer(1.0, self._experiment_tick)
+
         self.get_logger().info('Fruiting Chamber Controller Node Started')
+
+        # Phase 31 D-09: boot-recovery — never come up running a force mode.
+        # Must run AFTER declare_parameters + experiment_event_pub creation but
+        # BEFORE the initial config_default publish so that publish reflects
+        # the recovered (non-force) mode. If the runtime overlay carried
+        # active_mode='force-*', this forces it back to a safe baseline and
+        # emits a 'truncated' experiment_event so the bridge can close any
+        # in-flight DB row left by the pre-restart experiment.
+        self._check_force_mode_at_boot()
 
         # Phase 28 Pitfall 2: TRANSIENT_LOCAL durability does NOT persist across
         # process restart. Publish current_mode once at startup AFTER the param
@@ -446,7 +536,15 @@ class FruitingChamberController(Node):
                 band_high=tgt + tol,
                 defend_side='both',
                 t_target=nan,
+                force_duty=nan,
             )
+        # Phase 31 D-02: force_duty is declared on every mode (NaN sentinel for
+        # non-force modes); read it via get_parameter to populate ModeView.
+        try:
+            force_duty = self.get_parameter(f'modes.{name}.force_duty').value
+        except Exception:
+            # Defensive: very old overlay without force_duty for an obscure mode.
+            force_duty = nan
         return ModeView(
             name=name,
             target=self.get_parameter(f'modes.{name}.target_humidity').value,
@@ -454,6 +552,7 @@ class FruitingChamberController(Node):
             band_high=bh,
             defend_side=self.get_parameter(f'modes.{name}.defend_side').value,
             t_target=self.get_parameter(f'modes.{name}.t_target').value,
+            force_duty=force_duty,
         )
 
     def _build_mode_msg(self, mv: ModeView, source: str) -> Mode:
@@ -716,6 +815,20 @@ class FruitingChamberController(Node):
                         reason=f'active_mode={v!r} not in declared modes '
                                f'{sorted(declared)}',
                     )
+                # Phase 31 D-03: force-* modes are service-only. Direct
+                # SetParameters('active_mode','force-*') is rejected unless the
+                # _experiment_set_in_progress flag is True (toggled inside the
+                # start_experiment / cancel_experiment / TTL revert / boot-
+                # recovery handlers). Plain /set_mode service rejects them at
+                # the handler level (defense in depth).
+                if isinstance(v, str) and v.startswith('force-') and not self._experiment_set_in_progress:
+                    return SetParametersResult(
+                        successful=False,
+                        reason=(
+                            f'active_mode={v!r} is service_only — call '
+                            f'/fc_controller/start_experiment instead of set_mode'
+                        ),
+                    )
                 republish_current_mode = True
             elif n == 'schedule_windows':
                 # Phase 30 D-01..D-04 — JSON-encoded list of windows. Reject
@@ -780,6 +893,18 @@ class FruitingChamberController(Node):
               queued — we already published synchronously here.
         """
         declared = self._declared_mode_names()
+        # Phase 31 D-03: /set_mode is for non-force modes only; route force-*
+        # requests to /start_experiment so a TTL is always associated.
+        if request.name.startswith('force-'):
+            response.success = False
+            response.reason = (
+                f'mode {request.name!r} is service_only — '
+                f'call /fc_controller/start_experiment'
+            )
+            response.active_mode = self._build_mode_msg(
+                self._resolve_active_mode(), source='service_call_rejected'
+            )
+            return response
         if request.name not in declared:
             response.success = False
             response.reason = (
@@ -827,6 +952,319 @@ class FruitingChamberController(Node):
         response.active_mode = msg
         return response
 
+    # ---- Phase 31: experimental forcing modes ----------------------------------
+    def _wall_now_iso(self) -> str:
+        """ISO 8601 UTC stamp from wall clock. Test seam — overridable via
+        attribute reassignment (e.g. node._wall_now_iso = lambda: '2026-...').
+        """
+        return datetime.now(timezone.utc).isoformat()
+
+    def _monotonic(self) -> float:
+        """Monotonic clock (seconds). Phase 31 D-06 — TTL math is anchored
+        on monotonic, not wall clock. Test seam — overridable for TTL tests.
+        """
+        return _time.monotonic()
+
+    def _publish_experiment_event(self, event: str,
+                                   experiment: 'Optional[ActiveExperiment]',
+                                   actual_minutes: 'Optional[float]'):
+        """Phase 31 D-22 / D-31: publish a JSON envelope on
+        fc1/control/experiment_event for bridge consumption.
+
+        event ∈ {'started', 'ended', 'cancelled', 'truncated'}.
+        Bridge persists this to fc_experiments table (Plan 31-03).
+        Truncated-on-boot may have no in-memory experiment record (overlay
+        only) — payload uses None for the unknown fields in that case.
+        """
+        now_iso = self._wall_now_iso()
+        if experiment is not None:
+            payload = {
+                'event': event,
+                'experiment': experiment.experiment_mode,
+                'prior_mode': experiment.prior_mode,
+                'requested_minutes': int(experiment.requested_duration_min),
+                'actual_minutes': actual_minutes,
+                'started_at_iso': experiment.started_at_wall_iso,
+                'ended_at_iso': now_iso if event != 'started' else None,
+                'reverts_at_iso': experiment.reverts_at_wall_iso if event == 'started' else None,
+                'wall_clock_iso': now_iso,
+            }
+        else:
+            payload = {
+                'event': event,
+                'experiment': None,
+                'prior_mode': None,
+                'requested_minutes': None,
+                'actual_minutes': None,
+                'started_at_iso': None,
+                'ended_at_iso': now_iso,
+                'reverts_at_iso': None,
+                'wall_clock_iso': now_iso,
+            }
+        msg = String()
+        msg.data = json.dumps(payload, separators=(',', ':'), sort_keys=True)
+        self._experiment_event_pub.publish(msg)
+
+    def _handle_start_experiment(self, request, response):
+        """Phase 31 D-10/D-11: enter a force experiment with TTL.
+
+        Validation order (D-11):
+          1. experiment_name in {force-condensation, force-evaporation}
+          2. 1 <= duration_minutes <= 120
+          3. _active_experiment is None (single-experiment lockout)
+          4. controller is ready (active_mode resolves cleanly)
+        On accept: allocate ActiveExperiment, do gated in-process set_parameters
+        to enter the force mode, bumpless re-engage with current duty
+        (carry-over for the eventual revert), publish current_mode with
+        source='experiment', publish experiment_event with event='started'.
+        """
+        name = request.experiment_name
+        try:
+            dur = int(request.duration_minutes)
+        except Exception:
+            dur = -1
+
+        # 1. name
+        if name not in ('force-condensation', 'force-evaporation'):
+            response.ok = False
+            response.message = 'unknown_experiment'
+            response.started_at_iso = ''
+            response.reverts_at_iso = ''
+            response.prior_mode = ''
+            return response
+
+        # 2. duration
+        if not (1 <= dur <= 120):
+            response.ok = False
+            response.message = 'duration_out_of_range (1..120)'
+            response.started_at_iso = ''
+            response.reverts_at_iso = ''
+            response.prior_mode = ''
+            return response
+
+        # 3. lockout
+        if self._active_experiment is not None:
+            response.ok = False
+            response.message = 'experiment_in_progress'
+            response.started_at_iso = ''
+            response.reverts_at_iso = ''
+            response.prior_mode = ''
+            return response
+
+        # 4. controller readiness
+        try:
+            prior_mv = self._resolve_active_mode()
+        except Exception as e:
+            response.ok = False
+            response.message = f'controller_not_ready: {e}'
+            response.started_at_iso = ''
+            response.reverts_at_iso = ''
+            response.prior_mode = ''
+            return response
+        prior_mode = prior_mv.name
+
+        # Allocate the experiment record.
+        started_mono = self._monotonic()
+        reverts_mono = started_mono + dur * 60.0
+        started_wall = datetime.now(timezone.utc)
+        reverts_wall = started_wall + timedelta(minutes=dur)
+        started_iso = started_wall.isoformat()
+        reverts_iso = reverts_wall.isoformat()
+
+        experiment = ActiveExperiment(
+            experiment_mode=name,
+            prior_mode=prior_mode,
+            started_at_monotonic=started_mono,
+            reverts_at_monotonic=reverts_mono,
+            started_at_wall_iso=started_iso,
+            reverts_at_wall_iso=reverts_iso,
+            requested_duration_min=dur,
+        )
+
+        # In-process mode swap, gated by D-03 flag.
+        self._experiment_set_in_progress = True
+        try:
+            results = self.set_parameters([
+                Parameter('active_mode', Parameter.Type.STRING, name)
+            ])
+        finally:
+            self._experiment_set_in_progress = False
+        if not results[0].successful:
+            response.ok = False
+            response.message = f'set_parameters_failed: {results[0].reason}'
+            response.started_at_iso = ''
+            response.reverts_at_iso = ''
+            response.prior_mode = prior_mode
+            return response
+
+        # Commit experiment state.
+        self._active_experiment = experiment
+
+        # Bumpless re-engage carrying current duty (D-12 carry-over). The
+        # force_duty short-circuit will park PID on the next tick anyway, but
+        # this keeps _last_published_duty as the cached carry-over for the
+        # eventual revert.
+        self._engage_pid_bumplessly(last_output=self._last_published_duty)
+
+        # D-15 + D-31: synchronous current_mode publish with source='experiment'.
+        new_mv = self._resolve_active_mode()
+        cm_msg = self._build_mode_msg(new_mv, source='experiment')
+        self._current_mode_pub.publish(cm_msg)
+        self._publish_current_mode_json(new_mv, source='experiment')
+        self._pending_current_mode_republish = None
+
+        # D-22: experiment_event 'started'.
+        self._publish_experiment_event('started', experiment, actual_minutes=None)
+
+        # D-30: INFO log.
+        self.get_logger().info(
+            f'[experiment] started: {name} {dur}min, '
+            f'prior={prior_mode}, reverts={reverts_iso}'
+        )
+
+        response.ok = True
+        response.message = ''
+        response.started_at_iso = started_iso
+        response.reverts_at_iso = reverts_iso
+        response.prior_mode = prior_mode
+        return response
+
+    def _handle_cancel_experiment(self, request, response):
+        """Phase 31 D-13: early-revert an in-flight experiment.
+
+        Reverts via the same gated set_parameters path as the TTL timer,
+        publishes current_mode with source='experiment_cancel', publishes
+        experiment_event with event='cancelled' carrying actual_minutes.
+        """
+        if self._active_experiment is None:
+            response.ok = False
+            response.message = 'no_experiment_active'
+            response.ended_at_iso = ''
+            return response
+
+        experiment = self._active_experiment
+        actual_min = (self._monotonic() - experiment.started_at_monotonic) / 60.0
+        ended_iso = self._wall_now_iso()
+
+        # Revert via gated set_parameters.
+        self._experiment_set_in_progress = True
+        try:
+            self.set_parameters([
+                Parameter('active_mode', Parameter.Type.STRING, experiment.prior_mode)
+            ])
+        finally:
+            self._experiment_set_in_progress = False
+
+        # Clear FIRST so the scheduler can resume on its next tick.
+        self._active_experiment = None
+
+        # D-12 bumpless re-engage carrying current duty.
+        self._engage_pid_bumplessly(last_output=self._last_published_duty)
+
+        # D-15: synchronous current_mode publish with source='experiment_cancel'.
+        new_mv = self._resolve_active_mode()
+        cm_msg = self._build_mode_msg(new_mv, source='experiment_cancel')
+        self._current_mode_pub.publish(cm_msg)
+        self._publish_current_mode_json(new_mv, source='experiment_cancel')
+        self._pending_current_mode_republish = None
+
+        # D-22: experiment_event 'cancelled'.
+        self._publish_experiment_event('cancelled', experiment, actual_minutes=actual_min)
+
+        self.get_logger().info(
+            f'[experiment] cancelled: {experiment.experiment_mode} '
+            f'after {actual_min:.2f}min, reverted to {experiment.prior_mode}'
+        )
+
+        response.ok = True
+        response.message = ''
+        response.ended_at_iso = ended_iso
+        return response
+
+    def _experiment_tick(self):
+        """Phase 31 D-05/D-06: 1 Hz TTL check.
+
+        Fires the auto-revert when monotonic clock crosses
+        reverts_at_monotonic. Idle-tick (no active experiment) is a no-op.
+        Auto-revert mirrors _handle_cancel_experiment but publishes
+        source='experiment_revert' / event='ended'.
+        """
+        if self._active_experiment is None:
+            return
+        if self._monotonic() < self._active_experiment.reverts_at_monotonic:
+            return
+
+        experiment = self._active_experiment
+        actual_min = (
+            self._monotonic() - experiment.started_at_monotonic
+        ) / 60.0
+
+        # Revert via gated set_parameters.
+        self._experiment_set_in_progress = True
+        try:
+            self.set_parameters([
+                Parameter('active_mode', Parameter.Type.STRING, experiment.prior_mode)
+            ])
+        finally:
+            self._experiment_set_in_progress = False
+
+        self._active_experiment = None
+
+        self._engage_pid_bumplessly(last_output=self._last_published_duty)
+
+        new_mv = self._resolve_active_mode()
+        cm_msg = self._build_mode_msg(new_mv, source='experiment_revert')
+        self._current_mode_pub.publish(cm_msg)
+        self._publish_current_mode_json(new_mv, source='experiment_revert')
+        self._pending_current_mode_republish = None
+
+        self._publish_experiment_event('ended', experiment, actual_minutes=actual_min)
+
+        self.get_logger().info(
+            f'[experiment] auto-revert: {experiment.experiment_mode} '
+            f'completed {actual_min:.2f}min, reverted to {experiment.prior_mode}'
+        )
+
+    def _check_force_mode_at_boot(self):
+        """Phase 31 D-09: never come up running a force mode.
+
+        If the runtime overlay (or YAML) carried active_mode='force-*', force
+        it back to a safe baseline. Recovery target priority:
+          (1) 'fruiting' if declared
+          (2) first declared non-force mode name (sorted)
+        Then publish a 'truncated' experiment_event so the bridge can close
+        any in-flight DB row left by the pre-restart experiment.
+        """
+        current = self.get_parameter('active_mode').value
+        if not isinstance(current, str) or not current.startswith('force-'):
+            return
+        declared = self._declared_mode_names()
+        non_force = sorted(m for m in declared if not m.startswith('force-'))
+        if 'fruiting' in non_force:
+            safe = 'fruiting'
+        elif non_force:
+            safe = non_force[0]
+        else:
+            self.get_logger().error(
+                f'[experiment] BOOT-RECOVERY: no non-force mode declared; '
+                f'leaving active_mode={current!r} (UNSAFE — investigate).'
+            )
+            return
+        self.get_logger().warn(
+            f'[experiment] BOOT-RECOVERY: active_mode={current!r} on startup; '
+            f'forcing to {safe!r} (D-09: never come up running a force mode). '
+            f'Any in-flight experiment will be logged as truncated.'
+        )
+        self._experiment_set_in_progress = True
+        try:
+            self.set_parameters([
+                Parameter('active_mode', Parameter.Type.STRING, safe)
+            ])
+        finally:
+            self._experiment_set_in_progress = False
+        # Publish truncated event so bridge closes any open DB row.
+        self._publish_experiment_event('truncated', None, actual_minutes=None)
+
     def _default_now_hhmm(self) -> str:
         """Phase 30 D-21 — local-clock HH:MM string (fc1 system TZ).
 
@@ -854,7 +1292,13 @@ class FruitingChamberController(Node):
 
         Empty schedule = no-op. Gap (no window matches) keeps the current
         mode and emits a single debounced WARNING per (gap, mode) entry.
+
+        Phase 31 D-08: scheduler is suppressed for the duration of an in-flight
+        forcing experiment. After auto-revert, the next scheduler tick (within
+        30s) re-aligns to the current wall clock window.
         """
+        if self._active_experiment is not None:
+            return
         raw = self.get_parameter('schedule_windows').value
         try:
             windows = scheduler.parse_schedule(raw)
@@ -1141,6 +1585,30 @@ class FruitingChamberController(Node):
 
             # Phase 28 D-08: resolve active mode once per tick.
             mode = self._resolve_active_mode()
+
+            # Phase 31 D-02: force_duty short-circuit. When the active mode
+            # declares a finite force_duty, bypass PID + Mode C entirely and
+            # emit the literal duty value. Park the integrator (set_auto_mode
+            # False) so it does not accumulate during the experiment; D-12
+            # bumpless re-engage on revert via _engage_pid_bumplessly carries
+            # last_published_duty into the next closed-loop tick. Telemetry
+            # (humidity_target / pid_output) reflects the literal commanded
+            # duty so the chart shows the operator-commanded value cleanly,
+            # not stale PID state.
+            if not isnan(mode.force_duty):
+                if self._pid.auto_mode:
+                    self._pid.set_auto_mode(False)
+                self._pid_engaged = False
+                self._publish_duty(mode.force_duty)
+                ht_msg = Float32()
+                ht_msg.data = float(mode.force_duty)
+                self._humidity_target_pub.publish(ht_msg)
+                po_msg = Float32()
+                po_msg.data = float(mode.force_duty)
+                self._pid_output_pub.publish(po_msg)
+                # Update _last_tick_ts so the eventual revert sees a sane dt.
+                self._last_tick_ts = now
+                return
 
             if not self._pid_engaged:
                 # DEFER-29-01 fix: pass current operating duty so post-restart
