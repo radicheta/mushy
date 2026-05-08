@@ -12,6 +12,8 @@ from math import isnan, nan
 from statistics import median
 from fc_core.vendor.simple_pid import PID
 from fc_msgs.msg import Mode
+from rcl_interfaces.msg import SetParametersResult
+from rclpy.parameter import Parameter
 
 
 @dataclass
@@ -184,6 +186,15 @@ class FruitingChamberController(Node):
             Mode, 'fc1/control/current_mode', actuator_qos
         )
 
+        # Phase 28 D-15 + Pitfall 4: validate SetParameters batches atomically
+        # (whole batch passes or fails — no partial application). Defense-in-depth
+        # against the bridge allowlist (Phase 28-05): even if a bad value slips
+        # past the bridge or the bridge container is compromised, the callback
+        # rejects band-invariant violations, enum violations, and PID-range
+        # overruns at the rcl boundary.
+        self._pending_current_mode_republish = None
+        self.add_on_set_parameters_callback(self._validate_params)
+
         # Current values
         self.current_temp = None
         self.current_humidity = None
@@ -319,14 +330,14 @@ class FruitingChamberController(Node):
         that have at least one declared field under their namespace.
         """
         names = set()
-        for full in self.get_parameters_by_prefix('modes.').keys():
-            # 'modes.fruiting.band_low'.split('.') -> ['modes','fruiting','band_low']
-            # but get_parameters_by_prefix strips the prefix, so we receive
-            # 'fruiting.band_low' here. Account for both shapes defensively.
+        # rclpy Jazzy: get_parameters_by_prefix('modes.') (trailing dot) returns
+        # an empty dict due to internal prefix handling — pass 'modes' instead
+        # so the dotted-key namespace is split correctly. Returned keys have the
+        # prefix stripped (e.g. 'fruiting.band_low').
+        for full in self.get_parameters_by_prefix('modes').keys():
             parts = full.split('.')
             if len(parts) >= 2:
-                # If first token is 'modes' (full path returned), name is parts[1].
-                # If first token is the mode name (prefix stripped), name is parts[0].
+                # Defensive: handle both stripped and full-path shapes.
                 names.add(parts[1] if parts[0] == 'modes' else parts[0])
         return names
 
@@ -407,6 +418,122 @@ class FruitingChamberController(Node):
                 f'target {mv.target} outside band [{mv.band_low},{mv.band_high}] '
                 f'for mode {mv.name} — cosmetic, by D-06'
             )
+
+    def _validate_params(self, params) -> SetParametersResult:
+        """Phase 28 D-15 + Pitfall 4: validate SetParameters batches atomically.
+
+        Whole batch passes or fails — first violating param triggers immediate
+        rejection with a reason naming the violation. Cross-param invariants
+        (e.g. band_low<band_high) check the WOULD-BE state after the batch is
+        applied, not the pre-batch state, so a batched edit that flips
+        [band_low, band_high] simultaneously can land even when the per-param
+        new value would individually violate against the unmodified peer.
+
+        Defense in depth: range bounds on pid_kp/ki/kd mirror the bridge
+        allowlist (Phase 28-05) so a bridge bypass cannot push insane gains.
+
+        On accept of any mode-shape param, queue a republish of current_mode
+        for the next control_loop tick (D-15) — not synchronous because rclpy
+        applies the new param values AFTER this callback returns successful=True;
+        publishing in-callback would emit the OLD ModeView.
+        """
+        # Build "post-batch view" so cross-param invariants check the would-be
+        # state. `post[name] = new_value` for params in the batch; lookups for
+        # peers fall back to the current param store.
+        post = {p.name: p.value for p in params}
+
+        def get_post(name):
+            if name in post:
+                return post[name]
+            return self.get_parameter(name).value
+
+        republish_current_mode = False
+        for p in params:
+            n = p.name
+            v = p.value
+            if n.startswith('modes.') and n.endswith('.band_low'):
+                prefix = n.rsplit('.', 1)[0]
+                bh = get_post(f'{prefix}.band_high')
+                # NaN peer = D-04 sentinel (modes block absent in YAML); skip
+                # invariant check, just bound the new value to [0,1].
+                if isnan(bh):
+                    if not (0.0 <= v <= 1.0):
+                        return SetParametersResult(
+                            successful=False,
+                            reason=f'{n}: must be in [0,1] (got {v})',
+                        )
+                elif not (0.0 <= v < bh <= 1.0):
+                    return SetParametersResult(
+                        successful=False,
+                        reason=f'{n}: must satisfy 0<=band_low<band_high<=1 '
+                               f'(got band_low={v}, band_high={bh})',
+                    )
+                republish_current_mode = True
+            elif n.startswith('modes.') and n.endswith('.band_high'):
+                prefix = n.rsplit('.', 1)[0]
+                bl = get_post(f'{prefix}.band_low')
+                if isnan(bl):
+                    if not (0.0 <= v <= 1.0):
+                        return SetParametersResult(
+                            successful=False,
+                            reason=f'{n}: must be in [0,1] (got {v})',
+                        )
+                elif not (0.0 <= bl < v <= 1.0):
+                    return SetParametersResult(
+                        successful=False,
+                        reason=f'{n}: must satisfy 0<=band_low<band_high<=1 '
+                               f'(got band_low={bl}, band_high={v})',
+                    )
+                republish_current_mode = True
+            elif n.startswith('modes.') and n.endswith('.defend_side'):
+                if v not in ('low', 'high', 'both'):
+                    return SetParametersResult(
+                        successful=False,
+                        reason=f'{n}: must be one of low|high|both (got {v!r})',
+                    )
+                republish_current_mode = True
+            elif n.startswith('modes.') and n.endswith('.target_humidity'):
+                if not (0.0 <= v <= 1.0):
+                    return SetParametersResult(
+                        successful=False,
+                        reason=f'{n}: must be in [0,1] (got {v})',
+                    )
+                republish_current_mode = True
+            elif n == 'active_mode':
+                declared = self._declared_mode_names()
+                if v not in declared:
+                    return SetParametersResult(
+                        successful=False,
+                        reason=f'active_mode={v!r} not in declared modes '
+                               f'{sorted(declared)}',
+                    )
+                republish_current_mode = True
+            elif n == 'pid_kp':
+                if not (0.0 <= v <= 5.0):
+                    return SetParametersResult(
+                        successful=False,
+                        reason=f'pid_kp must be in [0,5] (got {v})',
+                    )
+            elif n == 'pid_ki':
+                if not (0.0 <= v <= 1.0):
+                    return SetParametersResult(
+                        successful=False,
+                        reason=f'pid_ki must be in [0,1] (got {v})',
+                    )
+            elif n == 'pid_kd':
+                if not (0.0 <= v <= 20.0):
+                    return SetParametersResult(
+                        successful=False,
+                        reason=f'pid_kd must be in [0,20] (got {v})',
+                    )
+
+        if republish_current_mode:
+            # Drained at top of control_loop on the next tick. rclpy applies the
+            # accepted param values after this returns; in-callback publish would
+            # emit the pre-applied ModeView.
+            self._pending_current_mode_republish = ('param_set',)
+
+        return SetParametersResult(successful=True)
 
     def _engage_pid_bumplessly(self, last_output: float = 0.15):
         """D-12: bumpless engage with optional carry-over duty.
@@ -537,6 +664,14 @@ class FruitingChamberController(Node):
         return elapsed <= self.get_parameter('sensor_stale_timeout').value
 
     def control_loop(self):
+        # Phase 28 D-15: drain a pending current_mode republish queued by
+        # _validate_params. Done at the top of every tick so the republish lands
+        # on the FIRST tick after the SetParameters batch is applied.
+        if self._pending_current_mode_republish is not None:
+            (source,) = self._pending_current_mode_republish
+            self._pending_current_mode_republish = None
+            self._publish_current_mode(source=source)
+
         # WARMUP-01: startup grace — no actuation until sensors settle
         if self._grace_active():
             self._publish_duty(0.0)
