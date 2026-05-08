@@ -3,7 +3,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy, HistoryPolicy
 from sensor_msgs.msg import Temperature, RelativeHumidity
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32, String
 from collections import deque
 from dataclasses import dataclass
 from diagnostic_msgs.msg import DiagnosticStatus, KeyValue
@@ -93,6 +93,22 @@ class FruitingChamberController(Node):
                 ('modes.pinning.t_target', float('nan')),
             ]
         )
+
+        # Phase 29 Tier B — per-mode alerter overrides (D-05).
+        # Defaults are bootstrap-only; tuned values land in plan 29-06 via
+        # fc_config.yaml. Validator (Phase 29) enforces ranges atomically.
+        for _mode_name in ('fruiting', 'pinning'):
+            self.declare_parameter(f'modes.{_mode_name}.alerter.cooldown_min',          30)
+            self.declare_parameter(f'modes.{_mode_name}.alerter.critical_cooldown_min', 60)
+            self.declare_parameter(f'modes.{_mode_name}.alerter.humidifier_stuck_min',  30)
+            self.declare_parameter(f'modes.{_mode_name}.alerter.oob_n',                 5)
+            self.declare_parameter(f'modes.{_mode_name}.alerter.oob_window_min',        3)
+
+        # Phase 29 Tier C — global alerter knobs (runtime-tunable via SetParameters; D-05).
+        self.declare_parameter('pi_offline_min',     5)
+        self.declare_parameter('sensor_offline_min', 5)
+        self.declare_parameter('heartbeat_hour',     8)
+        self.declare_parameter('max_sends_per_hour', 20)
 
         # Initialize hardware or simulation
         if not self.get_parameter('actuator_simulation_mode').value:
@@ -187,6 +203,19 @@ class FruitingChamberController(Node):
             Mode, 'fc1/control/current_mode', actuator_qos
         )
 
+        # Phase 29 D-06: delivery channel for Tier B (per-mode alerter overrides)
+        # and Tier C (global alerter knobs). JSON-in-String avoids a second
+        # fc_msgs build cycle (RESEARCH §Anti-Patterns). Same TRANSIENT_LOCAL
+        # QoS as current_mode so late-joining bridge replays last value on
+        # subscribe (Pitfall 1; startup republish at end of __init__).
+        # Topic: fc1/control/alerter_mode_overrides — Tier B per-mode alerter knobs.
+        self._alerter_overrides_pub = self.create_publisher(
+            String, 'fc1/control/alerter_mode_overrides', actuator_qos
+        )
+        self._alerter_globals_pub = self.create_publisher(
+            String, 'fc1/control/alerter_globals', actuator_qos
+        )
+
         # Phase 28 D-15 + Pitfall 4: validate SetParameters batches atomically
         # (whole batch passes or fails — no partial application). Defense-in-depth
         # against the bridge allowlist (Phase 28-05): even if a bad value slips
@@ -194,6 +223,12 @@ class FruitingChamberController(Node):
         # rejects band-invariant violations, enum violations, and PID-range
         # overruns at the rcl boundary.
         self._pending_current_mode_republish = None
+        # Phase 29 — pending-republish flags for Tier B + Tier C topics; drained
+        # at the top of control_loop on the next tick (Pattern C: in-callback
+        # publish would emit pre-applied state because rclpy applies the new
+        # param values AFTER _validate_params returns successful=True).
+        self._pending_alerter_overrides_republish = None
+        self._pending_alerter_globals_republish = None
         self.add_on_set_parameters_callback(self._validate_params)
 
         # Phase 28 D-16: mode-switch service. Custom srv in fc_msgs. The handler
@@ -255,6 +290,11 @@ class FruitingChamberController(Node):
         # store is initialized so late subscribers (Phase 29 alerter, future
         # scheduler) see the active mode without polling.
         self._publish_current_mode(source='config_default')
+        # Phase 29 Pitfall 1: TRANSIENT_LOCAL durability does NOT persist across
+        # process restart. Publish once at startup so the bridge (Phase 29-04)
+        # and any late-joiners receive the cached payloads on subscribe.
+        self._publish_alerter_overrides(source='config_default')
+        self._publish_alerter_globals(source='config_default')
 
     def temperature_callback(self, msg):
         self.current_temp = msg.temperature
@@ -431,6 +471,42 @@ class FruitingChamberController(Node):
                 f'for mode {mv.name} — cosmetic, by D-06'
             )
 
+    def _publish_alerter_overrides(self, source: str = 'param_set'):
+        """Phase 29 D-06: publish per-mode alerter overrides as JSON-in-String.
+
+        Payload shape: { "<mode_name>": { "cooldown_min": int, ... } } for every
+        declared mode (fruiting, pinning v0). Subscribed by bridge (Phase 29-04)
+        and broadcast to alerter via WS.
+        """
+        import json
+        payload = {}
+        for mode_name in ('fruiting', 'pinning'):
+            payload[mode_name] = {
+                'cooldown_min':          self.get_parameter(f'modes.{mode_name}.alerter.cooldown_min').value,
+                'critical_cooldown_min': self.get_parameter(f'modes.{mode_name}.alerter.critical_cooldown_min').value,
+                'humidifier_stuck_min':  self.get_parameter(f'modes.{mode_name}.alerter.humidifier_stuck_min').value,
+                'oob_n':                 self.get_parameter(f'modes.{mode_name}.alerter.oob_n').value,
+                'oob_window_min':        self.get_parameter(f'modes.{mode_name}.alerter.oob_window_min').value,
+            }
+        msg = String()
+        msg.data = json.dumps(payload, sort_keys=True)
+        self._alerter_overrides_pub.publish(msg)
+        self.get_logger().info(f'[alerter_overrides] republished (source={source})')
+
+    def _publish_alerter_globals(self, source: str = 'param_set'):
+        """Phase 29 D-06: publish Tier C global alerter knobs as JSON-in-String."""
+        import json
+        payload = {
+            'pi_offline_min':     self.get_parameter('pi_offline_min').value,
+            'sensor_offline_min': self.get_parameter('sensor_offline_min').value,
+            'heartbeat_hour':     self.get_parameter('heartbeat_hour').value,
+            'max_sends_per_hour': self.get_parameter('max_sends_per_hour').value,
+        }
+        msg = String()
+        msg.data = json.dumps(payload, sort_keys=True)
+        self._alerter_globals_pub.publish(msg)
+        self.get_logger().info(f'[alerter_globals] republished (source={source})')
+
     def _validate_params(self, params) -> SetParametersResult:
         """Phase 28 D-15 + Pitfall 4: validate SetParameters batches atomically.
 
@@ -460,6 +536,9 @@ class FruitingChamberController(Node):
             return self.get_parameter(name).value
 
         republish_current_mode = False
+        # Phase 29 — Tier B + Tier C republish flags (Pattern C: deferred drain).
+        republish_alerter_overrides = False
+        republish_alerter_globals = False
         for p in params:
             n = p.name
             v = p.value
@@ -511,6 +590,61 @@ class FruitingChamberController(Node):
                         reason=f'{n}: must be in [0,1] (got {v})',
                     )
                 republish_current_mode = True
+            # Phase 29 — Tier B per-mode alerter knobs (`modes.<name>.alerter.<key>`).
+            elif n.startswith('modes.') and '.alerter.' in n:
+                parts = n.split('.')
+                if len(parts) != 4 or parts[0] != 'modes' or parts[2] != 'alerter':
+                    return SetParametersResult(
+                        successful=False,
+                        reason=f'{n}: malformed alerter dotted-key',
+                    )
+                key = parts[3]
+                if key in ('cooldown_min', 'critical_cooldown_min', 'humidifier_stuck_min'):
+                    if not (isinstance(v, int) and 1 <= v <= 240):
+                        return SetParametersResult(
+                            successful=False,
+                            reason=f'{n}: must be int in [1,240] (got {v})',
+                        )
+                elif key == 'oob_n':
+                    if not (isinstance(v, int) and 1 <= v <= 20):
+                        return SetParametersResult(
+                            successful=False,
+                            reason=f'{n}: must be int in [1,20] (got {v})',
+                        )
+                elif key == 'oob_window_min':
+                    if not (isinstance(v, int) and 1 <= v <= 60):
+                        return SetParametersResult(
+                            successful=False,
+                            reason=f'{n}: must be int in [1,60] (got {v})',
+                        )
+                else:
+                    return SetParametersResult(
+                        successful=False,
+                        reason=f'{n}: unknown alerter key {key}',
+                    )
+                republish_alerter_overrides = True
+            # Phase 29 — Tier C global alerter knobs.
+            elif n in ('pi_offline_min', 'sensor_offline_min'):
+                if not (isinstance(v, int) and 1 <= v <= 60):
+                    return SetParametersResult(
+                        successful=False,
+                        reason=f'{n}: must be int in [1,60] (got {v})',
+                    )
+                republish_alerter_globals = True
+            elif n == 'heartbeat_hour':
+                if not (isinstance(v, int) and 0 <= v <= 23):
+                    return SetParametersResult(
+                        successful=False,
+                        reason=f'{n}: must be int in [0,23] (got {v})',
+                    )
+                republish_alerter_globals = True
+            elif n == 'max_sends_per_hour':
+                if not (isinstance(v, int) and 1 <= v <= 200):
+                    return SetParametersResult(
+                        successful=False,
+                        reason=f'{n}: must be int in [1,200] (got {v})',
+                    )
+                republish_alerter_globals = True
             elif n == 'active_mode':
                 declared = self._declared_mode_names()
                 if v not in declared:
@@ -544,6 +678,11 @@ class FruitingChamberController(Node):
             # accepted param values after this returns; in-callback publish would
             # emit the pre-applied ModeView.
             self._pending_current_mode_republish = ('param_set',)
+        # Phase 29 — same deferred-drain pattern for the two new topics.
+        if republish_alerter_overrides:
+            self._pending_alerter_overrides_republish = ('param_set',)
+        if republish_alerter_globals:
+            self._pending_alerter_globals_republish = ('param_set',)
 
         return SetParametersResult(successful=True)
 
@@ -745,6 +884,15 @@ class FruitingChamberController(Node):
             (source,) = self._pending_current_mode_republish
             self._pending_current_mode_republish = None
             self._publish_current_mode(source=source)
+        # Phase 29 — drain Tier B + Tier C deferred republishes (Pattern C).
+        if self._pending_alerter_overrides_republish is not None:
+            (source,) = self._pending_alerter_overrides_republish
+            self._pending_alerter_overrides_republish = None
+            self._publish_alerter_overrides(source=source)
+        if self._pending_alerter_globals_republish is not None:
+            (source,) = self._pending_alerter_globals_republish
+            self._pending_alerter_globals_republish = None
+            self._publish_alerter_globals(source=source)
 
         # WARMUP-01: startup grace — no actuation until sensors settle
         if self._grace_active():
