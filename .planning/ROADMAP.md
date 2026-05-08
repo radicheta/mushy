@@ -147,7 +147,7 @@ PID-first shape (locked 2026-05-01 with farmer): farmer wants condensation/evapo
 | 27.4. Repo netplan drift reconciliation | v1.5.0.1 | — | MOOTED 2026-05-03 in planned form (fc1 no longer on farm-4G); re-promote when fc1 returns to farm | — |
 | 999.1. Edge buffering | backlog | — | Promoted to Phase 27.1 (v1.5.0.1) on 2026-05-02; shipped 2026-05-03 | — |
 | 28. Mode primitive + baselines + runtime config delivery | v1.5 | 0/? | Paused behind v1.5.0.1 | — |
-| 29. Alerter mode awareness + cooldown tuning | v1.5 | 0/? | Paused behind v1.5.0.1 | — |
+| 29. Alerter mode awareness + cooldown tuning | v1.5 | 7/7 | Complete    | 2026-05-08 |
 | 30. Time-of-day mode scheduling | v1.5 | 0/? | Paused behind v1.5.0.1 | — |
 | 31. Experimental forcing modes (condensation/evaporation) | v1.5 | 0/? | Paused behind v1.5.0.1 | — |
 
@@ -263,16 +263,16 @@ Original justification: align repo netplan with fc1's currently-running farm-4G 
 
 **Dependencies:** Builds on Phase 28 (mode primitive + `current_mode` topic + Layer 1 runtime config); resolves backlog 999.22 (alerter ops thresholds in env). Composes with Phase 30 (scheduler — schedule-driven mode switches will retarget alerter via the same `current_mode` channel) and 999.39 (alerter offline-blind rules — same module, fix together if scope allows).
 
-**Plans:** 7 plans
+**Plans:** 7/7 plans complete
 
 Plans:
-- [ ] 29-01-PLAN.md — Wave 0: bridge param-set allowlist extension + jest fixtures for effective-config / bridge-messages
-- [ ] 29-02-PLAN.md — Wave 1: bridge ROS subs + WS broadcast + on-connect replay (3 new topics)
-- [ ] 29-03-PLAN.md — Wave 1: fc_controller publishers + Tier B/C param decls + validator extension + fc_config.yaml seed
-- [ ] 29-04-PLAN.md — Wave 2: alerter state.js (mode_update / overrides_update / globals_update events + resolveEffectiveConfig + dedup-reset D-09) + index.js routing + config.js fields
-- [ ] 29-05-PLAN.md — Wave 2: rules.js freshness gating (D-03) + offline-blindness (D-04 / 999.39) + message.js pi last-known summary
-- [ ] 29-06-PLAN.md — Wave 3: cooldown tuning analysis (29-COOLDOWN-TUNING.md from docker logs) + commit tuned defaults to fc_config.yaml
-- [ ] 29-07-PLAN.md — Wave 4: deploy fc1+bridge+alerter, on-host smoke (mode swap, 999.39 reproduction, band-aid revert), mark 999.22 + 999.39 resolved in ROADMAP
+- [x] 29-01-PLAN.md — Wave 0: bridge param-set allowlist extension + jest fixtures for effective-config / bridge-messages
+- [x] 29-02-PLAN.md — Wave 1: bridge ROS subs + WS broadcast + on-connect replay (3 new topics)
+- [x] 29-03-PLAN.md — Wave 1: fc_controller publishers + Tier B/C param decls + validator extension + fc_config.yaml seed
+- [x] 29-04-PLAN.md — Wave 2: alerter state.js (mode_update / overrides_update / globals_update events + resolveEffectiveConfig + dedup-reset D-09) + index.js routing + config.js fields
+- [x] 29-05-PLAN.md — Wave 2: rules.js freshness gating (D-03) + offline-blindness (D-04 / 999.39) + message.js pi last-known summary
+- [x] 29-06-PLAN.md — Wave 3: cooldown tuning analysis (29-COOLDOWN-TUNING.md from docker logs) + commit tuned defaults to fc_config.yaml
+- [x] 29-07-PLAN.md — Wave 4: deploy fc1+bridge+alerter, on-host smoke (mode swap, 999.39 reproduction, band-aid revert), mark 999.22 + 999.39 resolved in ROADMAP
 
 ## Backlog (parking lot)
 
