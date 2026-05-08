@@ -14,6 +14,7 @@ const { burnBar, formatBarText } = require('./burn_bar');
 const buffer_replay = require('./buffer_replay');
 const control_param = require('./control_param');
 const control_persist = require('./control_persist');
+const control_experiment = require('./control_experiment');
 
 // Fail fast if database password is not configured
 if (!process.env.TIMESCALE_PASSWORD) {
@@ -251,6 +252,10 @@ async function initDb() {
             CREATE INDEX IF NOT EXISTS idx_snapshots_camera_captured
             ON snapshots (camera_id, captured_at DESC)
         `);
+        // Phase 31 D-21: idempotent fc_experiments table + index. Runs on
+        // every bridge boot; no-op if the table already exists.
+        await control_experiment.migrateExperimentSchema(pool);
+        console.log('[db] fc_experiments schema ensured');
         console.log('[db] Schema initialized');
     } catch (err) {
         console.error('[db] Schema init failed:', err.message);
@@ -582,6 +587,28 @@ app.post('/control/param', express.json(), async (req, res) => {
 const persistTransport = control_persist.makeHttpTransport({});
 app.post('/control/persist', express.json(), control_persist.makeHandler(persistTransport, {}));
 
+// Phase 31 D-18: experiment trigger + cancel + state endpoints.
+// rosNode is set inside rclnodejs.init().then() below; the lazy wrapper-at-
+// request-time pattern matches /control/param.
+app.post('/control/experiment', express.json(), async (req, res) => {
+    if (!rosNode) return res.status(503).json({ error: 'rclnodejs not ready' });
+    const handler = control_experiment.makeStartHandler(rosNode, { timeoutMs: 5000 });
+    return handler(req, res);
+});
+app.post('/control/cancel-experiment', express.json(), async (req, res) => {
+    if (!rosNode) return res.status(503).json({ error: 'rclnodejs not ready' });
+    const handler = control_experiment.makeCancelHandler(rosNode, { timeoutMs: 5000 });
+    return handler(req, res);
+});
+app.get('/control/experiment', (req, res) => {
+    const handler = control_experiment.makeStateHandler({
+        // Cache shape stored in lastExperimentEventBroadcast is the wrapped
+        // {topic, value} envelope; unwrap to the inner JSON the handler expects.
+        getLastEvent: () => (lastExperimentEventBroadcast && lastExperimentEventBroadcast.value) || null,
+    });
+    return handler(req, res);
+});
+
 // Store connected WebSocket clients
 const clients = new Set();
 
@@ -595,6 +622,12 @@ let lastSensorHealthBroadcast = null;
 let lastModeBroadcast = null;
 let lastAlerterModeOverridesBroadcast = null;
 let lastAlerterGlobalsBroadcast = null;
+
+// Phase 31 D-22: cache last experiment_event broadcast for on-connect replay
+// (mirrors lastModeBroadcast pattern). null when no experiment has fired
+// since bridge boot. Populated from /fc1/control/experiment_event subscriber
+// in the rclnodejs.init().then() block below.
+let lastExperimentEventBroadcast = null;
 
 wss.on('connection', (ws) => {
     console.log('[bridge] Client connected');
@@ -611,6 +644,11 @@ wss.on('connection', (ws) => {
     }
     if (lastAlerterGlobalsBroadcast && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(lastAlerterGlobalsBroadcast));
+    }
+    // Phase 31 D-22: replay cached experiment_event so a tab opened mid-flight
+    // sees current experiment state without waiting for the next state change.
+    if (lastExperimentEventBroadcast && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(lastExperimentEventBroadcast));
     }
 
     ws.on('close', () => {
@@ -939,6 +977,44 @@ rclnodejs.init().then(async () => {
         }
     );
     console.log('[bridge] Phase 29: alerter_globals subscription (TRANSIENT_LOCAL)');
+
+    // Phase 31 D-22: subscribe to /fc1/control/experiment_event (JSON-in-String,
+    // TRANSIENT_LOCAL/RELIABLE/depth=1). Bridge persists started/ended/cancelled
+    // /truncated events to fc_experiments and broadcasts the JSON envelope to
+    // WS clients (with on-connect replay via lastExperimentEventBroadcast).
+    const _experimentEventHandler = control_experiment.makeExperimentEventHandler({
+        pool,
+        // baseline_rh / final_rh come from the live humidity telemetry buffer.
+        // latestTelemetry.humidity stores the last RH value as a *percent*
+        // (the humidity subscriber multiplies relative_humidity * 100). null
+        // when no humidity has arrived since boot.
+        getLastRh: () => (latestTelemetry.humidity != null ? latestTelemetry.humidity.value : null),
+        setLastEventCache: (payload) => {
+            lastExperimentEventBroadcast = { topic: 'fc.experiment_event', value: payload };
+        },
+        broadcast: (payload) => {
+            broadcast({ topic: 'fc.experiment_event', value: payload, timestamp: Date.now() });
+        },
+        logger: console,
+    });
+    node.createSubscription(
+        'std_msgs/msg/String',
+        '/fc1/control/experiment_event',
+        { qos: humidifierQos },   // reuse TRANSIENT_LOCAL/RELIABLE/depth=1 profile
+        (msg) => {
+            let parsed;
+            try {
+                parsed = JSON.parse(msg.data);
+            } catch (e) {
+                console.warn('[bridge] experiment_event: malformed JSON, dropping:', e.message);
+                return;
+            }
+            // Fire-and-forget; handler swallows DB errors so the subscription
+            // thread never crashes on a bad message.
+            _experimentEventHandler(parsed);
+        }
+    );
+    console.log('[bridge] Phase 31: experiment_event subscription (TRANSIENT_LOCAL) — /fc1/control/experiment_event');
 
     // Phase 21 D-01: activate continuous-persistence keepalive and prime the subscription
     // so we capture idle-cadence frames even with zero MJPEG viewers.
