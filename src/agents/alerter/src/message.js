@@ -58,9 +58,17 @@ function formatProblem({ alertType, severity, fields, config, nowMs }) {
       body += `First OOB: ${fmtRelative(firstOobMs, nowMs)}\n`;
     }
   } else if (alertType === 'pi') {
-    const { lastSeenMs } = fields;
+    const { lastSeenMs, lastKnown } = fields;
     if (lastSeenMs != null) {
       body += `Last seen: ${fmtRelative(lastSeenMs, nowMs)}\n`;
+    }
+    if (lastKnown) {
+      // Phase 29 / 999.39 — situational context for offline alarms.
+      // Schema: { rh: number, temp: number, humidifier: 'ON'|'OFF', tsMs: number|null }
+      body += `Last sample: RH ${lastKnown.rh}% · T ${lastKnown.temp}°C · humidifier ${lastKnown.humidifier}\n`;
+      if (lastKnown.tsMs != null) {
+        body += `(captured ${fmtRelative(lastKnown.tsMs, nowMs)})\n`;
+      }
     }
   } else if (alertType === 'sht30' || alertType === 'scd41') {
     // Hidden 2026-04-25 pending backlog 999.18: lastSeenMs is bootstrapped from
