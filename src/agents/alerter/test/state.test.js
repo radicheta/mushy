@@ -609,3 +609,309 @@ describe('snooze sht30/scd41 (D-05)', () => {
     expect(scd41Sends).toHaveLength(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 29 plan 29-04 — mode + freshness FSM extensions.
+// ---------------------------------------------------------------------------
+
+describe('Phase 29 mode + freshness', () => {
+  // Use a separate module instance so we can spy on message.formatProblem to
+  // observe piFields.lastKnown being threaded through driveAlertType.
+  let stateMod;
+  let messageMod;
+  let resolveEffectiveConfig;
+  let envCfg;
+
+  beforeEach(() => {
+    jest.resetModules();
+    messageMod = require('../src/message');
+    stateMod = require('../src/state');
+    resolveEffectiveConfig = stateMod.resolveEffectiveConfig;
+    const { BASE_ENV } = require('./fixtures/effective-config');
+    envCfg = { ...BASE_ENV, dashboardUrl: 'http://x', timezone: 'UTC' };
+  });
+
+  function freshMode(overrides = {}) {
+    return {
+      name: 'fruiting',
+      target_humidity: 0.96,
+      band_low: 0.945,
+      band_high: 0.975,
+      defend_side: 'both',
+      ...overrides,
+    };
+  }
+
+  // Test 1
+  test('mode_update populates currentMode and modeReceivedAtMs', () => {
+    const initial = stateMod.initialState(0);
+    const r = stateMod.transition(initial, { type: 'mode_update', mode: freshMode() }, 1000, envCfg);
+    expect(r.next.currentMode.name).toBe('fruiting');
+    expect(r.next.modeReceivedAtMs).toBe(1000);
+  });
+
+  // Test 2
+  test('mode_update resets dedup for rh and humidifier; preserves lastFiredAt', () => {
+    let s = stateMod.initialState(0);
+    s.perType.rh.oobCount = 3;
+    s.perType.rh.firstOobAt = 500;
+    s.perType.rh.lastFiredAt = 700;
+    s.perType.humidifier.oobCount = 2;
+    s.perType.humidifier.firstOobAt = 600;
+    s.perType.humidifier.lastFiredAt = 750;
+    const r = stateMod.transition(s, { type: 'mode_update', mode: freshMode({ name: 'pinning' }) }, 1000, envCfg);
+    expect(r.next.perType.rh.oobCount).toBe(0);
+    expect(r.next.perType.rh.firstOobAt).toBeNull();
+    expect(r.next.perType.rh.lastFiredAt).toBe(700);
+    expect(r.next.perType.humidifier.oobCount).toBe(0);
+    expect(r.next.perType.humidifier.firstOobAt).toBeNull();
+    expect(r.next.perType.humidifier.lastFiredAt).toBe(750);
+  });
+
+  // Test 3
+  test('mode_update resets perType.rh.ctx.inBandCount', () => {
+    let s = stateMod.initialState(0);
+    s.perType.rh.ctx = { inBandCount: 4 };
+    const r = stateMod.transition(s, { type: 'mode_update', mode: freshMode() }, 1000, envCfg);
+    expect(r.next.perType.rh.ctx.inBandCount).toBe(0);
+  });
+
+  // Test 4 — cooldown survives mode swap
+  test('cooldown survives mode swap (lastFiredAt preserved)', () => {
+    const cfg = { ...envCfg, oobN: 1, oobWindowMin: 0, cooldownMin: 30 };
+    // FIRING at t=0
+    let s = stateMod.initialState(0);
+    let r = stateMod.transition(s, { type: 'mode_update', mode: freshMode() }, 0, cfg);
+    s = r.next;
+    r = stateMod.transition(s, { type: 'humidity', value: 50 }, 0, cfg);
+    s = r.next;
+    expect(s.perType.rh.state).toBe(STATES.FIRING);
+    const firstFire = s.perType.rh.lastFiredAt;
+    // Mode swap at 5min
+    r = stateMod.transition(s, { type: 'mode_update', mode: freshMode({ name: 'pinning' }) }, 5 * 60000, cfg);
+    s = r.next;
+    expect(s.perType.rh.lastFiredAt).toBe(firstFire);
+    // Retry at 6 min — cooldown not elapsed: NO send (cooldown carries)
+    // (Note: dedup was reset, so we go OK→PENDING→FIRING again; lastFiredAt was preserved
+    // so the FIRING-state cooldown gate works on subsequent FIRING-state events.)
+    // To exercise cooldown: drive humidity again to keep FIRING. Since dedup reset, we need
+    // to re-arm. After re-arming OOB at 6min, state goes FIRING and lastFiredAt would update
+    // — but the assertion target is "lastFiredAt was preserved across the mode_update".
+  });
+
+  // Test 5 — first mode_update after cold start resets dedup
+  test('first mode_update after cold start resets dedup (Pitfall 4)', () => {
+    let s = stateMod.initialState(0);
+    s.perType.rh.oobCount = 2;
+    s.perType.rh.firstOobAt = 100;
+    expect(s.currentMode).toBeUndefined();
+    const r = stateMod.transition(s, { type: 'mode_update', mode: freshMode() }, 1000, envCfg);
+    expect(r.next.perType.rh.oobCount).toBe(0);
+    expect(r.next.perType.rh.firstOobAt).toBeNull();
+    expect(r.next.currentMode).toBeTruthy();
+  });
+
+  // Test 6
+  test('overrides_update populates alerterOverrides and ts', () => {
+    const s = stateMod.initialState(0);
+    const r = stateMod.transition(s, {
+      type: 'overrides_update',
+      overrides: { fruiting: { cooldown_min: 45 } },
+    }, 2000, envCfg);
+    expect(r.next.alerterOverrides.fruiting.cooldown_min).toBe(45);
+    expect(r.next.overridesReceivedAtMs).toBe(2000);
+  });
+
+  // Test 7
+  test('globals_update populates alerterGlobals and ts', () => {
+    const s = stateMod.initialState(0);
+    const r = stateMod.transition(s, {
+      type: 'globals_update',
+      globals: { pi_offline_min: 10 },
+    }, 3000, envCfg);
+    expect(r.next.alerterGlobals.pi_offline_min).toBe(10);
+    expect(r.next.globalsReceivedAtMs).toBe(3000);
+  });
+
+  // Test 8 — FRESH path
+  test('resolveEffectiveConfig FRESH path returns mode-derived rh values', () => {
+    const s = stateMod.initialState(0);
+    s.currentMode = freshMode();
+    s.modeReceivedAtMs = 1000;
+    s.wsConnected = true;
+    const eff = resolveEffectiveConfig(s, envCfg, 1000 + 60_000); // 1 min later
+    expect(eff.rhTarget).toBeCloseTo(96, 6);
+    expect(eff.rhBand).toBeCloseTo(1.5, 6);
+    expect(eff.freshness.state).toBe('fresh');
+    expect(eff.freshness.source).toBe('mode');
+  });
+
+  // Test 9 — STALE because mode too old
+  test('resolveEffectiveConfig STALE when mode older than modeStaleMin', () => {
+    const s = stateMod.initialState(0);
+    s.currentMode = freshMode();
+    s.modeReceivedAtMs = 0;
+    s.wsConnected = true;
+    const eff = resolveEffectiveConfig(s, envCfg, 6 * 60_000); // 6 min later
+    expect(eff.freshness.state).toBe('stale');
+    expect(eff.freshness.source).toBe('env');
+    expect(eff.rhTarget).toBe(envCfg.rhTarget);
+  });
+
+  // Test 10 — STALE on wsDisconnected even if mode fresh
+  test('resolveEffectiveConfig STALE on wsDisconnected even if mode fresh', () => {
+    const s = stateMod.initialState(0);
+    s.currentMode = freshMode();
+    s.modeReceivedAtMs = 1000;
+    s.wsConnected = false;
+    const eff = resolveEffectiveConfig(s, envCfg, 1000 + 60_000);
+    expect(eff.freshness.state).toBe('stale');
+  });
+
+  // Test 11 — COLD path
+  test('resolveEffectiveConfig COLD path within boot grace', () => {
+    const s = stateMod.initialState(0); // bootedAtMs = 0
+    s.wsConnected = true;
+    const eff = resolveEffectiveConfig(s, envCfg, 30_000); // 30s after boot
+    expect(eff.freshness.state).toBe('cold');
+    expect(eff.freshness.source).toBe('env');
+  });
+
+  // Test 12 — COLD→STALE past grace
+  test('resolveEffectiveConfig STALE past 60s with no mode', () => {
+    const s = stateMod.initialState(0);
+    s.wsConnected = true;
+    const eff = resolveEffectiveConfig(s, envCfg, 90_000);
+    expect(eff.freshness.state).toBe('stale');
+  });
+
+  // Test 13 — Tier B overrides
+  test('resolveEffectiveConfig merges Tier B overrides over env', () => {
+    const s = stateMod.initialState(0);
+    s.currentMode = freshMode({ name: 'pinning' });
+    s.modeReceivedAtMs = 1000;
+    s.wsConnected = true;
+    s.alerterOverrides = { pinning: { cooldown_min: 45 } };
+    const eff = resolveEffectiveConfig(s, envCfg, 1000 + 60_000);
+    expect(eff.cooldownMin).toBe(45);
+  });
+
+  // Test 14 — Tier C globals
+  test('resolveEffectiveConfig merges Tier C globals over env', () => {
+    const s = stateMod.initialState(0);
+    s.currentMode = freshMode();
+    s.modeReceivedAtMs = 1000;
+    s.wsConnected = true;
+    s.alerterGlobals = { pi_offline_min: 10 };
+    const eff = resolveEffectiveConfig(s, envCfg, 1000 + 60_000);
+    expect(eff.piOfflineMin).toBe(10);
+  });
+
+  // Test 15 — band symmetric
+  test('band_low/band_high → rhBand symmetric average', () => {
+    const s = stateMod.initialState(0);
+    s.currentMode = freshMode({ target_humidity: 0.96, band_low: 0.945, band_high: 0.975 });
+    s.modeReceivedAtMs = 1000;
+    s.wsConnected = true;
+    const eff = resolveEffectiveConfig(s, envCfg, 1000 + 60_000);
+    expect(eff.rhBand).toBeCloseTo(1.5, 6);
+  });
+
+  // Test 16 (BLOCKER 2) — pi_liveness piFields.lastKnown when state has data
+  test('pi_liveness fires alert with piFields.lastKnown when sensor data present', () => {
+    const formatSpy = jest.spyOn(messageMod, 'formatProblem');
+    let s = stateMod.initialState(0);
+    // Establish ws connected then disconnect
+    let r = stateMod.transition(s, { type: 'pi_liveness', wsConnected: true, rosConnected: true }, 0, envCfg);
+    s = r.next;
+    // populate sensor data
+    r = stateMod.transition(s, { type: 'temperature', value: 21.4 }, 100, envCfg);
+    s = r.next;
+    r = stateMod.transition(s, { type: 'humidity', value: 87.2 }, 200, envCfg);
+    s = r.next;
+    r = stateMod.transition(s, { type: 'humidifier', value: 1 }, 300, envCfg);
+    s = r.next;
+    // Disconnect at t=400
+    r = stateMod.transition(s, { type: 'pi_liveness', wsConnected: false, rosConnected: true }, 400, envCfg);
+    s = r.next;
+    // Past startup grace (60s) AND past piOfflineMin (5 min from wsLastConnectedMs=0)
+    const future = 60_000 + 6 * 60_000;
+    formatSpy.mockClear();
+    r = stateMod.transition(s, { type: 'pi_liveness', wsConnected: false, rosConnected: true }, future, envCfg);
+    const piCall = formatSpy.mock.calls.find(c => c[0].alertType === 'pi');
+    expect(piCall).toBeDefined();
+    const piFields = piCall[0].fields;
+    expect(piFields.lastKnown).toBeDefined();
+    expect(piFields.lastKnown).not.toBeNull();
+    expect(piFields.lastKnown.rh).toBe(87.2);
+    expect(piFields.lastKnown.temp).toBe(21.4);
+    expect(piFields.lastKnown.humidifier).toBe('ON');
+    expect(piFields.lastKnown.tsMs).toBe(200);
+    formatSpy.mockRestore();
+  });
+
+  // Test 17 (BLOCKER 2) — pi_liveness piFields.lastKnown is null when no data
+  test('pi_liveness fires alert with piFields.lastKnown null when no data', () => {
+    const formatSpy = jest.spyOn(messageMod, 'formatProblem');
+    let s = stateMod.initialState(0);
+    let r = stateMod.transition(s, { type: 'pi_liveness', wsConnected: true, rosConnected: true }, 0, envCfg);
+    s = r.next;
+    r = stateMod.transition(s, { type: 'pi_liveness', wsConnected: false, rosConnected: true }, 400, envCfg);
+    s = r.next;
+    formatSpy.mockClear();
+    const future = 60_000 + 6 * 60_000;
+    r = stateMod.transition(s, { type: 'pi_liveness', wsConnected: false, rosConnected: true }, future, envCfg);
+    const piCall = formatSpy.mock.calls.find(c => c[0].alertType === 'pi');
+    expect(piCall).toBeDefined();
+    const piFields = piCall[0].fields;
+    expect(piFields.lastKnown == null).toBe(true);
+    formatSpy.mockRestore();
+  });
+
+  // Test 18 (BLOCKER 3) — rh OOB consumes effective Tier B overrides
+  test('rh OOB uses effective.oobN from Tier B override', () => {
+    const cfg = { ...envCfg, oobN: 5, oobWindowMin: 3 };
+    let s = stateMod.initialState(0);
+    let r = stateMod.transition(s, { type: 'mode_update', mode: freshMode() }, 1, cfg);
+    s = r.next;
+    r = stateMod.transition(s, {
+      type: 'overrides_update',
+      overrides: { fruiting: { oob_n: 2, oob_window_min: 1 } },
+    }, 2, cfg);
+    s = r.next;
+    // 2 OOB events spaced 30s apart — under env oobN=5 wouldn't fire,
+    // but Tier B oob_n=2/window=1min should trigger.
+    r = stateMod.transition(s, { type: 'humidity', value: 50 }, 1000, cfg);
+    s = r.next;
+    r = stateMod.transition(s, { type: 'humidity', value: 50 }, 1000 + 60_001, cfg);
+    s = r.next;
+    const rhFiring = s.perType.rh.state === STATES.FIRING;
+    expect(rhFiring).toBe(true);
+  });
+
+  // Test 19 (BLOCKER 3) — tick re-evaluation uses effective.piOfflineMin from globals
+  test('tick re-evaluation uses effective.piOfflineMin from Tier C globals', () => {
+    const cfg = { ...envCfg, piOfflineMin: 5 };
+    let s = stateMod.initialState(0);
+    let r = stateMod.transition(s, { type: 'mode_update', mode: freshMode() }, 1, cfg);
+    s = r.next;
+    r = stateMod.transition(s, {
+      type: 'globals_update',
+      globals: { pi_offline_min: 10 },
+    }, 2, cfg);
+    s = r.next;
+    // Establish connection then disconnect at t=100
+    r = stateMod.transition(s, { type: 'pi_liveness', wsConnected: true, rosConnected: true }, 100, cfg);
+    s = r.next;
+    r = stateMod.transition(s, { type: 'pi_liveness', wsConnected: false, rosConnected: true }, 200, cfg);
+    s = r.next;
+    // tick at 6min — env default 5 min would fire; Tier C 10 min should NOT
+    r = stateMod.transition(s, { type: 'tick' }, 60_000 + 6 * 60_000, cfg);
+    s = r.next;
+    expect(s.perType.pi.state).not.toBe(STATES.FIRING);
+    // tick at 11 min — Tier C 10 min threshold elapsed
+    r = stateMod.transition(s, { type: 'tick' }, 60_000 + 11 * 60_000, cfg);
+    s = r.next;
+    expect(s.perType.pi.state).toBe(STATES.FIRING);
+  });
+});
