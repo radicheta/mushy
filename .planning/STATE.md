@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 28-03-PLAN.md
-last_updated: "2026-05-07T23:50:22.327Z"
-last_activity: 2026-05-07
+stopped_at: Completed 28-04-PLAN.md
+last_updated: "2026-05-08T00:06:54.848Z"
+last_activity: 2026-05-08
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 17
-  completed_plans: 13
-  percent: 76
+  completed_plans: 14
+  percent: 82
 ---
 
 # Project State
@@ -34,11 +34,11 @@ Milestone: v1.5.0.1 → v1.5 — milestone v1.5.0.1 resilience-hotfix work compl
 - Phase 27.3 — Sampling-rate reduction: MOOTED by wg0 transport switch
 - Phase 27.4 — Netplan reconciliation: MOOTED in planned form
 
-Plan: 4 of 7
+Plan: 5 of 7
 Status: Ready to execute
-Last activity: 2026-05-07
+Last activity: 2026-05-08
 
-Progress: [████████░░] 76%
+Progress: [████████░░] 82%
 
 **Carried from v1.3 (not blocking v1.4):**
 
@@ -111,6 +111,9 @@ Progress: [████████░░] 76%
 - [Phase 28-02] active_mode: fruiting declared explicitly; D-04 fallback reserved only for stripped-modes-block forks
 - [Phase 28-03] Mode-aware control hot path: ModeView + _resolve_active_mode (D-08) + band-aware error projection (D-09) + ramp-to-defended-edge (D-10) + nearest-defended-edge bypass (D-11). PID kernel math byte-identical to Phase 27.
 - [Phase 28-03] D-04 back-compat triggered by NaN sentinel on band_low/band_high (math.isnan check); legacy target_humidity + humidity_tolerance synthesize fruiting-shape ModeView when YAML modes block absent.
+- [Phase 28-04] current_mode topic + set_mode service + on_set_parameters_callback shipped — defense-in-depth PID range bounds at the rcl boundary mirror the bridge allowlist Phase 28-05 will enforce
+- [Phase 28-04] Asymmetric republish: validator queues next-tick drain (rclpy applies param after callback returns); service handler publishes synchronously (param applied before set_parameters returns)
+- [Phase 28-04] Rule 1 fix: get_parameters_by_prefix('modes.') returns empty in rclpy Jazzy with trailing dot; use 'modes' (no trailing dot)
 
 ### Pending Todos
 
@@ -153,11 +156,12 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 | Phase 28 P01 | 25min | 4 tasks | 8 files |
 | Phase 28 P02 | 2m31s | 2 tasks | 2 files |
 | Phase 28 P03 | 17min | 2 tasks | 3 files |
+| Phase 28 P04 | 12min | 3 tasks | 2 files |
 
 ## Session Continuity
 
-Last session: 2026-05-07T23:50:22.320Z
-Stopped at: Completed 28-03-PLAN.md
+Last session: 2026-05-08T00:06:54.842Z
+Stopped at: Completed 28-04-PLAN.md
 Next up: pick from { (a) close 27.2 SYS-01 + SYS-04, (b) cyclonedds-tailscale.xml → cyclonedds.xml rename, (c) PID Kp 0.5 → 0.35 retune per 2026-05-03 calibration notes, (d) resume v1.5 main with /gsd:discuss-phase 28 }
 
 ---
