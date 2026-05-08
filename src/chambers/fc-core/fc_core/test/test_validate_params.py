@@ -297,3 +297,99 @@ class TestAlerterParams:
             assert node._pending_alerter_globals_republish is not None
         finally:
             node.destroy_node()
+
+
+# --- Phase 30 SCHED-01 — schedule_windows validator extension ----------------
+
+class TestScheduleWindowsParam:
+    """Plan 30-01 Task 2 — `_validate_params` arm for `schedule_windows`."""
+
+    def test_schedule_windows_default_empty(self, ros_context):
+        node = _make_node()
+        try:
+            assert node.get_parameter('schedule_windows').value == '[]'
+        finally:
+            node.destroy_node()
+
+    def test_schedule_windows_set_valid(self, ros_context):
+        node = _make_node()
+        try:
+            new = '[{"start":"06:00","end":"22:00","mode":"fruiting"}]'
+            r = node.set_parameters([
+                Parameter('schedule_windows', Parameter.Type.STRING, new)
+            ])
+            assert r[0].successful, f'valid schedule must accept; got {r[0].reason}'
+            assert node.get_parameter('schedule_windows').value == new
+        finally:
+            node.destroy_node()
+
+    def test_schedule_windows_reject_malformed_json(self, ros_context):
+        node = _make_node()
+        try:
+            r = node.set_parameters([
+                Parameter('schedule_windows', Parameter.Type.STRING, '{not json')
+            ])
+            assert not r[0].successful
+            assert 'JSON' in r[0].reason
+            assert node.get_parameter('schedule_windows').value == '[]'
+        finally:
+            node.destroy_node()
+
+    def test_schedule_windows_reject_missing_key(self, ros_context):
+        node = _make_node()
+        try:
+            r = node.set_parameters([
+                Parameter('schedule_windows', Parameter.Type.STRING,
+                          '[{"start":"06:00","end":"22:00"}]')
+            ])
+            assert not r[0].successful
+            assert 'mode' in r[0].reason
+            assert node.get_parameter('schedule_windows').value == '[]'
+        finally:
+            node.destroy_node()
+
+    def test_schedule_windows_reject_bad_time(self, ros_context):
+        node = _make_node()
+        try:
+            r = node.set_parameters([
+                Parameter('schedule_windows', Parameter.Type.STRING,
+                          '[{"start":"6:00","end":"22:00","mode":"fruiting"}]')
+            ])
+            assert not r[0].successful
+            assert 'HH:MM' in r[0].reason
+        finally:
+            node.destroy_node()
+
+    def test_schedule_windows_reject_unknown_mode(self, ros_context):
+        node = _make_node()
+        try:
+            r = node.set_parameters([
+                Parameter('schedule_windows', Parameter.Type.STRING,
+                          '[{"start":"06:00","end":"22:00","mode":"composting"}]')
+            ])
+            assert not r[0].successful
+            assert 'declared' in r[0].reason or 'composting' in r[0].reason
+        finally:
+            node.destroy_node()
+
+    def test_schedule_windows_reject_not_array(self, ros_context):
+        node = _make_node()
+        try:
+            r = node.set_parameters([
+                Parameter('schedule_windows', Parameter.Type.STRING,
+                          '{"start":"06:00"}')
+            ])
+            assert not r[0].successful
+            assert 'array' in r[0].reason
+        finally:
+            node.destroy_node()
+
+    def test_schedule_windows_empty_array_always_valid(self, ros_context):
+        node = _make_node()
+        try:
+            r = node.set_parameters([
+                Parameter('schedule_windows', Parameter.Type.STRING, '[]')
+            ])
+            assert r[0].successful
+        finally:
+            node.destroy_node()
