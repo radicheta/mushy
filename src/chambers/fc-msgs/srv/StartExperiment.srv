@@ -1,0 +1,8 @@
+string experiment_name
+uint32 duration_minutes
+---
+bool ok
+string message
+string started_at_iso
+string reverts_at_iso
+string prior_mode

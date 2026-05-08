@@ -88,6 +88,26 @@ fc_controller:
     modes.pinning.band_high: 0.99
     modes.pinning.defend_side: low
     modes.pinning.t_target: .nan
+    # Phase 31 D-01: force-* modes are timed override modes.
+    # Wide-open bands (band_low=0.0, band_high=1.0) are intentional —
+    # alerter defended-edge rule (Phase 28 D-21) sees these bands and
+    # cannot fire during a force experiment, satisfying D-32 without
+    # alerter changes. force_duty short-circuits PID + Mode C in
+    # control_loop (31-02): 1.0 = continuous-on, 0.0 = continuous-off.
+    # Entry into either mode is gated by start_experiment service (D-03);
+    # plain set_mode rejects them.
+    modes.force-condensation.target_humidity: 1.0
+    modes.force-condensation.band_low: 0.0
+    modes.force-condensation.band_high: 1.0
+    modes.force-condensation.defend_side: both
+    modes.force-condensation.t_target: .nan
+    modes.force-condensation.force_duty: 1.0
+    modes.force-evaporation.target_humidity: 0.0
+    modes.force-evaporation.band_low: 0.0
+    modes.force-evaporation.band_high: 1.0
+    modes.force-evaporation.defend_side: both
+    modes.force-evaporation.t_target: .nan
+    modes.force-evaporation.force_duty: 0.0
     # Phase 30 SCHED-01/03 — time-of-day mode schedule.
     # JSON-encoded list of {start, end, mode} windows with HH:MM local times.
     # Empty array = scheduling disabled (single-mode fallback per SCHED-03).
