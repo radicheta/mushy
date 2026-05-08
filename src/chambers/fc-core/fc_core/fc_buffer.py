@@ -15,6 +15,7 @@ Module-level helpers (`init_schema`, `_write_row`, `_prune`, `_serve_since`,
 rclpy.Node subclass is constructed only inside main() / when ROS deps are available.
 """
 import json
+import os
 import re
 import sqlite3
 import threading
@@ -35,6 +36,88 @@ DEFAULT_HTTP_BIND = '172.16.10.5'  # fc1 wg0 (D-09); never the wildcard interfac
 DEFAULT_HTTP_PORT = 8765
 DEFAULT_RETENTION_SECONDS = 86400
 DEFAULT_PRUNE_INTERVAL_SECONDS = 60.0
+
+# Phase 28 plan 28-06 — Layer 2 transport (28-01-SPIKE.md §C, D-B1).
+# Bridge POSTs runtime_overrides.yaml here; fc_buffer owns the atomic write.
+# T-28-20 path-traversal mitigation: writes are restricted to OVERLAY_DIR,
+# `.bak`/`.tmp` suffix submissions are rejected (those are bookkeeping suffixes
+# fc_buffer derives itself), and a realpath() check defeats symlink-escape.
+OVERLAY_DIR = '/var/lib/fc-core/'
+OVERLAY_MAX_BYTES = 64 * 1024  # 64 KiB cap on persisted overlay payload
+PERSIST_REQUEST_MAX_BYTES = 128 * 1024  # request body cap (allows headroom)
+
+
+def _is_safe_overlay_path(p):
+    """Return True iff `p` is a writeable overlay path inside OVERLAY_DIR.
+
+    T-28-20: rejects `..` traversal, symlink escape (via realpath),
+    and `.bak`/`.tmp` suffixes (caller must not own those — fc_buffer derives them).
+    """
+    if not isinstance(p, str) or not p:
+        return False
+    if p.endswith('.bak') or p.endswith('.tmp'):
+        return False
+    if not p.startswith(OVERLAY_DIR):
+        return False
+    # realpath collapses `..` and follows symlinks; the resolved path must still
+    # live under OVERLAY_DIR. We resolve the parent directory rather than the
+    # file itself (which may not exist yet on first persist).
+    parent = os.path.dirname(p) or '/'
+    try:
+        real_parent = os.path.realpath(parent)
+    except OSError:
+        return False
+    # Append a trailing slash to OVERLAY_DIR for prefix safety
+    # (`/var/lib/fc-core-evil/` must NOT match `/var/lib/fc-core`).
+    overlay_dir_real = os.path.realpath(OVERLAY_DIR).rstrip('/') + '/'
+    return (real_parent.rstrip('/') + '/').startswith(overlay_dir_real)
+
+
+def _atomic_write_overlay(path, content):
+    """Atomically write `content` to `path` with one-generation .bak retention.
+
+    Sequence (T-28-21): write `path+'.tmp'`, fsync, rename existing path → `.bak`,
+    rename `.tmp` → path. Either the previous version or the new version is on
+    disk at all times. ROS2 launch fails hard on missing/bad yaml — fall-open
+    is impossible by design — and the .bak enables one-step manual revert.
+    """
+    if not _is_safe_overlay_path(path):
+        raise ValueError(f'unsafe overlay path: {path!r}')
+    if not isinstance(content, str):
+        raise TypeError('content must be str')
+    if len(content.encode('utf-8')) > OVERLAY_MAX_BYTES:
+        raise ValueError(f'overlay exceeds {OVERLAY_MAX_BYTES} bytes')
+
+    tmp = path + '.tmp'
+    bak = path + '.bak'
+    # Ensure parent directory exists (writer side owns this — bridge can't mkdir).
+    parent = os.path.dirname(path) or '/'
+    os.makedirs(parent, exist_ok=True)
+
+    # Write tmp + fsync.
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    try:
+        os.write(fd, content.encode('utf-8'))
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+    # Rotate prior version → .bak (if it exists).
+    if os.path.exists(path):
+        os.replace(path, bak)
+    # Atomic rename tmp → path.
+    os.replace(tmp, path)
+
+
+def _read_overlay(path):
+    """Return overlay file contents or None if missing. Path is allowlist-checked."""
+    if not _is_safe_overlay_path(path):
+        raise ValueError(f'unsafe overlay path: {path!r}')
+    try:
+        with open(path, encoding='utf-8') as fh:
+            return fh.read()
+    except FileNotFoundError:
+        return None
 
 
 # --- Pure helpers (rclpy-free, testable in isolation) ------------------------
@@ -157,25 +240,103 @@ def _make_http_handler(db_path, logger=None):
             if logger is not None:
                 logger.debug('http: ' + (fmt % args))
 
+        def _send_json(self, code, payload):
+            body = json.dumps(payload).encode('utf-8')
+            self.send_response(code)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         def do_GET(self):  # noqa: N802 (BaseHTTPRequestHandler API)
             parsed = urlparse(self.path)
-            if parsed.path != '/telemetry/since':
+            if parsed.path == '/telemetry/since':
+                qs = parse_qs(parsed.query)
+                ts_raw = (qs.get('ts') or ['0'])[0]
+                limit_raw = (qs.get('limit') or ['10000'])[0]
+                try:
+                    rows = _serve_since(db_path, ts_raw, limit_raw)
+                except ValueError as e:
+                    self.send_error(400, f'Bad Request: {e}')
+                    return
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/x-ndjson')
+                self.end_headers()
+                for row in rows:
+                    line = json.dumps(row, separators=(',', ':')) + '\n'
+                    self.wfile.write(line.encode('utf-8'))
+                return
+
+            if parsed.path == '/control/overlay':
+                # Phase 28 plan 28-06 (D-B1): bridge reads existing overlay.
+                qs = parse_qs(parsed.query)
+                p = (qs.get('path') or [''])[0]
+                if not _is_safe_overlay_path(p):
+                    self._send_json(400, {'error': f'unsafe overlay path: {p!r}'})
+                    return
+                try:
+                    content = _read_overlay(p)
+                except ValueError as e:
+                    self._send_json(400, {'error': str(e)})
+                    return
+                if content is None:
+                    self._send_json(404, {'error': 'overlay not found'})
+                    return
+                body = content.encode('utf-8')
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/yaml; charset=utf-8')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            self.send_error(404, 'Not Found')
+
+        def do_POST(self):  # noqa: N802 (BaseHTTPRequestHandler API)
+            parsed = urlparse(self.path)
+            if parsed.path != '/control/persist':
                 self.send_error(404, 'Not Found')
                 return
-            qs = parse_qs(parsed.query)
-            ts_raw = (qs.get('ts') or ['0'])[0]
-            limit_raw = (qs.get('limit') or ['10000'])[0]
+
+            # Phase 28 plan 28-06 (D-B1): bridge POSTs rendered overlay yaml here;
+            # fc_buffer owns the atomic write (T-28-21) and the path allowlist (T-28-20).
+            length_raw = self.headers.get('Content-Length')
             try:
-                rows = _serve_since(db_path, ts_raw, limit_raw)
-            except ValueError as e:
-                self.send_error(400, f'Bad Request: {e}')
+                length = int(length_raw) if length_raw else 0
+            except ValueError:
+                self._send_json(400, {'error': 'invalid Content-Length'})
                 return
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/x-ndjson')
-            self.end_headers()
-            for row in rows:
-                line = json.dumps(row, separators=(',', ':')) + '\n'
-                self.wfile.write(line.encode('utf-8'))
+            if length <= 0:
+                self._send_json(400, {'error': 'empty body'})
+                return
+            if length > PERSIST_REQUEST_MAX_BYTES:
+                self._send_json(413, {'error': 'request too large'})
+                return
+
+            raw = self.rfile.read(length)
+            try:
+                payload = json.loads(raw.decode('utf-8'))
+            except (ValueError, UnicodeDecodeError) as e:
+                self._send_json(400, {'error': f'invalid json: {e}'})
+                return
+            if not isinstance(payload, dict):
+                self._send_json(400, {'error': 'body must be a json object'})
+                return
+
+            p = payload.get('path')
+            content = payload.get('content')
+            if not isinstance(content, str):
+                self._send_json(400, {'error': 'content must be string'})
+                return
+            try:
+                _atomic_write_overlay(p, content)
+            except ValueError as e:
+                self._send_json(400, {'error': str(e)})
+                return
+            except OSError as e:
+                self._send_json(500, {'error': f'write failed: {e}'})
+                return
+            self._send_json(200, {'ok': True, 'path': p, 'bytes': len(content.encode('utf-8'))})
 
     return TelemetryHandler
 

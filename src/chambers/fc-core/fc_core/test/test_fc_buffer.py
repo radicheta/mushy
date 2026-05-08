@@ -209,3 +209,138 @@ def test_extract_float32():
     assert isinstance(ts_ns, int)
     assert value == pytest.approx(0.42)
     assert extra is None
+
+
+# ---------------------------------------------------------------------------
+# Phase 28 plan 28-06 — Layer 2 overlay write (POST /control/persist on fc_buffer).
+# Tests target the pure helpers (_is_safe_overlay_path, _atomic_write_overlay,
+# _read_overlay). The HTTP handler thin-wraps these; integration is exercised
+# at deploy time on fc1 (plan 07).
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def overlay_dir(tmp_path, monkeypatch):
+    """Redirect OVERLAY_DIR to a tmp path so realpath-based safety checks pass."""
+    d = tmp_path / 'fc-core'
+    d.mkdir()
+    # Use a trailing slash to match the constant's contract.
+    monkeypatch.setattr(fc_buffer, 'OVERLAY_DIR', str(d) + '/')
+    return d
+
+
+def test_is_safe_overlay_path_accepts_canonical(overlay_dir):
+    p = str(overlay_dir / 'runtime_overrides.yaml')
+    assert fc_buffer._is_safe_overlay_path(p) is True
+
+
+def test_is_safe_overlay_path_rejects_traversal(overlay_dir):
+    # Construct a path that LITERALLY starts with OVERLAY_DIR but escapes via `..`.
+    p = str(overlay_dir) + '/../etc/passwd'
+    assert fc_buffer._is_safe_overlay_path(p) is False
+
+
+def test_is_safe_overlay_path_rejects_outside_dir(overlay_dir):
+    assert fc_buffer._is_safe_overlay_path('/etc/passwd') is False
+    assert fc_buffer._is_safe_overlay_path('/tmp/x.yaml') is False
+
+
+def test_is_safe_overlay_path_rejects_bak_tmp_suffix(overlay_dir):
+    # fc_buffer derives `.bak`/`.tmp` itself; callers must not supply them
+    # (would let an attacker overwrite the rotated previous version).
+    assert fc_buffer._is_safe_overlay_path(str(overlay_dir / 'runtime_overrides.yaml.bak')) is False
+    assert fc_buffer._is_safe_overlay_path(str(overlay_dir / 'runtime_overrides.yaml.tmp')) is False
+
+
+def test_is_safe_overlay_path_rejects_symlink_escape(tmp_path, monkeypatch):
+    # /var/lib/fc-core/ is a symlink to /etc → realpath() must catch the escape.
+    overlay = tmp_path / 'fc-core'
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    overlay.symlink_to(outside)
+    monkeypatch.setattr(fc_buffer, 'OVERLAY_DIR', str(tmp_path / 'real-fc-core') + '/')
+    (tmp_path / 'real-fc-core').mkdir()
+    p = str(overlay / 'runtime_overrides.yaml')
+    # Path is under a different directory after symlink resolution → reject.
+    assert fc_buffer._is_safe_overlay_path(p) is False
+
+
+def test_is_safe_overlay_path_rejects_prefix_lookalike(tmp_path, monkeypatch):
+    # /var/lib/fc-core-evil/ must NOT match /var/lib/fc-core/ via plain startswith.
+    real = tmp_path / 'fc-core'
+    real.mkdir()
+    evil = tmp_path / 'fc-core-evil'
+    evil.mkdir()
+    monkeypatch.setattr(fc_buffer, 'OVERLAY_DIR', str(real) + '/')
+    p = str(evil / 'runtime_overrides.yaml')
+    assert fc_buffer._is_safe_overlay_path(p) is False
+
+
+def test_atomic_write_creates_file(overlay_dir):
+    p = str(overlay_dir / 'runtime_overrides.yaml')
+    fc_buffer._atomic_write_overlay(p, 'pid_kp: 0.4\n')
+    with open(p) as fh:
+        assert fh.read() == 'pid_kp: 0.4\n'
+    # No .bak yet on first write (no prior version to rotate).
+    assert not (overlay_dir / 'runtime_overrides.yaml.bak').exists()
+    # .tmp must be cleaned up by rename.
+    assert not (overlay_dir / 'runtime_overrides.yaml.tmp').exists()
+
+
+def test_atomic_write_rotates_prior_to_bak(overlay_dir):
+    p = str(overlay_dir / 'runtime_overrides.yaml')
+    fc_buffer._atomic_write_overlay(p, 'pid_kp: 0.4\n')
+    fc_buffer._atomic_write_overlay(p, 'pid_kp: 0.35\n')
+    with open(p) as fh:
+        assert fh.read() == 'pid_kp: 0.35\n'
+    # Previous version preserved as .bak (T-28-21 one-step revert).
+    with open(p + '.bak') as fh:
+        assert fh.read() == 'pid_kp: 0.4\n'
+    # .tmp gone.
+    assert not (overlay_dir / 'runtime_overrides.yaml.tmp').exists()
+
+
+def test_atomic_write_rejects_unsafe_path(overlay_dir):
+    with pytest.raises(ValueError, match='unsafe overlay path'):
+        fc_buffer._atomic_write_overlay('/etc/passwd', 'x')
+
+
+def test_atomic_write_rejects_oversized(overlay_dir):
+    p = str(overlay_dir / 'runtime_overrides.yaml')
+    huge = 'x' * (fc_buffer.OVERLAY_MAX_BYTES + 1)
+    with pytest.raises(ValueError, match='exceeds'):
+        fc_buffer._atomic_write_overlay(p, huge)
+
+
+def test_atomic_write_rejects_non_string_content(overlay_dir):
+    p = str(overlay_dir / 'runtime_overrides.yaml')
+    with pytest.raises(TypeError):
+        fc_buffer._atomic_write_overlay(p, b'binary')
+
+
+def test_read_overlay_missing_returns_none(overlay_dir):
+    p = str(overlay_dir / 'runtime_overrides.yaml')
+    assert fc_buffer._read_overlay(p) is None
+
+
+def test_read_overlay_returns_content(overlay_dir):
+    p = str(overlay_dir / 'runtime_overrides.yaml')
+    fc_buffer._atomic_write_overlay(p, 'pid_kp: 0.4\n')
+    assert fc_buffer._read_overlay(p) == 'pid_kp: 0.4\n'
+
+
+def test_read_overlay_rejects_unsafe_path(overlay_dir):
+    with pytest.raises(ValueError):
+        fc_buffer._read_overlay('/etc/passwd')
+
+
+def test_atomic_write_idempotent_byte_equal(overlay_dir):
+    """Same payload twice → same final bytes (allows safe re-POST)."""
+    p = str(overlay_dir / 'runtime_overrides.yaml')
+    fc_buffer._atomic_write_overlay(p, 'pid_kp: 0.4\n')
+    fc_buffer._atomic_write_overlay(p, 'pid_kp: 0.4\n')
+    with open(p) as fh:
+        assert fh.read() == 'pid_kp: 0.4\n'
+    # Second write rotated identical content into .bak — still byte-equal.
+    with open(p + '.bak') as fh:
+        assert fh.read() == 'pid_kp: 0.4\n'
