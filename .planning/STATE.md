@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 28-04-PLAN.md
-last_updated: "2026-05-08T00:06:54.848Z"
+stopped_at: Completed 28-05-PLAN.md
+last_updated: "2026-05-08T00:13:24.971Z"
 last_activity: 2026-05-08
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 17
-  completed_plans: 14
-  percent: 82
+  completed_plans: 15
+  percent: 88
 ---
 
 # Project State
@@ -34,11 +34,11 @@ Milestone: v1.5.0.1 → v1.5 — milestone v1.5.0.1 resilience-hotfix work compl
 - Phase 27.3 — Sampling-rate reduction: MOOTED by wg0 transport switch
 - Phase 27.4 — Netplan reconciliation: MOOTED in planned form
 
-Plan: 5 of 7
+Plan: 6 of 7
 Status: Ready to execute
 Last activity: 2026-05-08
 
-Progress: [████████░░] 82%
+Progress: [█████████░] 88%
 
 **Carried from v1.3 (not blocking v1.4):**
 
@@ -114,6 +114,8 @@ Progress: [████████░░] 82%
 - [Phase 28-04] current_mode topic + set_mode service + on_set_parameters_callback shipped — defense-in-depth PID range bounds at the rcl boundary mirror the bridge allowlist Phase 28-05 will enforce
 - [Phase 28-04] Asymmetric republish: validator queues next-tick drain (rclpy applies param after callback returns); service handler publishes synchronously (param applied before set_parameters returns)
 - [Phase 28-04] Rule 1 fix: get_parameters_by_prefix('modes.') returns empty in rclpy Jazzy with trailing dot; use 'modes' (no trailing dot)
+- [Phase 28-05] Bridge POST /control/param mounted with lazy rosNode wrapper — pattern template for any future bridge ROS-client route; route registered statically, handler reads module-level rosNode at request time, 503 pre-init
+- [Phase 28-05] Bridge allowlist range bounds duplicate Phase 28-04 controller validator (T-28-09 defense in depth) — pid_kp[0,5], pid_ki[0,1], pid_kd[0,20]
 
 ### Pending Todos
 
@@ -157,11 +159,12 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 | Phase 28 P02 | 2m31s | 2 tasks | 2 files |
 | Phase 28 P03 | 17min | 2 tasks | 3 files |
 | Phase 28 P04 | 12min | 3 tasks | 2 files |
+| Phase 28 P05 | 3min | 2 tasks | 3 files |
 
 ## Session Continuity
 
-Last session: 2026-05-08T00:06:54.842Z
-Stopped at: Completed 28-04-PLAN.md
+Last session: 2026-05-08T00:13:24.964Z
+Stopped at: Completed 28-05-PLAN.md
 Next up: pick from { (a) close 27.2 SYS-01 + SYS-04, (b) cyclonedds-tailscale.xml → cyclonedds.xml rename, (c) PID Kp 0.5 → 0.35 retune per 2026-05-03 calibration notes, (d) resume v1.5 main with /gsd:discuss-phase 28 }
 
 ---

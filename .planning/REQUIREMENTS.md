@@ -55,7 +55,8 @@ fc1 is on home-LAN wifi with kernel-WG, not at the farm on 4G. The drifted netpl
 ** — Farmer can switch active mode via ROS service call (and farmer-app button when surfaced); switch takes effect on next control tick.
 - [x] **MODE-04
 ** — Controller publishes `current_mode` topic so downstream consumers (alerter, dashboards, scheduler) read live mode without restart.
-- [ ] **MODE-05** — Mode definitions are runtime-tunable without a deploy cycle (SEED-001 pain): farmer can edit a mode's target/band and have it picked up live on the next switch (or on explicit reload).
+- [x] **MODE-05
+** — Mode definitions are runtime-tunable without a deploy cycle (SEED-001 pain): farmer can edit a mode's target/band and have it picked up live on the next switch (or on explicit reload).
 
 ### ALRT — Alerter Mode Awareness + Cooldown Tuning
 
