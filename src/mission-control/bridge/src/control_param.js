@@ -72,6 +72,17 @@ function entryDoubleRange(label, lo, hi) {
             : { ok: false, reason: `${label} out of [${lo},${hi}]` },
     };
 }
+// Phase 29 — integer-typed range validator. Mirrors entryDoubleRange but rejects
+// fractional doubles (T-29-01 defense-in-depth: bridge `Math.trunc` would silently
+// truncate at line 113, then disagree with the rclpy controller validator).
+function entryIntRange(label, lo, hi) {
+    return {
+        type: T_INTEGER,
+        validate: (v) => (typeof v === 'number' && Number.isInteger(v) && v >= lo && v <= hi)
+            ? { ok: true }
+            : { ok: false, reason: `${label} out of [${lo},${hi}] (integer)` },
+    };
+}
 
 const ALLOWLIST = (() => {
     const a = Object.create(null);
@@ -95,6 +106,21 @@ const ALLOWLIST = (() => {
     a['pid_kp'] = entryDoubleRange('pid_kp', 0, 5);
     a['pid_ki'] = entryDoubleRange('pid_ki', 0, 1);
     a['pid_kd'] = entryDoubleRange('pid_kd', 0, 20);
+
+    // Phase 29 Tier B — per-mode alerter overrides (D-05/D-06).
+    // Range bounds mirror fc_controller _validate_params extension (29-03 plan).
+    for (const m of DECLARED_MODES) {
+        a[`modes.${m}.alerter.cooldown_min`]          = entryIntRange('cooldown_min', 1, 240);
+        a[`modes.${m}.alerter.critical_cooldown_min`] = entryIntRange('critical_cooldown_min', 1, 240);
+        a[`modes.${m}.alerter.humidifier_stuck_min`]  = entryIntRange('humidifier_stuck_min', 1, 240);
+        a[`modes.${m}.alerter.oob_n`]                 = entryIntRange('oob_n', 1, 20);
+        a[`modes.${m}.alerter.oob_window_min`]        = entryIntRange('oob_window_min', 1, 60);
+    }
+    // Phase 29 Tier C — global alerter knobs (Tier C per D-05; per-mode-independent).
+    a['pi_offline_min']     = entryIntRange('pi_offline_min', 1, 60);
+    a['sensor_offline_min'] = entryIntRange('sensor_offline_min', 1, 60);
+    a['heartbeat_hour']     = entryIntRange('heartbeat_hour', 0, 23);
+    a['max_sends_per_hour'] = entryIntRange('max_sends_per_hour', 1, 200);
 
     return a;
 })();
