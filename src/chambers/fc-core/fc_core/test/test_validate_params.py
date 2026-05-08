@@ -393,3 +393,112 @@ class TestScheduleWindowsParam:
             assert r[0].successful
         finally:
             node.destroy_node()
+
+
+# =====================================================================
+# Phase 31 — D-03: force-* modes are service-only on direct SetParameters
+# =====================================================================
+
+def _force_overrides():
+    """Overrides that declare all four modes (fruiting + pinning + force-*)."""
+    base = _v0_overrides()
+    base += [
+        Parameter('modes.fruiting.force_duty', Parameter.Type.DOUBLE, float('nan')),
+        Parameter('modes.pinning.force_duty', Parameter.Type.DOUBLE, float('nan')),
+        Parameter('modes.force-condensation.target_humidity', Parameter.Type.DOUBLE, 1.0),
+        Parameter('modes.force-condensation.band_low', Parameter.Type.DOUBLE, 0.0),
+        Parameter('modes.force-condensation.band_high', Parameter.Type.DOUBLE, 1.0),
+        Parameter('modes.force-condensation.defend_side', Parameter.Type.STRING, 'both'),
+        Parameter('modes.force-condensation.t_target', Parameter.Type.DOUBLE, float('nan')),
+        Parameter('modes.force-condensation.force_duty', Parameter.Type.DOUBLE, 1.0),
+        Parameter('modes.force-evaporation.target_humidity', Parameter.Type.DOUBLE, 0.0),
+        Parameter('modes.force-evaporation.band_low', Parameter.Type.DOUBLE, 0.0),
+        Parameter('modes.force-evaporation.band_high', Parameter.Type.DOUBLE, 1.0),
+        Parameter('modes.force-evaporation.defend_side', Parameter.Type.STRING, 'both'),
+        Parameter('modes.force-evaporation.t_target', Parameter.Type.DOUBLE, float('nan')),
+        Parameter('modes.force-evaporation.force_duty', Parameter.Type.DOUBLE, 0.0),
+    ]
+    return base
+
+
+def _make_force_node():
+    return FruitingChamberController(parameter_overrides=_force_overrides())
+
+
+class TestForceModeServiceOnly:
+    """Phase 31 D-03 — direct SetParameters('active_mode','force-*') is rejected
+    unless _experiment_set_in_progress=True. Plain /set_mode service rejects
+    force-* names regardless of the flag."""
+
+    def test_set_mode_force_condensation_rejected_outside_service(self, ros_context):
+        node = _make_force_node()
+        try:
+            assert node._experiment_set_in_progress is False
+            r = node.set_parameters([
+                Parameter('active_mode', Parameter.Type.STRING, 'force-condensation')
+            ])
+            assert r[0].successful is False
+            assert 'service_only' in r[0].reason or 'start_experiment' in r[0].reason
+        finally:
+            node.destroy_node()
+
+    def test_set_mode_force_evaporation_rejected_outside_service(self, ros_context):
+        node = _make_force_node()
+        try:
+            r = node.set_parameters([
+                Parameter('active_mode', Parameter.Type.STRING, 'force-evaporation')
+            ])
+            assert r[0].successful is False
+            assert 'service_only' in r[0].reason or 'start_experiment' in r[0].reason
+        finally:
+            node.destroy_node()
+
+    def test_set_mode_fruiting_still_accepted(self, ros_context):
+        node = _make_force_node()
+        try:
+            r = node.set_parameters([
+                Parameter('active_mode', Parameter.Type.STRING, 'fruiting')
+            ])
+            assert r[0].successful
+        finally:
+            node.destroy_node()
+
+    def test_set_mode_pinning_still_accepted(self, ros_context):
+        node = _make_force_node()
+        try:
+            r = node.set_parameters([
+                Parameter('active_mode', Parameter.Type.STRING, 'pinning')
+            ])
+            assert r[0].successful
+        finally:
+            node.destroy_node()
+
+    def test_set_mode_force_accepted_when_flag_set(self, ros_context):
+        """Proves the flag is the gate (legitimate setters are start/cancel/TTL/boot)."""
+        node = _make_force_node()
+        try:
+            node._experiment_set_in_progress = True
+            try:
+                r = node.set_parameters([
+                    Parameter('active_mode', Parameter.Type.STRING, 'force-condensation')
+                ])
+            finally:
+                node._experiment_set_in_progress = False
+            assert r[0].successful
+        finally:
+            node.destroy_node()
+
+    def test_handle_set_mode_service_rejects_force_modes(self, ros_context):
+        """The public /set_mode service handler rejects force-* names WITHOUT
+        toggling the flag."""
+        from fc_msgs.srv import SetMode
+        node = _make_force_node()
+        try:
+            req = SetMode.Request()
+            req.name = 'force-condensation'
+            resp = SetMode.Response()
+            resp = node._handle_set_mode(req, resp)
+            assert resp.success is False
+            assert 'service_only' in resp.reason or 'start_experiment' in resp.reason
+        finally:
+            node.destroy_node()

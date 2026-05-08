@@ -899,3 +899,248 @@ def test_scheduler_manual_override_resumes_at_boundary(ros_context):
         assert node.get_parameter('active_mode').value == 'fruiting'
     finally:
         node.destroy_node()
+
+
+# =====================================================================
+# Phase 31 — force-mode resolution + control_loop short-circuit
+# =====================================================================
+
+def _force_mode_overrides(active='fruiting'):
+    """v0 fruiting + pinning + force-condensation + force-evaporation overrides."""
+    return [
+        Parameter('actuator_simulation_mode', Parameter.Type.BOOL, True),
+        Parameter('active_mode', Parameter.Type.STRING, active),
+        Parameter('modes.fruiting.target_humidity', Parameter.Type.DOUBLE, 0.96),
+        Parameter('modes.fruiting.band_low', Parameter.Type.DOUBLE, 0.945),
+        Parameter('modes.fruiting.band_high', Parameter.Type.DOUBLE, 0.975),
+        Parameter('modes.fruiting.defend_side', Parameter.Type.STRING, 'both'),
+        Parameter('modes.fruiting.t_target', Parameter.Type.DOUBLE, float('nan')),
+        Parameter('modes.fruiting.force_duty', Parameter.Type.DOUBLE, float('nan')),
+        Parameter('modes.pinning.target_humidity', Parameter.Type.DOUBLE, 0.85),
+        Parameter('modes.pinning.band_low', Parameter.Type.DOUBLE, 0.90),
+        Parameter('modes.pinning.band_high', Parameter.Type.DOUBLE, 0.99),
+        Parameter('modes.pinning.defend_side', Parameter.Type.STRING, 'low'),
+        Parameter('modes.pinning.t_target', Parameter.Type.DOUBLE, float('nan')),
+        Parameter('modes.pinning.force_duty', Parameter.Type.DOUBLE, float('nan')),
+        Parameter('modes.force-condensation.target_humidity', Parameter.Type.DOUBLE, 1.0),
+        Parameter('modes.force-condensation.band_low', Parameter.Type.DOUBLE, 0.0),
+        Parameter('modes.force-condensation.band_high', Parameter.Type.DOUBLE, 1.0),
+        Parameter('modes.force-condensation.defend_side', Parameter.Type.STRING, 'both'),
+        Parameter('modes.force-condensation.t_target', Parameter.Type.DOUBLE, float('nan')),
+        Parameter('modes.force-condensation.force_duty', Parameter.Type.DOUBLE, 1.0),
+        Parameter('modes.force-evaporation.target_humidity', Parameter.Type.DOUBLE, 0.0),
+        Parameter('modes.force-evaporation.band_low', Parameter.Type.DOUBLE, 0.0),
+        Parameter('modes.force-evaporation.band_high', Parameter.Type.DOUBLE, 1.0),
+        Parameter('modes.force-evaporation.defend_side', Parameter.Type.STRING, 'both'),
+        Parameter('modes.force-evaporation.t_target', Parameter.Type.DOUBLE, float('nan')),
+        Parameter('modes.force-evaporation.force_duty', Parameter.Type.DOUBLE, 0.0),
+    ]
+
+
+def _make_force_node(active='fruiting'):
+    """Build a controller with all four modes declared. For active='force-*'
+    callers must pre-set node._experiment_set_in_progress=True via the
+    parameter_overrides path (rclpy applies overrides before the validator
+    callback fires on subsequent SetParameters calls; parameter_overrides at
+    init bypass the validator entirely, so we can boot directly into force-*
+    for resolution tests — but boot-recovery will reset to fruiting unless
+    we manually re-enter the force mode after init via the gate flag).
+    """
+    return FruitingChamberController(parameter_overrides=_force_mode_overrides(active))
+
+
+def test_resolve_force_condensation_returns_force_duty_one(ros_context):
+    """Phase 31 D-02 — _resolve_active_mode populates force_duty=1.0 for
+    force-condensation."""
+    node = _make_force_node(active='fruiting')  # boot-recovery safe baseline
+    try:
+        # Manually re-enter force-condensation via the gate flag (D-03).
+        node._experiment_set_in_progress = True
+        try:
+            node.set_parameters([
+                Parameter('active_mode', Parameter.Type.STRING, 'force-condensation')
+            ])
+        finally:
+            node._experiment_set_in_progress = False
+        mv = node._resolve_active_mode()
+        assert mv.name == 'force-condensation'
+        assert mv.force_duty == pytest.approx(1.0)
+    finally:
+        node.destroy_node()
+
+
+def test_resolve_force_evaporation_returns_force_duty_zero(ros_context):
+    node = _make_force_node(active='fruiting')
+    try:
+        node._experiment_set_in_progress = True
+        try:
+            node.set_parameters([
+                Parameter('active_mode', Parameter.Type.STRING, 'force-evaporation')
+            ])
+        finally:
+            node._experiment_set_in_progress = False
+        mv = node._resolve_active_mode()
+        assert mv.name == 'force-evaporation'
+        assert mv.force_duty == pytest.approx(0.0)
+    finally:
+        node.destroy_node()
+
+
+def test_resolve_fruiting_force_duty_is_nan(ros_context):
+    """Non-force modes report force_duty=NaN (sentinel = PID-driven)."""
+    node = _make_force_node(active='fruiting')
+    try:
+        mv = node._resolve_active_mode()
+        assert mv.name == 'fruiting'
+        assert math.isnan(mv.force_duty)
+    finally:
+        node.destroy_node()
+
+
+def test_resolve_pinning_force_duty_is_nan(ros_context):
+    node = _make_force_node(active='pinning')
+    try:
+        mv = node._resolve_active_mode()
+        assert mv.name == 'pinning'
+        assert math.isnan(mv.force_duty)
+    finally:
+        node.destroy_node()
+
+
+def test_declared_mode_names_includes_force_modes(ros_context):
+    node = _make_force_node()
+    try:
+        names = node._declared_mode_names()
+        assert {'fruiting', 'pinning',
+                'force-condensation', 'force-evaporation'}.issubset(names)
+    finally:
+        node.destroy_node()
+
+
+def _arm_for_control_loop(node, active_mode):
+    """Pre-arm a node so control_loop reaches the mode-resolved branch:
+    fill humidity buffer, set timestamps fresh, exit grace, set PID engaged."""
+    # Switch active mode (force-* requires the gate flag).
+    if active_mode != node.get_parameter('active_mode').value:
+        node._experiment_set_in_progress = True
+        try:
+            node.set_parameters([
+                Parameter('active_mode', Parameter.Type.STRING, active_mode)
+            ])
+        finally:
+            node._experiment_set_in_progress = False
+    # Fill humidity buffer (maxlen=5) and set fresh timestamps.
+    for v in (0.50, 0.50, 0.50, 0.50, 0.50):
+        msg = RelativeHumidity()
+        msg.relative_humidity = v
+        node.humidity_callback(msg)
+    node.current_temp = 22.0
+    # Exit warmup state.
+    node._warming_up = False
+    node._warmup_signal_published = True
+    # Push boot_time back so grace is satisfied.
+    node._boot_time = node.get_clock().now() - rclpy.time.Duration(seconds=120)
+
+
+def _capture_published_duty(node):
+    """Patch _publish_duty to capture the last duty value emitted."""
+    captured = {}
+    orig = node._publish_duty
+    def wrap(d):
+        captured['duty'] = d
+        return orig(d)
+    node._publish_duty = wrap
+    return captured
+
+
+def test_control_loop_force_condensation_publishes_duty_one(ros_context):
+    """Phase 31 D-02 — force_duty=1.0 short-circuits PID and publishes 1.0."""
+    node = _make_force_node()
+    try:
+        _arm_for_control_loop(node, 'force-condensation')
+        captured = _capture_published_duty(node)
+        node.control_loop()
+        assert captured.get('duty') == pytest.approx(1.0)
+    finally:
+        node.destroy_node()
+
+
+def test_control_loop_force_evaporation_publishes_duty_zero(ros_context):
+    node = _make_force_node()
+    try:
+        _arm_for_control_loop(node, 'force-evaporation')
+        captured = _capture_published_duty(node)
+        node.control_loop()
+        assert captured.get('duty') == pytest.approx(0.0)
+    finally:
+        node.destroy_node()
+
+
+def test_control_loop_force_disengages_pid(ros_context):
+    """Phase 31 D-02 — PID is parked (auto_mode=False) during force experiment."""
+    node = _make_force_node()
+    try:
+        _arm_for_control_loop(node, 'force-condensation')
+        node._pid.set_auto_mode(True, last_output=0.5)
+        node._pid_engaged = True
+        node.control_loop()
+        assert node._pid.auto_mode is False
+        assert node._pid_engaged is False
+    finally:
+        node.destroy_node()
+
+
+def test_control_loop_force_skips_ramp(ros_context):
+    """Force mode does NOT call _ramp_setpoint_to_band; effective_setpoint
+    stays where it was."""
+    node = _make_force_node()
+    try:
+        _arm_for_control_loop(node, 'force-evaporation')
+        node._effective_setpoint = 0.96
+        node.control_loop()
+        assert node._effective_setpoint == pytest.approx(0.96)
+    finally:
+        node.destroy_node()
+
+
+def test_control_loop_force_publishes_telemetry_consistent_with_duty(ros_context):
+    """humidity_target + pid_output both reflect the literal force_duty
+    (chart fidelity — operator commanded value, not stale PID state)."""
+    node = _make_force_node()
+    try:
+        _arm_for_control_loop(node, 'force-condensation')
+        ht_captured = []
+        po_captured = []
+        orig_ht = node._humidity_target_pub.publish
+        orig_po = node._pid_output_pub.publish
+        node._humidity_target_pub.publish = lambda m: (ht_captured.append(m.data), orig_ht(m))[1]
+        node._pid_output_pub.publish = lambda m: (po_captured.append(m.data), orig_po(m))[1]
+        node.control_loop()
+        assert ht_captured and ht_captured[-1] == pytest.approx(1.0)
+        assert po_captured and po_captured[-1] == pytest.approx(1.0)
+    finally:
+        node.destroy_node()
+
+
+def test_control_loop_normal_mode_unchanged_with_nan_force_duty(ros_context):
+    """Regression guard — fruiting (force_duty=NaN) takes the normal PID path,
+    duty is NOT pinned to 1.0 or 0.0 by the short-circuit."""
+    node = _make_force_node()
+    try:
+        _arm_for_control_loop(node, 'fruiting')
+        # Inject humidity AT the band edge (zero error in band).
+        for _ in range(5):
+            msg = RelativeHumidity()
+            msg.relative_humidity = 0.96
+            node.humidity_callback(msg)
+        captured = _capture_published_duty(node)
+        node.control_loop()
+        # Duty should be a number; the short-circuit path would have pinned to
+        # NaN-not-finite. Asserting "not necessarily 1.0/0.0" is the best we
+        # can do without modeling PID exactly — but we can assert the PID is
+        # engaged (proves the short-circuit did NOT fire).
+        assert node._pid_engaged is True
+        assert 'duty' in captured
+        assert 0.0 <= captured['duty'] <= 1.0
+    finally:
+        node.destroy_node()
