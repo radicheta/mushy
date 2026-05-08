@@ -57,11 +57,16 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
     logger.warn(`[boot] signal_capture initDb failed (capture pipeline will degrade): ${e.message}`);
   }
 
+  // Phase 29 plan 29-04 BLOCKER 3 / ALRT-09 — Tier C runtime overrides for
+  // signal egress cap. signalClient reads getMaxSendsPerHour() on each send;
+  // accessor returns the effective.maxSendsPerHour from current state if
+  // alerter_globals has arrived, else falls back to bootstrap config.maxSendsPerHour.
   const signalClient = createSignalClient({
     apiUrl: config.signalApiUrl,
     sender: config.signalSender,
     recipient: config.signalRecipient,
     maxSendsPerHour: config.maxSendsPerHour,
+    getMaxSendsPerHour: () => stateLib.resolveEffectiveConfig(state, config, clock()).maxSendsPerHour,
     logger,
   });
 
@@ -134,6 +139,13 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
         // Phase 26 Plan 03: slot-2 WS arrival = SCD41 freshness signal
         // (Option C hybrid). SHT30 freshness lives in sensor_health.values.
         applyEvent({ type: 'sensor_freshness', sensor: 'scd41', lastSeenMs: clock() });
+      } else if (msg.current_mode) {
+        // Phase 29 plan 29-04: bridge envelopes for mode + Tier B/C overrides.
+        applyEvent({ type: 'mode_update', mode: msg.current_mode });
+      } else if (msg.alerter_overrides) {
+        applyEvent({ type: 'overrides_update', overrides: msg.alerter_overrides });
+      } else if (msg.alerter_globals) {
+        applyEvent({ type: 'globals_update', globals: msg.alerter_globals });
       }
     },
     onLiveness({ wsConnected, rosConnected, humidifierLastMsgTs }) {
@@ -144,6 +156,10 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
 
   const heartbeat = createHeartbeatScheduler({
     config,
+    // Phase 29 plan 29-04 BLOCKER 3 / ALRT-09 — Tier C runtime override for
+    // heartbeat hour. Scheduler reads getEffective().heartbeatHour on each tick;
+    // falls back to bootstrap config.heartbeatHour when accessor undefined.
+    getEffective: () => stateLib.resolveEffectiveConfig(state, config, clock()),
     getSummary() {
       // Consume Plan 02's declared state surface: currentTemp, currentCo2, humidifierCyclesLast24h
       return {
