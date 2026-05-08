@@ -12,6 +12,7 @@ roadmap; promote via `/gsd:plant-seed` workflow when a trigger fires.
 | SEED-002 | FarmOS event writer from captured Signal content   | After Phase 25 ships AND ≥2 weeks of captured farmer content exist       | Medium-to-Large |
 | SEED-003 | Farmer app "Mission Control" section (→ OpenMCT)   | Zoy starts farmer-app sectioning work OR farmer asks for engineer view   | Small         |
 | SEED-004 | Pinning is a cycle, not a setpoint — mode schema needs bands + VPD | Phase 28 discuss-phase entry (mode primitive); also relevant to 30/31/999.33/999.34 | Medium |
+| SEED-005 | Chamber water-mass observer + condensation camera macro | VPD scoping decision OR Phase 31 surfaces sensor-saturation pain | Medium |
 
 ## Files
 
@@ -19,6 +20,7 @@ roadmap; promote via `/gsd:plant-seed` workflow when a trigger fires.
 - [SEED-002-farmos-event-writer.md](SEED-002-farmos-event-writer.md)
 - [SEED-003-farmer-app-mission-control-section.md](SEED-003-farmer-app-mission-control-section.md)
 - [SEED-004-pinning-cycle-and-vpd-mode-schema.md](SEED-004-pinning-cycle-and-vpd-mode-schema.md)
+- [SEED-005-chamber-water-mass-observer.md](SEED-005-chamber-water-mass-observer.md)
 
 ## Composition notes
 
