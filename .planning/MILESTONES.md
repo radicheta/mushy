@@ -1,5 +1,40 @@
 # Milestones
 
+## v1.5.0.1 Resilience Hotfix (Shipped: 2026-05-07 PARTIAL)
+
+**Phases shipped:** 2 (27.1, 27.2) + 27.3 + 27.4 MOOTED by transport switch
+**Plans:** 5 total (27.1=4, 27.2=1)
+**Timeline:** 2026-05-01 → 2026-05-07 (~6 days)
+**Tag:** `v1.5.0.1`
+**Pattern:** hotfix milestone (cf. v1.2.1) — single-incident-driven, narrow scope
+
+### Delivered
+
+Hotfix triggered by the 2026-05-02 blackout + DERP-relay incident. Mid-flight architectural detour: fc1 microSD failed during diagnosis; fc1 was rebuilt on home-LAN wifi with a kernel-WireGuard tunnel through pfSense (172.16.10.0/24); DDS switched from `tailscale0` to `wg0`. Transport switch absorbed SAMP entirely (CPU saturation gone, fc1 load avg 5+ → 0.41) and parked NET (netplan reconciliation was a farm-4G snapshot that no longer applies until fc1 returns). Edge buffering + fc-core systemd hardening shipped on the new transport.
+
+### Key Accomplishments
+
+- **Phase 27.1 — Edge buffering + replay-on-reconnect** — `fc_buffer` ROS node on fc1 (sqlite WAL, 24h retention, http server on `wg0` IP `172.16.10.5:8765`) + bridge replay-poller backfilling on demand. Idempotent ingest via `UNIQUE (topic, time)`. BUF-01..03 attested live; BUF-04 induced-dropout recipe retired (no longer reproduces post-transport-switch); natural-event attestation deferred to **999.36**.
+- **Phase 27.2 — fc-core systemd hardening** — `Restart=always` + `StartLimit*` + explicit `After=/Wants=wg-quick@wg0.service` + 60×1s IPv4-on-wg0 `ExecStartPre` loop. SYS-04 cold-reboot scenario PASS 2026-05-07 (41s boot → fc-core active, zero manual). SYS-04 wg0-down-at-boot scenario deferred to **999.28** (lab LAN gated).
+- **Architectural detour: DDS transport switch** — fc1↔elder-plops moved off `tailscale0` (DERP-relay flakiness under CGNAT) to `wg0` (kernel-WG via pfSense). Eliminated the tailscaled CPU saturation that had originally motivated Phase 27.3. Tailscaled disabled on fc1.
+
+### Deferred / Tech Debt Carried
+
+- **BUF-04** natural-event attestation → 999.36 (system too stable to attest organically; needs operator-induced 10–30 min outage from elder-plops side).
+- **SYS-04 scenario 2** (wg0-down-at-boot) → 999.28 (chicken-and-egg over wg0 itself; gated on lab LAN access).
+- **Bridge buffer-replay cursor advance bug** — defeats backfill on reconnect (recovery used manual psql staging during the 2026-05-07 11h gap). Structural fix is a 1-line removal at bridge `index.js:613`. Tracked in memory.
+- **PID bumpless re-engage hardcoded `last_output=0.15`** at `fc_controller.py:973` — fixed downstream in Phase 29 plan 29-07 (commit `e95a599`).
+- **Manual fc1 netplan edits** — `mossrock-west` SSID added by hand at lab 2026-05-07 then committed (`789a699`); edit-then-commit ordering re-surfaces the underlying anti-pattern when fc1 returns to the farm.
+- **microSD wear from fc_buffer SQLite WAL** — gated on USB-SSD hardware procurement.
+- **Phase 27.3 / 27.4** — both mooted in current form; re-promote to backlog when load conditions / farm location change.
+
+### Process Lessons (memory)
+
+- `feedback_fc1_remote_action_preflight_protocol.md` — gating checklist for reboots/network-config/transport-down actions.
+- `feedback_verify_executor_deviation_text.md` — gsd-executor agents misattribute benign warnings as root causes.
+
+---
+
 ## v1.4 Vision & Growth Insights (Shipped: 2026-05-01)
 
 **Phases shipped:** 5 (21, 22, 23, 25, 26) + Phase 24 deferred behind backlog 999.26

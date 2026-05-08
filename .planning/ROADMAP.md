@@ -8,8 +8,8 @@
 - ✅ **v1.2.1 Hotfix — camera stall + sensor warmup** — Phases 14–16 (shipped 2026-04-18)
 - ✅ **v1.3 Alerts & Unified Farmer Dashboard** — Phases 17–18 (shipped 2026-04-19; Phases 19/20 externally gated → v1.5)
 - ✅ **v1.4 Vision & Growth Insights** — Phases 21–26 (shipped 2026-05-01; Phase 24 deferred behind backlog 999.26 camera coverage)
-- ⏸ **v1.5 Analog Humidity Control & Condensation/Evaporation Forcing** — Phases 27–31 (Phase 27 shipped 2026-05-02; PAUSED behind v1.5.0.1 hotfix); promotes backlog 999.9 + absorbs 999.22/999.23 + SEED-001; carries Phase 20 alert cooldown tuning from v1.3
-- ◆ **v1.5.0.1 Resilience hotfix from 2026-05-02 incident** — Phase 27.1 shipped 2026-05-03 via wg0 architectural detour; 27.2 (systemd) carries; 27.3 (sampling reduction) and 27.4 (netplan reconciliation) MOOTED by transport switch (see "What actually shipped" below). Promotes backlog 999.1 + 999.28; pattern matches v1.2.1
+- ✅ **v1.5.0.1 Resilience hotfix from 2026-05-02 incident** — Phases 27.1 + 27.2 (shipped 2026-05-07 via wg0 architectural detour; 27.3 + 27.4 MOOTED). See `.planning/milestones/v1.5.0.1-ROADMAP.md`.
+- 🚧 **v1.5 Analog Humidity Control & Condensation/Evaporation Forcing** — Phases 27–31 (Phases 27, 28, 29 shipped; Phase 30 + 31 ahead); promotes backlog 999.9 + absorbs 999.22/999.23 + SEED-001; carries Phase 20 alert cooldown tuning from v1.3
 
 ## Phases
 
@@ -81,32 +81,30 @@ CV pipeline foundation, bidirectional Signal "Field Notes" channel, dual-sensor 
 
 </details>
 
-<details open>
-<summary>◆ v1.5.0.1 Resilience hotfix — partially shipped via wg0 architectural detour (2026-05-02 → 2026-05-03)</summary>
+<details>
+<summary>✅ v1.5.0.1 Resilience hotfix — Phases 27.1 + 27.2 — SHIPPED 2026-05-07 (PARTIAL)</summary>
 
-**What actually shipped (2026-05-03 realignment):** the original 4-phase hotfix shape was overtaken by an architectural detour. While diagnosing fc1's tailscaled at 200% CPU on the ARM core (DERP-only path forced by ANTEL CGNAT, every packet double-encrypted in userspace wireguard-go), fc1's microSD card failed and was replaced. fc1 was brought back on home-LAN wifi and put on the same L2 as elder-plops via a kernel-WG tunnel through pfSense (172.16.10.0/24). DDS was switched from `tailscale0` to `wg0` (commits `b79d9e4`, `24533a9`). fc1 load avg: 5+ → 0.41. Tailscaled disabled. The transport switch was the real fix; it makes 27.3 and 27.4 unnecessary in their planned form.
+Hotfix milestone driven by the 2026-05-02 blackout + DERP-relay incident. Original 4-phase shape was overtaken by an architectural detour: fc1 microSD replaced, rebuilt on home-LAN wifi with kernel-WG tunnel through pfSense (172.16.10.0/24); DDS switched from `tailscale0` to `wg0`. fc1 load avg 5+ → 0.41.
 
-- [x] **Phase 27.1: Edge buffering — fc1 telemetry replay-on-reconnect** — Shipped 2026-05-03 over the new wg0 transport. fc_buffer running on fc1 (`172.16.10.5:8765`); bridge replay-poller backfilling on demand; first backfill confirmed live. BUF-04 induced-dropout test deferred to natural-event observation per plan-04 D-12. BUF-01..04 (BUF-04 attestation pending).
-- [x] **Phase 27.2: fc-core systemd unit hardening — survive blackout/boot races (PARTIAL — SHIPPED 2026-05-07)** — Unit waits for IPv4 on `wg0` via 60×1s `ExecStartPre` loop + explicit `After=wg-quick@wg0.service` + `Wants=wg-quick@wg0.service`, plus `Restart=always` + `StartLimitIntervalSec=300` + `StartLimitBurst=5`. SYS-01/02/03 satisfied; SYS-04 scenario 1 (cold reboot) PASS attested 41s. SYS-04 scenario 2 (wg0-down-at-boot) deferred to 999.28 — needs lab LAN access (validating that exact failure mode is unrecoverable over wg0).
-- [ ] ~~**Phase 27.3: Telemetry sampling-rate reduction**~~ — **MOOTED 2026-05-03** by transport switch. Original justification was tailscaled CPU saturation under bad DERP; with DDS now on kernel-WG `wg0` and tailscaled disabled, the saturation is gone (fc1 load avg 5+ → 0.41). The "10s cadence is fine for chamber" idea remains valid but no longer load-bearing — re-promote to backlog if needed.
-- [ ] ~~**Phase 27.4: Repo netplan drift reconciliation**~~ — **MOOTED 2026-05-03** in its planned form. fc1 is currently on home-LAN wifi via kernel-WG, not at the farm on 4G; the dropped-mossrock-west / no-99-static.yaml / disable-cloud-init-network-regen drift was a farm-4G-setup story. When fc1 returns to the farm, the netplan reconciliation question returns with it (re-promote as backlog). New eth0-dhcp4 stanza for the 4G router LAN port also waits until fc1 is back at the farm.
+- [x] Phase 27.1: Edge buffering (4/4 plans) — shipped 2026-05-03 over wg0; BUF-04 attestation deferred → 999.36
+- [x] Phase 27.2: fc-core systemd hardening (1/1 plan) — shipped 2026-05-07 (cold-reboot SYS-04 scenario 1 PASS 41s); SYS-04 scenario 2 deferred → 999.28
+- [—] Phase 27.3: Sampling-rate reduction — MOOTED by transport switch
+- [—] Phase 27.4: Netplan reconciliation — MOOTED until fc1 returns to farm-4G
 
-**Out of scope (carryover):** 999.29 (max-continuous-on cap redesign — needs mister hardware soak first; operational risk already covered by `ad949c6` PWM cap raise on `fc1/prod`).
-
-**Loose ends from the detour:** (a) `cyclonedds-tailscale.xml` filename now misleading (binds to wg0) — cosmetic rename pending; (b) microSD wear concern — fc_buffer writes every telemetry message via SQLite WAL; USB-SSD migration is a separate work item (hardware procurement underway).
+See `.planning/milestones/v1.5.0.1-ROADMAP.md` and `.planning/milestones/v1.5.0.1-REQUIREMENTS.md` for the full archive.
 
 </details>
 
-<details>
-<summary>⏸ v1.5 Analog Humidity Control & Condensation/Evaporation Forcing (Phases 27-31) — PAUSED behind v1.5.0.1 hotfix</summary>
+<details open>
+<summary>🚧 v1.5 Analog Humidity Control & Condensation/Evaporation Forcing (Phases 27-31) — IN PROGRESS</summary>
 
 - [x] **Phase 27: PID + time-proportional duty-cycle primitive** — shipped 2026-05-02; HUMID-01..04
-- [ ] **Phase 28: Mode primitive + 2 baseline modes (`fruiting`, `pinning`) + runtime config delivery** — incorporates SEED-001 (modes change without redeploy); MODE-01..05
+- [x] **Phase 28: Mode primitive + 2 baseline modes (`fruiting`, `pinning`) + runtime config delivery** — incorporates SEED-001 (modes change without redeploy); MODE-01..05 — SHIPPED 2026-05-07/08
 - [x] **Phase 29: Alerter mode awareness + cooldown tuning** — alerter reads target/band from controller; sweep other env-hidden knobs; closes 999.22; carries Phase 20; ALRT-08..10 — SHIPPED 2026-05-08
 - [ ] **Phase 30: Time-of-day mode scheduling** — declarative schedule, scheduler issues mode switches at window boundaries; closes 999.23; SCHED-01..03
 - [ ] **Phase 31: Experimental forcing modes (`force-condensation`, `force-evaporation`)** — timed, auto-revert, with TimescaleDB experiment logging; EXPT-01..03
 
-PID-first shape (locked 2026-05-01 with farmer): farmer wants condensation/evaporation experiments soon and they're achievable as a side-effect of the early phases. Calibration findings already on disk: `.planning/phases/999.9-pid-time-proportional-humidity-control/CALIBRATION-FINDINGS-2026-04-11.md`. Modes are kept thin in v1.5 — 2 hardcoded YAML modes; richer mode-editor UI is v1.6. Resumes after v1.5.0.1 ships.
+PID-first shape (locked 2026-05-01 with farmer): farmer wants condensation/evaporation experiments soon and they're achievable as a side-effect of the early phases. Calibration findings already on disk: `.planning/phases/999.9-pid-time-proportional-humidity-control/CALIBRATION-FINDINGS-2026-04-11.md`. Modes are kept thin in v1.5 — 2 hardcoded YAML modes; richer mode-editor UI is v1.6.
 
 </details>
 
@@ -146,10 +144,10 @@ PID-first shape (locked 2026-05-01 with farmer): farmer wants condensation/evapo
 | 27.3. Telemetry sampling-rate reduction | v1.5.0.1 | — | MOOTED 2026-05-03 by transport switch | — |
 | 27.4. Repo netplan drift reconciliation | v1.5.0.1 | — | MOOTED 2026-05-03 in planned form (fc1 no longer on farm-4G); re-promote when fc1 returns to farm | — |
 | 999.1. Edge buffering | backlog | — | Promoted to Phase 27.1 (v1.5.0.1) on 2026-05-02; shipped 2026-05-03 | — |
-| 28. Mode primitive + baselines + runtime config delivery | v1.5 | 0/? | Paused behind v1.5.0.1 | — |
+| 28. Mode primitive + baselines + runtime config delivery | v1.5 | 7/7 | Complete    | 2026-05-08 |
 | 29. Alerter mode awareness + cooldown tuning | v1.5 | 7/7 | Complete    | 2026-05-08 |
-| 30. Time-of-day mode scheduling | v1.5 | 0/? | Paused behind v1.5.0.1 | — |
-| 31. Experimental forcing modes (condensation/evaporation) | v1.5 | 0/? | Paused behind v1.5.0.1 | — |
+| 30. Time-of-day mode scheduling | v1.5 | 0/? | Pending | — |
+| 31. Experimental forcing modes (condensation/evaporation) | v1.5 | 0/? | Pending | — |
 
 ### Phase 27: PID + time-proportional duty-cycle primitive
 
