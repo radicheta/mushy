@@ -459,21 +459,98 @@ def test_mode_c_bypass_keys_off_nearest_defended_edge(ros_context):
 
 # --- MODE-03: set_mode service ------------------------------------------------
 
-def test_set_mode_service_takes_effect_in_one_tick():
+def _call_set_mode(controller, name, timeout_sec=2.0):
+    """Spin the controller, call /fc_controller/set_mode, return the response."""
+    cli_node = Node('test_set_mode_cli', start_parameter_services=False)
+    # Service is created without namespace at controller construction time;
+    # rclpy resolves to /set_mode. Phase 28-05 bridge work will issue the same
+    # call using the same plain name.
+    cli = cli_node.create_client(SetMode, 'set_mode')
+    exec_ = SingleThreadedExecutor()
+    exec_.add_node(controller)
+    exec_.add_node(cli_node)
+    deadline = time.monotonic() + timeout_sec
+    while not cli.service_is_ready() and time.monotonic() < deadline:
+        exec_.spin_once(timeout_sec=0.05)
+    assert cli.service_is_ready(), 'set_mode service not ready'
+    req = SetMode.Request()
+    req.name = name
+    fut = cli.call_async(req)
+    deadline = time.monotonic() + timeout_sec
+    while not fut.done() and time.monotonic() < deadline:
+        exec_.spin_once(timeout_sec=0.05)
+    assert fut.done(), f'set_mode({name}) did not complete within {timeout_sec}s'
+    cli_node.destroy_node()
+    return fut.result()
+
+
+def test_set_mode_service_takes_effect_in_one_tick(ros_context):
     """plan 28-04; MODE-03 — SetMode call writes active_mode param; new mode
-    applied on next control tick (≤1s)."""
-    pytest.fail("RED — landed in plan 28-04")
+    applied on next control tick (≤1s).
+
+    Pre-state: active_mode='fruiting'. Call set_mode(name='pinning') → response
+    success=True with active_mode.name='pinning'. _resolve_active_mode() now
+    returns the pinning ModeView.
+    """
+    node = _make_node(_fruiting_v0_overrides())
+    resp = _call_set_mode(node, 'pinning')
+    assert resp.success, f'set_mode failed: {resp.reason}'
+    assert resp.active_mode.name == 'pinning'
+    assert resp.active_mode.band_low == pytest.approx(0.90, abs=1e-4)
+    assert resp.active_mode.defend_side == 'low'
+    assert resp.active_mode.source == 'service_call'
+    # Resolver agrees on next tick (no extra spin needed — set_parameters
+    # already applied).
+    mv = node._resolve_active_mode()
+    assert mv.name == 'pinning'
+    node.destroy_node()
 
 
-def test_set_mode_rejects_unknown():
-    """plan 28-04; MODE-03 — SetMode with non-declared name → success=false."""
-    pytest.fail("RED — landed in plan 28-04")
+def test_set_mode_rejects_unknown(ros_context):
+    """plan 28-04; MODE-03 — SetMode with non-declared name → success=false.
+
+    Param store unchanged; reason names the declared modes set.
+    """
+    node = _make_node(_fruiting_v0_overrides())
+    resp = _call_set_mode(node, 'dehydration')
+    assert not resp.success
+    reason = resp.reason.lower()
+    assert 'fruiting' in reason and 'pinning' in reason
+    assert node.get_parameter('active_mode').value == 'fruiting'
+    node.destroy_node()
 
 
-def test_mode_swap_bumpless():
+def test_mode_swap_bumpless(ros_context):
     """plan 28-04; MODE-03 D-12 — mode swap calls _engage_pid_bumplessly with
-    current duty; no integrator-bump on band change."""
-    pytest.fail("RED — landed in plan 28-04")
+    current duty.
+
+    Pre-state: controller running fruiting; _last_published_duty=0.45 (the
+    pre-swap operating point). After set_mode('pinning'): _engage_pid_bumplessly
+    was called with last_output close to 0.45 (NOT the default 0.15). Carrying
+    duty avoids an integrator-bump when bands change underfoot.
+    """
+    node = _make_node(_fruiting_v0_overrides())
+    # Inject pre-swap state.
+    node._last_published_duty = 0.45
+    # Spy the bumpless re-engage call.
+    bumpless_calls = []
+    original = node._engage_pid_bumplessly
+
+    def spy(last_output=0.15):
+        bumpless_calls.append(last_output)
+        return original(last_output=last_output)
+
+    node._engage_pid_bumplessly = spy
+
+    resp = _call_set_mode(node, 'pinning')
+    assert resp.success, f'set_mode failed: {resp.reason}'
+    assert bumpless_calls, 'expected _engage_pid_bumplessly to be called on swap'
+    # The service handler must carry pre-swap duty (0.45), not default 0.15.
+    assert any(abs(lo - 0.45) < 0.01 for lo in bumpless_calls), (
+        f'expected bumpless re-engage with last_output≈0.45 (carry pre-swap '
+        f'duty per D-12); got calls={bumpless_calls}'
+    )
+    node.destroy_node()
 
 
 # --- MODE-04: current_mode topic ---------------------------------------------
