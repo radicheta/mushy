@@ -12,6 +12,7 @@ from math import isnan, nan
 from statistics import median
 from fc_core.vendor.simple_pid import PID
 from fc_msgs.msg import Mode
+from fc_msgs.srv import SetMode
 from rcl_interfaces.msg import SetParametersResult
 from rclpy.parameter import Parameter
 
@@ -195,6 +196,13 @@ class FruitingChamberController(Node):
         self._pending_current_mode_republish = None
         self.add_on_set_parameters_callback(self._validate_params)
 
+        # Phase 28 D-16: mode-switch service. Custom srv in fc_msgs. The handler
+        # writes active_mode via self.set_parameters(...) so the validator above
+        # also fires — single source of truth for "is this name a declared mode?".
+        self._set_mode_srv = self.create_service(
+            SetMode, 'set_mode', self._handle_set_mode
+        )
+
         # Current values
         self.current_temp = None
         self.current_humidity = None
@@ -229,6 +237,10 @@ class FruitingChamberController(Node):
         self._pid_engaged = False
         self._effective_setpoint = self.get_parameter('target_humidity').value
         self._last_tick_ts = None
+        # Phase 28 D-12: track last duty so set_mode can pass it as last_output
+        # to _engage_pid_bumplessly — carries the integrator across mode swaps
+        # without a kick.
+        self._last_published_duty = 0.0
 
         # Control timer
         self.timer = self.create_timer(
@@ -535,6 +547,65 @@ class FruitingChamberController(Node):
 
         return SetParametersResult(successful=True)
 
+    def _handle_set_mode(self, request, response):
+        """Phase 28 D-16: /fc_controller/set_mode service handler.
+
+        Routes through self.set_parameters(...) so _validate_params fires —
+        single source of truth for "is this name a declared mode?". On accept:
+          (1) D-12 bumpless re-engage with current duty so the integrator
+              doesn't kick when bands change underfoot,
+          (2) D-15 synchronous republish with source='service_call' (rclpy has
+              already applied the param value by the time this returns from
+              set_parameters, so synchronous publish emits the NEW ModeView),
+          (3) suppress the redundant next-tick republish that the validator
+              queued — we already published synchronously here.
+        """
+        declared = self._declared_mode_names()
+        if request.name not in declared:
+            response.success = False
+            response.reason = (
+                f'unknown mode {request.name!r}; declared: {sorted(declared)}'
+            )
+            response.active_mode = self._build_mode_msg(
+                self._resolve_active_mode(), source='service_call_rejected'
+            )
+            return response
+
+        results = self.set_parameters([
+            Parameter('active_mode', Parameter.Type.STRING, request.name)
+        ])
+        if not results[0].successful:
+            response.success = False
+            response.reason = results[0].reason
+            response.active_mode = self._build_mode_msg(
+                self._resolve_active_mode(), source='service_call_rejected'
+            )
+            # Validator may have queued a republish on a *different* param in
+            # the (single-element here) batch — clear it; the rejection path
+            # didn't actually mutate anything.
+            self._pending_current_mode_republish = None
+            return response
+
+        # D-12: bumpless re-engage carrying current duty.
+        self._engage_pid_bumplessly(last_output=self._last_published_duty)
+
+        # D-15: synchronous republish (the param IS applied by now).
+        new_mv = self._resolve_active_mode()
+        msg = self._build_mode_msg(new_mv, source='service_call')
+        self._current_mode_pub.publish(msg)
+        self.get_logger().info(
+            f'set_mode → {new_mv.name} '
+            f'[band {new_mv.band_low:.3f}–{new_mv.band_high:.3f}, '
+            f'defend={new_mv.defend_side}, source=service_call]'
+        )
+        # Suppress the redundant next-tick republish queued by _validate_params.
+        self._pending_current_mode_republish = None
+
+        response.success = True
+        response.reason = ''
+        response.active_mode = msg
+        return response
+
     def _engage_pid_bumplessly(self, last_output: float = 0.15):
         """D-12: bumpless engage with optional carry-over duty.
 
@@ -553,6 +624,9 @@ class FruitingChamberController(Node):
 
     def _publish_duty(self, duty):
         duty = max(0.0, min(1.0, float(duty)))
+        # D-12: stash post-clamp value so set_mode bumpless re-engage carries
+        # the actual operating duty (not the pre-clamp PID output).
+        self._last_published_duty = duty
         msg = Float32()
         msg.data = duty
         self._duty_pub.publish(msg)
