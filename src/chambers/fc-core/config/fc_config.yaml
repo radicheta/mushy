@@ -88,20 +88,23 @@ fc_controller:
     modes.pinning.band_high: 0.99
     modes.pinning.defend_side: low
     modes.pinning.t_target: .nan
+    # Phase 29 ALRT-10 (D-08) — tuned values from 29-COOLDOWN-TUNING.md (2026-05-08).
+    # W8 retention gate triggered (12.6h window vs 14d target); values are best-effort
+    # anchored on observed clockwork-30 pattern + farmer-attested settings + CONTEXT D-05/D-09.
     # Phase 29 Tier B — per-mode alerter overrides (D-05).
-    # Bootstrap defaults; replaced with tuned values in plan 29-06 (29-COOLDOWN-TUNING.md).
-    modes.fruiting.alerter.cooldown_min:          30
-    modes.fruiting.alerter.critical_cooldown_min: 60
-    modes.fruiting.alerter.humidifier_stuck_min:  30
+    modes.fruiting.alerter.cooldown_min:          45   # 30→45 to break observed clockwork-30 pattern
+    modes.fruiting.alerter.critical_cooldown_min: 75   # critical:standard ratio held at ~1.67
+    modes.fruiting.alerter.humidifier_stuck_min:  30   # narrow band → fast incident, keep tight
     modes.fruiting.alerter.oob_n:                 5
     modes.fruiting.alerter.oob_window_min:        3
-    modes.pinning.alerter.cooldown_min:           30
-    modes.pinning.alerter.critical_cooldown_min:  60
-    modes.pinning.alerter.humidifier_stuck_min:   60   # pinning intentionally swings; default looser
+    modes.pinning.alerter.cooldown_min:           75   # pinning > fruiting prevents D-09 swap-spam
+    modes.pinning.alerter.critical_cooldown_min:  120
+    modes.pinning.alerter.humidifier_stuck_min:   75   # pinning intentionally swings (D-05)
     modes.pinning.alerter.oob_n:                  5
     modes.pinning.alerter.oob_window_min:         5
     # Phase 29 Tier C — global liveness/cadence (runtime-mutable via SetParameters).
-    pi_offline_min:     5
-    sensor_offline_min: 5
-    heartbeat_hour:     8
+    pi_offline_min:     15  # 5→15 absorbs wg0/DERP reconnect flaps
+    sensor_offline_min: 20  # validator cap [1,60] forces dropping .env band-aid 1440;
+                            # safe ONLY after 29-04+29-05 freshness gate (CONTEXT D-04)
+    heartbeat_hour:     17  # honor farmer-attested .env setting (was 8 in 29-03 bootstrap)
     max_sends_per_hour: 20
