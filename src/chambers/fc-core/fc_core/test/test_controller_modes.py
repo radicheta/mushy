@@ -175,25 +175,97 @@ def test_pinning_resolves(ros_context):
     node.destroy_node()
 
 
-def test_param_callback_band_invariant():
-    """plan 28-04; MODE-01 — on_set_parameters_callback rejects band_low >= band_high."""
-    pytest.fail("RED — landed in plan 28-04")
+def test_param_callback_band_invariant(ros_context):
+    """plan 28-04; MODE-01 — on_set_parameters_callback rejects band_low >= band_high.
+
+    Current band_high=0.975. Setting band_low=0.99 alone violates the invariant
+    (0 <= band_low < band_high <= 1) → callback returns successful=False, param
+    store unchanged.
+    """
+    node = _make_node(_fruiting_v0_overrides())
+    results = node.set_parameters([
+        Parameter('modes.fruiting.band_low', Parameter.Type.DOUBLE, 0.99),
+    ])
+    assert not results[0].successful
+    assert 'band' in results[0].reason.lower()
+    # Param store unchanged.
+    assert node.get_parameter('modes.fruiting.band_low').value == pytest.approx(0.945)
+    node.destroy_node()
 
 
-def test_param_callback_defend_side_enum():
+def test_param_callback_defend_side_enum(ros_context):
     """plan 28-04; MODE-01 — defend_side ∉ {low, high, both} → reject."""
-    pytest.fail("RED — landed in plan 28-04")
+    node = _make_node(_fruiting_v0_overrides())
+    results = node.set_parameters([
+        Parameter('modes.fruiting.defend_side', Parameter.Type.STRING, 'upward'),
+    ])
+    assert not results[0].successful
+    reason = results[0].reason.lower()
+    assert 'low' in reason and 'high' in reason and 'both' in reason
+    assert node.get_parameter('modes.fruiting.defend_side').value == 'both'
+    node.destroy_node()
 
 
-def test_param_callback_unknown_mode():
-    """plan 28-04; MODE-01 — active_mode not in declared modes → reject."""
-    pytest.fail("RED — landed in plan 28-04")
+def test_param_callback_unknown_mode(ros_context):
+    """plan 28-04; MODE-01 — active_mode not in declared modes → reject.
+
+    Only fruiting + pinning declared by the override fixture. Setting
+    active_mode='incubation' must reject and reason must list declared modes.
+    """
+    node = _make_node(_fruiting_v0_overrides())
+    results = node.set_parameters([
+        Parameter('active_mode', Parameter.Type.STRING, 'incubation'),
+    ])
+    assert not results[0].successful
+    reason = results[0].reason.lower()
+    assert 'fruiting' in reason and 'pinning' in reason
+    assert node.get_parameter('active_mode').value == 'fruiting'
+    node.destroy_node()
 
 
-def test_param_callback_batched_band_edit_atomic():
-    """plan 28-04; MODE-05 Pitfall 4 — batched [band_low=0.94, band_high=0.96]
-    passes atomically; lone [band_low=0.99] when current band_high=0.97 fails atomically."""
-    pytest.fail("RED — landed in plan 28-04")
+def test_param_callback_batched_band_edit_atomic(ros_context):
+    """plan 28-04; MODE-05 Pitfall 4 — batched [band_low=0.85, band_high=0.99]
+    passes atomically (the post-batch view is internally consistent).
+
+    Conversely, a lone [band_low=0.999] when current band_high=0.99 must fail
+    atomically (post-batch view violates band_low<band_high).
+    """
+    node = _make_node(_fruiting_v0_overrides())
+    # Batched edit on pinning: end up with band [0.85, 0.99]. Apply both
+    # changes in ONE batch — the callback must see the post-batch view.
+    results = node.set_parameters([
+        Parameter('modes.pinning.band_low', Parameter.Type.DOUBLE, 0.85),
+        Parameter('modes.pinning.band_high', Parameter.Type.DOUBLE, 0.99),
+    ])
+    assert all(r.successful for r in results), (
+        f'batched band edit must be accepted atomically; reasons={[r.reason for r in results]}'
+    )
+    assert node.get_parameter('modes.pinning.band_low').value == pytest.approx(0.85)
+    assert node.get_parameter('modes.pinning.band_high').value == pytest.approx(0.99)
+
+    # Now lone band_low=0.9999 (above band_high=0.99) must fail atomically.
+    results = node.set_parameters([
+        Parameter('modes.pinning.band_low', Parameter.Type.DOUBLE, 0.9999),
+    ])
+    assert not results[0].successful
+    # Param unchanged.
+    assert node.get_parameter('modes.pinning.band_low').value == pytest.approx(0.85)
+    node.destroy_node()
+
+
+def test_param_callback_pid_range_bound(ros_context):
+    """plan 28-04 T-28-09 — defense-in-depth: pid_kp range [0, 5] rejects 99.
+
+    Bridge allowlist (Phase 28-05 work) will mirror this bound; the callback
+    enforces it at the rcl boundary so a bridge bypass cannot slam insane gains.
+    """
+    node = _make_node(_fruiting_v0_overrides())
+    results = node.set_parameters([
+        Parameter('pid_kp', Parameter.Type.DOUBLE, 99.0),
+    ])
+    assert not results[0].successful
+    assert 'pid_kp' in results[0].reason
+    node.destroy_node()
 
 
 # --- MODE-02: fruiting + pinning baseline behavior ---------------------------
