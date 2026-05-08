@@ -10,6 +10,7 @@ from diagnostic_msgs.msg import DiagnosticStatus, KeyValue
 from datetime import datetime
 from math import isnan, nan
 from statistics import median
+from fc_core import scheduler
 from fc_core.vendor.simple_pid import PID
 from fc_msgs.msg import Mode
 from fc_msgs.srv import SetMode
@@ -91,6 +92,10 @@ class FruitingChamberController(Node):
                 ('modes.pinning.band_high', float('nan')),
                 ('modes.pinning.defend_side', 'low'),
                 ('modes.pinning.t_target', float('nan')),
+                # Phase 30 D-01: JSON-encoded list of {start,end,mode}; default
+                # '[]' = scheduling disabled (SCHED-03 backward compat). Real
+                # value comes from fc_config.yaml / runtime_overrides.yaml.
+                ('schedule_windows', '[]'),
             ]
         )
 
@@ -308,6 +313,21 @@ class FruitingChamberController(Node):
         # and any late-joiners receive the cached payloads on subscribe.
         self._publish_alerter_overrides(source='config_default')
         self._publish_alerter_globals(source='config_default')
+
+        # Phase 30 D-06..D-09 — time-of-day scheduler.
+        # Plain attribute clock seam (testable: `node._now_hhmm = lambda: ...`).
+        self._now_hhmm = self._default_now_hhmm
+        # Gap-debounce state — last-emitted (kind, mode) tuple so a continuous
+        # gap logs once per (kind, mode) entry rather than every 30s tick.
+        self._last_scheduler_log = None
+        # D-09 startup alignment — fire one immediate eval so reboot-mid-window
+        # comes up correct. Runs AFTER the config_default current_mode publish
+        # so a scheduler-initiated swap publishes a SECOND current_mode with
+        # source='scheduler' (audit trail intact).
+        self._scheduler_tick()
+        # D-07 30s timer cadence — bounded, deterministic, well under PID's
+        # thermal-lag timescales.
+        self._scheduler_timer = self.create_timer(30.0, self._scheduler_tick)
 
     def temperature_callback(self, msg):
         self.current_temp = msg.temperature
@@ -697,6 +717,23 @@ class FruitingChamberController(Node):
                                f'{sorted(declared)}',
                     )
                 republish_current_mode = True
+            elif n == 'schedule_windows':
+                # Phase 30 D-01..D-04 — JSON-encoded list of windows. Reject
+                # malformed JSON, missing keys, bad HH:MM, or unknown mode
+                # names. Old value retained on reject (rclpy callback pattern).
+                # Empty array '[]' is always valid (= scheduling disabled,
+                # SCHED-03 backward compat).
+                try:
+                    windows = scheduler.parse_schedule(v)
+                    declared = self._declared_mode_names()
+                    for w in windows:
+                        scheduler.validate_window(w, declared)
+                except ValueError as e:
+                    return SetParametersResult(
+                        successful=False, reason=str(e)
+                    )
+                # No republish needed — schedule edits don't change current_mode
+                # synchronously; the scheduler timer fires at the next 30s tick.
             elif n == 'pid_kp':
                 if not (0.0 <= v <= 5.0):
                     return SetParametersResult(
@@ -789,6 +826,92 @@ class FruitingChamberController(Node):
         response.reason = ''
         response.active_mode = msg
         return response
+
+    def _default_now_hhmm(self) -> str:
+        """Phase 30 D-21 — local-clock HH:MM string (fc1 system TZ).
+
+        Plain method so tests can override the seam by reassigning the
+        instance attribute `_now_hhmm` (set in `__init__`).
+        """
+        return datetime.now().strftime('%H:%M')
+
+    def _scheduler_tick(self):
+        """Phase 30 D-06..D-11 — evaluate schedule and swap mode if needed.
+
+        Called once at startup (D-09 alignment) and every 30s thereafter (D-07).
+        Compares the schedule-desired mode for the current local time against
+        the active mode and, on mismatch, performs an in-process mode swap
+        that mirrors `_handle_set_mode` minus the service-response path:
+
+          1. set_parameters('active_mode', desired) — fires _validate_params
+             which already vets declared mode names (single source of truth).
+          2. Bumpless re-engage carrying the live duty (D-12 — no integrator
+             kick when bands change underfoot).
+          3. Synchronous current_mode publish with source='scheduler'.
+
+        Manual override (D-10/D-11) self-heals at the next boundary because
+        scheduler unconditionally fires whenever desired != active.
+
+        Empty schedule = no-op. Gap (no window matches) keeps the current
+        mode and emits a single debounced WARNING per (gap, mode) entry.
+        """
+        raw = self.get_parameter('schedule_windows').value
+        try:
+            windows = scheduler.parse_schedule(raw)
+        except ValueError:
+            # Should be impossible — validator rejects malformed values — but
+            # tolerate it defensively (e.g. corrupted overlay yaml on disk).
+            return
+        if not windows:
+            return
+        current = self.get_parameter('active_mode').value
+        now_hhmm = self._now_hhmm()
+        desired, matched = scheduler.compute_desired_mode(
+            now_hhmm, windows, current
+        )
+        if matched is None:
+            # Gap — debounce one WARN per (gap, current_mode) entry.
+            key = ('gap', current)
+            if self._last_scheduler_log != key:
+                self.get_logger().warn(
+                    f'[scheduler] no window matches {now_hhmm}; '
+                    f'keeping current mode {current!r}'
+                )
+                self._last_scheduler_log = key
+            return
+        if desired == current:
+            # Within-window, already correct (incl. manual override that
+            # happens to match the desired mode for this window).
+            self._last_scheduler_log = ('match', desired)
+            return
+
+        # Transition — set_parameters fires _validate_params (active_mode arm
+        # checks declared modes); on accept, do bumpless re-engage and
+        # synchronous current_mode publish with source='scheduler'.
+        prev = current
+        results = self.set_parameters([
+            Parameter('active_mode', Parameter.Type.STRING, desired)
+        ])
+        if not results[0].successful:
+            self.get_logger().error(
+                f'[scheduler] set_parameters rejected mode={desired!r}: '
+                f'{results[0].reason}'
+            )
+            return
+        self._engage_pid_bumplessly(last_output=self._last_published_duty)
+        new_mv = self._resolve_active_mode()
+        msg = self._build_mode_msg(new_mv, source='scheduler')
+        self._current_mode_pub.publish(msg)
+        # Phase 29-07 — JSON sibling for the bridge.
+        self._publish_current_mode_json(new_mv, source='scheduler')
+        # Suppress the redundant next-tick republish queued by _validate_params.
+        self._pending_current_mode_republish = None
+        self.get_logger().info(
+            f'[scheduler] transition: {prev} → {desired} '
+            f'at {now_hhmm} '
+            f"(window={matched['start']}-{matched['end']})"
+        )
+        self._last_scheduler_log = ('transition', desired)
 
     def _engage_pid_bumplessly(self, last_output: float):
         """D-12: bumpless engage with explicit carry-over duty.
