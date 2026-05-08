@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 28-06-PLAN.md
-last_updated: "2026-05-08T00:20:07.278Z"
+status: verifying
+stopped_at: Completed 28-07-PLAN.md (awaiting human-verify checkpoint)
+last_updated: "2026-05-08T00:35:22.919Z"
 last_activity: 2026-05-08
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 17
-  completed_plans: 16
-  percent: 94
+  completed_plans: 17
+  percent: 100
 ---
 
 # Project State
@@ -35,10 +35,10 @@ Milestone: v1.5.0.1 → v1.5 — milestone v1.5.0.1 resilience-hotfix work compl
 - Phase 27.4 — Netplan reconciliation: MOOTED in planned form
 
 Plan: 7 of 7
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-05-08
 
-Progress: [█████████░] 94%
+Progress: [██████████] 100%
 
 **Carried from v1.3 (not blocking v1.4):**
 
@@ -117,6 +117,9 @@ Progress: [█████████░] 94%
 - [Phase 28-05] Bridge POST /control/param mounted with lazy rosNode wrapper — pattern template for any future bridge ROS-client route; route registered statically, handler reads module-level rosNode at request time, 503 pre-init
 - [Phase 28-05] Bridge allowlist range bounds duplicate Phase 28-04 controller validator (T-28-09 defense in depth) — pid_kp[0,5], pid_ki[0,1], pid_kd[0,20]
 - [Phase 28-06] Layer 2 transport pivoted SSH→fc_buffer HTTP relay (D-B1) — bridge container has no ssh binary; fc_buffer owns atomic /var/lib/fc-core/runtime_overrides.yaml write with .bak retention; path allowlist via realpath() defeats traversal+symlink+prefix-lookalike (T-28-20)
+- [Phase 28-07] Overlay scope = fc_controller only (D-17); other 5 nodes keep parameters=[LaunchConfiguration('config_file')] verbatim
+- [Phase 28-07] PI_HOST default 172.16.10.5 (wg0); fc1-ts removed as stale post-v1.5.0.1 (memory feedback_ssh_tailscale)
+- [Phase 28-07] colcon build order in deploy.sh = fc_msgs first, then fc_core (Pitfall 5 explicit)
 
 ### Pending Todos
 
@@ -162,11 +165,12 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 | Phase 28 P04 | 12min | 3 tasks | 2 files |
 | Phase 28 P05 | 3min | 2 tasks | 3 files |
 | Phase Phase 28 PP06 | 10min | 2 tasks tasks | 5 files files |
+| Phase 28 P07 | 752s | 3 tasks | 2 files |
 
 ## Session Continuity
 
-Last session: 2026-05-08T00:20:07.271Z
-Stopped at: Completed 28-06-PLAN.md
+Last session: 2026-05-08T00:35:16.080Z
+Stopped at: Completed 28-07-PLAN.md (awaiting human-verify checkpoint)
 Next up: pick from { (a) close 27.2 SYS-01 + SYS-04, (b) cyclonedds-tailscale.xml → cyclonedds.xml rename, (c) PID Kp 0.5 → 0.35 retune per 2026-05-03 calibration notes, (d) resume v1.5 main with /gsd:discuss-phase 28 }
 
 ---
