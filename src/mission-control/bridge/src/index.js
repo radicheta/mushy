@@ -12,6 +12,7 @@ const { validateHistoryParams } = require('./history_validate');
 const { validateFrameParams } = require('./frame_validate');
 const { burnBar, formatBarText } = require('./burn_bar');
 const buffer_replay = require('./buffer_replay');
+const control_param = require('./control_param');
 
 // Fail fast if database password is not configured
 if (!process.env.TIMESCALE_PASSWORD) {
@@ -557,6 +558,19 @@ app.get('/camera/latest.jpg', (req, res) => {
         'Cache-Control': 'no-cache'
     });
     res.end(latestFrame);
+});
+
+// Phase 28 D-17 Layer 1: runtime param tuning hot path.
+// Implementation lives entirely in src/control_param.js (Pitfall 8 — keep the
+// buffer-replay path at index.js:613 untouched). The rosNode used here is the
+// same instance the buffer-replay / telemetry subscribers spin; it's set inside
+// rclnodejs.init().then() below, so a thin wrapper reads it lazily at request time.
+app.post('/control/param', express.json(), async (req, res) => {
+    if (!rosNode) {
+        return res.status(503).json({ error: 'rclnodejs not ready' });
+    }
+    const handler = control_param.makeHandler(rosNode, { timeoutMs: 3000 });
+    return handler(req, res);
 });
 
 // Store connected WebSocket clients
