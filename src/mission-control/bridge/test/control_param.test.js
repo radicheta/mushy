@@ -326,3 +326,81 @@ describe('handler', () => {
         expect(res._body.error).toMatch(/timeout/i);
     });
 });
+
+// ---------------------------------------------------------------- Phase 29 ALRT keys
+// Phase 29 plan 29-01 — Tier B per-mode alerter overrides + Tier C globals.
+// Range bounds mirror fc_controller _validate_params extension (29-03 plan).
+
+describe('Phase 29 ALRT keys', () => {
+    test('Test 1: validate(modes.fruiting.alerter.cooldown_min, 30) -> ok', () => {
+        expect(validate('modes.fruiting.alerter.cooldown_min', 30)).toEqual({ ok: true });
+    });
+
+    test('Test 2: validate(modes.pinning.alerter.cooldown_min, 0) -> not ok (out of [1,240])', () => {
+        const r = validate('modes.pinning.alerter.cooldown_min', 0);
+        expect(r.ok).toBe(false);
+    });
+
+    test('Test 3: validate(modes.fruiting.alerter.cooldown_min, 241) -> not ok', () => {
+        const r = validate('modes.fruiting.alerter.cooldown_min', 241);
+        expect(r.ok).toBe(false);
+    });
+
+    test('Test 4: validate(modes.fruiting.alerter.critical_cooldown_min, 60) -> ok', () => {
+        expect(validate('modes.fruiting.alerter.critical_cooldown_min', 60)).toEqual({ ok: true });
+    });
+
+    test('Test 5: validate(modes.fruiting.alerter.humidifier_stuck_min, 30) -> ok', () => {
+        expect(validate('modes.fruiting.alerter.humidifier_stuck_min', 30)).toEqual({ ok: true });
+    });
+
+    test('Test 6: validate(modes.pinning.alerter.oob_n, 5) -> ok', () => {
+        expect(validate('modes.pinning.alerter.oob_n', 5)).toEqual({ ok: true });
+    });
+
+    test('Test 7: validate(modes.fruiting.alerter.oob_window_min, 3) -> ok', () => {
+        expect(validate('modes.fruiting.alerter.oob_window_min', 3)).toEqual({ ok: true });
+    });
+
+    test('Test 8: pi_offline_min: 5 ok, 61 not ok (range [1,60])', () => {
+        expect(validate('pi_offline_min', 5)).toEqual({ ok: true });
+        expect(validate('pi_offline_min', 61).ok).toBe(false);
+    });
+
+    test('Test 9: sensor_offline_min: 5 ok, range [1,60]', () => {
+        expect(validate('sensor_offline_min', 5)).toEqual({ ok: true });
+        expect(validate('sensor_offline_min', 0).ok).toBe(false);
+        expect(validate('sensor_offline_min', 61).ok).toBe(false);
+    });
+
+    test('Test 10: heartbeat_hour: 8 ok, 24 not ok (range [0,23])', () => {
+        expect(validate('heartbeat_hour', 8)).toEqual({ ok: true });
+        expect(validate('heartbeat_hour', 0)).toEqual({ ok: true });
+        expect(validate('heartbeat_hour', 24).ok).toBe(false);
+    });
+
+    test('Test 11: max_sends_per_hour: 20 ok, 0 not ok (range [1,200])', () => {
+        expect(validate('max_sends_per_hour', 20)).toEqual({ ok: true });
+        expect(validate('max_sends_per_hour', 0).ok).toBe(false);
+        expect(validate('max_sends_per_hour', 201).ok).toBe(false);
+    });
+
+    test('Test 12: validate(modes.unknown.alerter.cooldown_min, 30) -> not ok (unknown mode)', () => {
+        const r = validate('modes.unknown.alerter.cooldown_min', 30);
+        expect(r.ok).toBe(false);
+    });
+
+    test('Test 13: toParamValue(pi_offline_min, 5) -> integer wire shape', () => {
+        expect(toParamValue('pi_offline_min', 5)).toEqual({ type: 2, integer_value: 5 });
+    });
+
+    test('Test 14: toParamValue(modes.fruiting.alerter.cooldown_min, 30) -> integer wire shape', () => {
+        expect(toParamValue('modes.fruiting.alerter.cooldown_min', 30))
+            .toEqual({ type: 2, integer_value: 30 });
+    });
+
+    // Defense-in-depth (T-29-01): fractional doubles must be rejected, not silently truncated.
+    test('Bonus: fractional value (5.5) rejected for integer-typed key', () => {
+        expect(validate('pi_offline_min', 5.5).ok).toBe(false);
+    });
+});
