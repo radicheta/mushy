@@ -84,6 +84,50 @@ function entryIntRange(label, lo, hi) {
     };
 }
 
+// Phase 30 SCHED-01 — schedule_windows JSON-encoded list validator.
+// Mirrors fc_core/scheduler.py's parse_schedule + validate_window rules so the
+// bridge fails fast (defense in depth — T-30-06; controller is final).
+const HHMM_RE = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
+function entrySchedule() {
+    return {
+        type: T_STRING,
+        validate: (v) => {
+            if (typeof v !== 'string') {
+                return { ok: false, reason: 'schedule_windows must be a JSON-encoded string' };
+            }
+            let parsed;
+            try { parsed = JSON.parse(v); }
+            catch (e) {
+                return { ok: false, reason: `schedule_windows: invalid JSON: ${e.message}` };
+            }
+            if (!Array.isArray(parsed)) {
+                return { ok: false, reason: 'schedule_windows: must be a JSON array' };
+            }
+            for (let i = 0; i < parsed.length; i++) {
+                const w = parsed[i];
+                if (!w || typeof w !== 'object' || Array.isArray(w)) {
+                    return { ok: false, reason: `schedule_windows[${i}]: must be an object` };
+                }
+                for (const k of ['start', 'end', 'mode']) {
+                    if (!(k in w)) {
+                        return { ok: false, reason: `schedule_windows[${i}]: missing key ${k}` };
+                    }
+                }
+                if (typeof w.start !== 'string' || !HHMM_RE.test(w.start)) {
+                    return { ok: false, reason: `schedule_windows[${i}].start: must be HH:MM (got ${JSON.stringify(w.start)})` };
+                }
+                if (typeof w.end !== 'string' || !HHMM_RE.test(w.end)) {
+                    return { ok: false, reason: `schedule_windows[${i}].end: must be HH:MM (got ${JSON.stringify(w.end)})` };
+                }
+                if (!DECLARED_MODES.includes(w.mode)) {
+                    return { ok: false, reason: `schedule_windows[${i}].mode: ${JSON.stringify(w.mode)} not in declared modes ${JSON.stringify(DECLARED_MODES)}` };
+                }
+            }
+            return { ok: true };
+        },
+    };
+}
+
 const ALLOWLIST = (() => {
     const a = Object.create(null);
 
@@ -117,6 +161,9 @@ const ALLOWLIST = (() => {
         a[`modes.${m}.alerter.oob_window_min`]        = entryIntRange('oob_window_min', 1, 60);
     }
     // Phase 29 Tier C — global alerter knobs (Tier C per D-05; per-mode-independent).
+    // Phase 30 SCHED-01 — schedule_windows JSON-encoded list (D-13).
+    a['schedule_windows'] = entrySchedule();
+
     a['pi_offline_min']     = entryIntRange('pi_offline_min', 1, 60);
     a['sensor_offline_min'] = entryIntRange('sensor_offline_min', 1, 60);
     a['heartbeat_hour']     = entryIntRange('heartbeat_hour', 0, 23);

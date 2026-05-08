@@ -314,3 +314,61 @@ describe('makeHttpTransport (Branch B — fc_buffer HTTP relay, D-B1)', () => {
             .rejects.toThrow(/persist write 502/);
     });
 });
+
+// ---------------------------------------------------------------- Phase 30 SCHED
+// Plan 30-02 Task 2 — schedule_windows persists as a flat JSON STRING under
+// fc_controller.ros__parameters (NOT pre-parsed into a YAML list).
+
+describe('schedule_windows persistence', () => {
+    test('writes flat key with JSON STRING preserved verbatim', async () => {
+        const transport = makeMockTransport(null);
+        const handler = persist.makeHandler(transport, { overlayPath: '/tmp/ov.yaml' });
+        const scheduleJson = '[{"start":"06:00","end":"22:00","mode":"fruiting"}]';
+        const res = makeRes();
+        await handler(
+            { body: { node: 'fc_controller', param: 'schedule_windows', value: scheduleJson } },
+            res,
+        );
+        expect(res.statusCode).toBe(200);
+        expect(transport.writes).toHaveLength(1);
+        const written = yaml.load(transport.writes[0].content);
+        // The JSON STRING must survive round-trip verbatim — yaml must NOT
+        // pre-parse it into a list (D-01: rclpy reads it as STRING param).
+        expect(written.fc_controller.ros__parameters.schedule_windows)
+            .toBe(scheduleJson);
+        expect(typeof written.fc_controller.ros__parameters.schedule_windows)
+            .toBe('string');
+    });
+
+    test('malformed JSON → 400 (no overlay write)', async () => {
+        const transport = makeMockTransport(null);
+        const handler = persist.makeHandler(transport, { overlayPath: '/tmp/ov.yaml' });
+        const res = makeRes();
+        await handler(
+            { body: { node: 'fc_controller', param: 'schedule_windows', value: '{not json' } },
+            res,
+        );
+        expect(res.statusCode).toBe(400);
+        expect(res.body.rejected_param).toBe('schedule_windows');
+        expect(transport.writes).toHaveLength(0);
+    });
+
+    test('merges with existing overlay (preserves prior keys)', async () => {
+        const transport = makeMockTransport(null);
+        const handler = persist.makeHandler(transport, { overlayPath: '/tmp/ov.yaml' });
+        // Seed: write a target_humidity entry first.
+        await handler(
+            { body: { node: 'fc_controller', param: 'modes.fruiting.target_humidity', value: 0.96 } },
+            makeRes(),
+        );
+        // Now persist schedule_windows.
+        const scheduleJson = '[{"start":"06:00","end":"22:00","mode":"fruiting"}]';
+        await handler(
+            { body: { node: 'fc_controller', param: 'schedule_windows', value: scheduleJson } },
+            makeRes(),
+        );
+        const final = yaml.load(transport.writes[1].content);
+        expect(final.fc_controller.ros__parameters['modes.fruiting.target_humidity']).toBe(0.96);
+        expect(final.fc_controller.ros__parameters.schedule_windows).toBe(scheduleJson);
+    });
+});
