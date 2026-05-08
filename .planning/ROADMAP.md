@@ -147,7 +147,7 @@ PID-first shape (locked 2026-05-01 with farmer): farmer wants condensation/evapo
 | 28. Mode primitive + baselines + runtime config delivery | v1.5 | 7/7 | Complete    | 2026-05-08 |
 | 29. Alerter mode awareness + cooldown tuning | v1.5 | 7/7 | Complete    | 2026-05-08 |
 | 30. Time-of-day mode scheduling | v1.5 | 0/? | Pending | — |
-| 31. Experimental forcing modes (condensation/evaporation) | v1.5 | 0/? | Pending | — |
+| 31. Experimental forcing modes (condensation/evaporation) | v1.5 | 4/4 | Code complete (UAT pending) | — |
 
 ### Phase 27: PID + time-proportional duty-cycle primitive
 

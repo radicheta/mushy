@@ -4,7 +4,7 @@ milestone: v1.5
 milestone_name: Analog Humidity Control & Condensation/Evaporation Forcing
 status: executing
 stopped_at: Phase 29 context gathered
-last_updated: "2026-05-08T19:18:25.827Z"
+last_updated: "2026-05-08T20:13:04.095Z"
 last_activity: 2026-05-08 -- Phase --phase execution started
 progress:
   total_phases: 9
@@ -21,11 +21,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase --phase — 30
+**Current focus:** Phase --phase — 31
 
 ## Current Position
 
-Phase: --phase (30) — EXECUTING
+Phase: --phase (31) — EXECUTING
 Milestone: v1.5 — Analog Humidity Control & Condensation/Evaporation Forcing
 
 **v1.5.0.1 archived 2026-05-08 (see `.planning/milestones/v1.5.0.1-ROADMAP.md`):**
@@ -39,8 +39,8 @@ Milestone: v1.5 — Analog Humidity Control & Condensation/Evaporation Forcing
 - Phase 27 — PID + slow-PWM: SHIPPED 2026-05-02
 - Phase 28 — Mode primitive + baselines + runtime config delivery: SHIPPED 2026-05-07/08 (MODE-01..05)
 - Phase 29 — Alerter mode awareness + cooldown tuning: SHIPPED 2026-05-08 (ALRT-08/09; ALRT-10 carries)
-- Phase 30 — Time-of-day mode scheduling: NOT STARTED (SCHED-01..03)
-- Phase 31 — Experimental forcing modes: NOT STARTED (EXPT-01..03)
+- Phase 30 — Time-of-day mode scheduling: 30-01/02 SHIPPED 2026-05-08; 30-03 deploy/attestation deferred (SCHED-01..03)
+- Phase 31 — Experimental forcing modes: 31-01..04 CODE COMPLETE 2026-05-08; UAT (incl. boot-recovery D-09 attestation) deferred to fc1 deploy (EXPT-01..03)
 
 Plan: 1 of --name
 Status: Executing Phase --phase
