@@ -11,7 +11,15 @@ def generate_launch_description():
     
     # Declare the config file path
     config_file = os.path.join(pkg_share, 'config', 'fc_config.yaml')
-    
+
+    # Phase 28 D-17 Layer 2: runtime overlay (optional). Bridge POST /control/persist
+    # writes here; rclpy launch's parameters=[base, overlay] is last-wins for duplicates.
+    # Pitfall (RESEARCH §Pattern 3): missing file MUST NOT fail launch.
+    overlay_path = os.environ.get('FC_RUNTIME_OVERLAY', '/var/lib/fc-core/runtime_overrides.yaml')
+    fc_controller_params = [LaunchConfiguration('config_file')]
+    if os.path.exists(overlay_path):
+        fc_controller_params.append(overlay_path)
+
     return LaunchDescription([
         # Declare launch arguments
         DeclareLaunchArgument(
@@ -34,7 +42,7 @@ def generate_launch_description():
             package='fc_core',
             executable='fc_controller',
             name='fc_controller',
-            parameters=[LaunchConfiguration('config_file')],
+            parameters=fc_controller_params,
             output='screen'
         ),
         
