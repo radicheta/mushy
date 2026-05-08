@@ -203,6 +203,19 @@ class FruitingChamberController(Node):
             Mode, 'fc1/control/current_mode', actuator_qos
         )
 
+        # Phase 29-07 deploy fix (2026-05-08): bridge container ships with
+        # ros:jazzy-ros-core only — no fc_msgs build, so rclnodejs cannot
+        # generate JS bindings for fc_msgs/msg/Mode. RESEARCH §460 assumed
+        # "fc_msgs already built on bridge image"; that assumption was false
+        # (Phase 28 never added a Mode subscriber on the bridge). Mirror the
+        # alerter_globals/alerter_mode_overrides pattern and ship a sibling
+        # JSON-in-String topic the bridge can consume without a custom-msg
+        # build cycle. The typed Mode publisher stays for any future ROS-
+        # native consumer.
+        self._current_mode_json_pub = self.create_publisher(
+            String, 'fc1/control/current_mode_json', actuator_qos
+        )
+
         # Phase 29 D-06: delivery channel for Tier B (per-mode alerter overrides)
         # and Tier C (global alerter knobs). JSON-in-String avoids a second
         # fc_msgs build cycle (RESEARCH §Anti-Patterns). Same TRANSIENT_LOCAL
@@ -458,6 +471,10 @@ class FruitingChamberController(Node):
         mv = self._resolve_active_mode()
         msg = self._build_mode_msg(mv, source)
         self._current_mode_pub.publish(msg)
+        # Phase 29-07: also publish JSON sibling for the bridge (which lacks
+        # fc_msgs/msg/Mode bindings). NaN-safe t_target serialization mirrors
+        # bridge's payload shape.
+        self._publish_current_mode_json(mv, source)
         self.get_logger().info(
             f'current_mode → {mv.name} '
             f'[band {mv.band_low:.3f}–{mv.band_high:.3f}, defend={mv.defend_side}, '
@@ -470,6 +487,32 @@ class FruitingChamberController(Node):
                 f'target {mv.target} outside band [{mv.band_low},{mv.band_high}] '
                 f'for mode {mv.name} — cosmetic, by D-06'
             )
+
+    def _publish_current_mode_json(self, mv, source: str):
+        """Phase 29-07: JSON sibling of current_mode for the bridge container.
+
+        Bridge ships ros:jazzy-ros-core only; rclnodejs lacks fc_msgs/Mode
+        bindings. JSON-in-String mirrors the alerter_mode_overrides /
+        alerter_globals delivery pattern (RESEARCH §Anti-Patterns recommends
+        JSON-in-String to avoid second fc_msgs build cycle).
+        """
+        import json
+        import math
+        now = self.get_clock().now().to_msg()
+        t_target = mv.t_target if (mv.t_target is not None and not math.isnan(mv.t_target)) else None
+        payload = {
+            'name':            mv.name,
+            'target_humidity': mv.target,
+            'band_low':        mv.band_low,
+            'band_high':       mv.band_high,
+            'defend_side':     mv.defend_side,
+            't_target':        t_target,
+            'effective_since': {'sec': now.sec, 'nanosec': now.nanosec},
+            'source':          source,
+        }
+        msg = String()
+        msg.data = json.dumps(payload, sort_keys=True)
+        self._current_mode_json_pub.publish(msg)
 
     def _publish_alerter_overrides(self, source: str = 'param_set'):
         """Phase 29 D-06: publish per-mode alerter overrides as JSON-in-String.
@@ -732,6 +775,8 @@ class FruitingChamberController(Node):
         new_mv = self._resolve_active_mode()
         msg = self._build_mode_msg(new_mv, source='service_call')
         self._current_mode_pub.publish(msg)
+        # Phase 29-07: JSON sibling for the bridge.
+        self._publish_current_mode_json(new_mv, source='service_call')
         self.get_logger().info(
             f'set_mode → {new_mv.name} '
             f'[band {new_mv.band_low:.3f}–{new_mv.band_high:.3f}, '

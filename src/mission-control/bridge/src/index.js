@@ -867,27 +867,32 @@ rclnodejs.init().then(async () => {
     // publishers — fresh subscribers (e.g. alerter cold-start) get the latest
     // value within one DDS handshake. Each callback updates a module-scope cache
     // so on-connect WS replay (above) can deliver to freshly-connecting clients.
+    // Phase 29-07 deploy fix: bridge container ships ros:jazzy-ros-core only
+    // (no fc_msgs build), so rclnodejs cannot generate JS bindings for
+    // fc_msgs/msg/Mode. Subscribe to the JSON-in-String sibling published by
+    // fc_controller alongside the typed Mode topic. Same TRANSIENT_LOCAL QoS.
     node.createSubscription(
-        'fc_msgs/msg/Mode',
-        '/fc1/control/current_mode',
+        'std_msgs/msg/String',
+        '/fc1/control/current_mode_json',
         { qos: humidifierQos },
         (msg) => {
-            // Pitfall 5 (RESEARCH §): NaN serializes to null via JSON.stringify;
-            // coerce explicitly so downstream consumers see a documented null
-            // rather than rely on the implicit JSON.stringify(NaN)='null' footgun.
-            const tTarget = (typeof msg.t_target === 'number' && Number.isFinite(msg.t_target))
-                ? msg.t_target
-                : null;
+            let parsed;
+            try {
+                parsed = JSON.parse(msg.data);
+            } catch (e) {
+                console.warn('[bridge] current_mode_json: malformed JSON, dropping:', e.message);
+                return;
+            }
             const payload = {
                 current_mode: {
-                    name:             msg.name,
-                    target_humidity:  msg.target_humidity,
-                    band_low:         msg.band_low,
-                    band_high:        msg.band_high,
-                    defend_side:      msg.defend_side,
-                    t_target:         tTarget,
-                    effective_since:  { sec: msg.effective_since.sec, nanosec: msg.effective_since.nanosec },
-                    source:           msg.source,
+                    name:             parsed.name,
+                    target_humidity:  parsed.target_humidity,
+                    band_low:         parsed.band_low,
+                    band_high:        parsed.band_high,
+                    defend_side:      parsed.defend_side,
+                    t_target:         parsed.t_target,
+                    effective_since:  parsed.effective_since,
+                    source:           parsed.source,
                 },
                 timestamp: Date.now(),
             };
@@ -895,7 +900,7 @@ rclnodejs.init().then(async () => {
             broadcast(payload);
         }
     );
-    console.log('[bridge] Phase 29: current_mode subscription (TRANSIENT_LOCAL) — /fc1/control/current_mode');
+    console.log('[bridge] Phase 29: current_mode subscription (TRANSIENT_LOCAL) — /fc1/control/current_mode_json');
 
     node.createSubscription(
         'std_msgs/msg/String',
