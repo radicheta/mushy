@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 28-05-PLAN.md
-last_updated: "2026-05-08T00:13:24.971Z"
+stopped_at: Completed 28-06-PLAN.md
+last_updated: "2026-05-08T00:20:07.278Z"
 last_activity: 2026-05-08
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 17
-  completed_plans: 15
-  percent: 88
+  completed_plans: 16
+  percent: 94
 ---
 
 # Project State
@@ -34,11 +34,11 @@ Milestone: v1.5.0.1 → v1.5 — milestone v1.5.0.1 resilience-hotfix work compl
 - Phase 27.3 — Sampling-rate reduction: MOOTED by wg0 transport switch
 - Phase 27.4 — Netplan reconciliation: MOOTED in planned form
 
-Plan: 6 of 7
+Plan: 7 of 7
 Status: Ready to execute
 Last activity: 2026-05-08
 
-Progress: [█████████░] 88%
+Progress: [█████████░] 94%
 
 **Carried from v1.3 (not blocking v1.4):**
 
@@ -116,6 +116,7 @@ Progress: [█████████░] 88%
 - [Phase 28-04] Rule 1 fix: get_parameters_by_prefix('modes.') returns empty in rclpy Jazzy with trailing dot; use 'modes' (no trailing dot)
 - [Phase 28-05] Bridge POST /control/param mounted with lazy rosNode wrapper — pattern template for any future bridge ROS-client route; route registered statically, handler reads module-level rosNode at request time, 503 pre-init
 - [Phase 28-05] Bridge allowlist range bounds duplicate Phase 28-04 controller validator (T-28-09 defense in depth) — pid_kp[0,5], pid_ki[0,1], pid_kd[0,20]
+- [Phase 28-06] Layer 2 transport pivoted SSH→fc_buffer HTTP relay (D-B1) — bridge container has no ssh binary; fc_buffer owns atomic /var/lib/fc-core/runtime_overrides.yaml write with .bak retention; path allowlist via realpath() defeats traversal+symlink+prefix-lookalike (T-28-20)
 
 ### Pending Todos
 
@@ -160,11 +161,12 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 | Phase 28 P03 | 17min | 2 tasks | 3 files |
 | Phase 28 P04 | 12min | 3 tasks | 2 files |
 | Phase 28 P05 | 3min | 2 tasks | 3 files |
+| Phase Phase 28 PP06 | 10min | 2 tasks tasks | 5 files files |
 
 ## Session Continuity
 
-Last session: 2026-05-08T00:13:24.964Z
-Stopped at: Completed 28-05-PLAN.md
+Last session: 2026-05-08T00:20:07.271Z
+Stopped at: Completed 28-06-PLAN.md
 Next up: pick from { (a) close 27.2 SYS-01 + SYS-04, (b) cyclonedds-tailscale.xml → cyclonedds.xml rename, (c) PID Kp 0.5 → 0.35 retune per 2026-05-03 calibration notes, (d) resume v1.5 main with /gsd:discuss-phase 28 }
 
 ---
