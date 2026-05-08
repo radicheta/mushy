@@ -280,7 +280,11 @@ Plans:
 
 **Dependencies:** Builds on Phase 28 (mode primitive + `set_mode` service + `current_mode` topic + Layer 2 runtime overlay) and Phase 29 (alerter consumes `current_mode` — schedule-driven mode switches retarget alerter automatically). Composes with 999.27 (derived telemetry — `current_mode` is already a published series; scheduler writes to the same channel).
 
-**Plans:** Not yet planned.
+**Plans:** 3 plans in 2 waves.
+
+- [ ] 30-01-PLAN.md — Wave 1: scheduler.py pure helpers + fc_controller integration (schedule_windows param decl, _validate_params arm, 30s timer, startup alignment, in-process mode swap with source='scheduler', bumpless re-engage); pytest TDD for parse/compute/wraparound/gap + controller-level scheduler tests.
+- [ ] 30-02-PLAN.md — Wave 1: bridge allowlist extension (control_param.js entrySchedule helper + ALLOWLIST entry; control_persist.js inherits via shared cp.validate); jest TDD for accept + 5 reject paths + Layer 2 round-trip.
+- [ ] 30-03-PLAN.md — Wave 2: fc_config.yaml schedule_windows: "[]" default, deploy to fc1 (commit→push fc1/prod→deploy.sh→restart), end-to-end Layer 1+Layer 2 smoke (boundary transition with source='scheduler' + restart survival), farmer attestation checkpoint.
 
 ### Phase 31: Experimental forcing modes (`force-condensation`, `force-evaporation`)
 
