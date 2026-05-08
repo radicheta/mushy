@@ -404,3 +404,100 @@ describe('Phase 29 ALRT keys', () => {
         expect(validate('pi_offline_min', 5.5).ok).toBe(false);
     });
 });
+
+// ---------------------------------------------------------------- Phase 30 SCHED keys
+// Plan 30-02 — schedule_windows JSON-encoded list. Mirrors the rclpy controller
+// validator from Plan 30-01 (defense in depth — T-30-06).
+
+describe('schedule_windows', () => {
+    test('schedule_windows is allowlisted', () => {
+        expect(ALLOWLIST['schedule_windows']).toBeDefined();
+        expect(ALLOWLIST['schedule_windows'].type).toBe(4); // T_STRING
+    });
+
+    test('empty array → ok', () => {
+        expect(validate('schedule_windows', '[]')).toEqual({ ok: true });
+    });
+
+    test('valid two-window schedule → ok', () => {
+        const v = '[{"start":"06:00","end":"22:00","mode":"fruiting"},{"start":"22:00","end":"06:00","mode":"pinning"}]';
+        expect(validate('schedule_windows', v)).toEqual({ ok: true });
+    });
+
+    test('wraparound window end<start → ok (D-02 wraparound is valid)', () => {
+        const v = '[{"start":"22:00","end":"06:00","mode":"pinning"}]';
+        expect(validate('schedule_windows', v)).toEqual({ ok: true });
+    });
+
+    test('malformed JSON → reject', () => {
+        const r = validate('schedule_windows', '{not json');
+        expect(r.ok).toBe(false);
+        expect(r.reason).toMatch(/JSON/);
+    });
+
+    test('non-array root → reject', () => {
+        const r = validate('schedule_windows', '{"start":"06:00"}');
+        expect(r.ok).toBe(false);
+        expect(r.reason).toMatch(/array/);
+    });
+
+    test('missing key (mode) → reject', () => {
+        const r = validate('schedule_windows', '[{"start":"06:00","end":"22:00"}]');
+        expect(r.ok).toBe(false);
+        expect(r.reason).toMatch(/missing key mode/);
+    });
+
+    test('bad HH:MM (single-digit hour) → reject', () => {
+        const r = validate('schedule_windows', '[{"start":"6:00","end":"22:00","mode":"fruiting"}]');
+        expect(r.ok).toBe(false);
+        expect(r.reason).toMatch(/HH:MM/);
+    });
+
+    test('bad minutes (06:60) → reject', () => {
+        const r = validate('schedule_windows', '[{"start":"06:60","end":"22:00","mode":"fruiting"}]');
+        expect(r.ok).toBe(false);
+    });
+
+    test('hour out of range (24:00 as start) → reject', () => {
+        const r = validate('schedule_windows', '[{"start":"24:00","end":"22:00","mode":"fruiting"}]');
+        expect(r.ok).toBe(false);
+    });
+
+    test('unknown mode → reject', () => {
+        const r = validate('schedule_windows', '[{"start":"06:00","end":"22:00","mode":"composting"}]');
+        expect(r.ok).toBe(false);
+        expect(r.reason).toMatch(/declared|not in/);
+    });
+
+    test('non-string value (raw number) → reject', () => {
+        const r = validate('schedule_windows', 42);
+        expect(r.ok).toBe(false);
+    });
+
+    test('element not an object → reject', () => {
+        const r = validate('schedule_windows', '["fruiting"]');
+        expect(r.ok).toBe(false);
+    });
+});
+
+describe('schedule_windows handler', () => {
+    test('POST schedule_windows=[] forwards as STRING via SetParameters', async () => {
+        let captured = null;
+        const ros = mkRosNode((req, cb) => {
+            captured = req;
+            cb({ results: [{ successful: true, reason: '' }] });
+        });
+        const h = makeHandler(ros);
+        const res = mkRes();
+        await h({
+            body: { node: 'fc_controller', param: 'schedule_windows', value: '[]' },
+        }, res);
+
+        expect(res._status).toBe(200);
+        expect(res._body.ok).toBe(true);
+        expect(res._body.applied).toEqual([{ param: 'schedule_windows', value: '[]' }]);
+        expect(captured).toEqual({
+            parameters: [{ name: 'schedule_windows', value: { type: 4, string_value: '[]' } }],
+        });
+    });
+});
