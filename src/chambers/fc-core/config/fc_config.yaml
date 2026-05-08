@@ -88,6 +88,12 @@ fc_controller:
     modes.pinning.band_high: 0.99
     modes.pinning.defend_side: low
     modes.pinning.t_target: .nan
+    # Phase 30 SCHED-01/03 — time-of-day mode schedule.
+    # JSON-encoded list of {start, end, mode} windows with HH:MM local times.
+    # Empty array = scheduling disabled (single-mode fallback per SCHED-03).
+    # Edit live via POST /control/param; persist via POST /control/persist.
+    # Wraparound supported (end<start = crosses midnight); half-open [start,end).
+    schedule_windows: "[]"
     # Phase 29 ALRT-10 (D-08) — tuned values from 29-COOLDOWN-TUNING.md (2026-05-08).
     # W8 retention gate triggered (12.6h window vs 14d target); values are best-effort
     # anchored on observed clockwork-30 pattern + farmer-attested settings + CONTEXT D-05/D-09.
