@@ -76,6 +76,79 @@ describe('formatHeartbeat', () => {
   });
 });
 
+describe('Phase 29 — pi alert last-known summary (999.39)', () => {
+  test('Test 1: pi alert with lastKnown emits a "Last sample:" line', () => {
+    const body = formatProblem({
+      alertType: 'pi',
+      severity: 'CRITICAL',
+      fields: {
+        lastSeenMs: 1700000000000,
+        lastKnown: { rh: 87.2, temp: 21.4, humidifier: 'ON', tsMs: 1699999000000 },
+      },
+      config,
+      nowMs: 1700000500000,
+    });
+    expect(body).toContain('Last seen:');
+    expect(body).toContain('Last sample: RH 87.2% · T 21.4°C · humidifier ON');
+  });
+
+  test('Test 2: pi alert without lastKnown omits "Last sample:" line', () => {
+    const body = formatProblem({
+      alertType: 'pi',
+      severity: 'CRITICAL',
+      fields: { lastSeenMs: 1700000000000 },
+      config,
+      nowMs: 1700000500000,
+    });
+    expect(body).toContain('Last seen:');
+    expect(body).not.toContain('Last sample:');
+  });
+
+  test('Test 3: lastKnown.humidifier OFF appears in the body', () => {
+    const body = formatProblem({
+      alertType: 'pi',
+      severity: 'CRITICAL',
+      fields: {
+        lastSeenMs: 1700000000000,
+        lastKnown: { rh: 90.0, temp: 22.0, humidifier: 'OFF', tsMs: 1699999000000 },
+      },
+      config,
+      nowMs: 1700000500000,
+    });
+    expect(body).toContain('humidifier OFF');
+  });
+
+  test('Test 4: lastKnown with lastSeenMs=null omits Last seen but includes Last sample', () => {
+    const body = formatProblem({
+      alertType: 'pi',
+      severity: 'CRITICAL',
+      fields: {
+        lastSeenMs: null,
+        lastKnown: { rh: 87.2, temp: 21.4, humidifier: 'ON', tsMs: 1699999000000 },
+      },
+      config,
+      nowMs: 1700000500000,
+    });
+    expect(body).not.toContain('Last seen:');
+    expect(body).toContain('Last sample:');
+  });
+
+  test('Test 5: dashboardUrl appears exactly once when lastKnown is provided', () => {
+    const body = formatProblem({
+      alertType: 'pi',
+      severity: 'CRITICAL',
+      fields: {
+        lastSeenMs: 1700000000000,
+        lastKnown: { rh: 87.2, temp: 21.4, humidifier: 'ON', tsMs: 1699999000000 },
+      },
+      config,
+      nowMs: 1700000500000,
+    });
+    const count = (body.match(new RegExp(config.dashboardUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
+    expect(count).toBe(1);
+  });
+});
+
 describe('ALRT-08: every message contains dashboard URL exactly once', () => {
   test('Test E: PROBLEM contains dashboardUrl exactly once', () => {
     const body = formatProblem({
