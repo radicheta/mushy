@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.5
-milestone_name: analog-humidity-control-and-modes
-status: active
-stopped_at: v1.5.0.1 archived; Phase 30 not yet started
-last_updated: "2026-05-08T13:00:00.000Z"
-last_activity: 2026-05-08 -- v1.5.0.1 milestone archived; v1.5 resumes
+milestone_name: Analog Humidity Control & Condensation/Evaporation Forcing
+status: Active — between phases
+stopped_at: Phase 29 context gathered
+last_updated: "2026-05-08T14:24:39.819Z"
+last_activity: 2026-05-08
 progress:
-  total_phases: 5
-  completed_phases: 3
-  total_plans: 13
-  completed_plans: 13
-  percent: 60
+  total_phases: 9
+  completed_phases: 5
+  total_plans: 27
+  completed_plans: 24
+  percent: 89
 ---
 
 # Project State
@@ -29,11 +29,13 @@ Phase: 30 (not started)
 Milestone: v1.5 — Analog Humidity Control & Condensation/Evaporation Forcing
 
 **v1.5.0.1 archived 2026-05-08 (see `.planning/milestones/v1.5.0.1-ROADMAP.md`):**
+
 - Phase 27.1 — Edge buffering: SHIPPED 2026-05-03 over wg0 (BUF-04 → 999.36)
 - Phase 27.2 — fc-core systemd hardening: SHIPPED 2026-05-07 PARTIAL (SYS-04 scenario 2 → 999.28)
 - Phase 27.3 + 27.4 — MOOTED by transport switch
 
 **v1.5 progress:**
+
 - Phase 27 — PID + slow-PWM: SHIPPED 2026-05-02
 - Phase 28 — Mode primitive + baselines + runtime config delivery: SHIPPED 2026-05-07/08 (MODE-01..05)
 - Phase 29 — Alerter mode awareness + cooldown tuning: SHIPPED 2026-05-08 (ALRT-08/09; ALRT-10 carries)
@@ -183,4 +185,4 @@ Next up: pick from { (a) close 27.2 SYS-01 + SYS-04, (b) cyclonedds-tailscale.xm
 *Roadmap phases: v1.0 (1–8), v1.1 (9–10), v1.2 (11–13), v1.2.1 (14–16), v1.3 (17–20), v1.4 (21–26), v1.5 (27–31), v1.5.0.1 (27.1, 27.2)*
 *Last updated: 2026-05-04 — v1.5.0.1 realignment after wg0 architectural detour*
 
-**Planned Phase:** 29 (Alerter mode awareness + cooldown tuning) — 7 plans — 2026-05-08T03:09:58.344Z
+**Planned Phase:** 30 (time-of-day-mode-scheduling) — 3 plans — 2026-05-08T14:24:39.813Z
