@@ -255,6 +255,14 @@ Original justification: align repo netplan with fc1's currently-running farm-4G 
 - [ ] 28-06-PLAN.md — bridge POST /control/persist (Layer 2) atomic overlay write to /var/lib/fc-core/runtime_overrides.yaml (transport per spike §B) — control_persist.js
 - [ ] 28-07-PLAN.md — fc.launch.py conditional overlay load + deploy.sh fixes (Pitfall 5 fc_msgs build, wg0 PI_HOST) + integration verification on fc1
 
+### Phase 29: Alerter mode awareness + cooldown tuning
+
+**Goal:** Make the alerter consume the controller's live mode/band state instead of static env vars (closes 999.22 — RH target/band hidden in `.env`), sweep `src/agents/alerter/src/config.js` for any other farmer-meaningful knobs hiding in env (heartbeat hour, humidifier-stuck threshold, RH OOB grace, pi/sensor offline minutes), and tune alert cooldowns based on the live data accumulated since Phase 17 (Phase 20 carry from v1.3).
+
+**Requirements:** ALRT-08, ALRT-09, ALRT-10.
+
+**Dependencies:** Builds on Phase 28 (mode primitive + `current_mode` topic + Layer 1 runtime config); resolves backlog 999.22 (alerter ops thresholds in env). Composes with Phase 30 (scheduler — schedule-driven mode switches will retarget alerter via the same `current_mode` channel) and 999.39 (alerter offline-blind rules — same module, fix together if scope allows).
+
 ## Backlog (parking lot)
 
 These are ideas captured during v1.0/v1.1 execution but not yet scoped into a
