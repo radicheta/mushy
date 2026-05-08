@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Configuration
-PI_HOST="${PI_HOST:-fc1-ts}"
+PI_HOST="${PI_HOST:-172.16.10.5}"  # wg0 IP per memory feedback_ssh_tailscale; override via env if a future host alias is added to ~/.ssh/config
 PI_USER="${PI_USER:-ubuntu}"
 PI_WS="/home/${PI_USER}/mushroom_farm_ws"
 PI_REPO="${PI_WS}/mushy-repo"
@@ -16,7 +16,7 @@ ssh "${PI_USER}@${PI_HOST}" "cd ${PI_REPO} && git fetch origin && git checkout $
 
 # Step 2: Build on Pi
 echo "[2/3] Building on Pi..."
-ssh "${PI_USER}@${PI_HOST}" "cd ${PI_WS} && source /opt/ros/jazzy/setup.bash && colcon build --packages-select fc_core"
+ssh "${PI_USER}@${PI_HOST}" "cd ${PI_WS} && source /opt/ros/jazzy/setup.bash && colcon build --packages-select fc_msgs fc_core"
 
 # Step 3: Restart service
 echo "[3/3] Restarting fc-core service..."
