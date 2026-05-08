@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed 28-07-PLAN.md (awaiting human-verify checkpoint)
-last_updated: "2026-05-08T00:35:22.919Z"
+stopped_at: Phase 29 context gathered
+last_updated: "2026-05-08T02:22:11.121Z"
 last_activity: 2026-05-08
 progress:
-  total_phases: 6
+  total_phases: 7
   completed_phases: 4
   total_plans: 17
   completed_plans: 17
@@ -169,8 +169,8 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 ## Session Continuity
 
-Last session: 2026-05-08T00:35:16.080Z
-Stopped at: Completed 28-07-PLAN.md (awaiting human-verify checkpoint)
+Last session: --stopped-at
+Stopped at: Phase 29 context gathered
 Next up: pick from { (a) close 27.2 SYS-01 + SYS-04, (b) cyclonedds-tailscale.xml → cyclonedds.xml rename, (c) PID Kp 0.5 → 0.35 retune per 2026-05-03 calibration notes, (d) resume v1.5 main with /gsd:discuss-phase 28 }
 
 ---
