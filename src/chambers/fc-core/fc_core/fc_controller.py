@@ -745,12 +745,17 @@ class FruitingChamberController(Node):
         response.active_mode = msg
         return response
 
-    def _engage_pid_bumplessly(self, last_output: float = 0.15):
-        """D-12: bumpless engage with optional carry-over duty.
+    def _engage_pid_bumplessly(self, last_output: float):
+        """D-12: bumpless engage with explicit carry-over duty.
 
-        Default 0.15 preserves the post-grace fresh-engage behavior. The
-        set_mode service handler (Task 3) passes `last_output=current_duty`
-        so a band-change mid-flight doesn't kick the integrator.
+        DEFER-29-01 fix (2026-05-08): default `0.15` removed — caller MUST
+        pass an explicit value (typically `self._last_published_duty`).
+        Hardcoded preload combined with zero error (RH in-band at re-engage
+        time) caused humidifier_duty to pin at 0.15 indefinitely.
+        The set_mode service handler passes `last_output=current_duty` so a
+        band-change mid-flight doesn't kick the integrator; the tick loop
+        passes `self._last_published_duty` so post-restart re-engage
+        continues the prior steady state.
         """
         self._pid.set_auto_mode(True, last_output=last_output)
         self._pid_engaged = True
@@ -970,7 +975,10 @@ class FruitingChamberController(Node):
             mode = self._resolve_active_mode()
 
             if not self._pid_engaged:
-                self._engage_pid_bumplessly()
+                # DEFER-29-01 fix: pass current operating duty so post-restart
+                # re-engage continues the prior steady state instead of
+                # pinning at the old hardcoded 0.15 default.
+                self._engage_pid_bumplessly(self._last_published_duty)
 
             # Live-reload PID gains from ROS params each tick (HUMID-03)
             self._pid.Kp = self.get_parameter('pid_kp').value
