@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
+status: milestone_complete
 stopped_at: Phase 29 context gathered
-last_updated: "2026-05-08T02:22:11.121Z"
-last_activity: 2026-05-08
+last_updated: "2026-05-08T12:08:41.467Z"
+last_activity: 2026-05-08 -- Phase 29 execution started
 progress:
   total_phases: 7
-  completed_phases: 4
-  total_plans: 17
+  completed_phases: 5
+  total_plans: 24
   completed_plans: 17
-  percent: 100
+  percent: 71
 ---
 
 # Project State
@@ -21,11 +21,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-02)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 28 — mode-primitive-2-baseline-modes-fruiting-pinning-runtime-con
+**Current focus:** Phase 29 — alerter-mode-awareness-cooldown-tuning
 
 ## Current Position
 
-Phase: 28 (mode-primitive-2-baseline-modes-fruiting-pinning-runtime-con) — EXECUTING
+Phase: 29
 Milestone: v1.5.0.1 → v1.5 — milestone v1.5.0.1 resilience-hotfix work complete; advancing to mode work
 
 - Phase 27 — PID + slow-PWM: SHIPPED 2026-05-02
@@ -34,8 +34,8 @@ Milestone: v1.5.0.1 → v1.5 — milestone v1.5.0.1 resilience-hotfix work compl
 - Phase 27.3 — Sampling-rate reduction: MOOTED by wg0 transport switch
 - Phase 27.4 — Netplan reconciliation: MOOTED in planned form
 
-Plan: 7 of 7
-Status: Phase complete — ready for verification
+Plan: Not started
+Status: Milestone complete
 Last activity: 2026-05-08
 
 Progress: [██████████] 100%
@@ -56,7 +56,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 72 (v1.0 + v1.1 + v1.2 + v1.2.1 + v1.3 Phase 17)
+- Total plans completed: 79 (v1.0 + v1.1 + v1.2 + v1.2.1 + v1.3 Phase 17)
 - Average duration: ~25 min/plan (estimated)
 - v1.2 plans completed: 0
 
@@ -177,4 +177,4 @@ Next up: pick from { (a) close 27.2 SYS-01 + SYS-04, (b) cyclonedds-tailscale.xm
 *Roadmap phases: v1.0 (1–8), v1.1 (9–10), v1.2 (11–13), v1.2.1 (14–16), v1.3 (17–20), v1.4 (21–26), v1.5 (27–31), v1.5.0.1 (27.1, 27.2)*
 *Last updated: 2026-05-04 — v1.5.0.1 realignment after wg0 architectural detour*
 
-**Planned Phase:** 28 (mode-primitive-2-baseline-modes-fruiting-pinning-runtime-con) — 7 plans — 2026-05-07T22:48:42.388Z
+**Planned Phase:** 29 (Alerter mode awareness + cooldown tuning) — 7 plans — 2026-05-08T03:09:58.344Z

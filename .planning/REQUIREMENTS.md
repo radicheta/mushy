@@ -60,8 +60,8 @@ fc1 is on home-LAN wifi with kernel-WG, not at the farm on 4G. The drifted netpl
 
 ### ALRT — Alerter Mode Awareness + Cooldown Tuning
 
-- [ ] **ALRT-08** — Alerter reads RH target and band from `current_mode` (or `current_target_humidity` + `current_humidity_band` topics) instead of static env vars; closes backlog 999.22.
-- [ ] **ALRT-09** — Sweep `src/agents/alerter/src/config.js` for any other farmer-meaningful knobs hiding in env (heartbeat hour, humidifier-stuck threshold, RH OOB grace, pi/sensor offline minutes) and route them through the same dynamic source as ALRT-08.
+- [x] **ALRT-08** — Alerter reads RH target and band from `current_mode` (or `current_target_humidity` + `current_humidity_band` topics) instead of static env vars; closes backlog 999.22.
+- [x] **ALRT-09** — Sweep `src/agents/alerter/src/config.js` for any other farmer-meaningful knobs hiding in env (heartbeat hour, humidifier-stuck threshold, RH OOB grace, pi/sensor offline minutes) and route them through the same dynamic source as ALRT-08.
 - [ ] **ALRT-10** — Alert cooldown thresholds tuned based on Phase 17's ≥2 weeks of live data (Phase 20 carry from v1.3).
 
 ### SCHED — Time-Of-Day Mode Scheduling
@@ -127,8 +127,8 @@ fc1 is on home-LAN wifi with kernel-WG, not at the farm on 4G. The drifted netpl
 | MODE-03 | 28 | Pending |
 | MODE-04 | 28 | Pending |
 | MODE-05 | 28 | Pending |
-| ALRT-08 | 29 | Pending |
-| ALRT-09 | 29 | Pending |
+| ALRT-08 | 29 | Complete |
+| ALRT-09 | 29 | Complete |
 | ALRT-10 | 29 | Pending |
 | SCHED-01 | 30 | Pending |
 | SCHED-02 | 30 | Pending |
