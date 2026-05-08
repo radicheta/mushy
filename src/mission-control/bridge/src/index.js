@@ -589,12 +589,28 @@ const clients = new Set();
 // before the next fc_controller state transition (addresses grey-until-tick UX).
 let lastSensorHealthBroadcast = null;
 
+// Phase 29-02: cache last mode + alerter Tier B/C config broadcasts for on-connect
+// replay so freshly-connecting WS clients (notably the alerter) see current
+// state within one handshake without waiting for the next controller publish.
+let lastModeBroadcast = null;
+let lastAlerterModeOverridesBroadcast = null;
+let lastAlerterGlobalsBroadcast = null;
+
 wss.on('connection', (ws) => {
     console.log('[bridge] Client connected');
     clients.add(ws);
 
     if (lastSensorHealthBroadcast && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(lastSensorHealthBroadcast));
+    }
+    if (lastModeBroadcast && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(lastModeBroadcast));
+    }
+    if (lastAlerterModeOverridesBroadcast && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(lastAlerterModeOverridesBroadcast));
+    }
+    if (lastAlerterGlobalsBroadcast && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(lastAlerterGlobalsBroadcast));
     }
 
     ws.on('close', () => {
@@ -844,6 +860,80 @@ rclnodejs.init().then(async () => {
         }
     );
     console.log('[bridge] Sensor health subscription: TRANSIENT_LOCAL QoS (/fc1/sensor_health)');
+
+    // Phase 29-02 (D-01/D-02/D-06): subscribe to /fc1/control/current_mode +
+    // /fc1/control/alerter_mode_overrides + /fc1/control/alerter_globals.
+    // All three use TRANSIENT_LOCAL/RELIABLE/depth=1 to match the controller-side
+    // publishers — fresh subscribers (e.g. alerter cold-start) get the latest
+    // value within one DDS handshake. Each callback updates a module-scope cache
+    // so on-connect WS replay (above) can deliver to freshly-connecting clients.
+    node.createSubscription(
+        'fc_msgs/msg/Mode',
+        '/fc1/control/current_mode',
+        { qos: humidifierQos },
+        (msg) => {
+            // Pitfall 5 (RESEARCH §): NaN serializes to null via JSON.stringify;
+            // coerce explicitly so downstream consumers see a documented null
+            // rather than rely on the implicit JSON.stringify(NaN)='null' footgun.
+            const tTarget = (typeof msg.t_target === 'number' && Number.isFinite(msg.t_target))
+                ? msg.t_target
+                : null;
+            const payload = {
+                current_mode: {
+                    name:             msg.name,
+                    target_humidity:  msg.target_humidity,
+                    band_low:         msg.band_low,
+                    band_high:        msg.band_high,
+                    defend_side:      msg.defend_side,
+                    t_target:         tTarget,
+                    effective_since:  { sec: msg.effective_since.sec, nanosec: msg.effective_since.nanosec },
+                    source:           msg.source,
+                },
+                timestamp: Date.now(),
+            };
+            lastModeBroadcast = payload;
+            broadcast(payload);
+        }
+    );
+    console.log('[bridge] Phase 29: current_mode subscription (TRANSIENT_LOCAL) — /fc1/control/current_mode');
+
+    node.createSubscription(
+        'std_msgs/msg/String',
+        '/fc1/control/alerter_mode_overrides',
+        { qos: humidifierQos },
+        (msg) => {
+            let parsed;
+            try {
+                parsed = JSON.parse(msg.data);
+            } catch (e) {
+                console.warn('[bridge] alerter_mode_overrides: malformed JSON, dropping:', e.message);
+                return;
+            }
+            const payload = { alerter_overrides: parsed, timestamp: Date.now() };
+            lastAlerterModeOverridesBroadcast = payload;
+            broadcast(payload);
+        }
+    );
+    console.log('[bridge] Phase 29: alerter_mode_overrides subscription (TRANSIENT_LOCAL)');
+
+    node.createSubscription(
+        'std_msgs/msg/String',
+        '/fc1/control/alerter_globals',
+        { qos: humidifierQos },
+        (msg) => {
+            let parsed;
+            try {
+                parsed = JSON.parse(msg.data);
+            } catch (e) {
+                console.warn('[bridge] alerter_globals: malformed JSON, dropping:', e.message);
+                return;
+            }
+            const payload = { alerter_globals: parsed, timestamp: Date.now() };
+            lastAlerterGlobalsBroadcast = payload;
+            broadcast(payload);
+        }
+    );
+    console.log('[bridge] Phase 29: alerter_globals subscription (TRANSIENT_LOCAL)');
 
     // Phase 21 D-01: activate continuous-persistence keepalive and prime the subscription
     // so we capture idle-cadence frames even with zero MJPEG viewers.
