@@ -308,6 +308,13 @@ class FruitingChamberController(Node):
         # single source of truth for scheduler suppression (D-08).
         self._experiment_set_in_progress = False
         self._active_experiment: Optional[ActiveExperiment] = None
+        # Phase 31 D-12 follow-up (2026-05-09 hotfix): snapshot of
+        # _last_published_duty taken at experiment entry, restored on revert.
+        # Without this, the force_duty short-circuit overwrites
+        # _last_published_duty with the artificial value (1.0 or 0.0) and the
+        # bumpless re-engage seeds the PID integrator with that value — duty
+        # stays pinned at the force value if RH is in-band at revert.
+        self._pre_experiment_duty: Optional[float] = None
         self.add_on_set_parameters_callback(self._validate_params)
 
         # Phase 28 D-16: mode-switch service. Custom srv in fc_msgs. The handler
@@ -1081,6 +1088,13 @@ class FruitingChamberController(Node):
             requested_duration_min=dur,
         )
 
+        # 2026-05-09 hotfix: snapshot pre-experiment duty BEFORE the swap.
+        # The force_duty short-circuit will overwrite _last_published_duty
+        # with the artificial value (1.0 or 0.0) on the first post-swap tick;
+        # we need the real prior steady-state duty for revert's bumpless
+        # re-engage.
+        self._pre_experiment_duty = self._last_published_duty
+
         # In-process mode swap, gated by D-03 flag.
         self._experiment_set_in_progress = True
         try:
@@ -1090,6 +1104,8 @@ class FruitingChamberController(Node):
         finally:
             self._experiment_set_in_progress = False
         if not results[0].successful:
+            # Roll back the snapshot — we never actually entered force mode.
+            self._pre_experiment_duty = None
             response.ok = False
             response.message = f'set_parameters_failed: {results[0].reason}'
             response.started_at_iso = ''
@@ -1158,8 +1174,16 @@ class FruitingChamberController(Node):
         # Clear FIRST so the scheduler can resume on its next tick.
         self._active_experiment = None
 
-        # D-12 bumpless re-engage carrying current duty.
-        self._engage_pid_bumplessly(last_output=self._last_published_duty)
+        # 2026-05-09 hotfix: re-engage with the PRE-experiment duty, not
+        # _last_published_duty (which holds the force-mode artificial value).
+        revert_seed = (
+            self._pre_experiment_duty
+            if self._pre_experiment_duty is not None
+            else self._last_published_duty
+        )
+        self._pre_experiment_duty = None
+        # D-12 bumpless re-engage carrying pre-experiment duty.
+        self._engage_pid_bumplessly(last_output=revert_seed)
 
         # D-15: synchronous current_mode publish with source='experiment_cancel'.
         new_mv = self._resolve_active_mode()
@@ -1210,7 +1234,17 @@ class FruitingChamberController(Node):
 
         self._active_experiment = None
 
-        self._engage_pid_bumplessly(last_output=self._last_published_duty)
+        # 2026-05-09 hotfix: re-engage with the PRE-experiment duty, not
+        # _last_published_duty (which holds the force-mode artificial value
+        # 1.0 or 0.0). Without this, RH-in-band at revert pinned the duty at
+        # the force value indefinitely.
+        revert_seed = (
+            self._pre_experiment_duty
+            if self._pre_experiment_duty is not None
+            else self._last_published_duty
+        )
+        self._pre_experiment_duty = None
+        self._engage_pid_bumplessly(last_output=revert_seed)
 
         new_mv = self._resolve_active_mode()
         cm_msg = self._build_mode_msg(new_mv, source='experiment_revert')

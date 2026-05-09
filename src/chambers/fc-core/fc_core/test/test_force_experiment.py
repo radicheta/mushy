@@ -340,6 +340,79 @@ class TestExperimentTick:
         finally:
             node.destroy_node()
 
+    def test_ttl_revert_seeds_pid_with_pre_experiment_duty(self, ros_context):
+        """2026-05-09 regression: bumpless re-engage on auto-revert must use
+        the pre-experiment duty, NOT _last_published_duty (which holds the
+        force-mode artificial value of 1.0 / 0.0). Lab-reproduced: after
+        force-condensation auto-reverted, duty stayed pinned at 1.0 with
+        RH in-band because the PID integrator was seeded with 1.0.
+        """
+        node = _make_node()
+        try:
+            # Establish a realistic pre-experiment operating duty.
+            node._publish_duty(0.32)
+            assert node._last_published_duty == pytest.approx(0.32)
+
+            node._handle_start_experiment(
+                _start_request('force-condensation', 1),
+                StartExperiment.Response(),
+            )
+            # Snapshot taken at entry.
+            assert node._pre_experiment_duty == pytest.approx(0.32)
+
+            # Simulate the force_duty short-circuit publishing 1.0 each tick.
+            node._publish_duty(1.0)
+            assert node._last_published_duty == pytest.approx(1.0)
+
+            started = node._active_experiment.started_at_monotonic
+            node._monotonic = lambda s=started: s + 61.0
+
+            # Capture the bumpless re-engage seed.
+            seeds = []
+            orig = node._engage_pid_bumplessly
+            def wrap(last_output):
+                seeds.append(last_output)
+                return orig(last_output=last_output)
+            node._engage_pid_bumplessly = wrap
+
+            node._experiment_tick()
+
+            assert seeds, 'expected bumpless re-engage on revert'
+            assert seeds[-1] == pytest.approx(0.32), (
+                f'PID re-engage seed must be pre-experiment duty (0.32), '
+                f'got {seeds[-1]} — regression: force-mode duty leaked '
+                f'into integrator and would pin output forever in-band.'
+            )
+            # Snapshot cleared after revert.
+            assert node._pre_experiment_duty is None
+        finally:
+            node.destroy_node()
+
+    def test_cancel_revert_seeds_pid_with_pre_experiment_duty(self, ros_context):
+        """Same regression on the early-cancel path."""
+        node = _make_node()
+        try:
+            node._publish_duty(0.27)
+            node._handle_start_experiment(
+                _start_request('force-evaporation', 5),
+                StartExperiment.Response(),
+            )
+            assert node._pre_experiment_duty == pytest.approx(0.27)
+            node._publish_duty(0.0)  # force-evaporation tick
+
+            seeds = []
+            orig = node._engage_pid_bumplessly
+            node._engage_pid_bumplessly = lambda last_output: (
+                seeds.append(last_output) or orig(last_output=last_output)
+            )
+            node._handle_cancel_experiment(
+                CancelExperiment.Request(), CancelExperiment.Response()
+            )
+            assert seeds and seeds[-1] == pytest.approx(0.27)
+            assert node._pre_experiment_duty is None
+        finally:
+            node.destroy_node()
+
     def test_ttl_idle_when_no_experiment(self, ros_context):
         node = _make_node()
         try:
