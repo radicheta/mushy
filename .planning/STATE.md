@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Analog Humidity Control & Condensation/Evaporation Forcing
 status: executing
-stopped_at: Phase 29 context gathered
-last_updated: "2026-05-08T20:13:04.095Z"
-last_activity: 2026-05-08 -- Phase --phase execution started
+stopped_at: Phase 31 shipped (UAT partial — bridge proven; Signal blocked on pre-existing signal-cli primary re-reg)
+last_updated: "2026-05-09T21:20:00.000Z"
+last_activity: 2026-05-09 Phase 31 UAT complete; alerter BRIDGE_HTTP_URL bug fixed
 progress:
   total_phases: 9
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 31
-  completed_plans: 27
-  percent: 87
+  completed_plans: 31
+  percent: 100
 ---
 
 # Project State
@@ -40,7 +40,7 @@ Milestone: v1.5 — Analog Humidity Control & Condensation/Evaporation Forcing
 - Phase 28 — Mode primitive + baselines + runtime config delivery: SHIPPED 2026-05-07/08 (MODE-01..05)
 - Phase 29 — Alerter mode awareness + cooldown tuning: SHIPPED 2026-05-08 (ALRT-08/09; ALRT-10 carries)
 - Phase 30 — Time-of-day mode scheduling: 30-01/02 SHIPPED 2026-05-08; 30-03 deploy/attestation deferred (SCHED-01..03)
-- Phase 31 — Experimental forcing modes: 31-01..04 CODE COMPLETE 2026-05-08; UAT (incl. boot-recovery D-09 attestation) deferred to fc1 deploy (EXPT-01..03)
+- Phase 31 — Experimental forcing modes: SHIPPED 2026-05-09 (EXPT-01..03). Bridge curl path PROVEN end-to-end (DB row 7 + controller logs + auto-revert). Alerter BRIDGE_HTTP_URL bug fixed mid-UAT. Signal-driven UAT (tests 3-5) blocked on pre-existing signal-cli primary re-reg (deviceId=2 today; needs deviceId=1). Tests 6 (boot recovery D-09) and 7 (scheduler suppression) deferred but unit-test-covered; can be run via direct bridge curl any time.
 
 Plan: 1 of --name
 Status: Executing Phase --phase
