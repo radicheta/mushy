@@ -14,6 +14,7 @@ roadmap; promote via `/gsd:plant-seed` workflow when a trigger fires.
 | SEED-004 | Pinning is a cycle, not a setpoint — mode schema needs bands + VPD | Phase 28 discuss-phase entry (mode primitive); also relevant to 30/31/999.33/999.34 | Medium |
 | SEED-005 | Chamber water-mass observer + condensation camera macro | VPD scoping decision OR Phase 31 surfaces sensor-saturation pain | Medium |
 | SEED-006 | Farmer freeform stream → automatic farmOS bookkeeping | Next major milestone (v1.6+) — agentic / farmer-UX / multimodal Signal | Large |
+| SEED-007 | Power-bank UPS for fc1 Pi (gap short blackouts)    | Next infra/hardening milestone OR another unscheduled-reboot incident   | Small         |
 
 ## Files
 
