@@ -6,8 +6,9 @@ services:
 
   bridge:
     build:
-      context: ./src/mission-control/bridge
-      dockerfile: Dockerfile
+      # Phase 31: context is repo root so Dockerfile can COPY src/chambers/fc-msgs/ for srv generation
+      context: .
+      dockerfile: src/mission-control/bridge/Dockerfile
     depends_on:
       - timescale
     environment:
