@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Analog Humidity Control & Condensation/Evaporation Forcing
 status: executing
-stopped_at: Phase 31 shipped (UAT partial — bridge proven; Signal blocked on pre-existing signal-cli primary re-reg)
-last_updated: "2026-05-09T21:20:00.000Z"
-last_activity: 2026-05-09 Phase 31 UAT complete; alerter BRIDGE_HTTP_URL bug fixed
+stopped_at: Phase 30 + 31 shipped — milestone-close-ready pending farmer attestations
+last_updated: "2026-05-09T22:55:00.000Z"
+last_activity: 2026-05-09 Phase 30-03 smoke PASSED (Layer 1 boundary transition + Layer 2 persist + restart survival); 30-03-SMOKE.md captured
 progress:
   total_phases: 9
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 31
   completed_plans: 31
   percent: 100
@@ -39,7 +39,7 @@ Milestone: v1.5 — Analog Humidity Control & Condensation/Evaporation Forcing
 - Phase 27 — PID + slow-PWM: SHIPPED 2026-05-02
 - Phase 28 — Mode primitive + baselines + runtime config delivery: SHIPPED 2026-05-07/08 (MODE-01..05)
 - Phase 29 — Alerter mode awareness + cooldown tuning: SHIPPED 2026-05-08 (ALRT-08/09; ALRT-10 carries)
-- Phase 30 — Time-of-day mode scheduling: 30-01/02 SHIPPED 2026-05-08; 30-03 deploy/attestation deferred (SCHED-01..03)
+- Phase 30 — Time-of-day mode scheduling: SHIPPED 2026-05-09 (SCHED-01..03). 30-01/02 code committed 2026-05-08; 30-03 Layer 1 (boundary transition) + Layer 2 (persist + restart survival) PROVEN this session — see 30-03-SMOKE.md. Side-finding worth farmer note: scheduler keeps current mode in gaps between windows (D-08 design); one-shot windows leave mode "stuck" until next window or manual reset. Farmer attestation pending review of SMOKE.md.
 - Phase 31 — Experimental forcing modes: SHIPPED 2026-05-09 (EXPT-01..03). Bridge curl path PROVEN end-to-end (DB row 7 + controller logs + auto-revert). Alerter BRIDGE_HTTP_URL bug fixed mid-UAT. Signal-driven UAT (tests 3-5) blocked on pre-existing signal-cli primary re-reg (deviceId=2 today; needs deviceId=1). Tests 6 (boot recovery D-09) and 7 (scheduler suppression) deferred but unit-test-covered; can be run via direct bridge curl any time.
 
 Plan: 1 of --name
