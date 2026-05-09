@@ -9,7 +9,7 @@
 - ✅ **v1.3 Alerts & Unified Farmer Dashboard** — Phases 17–18 (shipped 2026-04-19; Phases 19/20 externally gated → v1.5)
 - ✅ **v1.4 Vision & Growth Insights** — Phases 21–26 (shipped 2026-05-01; Phase 24 deferred behind backlog 999.26 camera coverage)
 - ✅ **v1.5.0.1 Resilience hotfix from 2026-05-02 incident** — Phases 27.1 + 27.2 (shipped 2026-05-07 via wg0 architectural detour; 27.3 + 27.4 MOOTED). See `.planning/milestones/v1.5.0.1-ROADMAP.md`.
-- 🚧 **v1.5 Analog Humidity Control & Condensation/Evaporation Forcing** — Phases 27–31 (Phases 27, 28, 29 shipped; Phase 30 + 31 ahead); promotes backlog 999.9 + absorbs 999.22/999.23 + SEED-001; carries Phase 20 alert cooldown tuning from v1.3
+- ✅ **v1.5 Analog Humidity Control & Condensation/Evaporation Forcing** — Phases 27–31 (shipped 2026-05-09; ALRT-10 calendar-deferred). See `.planning/milestones/v1.5-ROADMAP.md`.
 
 ## Phases
 
@@ -95,16 +95,16 @@ See `.planning/milestones/v1.5.0.1-ROADMAP.md` and `.planning/milestones/v1.5.0.
 
 </details>
 
-<details open>
-<summary>🚧 v1.5 Analog Humidity Control & Condensation/Evaporation Forcing (Phases 27-31) — IN PROGRESS</summary>
+<details>
+<summary>✅ v1.5 Analog Humidity Control & Condensation/Evaporation Forcing (Phases 27-31) — SHIPPED 2026-05-09</summary>
 
-- [x] **Phase 27: PID + time-proportional duty-cycle primitive** — shipped 2026-05-02; HUMID-01..04
-- [x] **Phase 28: Mode primitive + 2 baseline modes (`fruiting`, `pinning`) + runtime config delivery** — incorporates SEED-001 (modes change without redeploy); MODE-01..05 — SHIPPED 2026-05-07/08
-- [x] **Phase 29: Alerter mode awareness + cooldown tuning** — alerter reads target/band from controller; sweep other env-hidden knobs; closes 999.22; carries Phase 20; ALRT-08..10 — SHIPPED 2026-05-08
-- [x] **Phase 30: Time-of-day mode scheduling** — declarative schedule, scheduler issues mode switches at window boundaries; closes 999.23; SCHED-01..03 — SHIPPED 2026-05-09 (Layer 1+2 smoke PASSED — fruiting→pinning boundary transition + restart survival proven; farmer attestation of 30-03-SMOKE.md pending)
-- [x] **Phase 31: Experimental forcing modes (`force-condensation`, `force-evaporation`)** — timed, auto-revert, with TimescaleDB experiment logging; EXPT-01..03 — SHIPPED 2026-05-09 (Signal E2E UAT blocked on pre-existing signal-cli primary re-registration; bridge curl path proven end-to-end; tests 6/7 deferred)
+- [x] Phase 27: PID + time-proportional duty-cycle primitive (5/5 plans) — 2026-05-02 (farmer-attested HUMID-04)
+- [x] Phase 28: Mode primitive + 2 baseline modes + runtime config delivery (7/7 plans) — 2026-05-07/08 (MODE-01..05; 86 pytest + 156 jest GREEN)
+- [x] Phase 29: Alerter mode awareness + cooldown tuning (7/7 plans) — 2026-05-08 (ALRT-08/09 ✓; ALRT-10 calendar-deferred to backlog 999.20)
+- [x] Phase 30: Time-of-day mode scheduling (3/3 plans) — 2026-05-09 (SCHED-01..03; Layer 1+2 smoke PASSED; farmer attestation of 30-03-SMOKE.md pending)
+- [x] Phase 31: Experimental forcing modes (4/4 plans) — 2026-05-09 (EXPT-01..03; bridge curl path PROVEN E2E; Signal command path blocked on pre-existing signal-cli deviceId=2)
 
-PID-first shape (locked 2026-05-01 with farmer): farmer wants condensation/evaporation experiments soon and they're achievable as a side-effect of the early phases. Calibration findings already on disk: `.planning/phases/999.9-pid-time-proportional-humidity-control/CALIBRATION-FINDINGS-2026-04-11.md`. Modes are kept thin in v1.5 — 2 hardcoded YAML modes; richer mode-editor UI is v1.6.
+16/17 requirements satisfied; 1 calendar-deferred (ALRT-10). Cross-phase integration verified live. See `.planning/milestones/v1.5-ROADMAP.md` and `.planning/v1.5-MILESTONE-AUDIT.md`.
 
 </details>
 
@@ -148,25 +148,6 @@ PID-first shape (locked 2026-05-01 with farmer): farmer wants condensation/evapo
 | 29. Alerter mode awareness + cooldown tuning | v1.5 | 7/7 | Complete    | 2026-05-08 |
 | 30. Time-of-day mode scheduling | v1.5 | 3/3 | Complete (smoke PASSED, farmer attestation pending review of 30-03-SMOKE.md) | 2026-05-09 |
 | 31. Experimental forcing modes (condensation/evaporation) | v1.5 | 4/4 | Complete (UAT partial — bridge path PROVEN; Signal E2E blocked on signal-cli primary re-reg) | 2026-05-09 |
-
-### Phase 27: PID + time-proportional duty-cycle primitive
-
-**Goal:** Replace bang-bang humidifier control with a PID loop that emits a 0.0–1.0 duty cycle on `fc1/actuators/humidifier_duty`, driven onto the existing SSR via a slow-PWM actuator (120s window, 10s min ON pulse) plus a "Mode C" full-ON bypass when far from setpoint. Closes the structural ±2% RH ceiling proven 2026-04-11. Acceptance: ±0.5% RH over a 2h farmer-attested soak (HUMID-04). Ships the primitive only — Phase 28 wraps it in named modes.
-
-**Requirements:** HUMID-01, HUMID-02, HUMID-03, HUMID-04.
-
-**CONTEXT.md:** `.planning/phases/27-pid-time-proportional-duty-cycle-primitive/27-CONTEXT.md`. GSD workflows use `phase=27`.
-
-**Dependencies:** independent of v1.4. Builds on Phase 03 safety contracts, Phase 15 grace, Phase 16 sensor_health, Phase 26 slot-1 fallback. Calibration foundation in `.planning/phases/999.9-pid-time-proportional-humidity-control/CALIBRATION-FINDINGS-2026-04-11.md`.
-
-**Plans:** 5/5 plans complete
-
-Plans:
-- [x] 27-01-PLAN.md — Wave 0: vendor simple-pid, scaffold RED tests, sweep min_dwell_time, add new pid_*/pwm_* params to fc_config.yaml
-- [x] 27-02-PLAN.md — Wave 1: implement fc_pwm_driver node (slow-PWM windowing + GPIO27 ownership) + setup.py + fc.launch.py wiring
-- [x] 27-03-PLAN.md — Wave 2: refactor fc_controller.py — strip bang-bang/dwell/GPIO, add PID + Mode C + ramp + bumpless transfer
-- [x] 27-04-PLAN.md — Wave 3: bridge subscription on fc1/actuators/humidifier_duty (TRANSIENT_LOCAL, no rescale)
-- [x] 27-05-PLAN.md — Wave 4: deploy to fc1/prod + rebuild bridge + 2-hour HUMID-04 farmer-attested soak
 
 ### Phase 27.1: Edge buffering — fc1 telemetry replay-on-reconnect — SHIPPED 2026-05-03
 
@@ -222,79 +203,6 @@ Original justification: align repo netplan with fc1's currently-running farm-4G 
 **Why mooted in planned form:** fc1 is no longer at the farm on 4G — it's on home-LAN wifi with kernel-WG to elder-plops while the SSD is procured. The drifted state captured in the original plan was a snapshot of the farm-4G config; that config will be re-applied when fc1 returns to the farm. Re-promote at that point.
 
 **Carry-forward note:** the underlying anti-pattern (manual netplan edits on fc1 not reflected in the repo, fc-system-sync would clobber them) is permanent and worth re-addressing whenever fc1 returns to a 4G uplink.
-
-### Phase 28: Mode primitive + 2 baseline modes (`fruiting`, `pinning`) + runtime config delivery
-
-**Goal:** Wrap Phase 27's PID primitive in a named-mode abstraction so the controller's behavior is parametrized by a declarative bundle (`target`, band, duty-cycle behavior) instead of a single scalar `target_humidity`. Ship `fruiting` and `pinning` as the first two baseline modes, expose live mode-switching via ROS service, publish `current_mode`, and deliver a runtime config path so mode definitions can be edited without a deploy cycle. Closes the SEED-001 pain (config edits require redeploy) and lays the groundwork for SEED-004 (pinning is a *cycle*, not a setpoint — bands + defend_side + VPD).
-
-**Requirements:** MODE-01, MODE-02, MODE-03, MODE-04, MODE-05.
-
-> ⚠️ **MODE-01 wording conflicts with SEED-004** — current REQUIREMENTS.md text bundles `(target_RH, band, duty-cycle behavior)` but SEED-004 demands `(target, band_low, band_high, defend_side, T_target_optional)`. **Reconcile MODE-01 wording before schema locks** — discuss-phase entry should surface this and route to either rewriting MODE-01 in REQUIREMENTS.md or capturing the schema decision in CONTEXT.md as the canonical source.
-
-**CONTEXT.md:** `.planning/phases/28-mode-primitive-2-baseline-modes-fruiting-pinning-runtime-con/28-CONTEXT.md` (gathered 2026-05-07; D-01..D-25 locked; MODE-01 rewritten by this phase per D-01).
-
-**RESEARCH.md:** `.planning/phases/28-mode-primitive-2-baseline-modes-fruiting-pinning-runtime-con/28-RESEARCH.md` (researched 2026-05-07; 8 pitfalls + Validation Architecture + Wave 0 spike requirements).
-
-**Research already on disk:** `.planning/research/2026-05-06-phase28-mode-schema-and-runtime-config.md` (515 lines covering proposed YAML schema, smallest controller change, `current_mode` topic shape, VPD calculation, and runtime config delivery evaluation).
-
-**Seeds to read:**
-- `.planning/seeds/SEED-001-runtime-config-delivery.md` (drives MODE-05)
-- `.planning/seeds/SEED-004-pinning-cycle-and-vpd-mode-schema.md` (drives MODE-01 schema reconciliation)
-
-**Dependencies:** Builds on Phase 27 (PID primitive + slow-PWM); composes with Phase 29 (alerter mode-awareness — alerter must read target/band from controller, not env), Phase 30 (scheduler — issues mode switches at window boundaries), Phase 31 (forcing modes — same mode primitive used for `force-condensation`/`force-evaporation`), 999.22 (alerter ops thresholds — same root cause: farmer-tunable knobs hidden in env).
-
-**Plans:** 7 plans
-
-- [ ] 28-01-PLAN.md — fc_msgs skeleton (Mode.msg + SetMode.srv) + Wave 0 test scaffolds + spike (rclnodejs SetParameters shape, bridge→fc1 SSH path)
-- [x] 28-02-PLAN.md — fc_config.yaml modes block (D-05 fruiting / D-06 pinning) + fc_core depends on fc_msgs
-- [ ] 28-03-PLAN.md — fc_controller.py surgery: ModeView + _resolve_active_mode (D-08), band-aware error projection (D-09), ramp-to-defended-edge (D-10), nearest-defended-edge bypass (D-11)
-- [ ] 28-04-PLAN.md — current_mode topic + on_set_parameters_callback validator + set_mode service + bumpless mode-swap (D-12, D-13, D-14, D-15, D-16)
-- [ ] 28-05-PLAN.md — bridge POST /control/param (Layer 1) with allowlist + batched-coupled-band edits (Pitfall 4) — control_param.js
-- [ ] 28-06-PLAN.md — bridge POST /control/persist (Layer 2) atomic overlay write to /var/lib/fc-core/runtime_overrides.yaml (transport per spike §B) — control_persist.js
-- [ ] 28-07-PLAN.md — fc.launch.py conditional overlay load + deploy.sh fixes (Pitfall 5 fc_msgs build, wg0 PI_HOST) + integration verification on fc1
-
-### Phase 29: Alerter mode awareness + cooldown tuning
-
-**Goal:** Make the alerter consume the controller's live mode/band state instead of static env vars (closes 999.22 — RH target/band hidden in `.env`), sweep `src/agents/alerter/src/config.js` for any other farmer-meaningful knobs hiding in env (heartbeat hour, humidifier-stuck threshold, RH OOB grace, pi/sensor offline minutes), and tune alert cooldowns based on the live data accumulated since Phase 17 (Phase 20 carry from v1.3).
-
-**Requirements:** ALRT-08, ALRT-09, ALRT-10.
-
-**Dependencies:** Builds on Phase 28 (mode primitive + `current_mode` topic + Layer 1 runtime config); resolves backlog 999.22 (alerter ops thresholds in env). Composes with Phase 30 (scheduler — schedule-driven mode switches will retarget alerter via the same `current_mode` channel) and 999.39 (alerter offline-blind rules — same module, fix together if scope allows).
-
-**Plans:** 7/7 plans complete
-
-Plans:
-- [x] 29-01-PLAN.md — Wave 0: bridge param-set allowlist extension + jest fixtures for effective-config / bridge-messages
-- [x] 29-02-PLAN.md — Wave 1: bridge ROS subs + WS broadcast + on-connect replay (3 new topics)
-- [x] 29-03-PLAN.md — Wave 1: fc_controller publishers + Tier B/C param decls + validator extension + fc_config.yaml seed
-- [x] 29-04-PLAN.md — Wave 2: alerter state.js (mode_update / overrides_update / globals_update events + resolveEffectiveConfig + dedup-reset D-09) + index.js routing + config.js fields
-- [x] 29-05-PLAN.md — Wave 2: rules.js freshness gating (D-03) + offline-blindness (D-04 / 999.39) + message.js pi last-known summary
-- [x] 29-06-PLAN.md — Wave 3: cooldown tuning analysis (29-COOLDOWN-TUNING.md from docker logs) + commit tuned defaults to fc_config.yaml
-- [x] 29-07-PLAN.md — Wave 4: deploy fc1+bridge+alerter, on-host smoke (mode swap, 999.39 reproduction, band-aid revert), mark 999.22 + 999.39 resolved in ROADMAP
-
-### Phase 30: Time-of-day mode scheduling
-
-**Goal:** Add a declarative time-of-day schedule that drives mode switches at window boundaries. Closes backlog 999.23 (target/band varies with time-of-day; canonical target becomes a function of clock instead of a static config). Default profile remains the existing constant-single-mode case so behavior is backward-compatible with HUMID-* and MODE-*.
-
-**Requirements:** SCHED-01, SCHED-02, SCHED-03.
-
-**Dependencies:** Builds on Phase 28 (mode primitive + `set_mode` service + `current_mode` topic + Layer 2 runtime overlay) and Phase 29 (alerter consumes `current_mode` — schedule-driven mode switches retarget alerter automatically). Composes with 999.27 (derived telemetry — `current_mode` is already a published series; scheduler writes to the same channel).
-
-**Plans:** 3 plans in 2 waves.
-
-- [ ] 30-01-PLAN.md — Wave 1: scheduler.py pure helpers + fc_controller integration (schedule_windows param decl, _validate_params arm, 30s timer, startup alignment, in-process mode swap with source='scheduler', bumpless re-engage); pytest TDD for parse/compute/wraparound/gap + controller-level scheduler tests.
-- [ ] 30-02-PLAN.md — Wave 1: bridge allowlist extension (control_param.js entrySchedule helper + ALLOWLIST entry; control_persist.js inherits via shared cp.validate); jest TDD for accept + 5 reject paths + Layer 2 round-trip.
-- [ ] 30-03-PLAN.md — Wave 2: fc_config.yaml schedule_windows: "[]" default, deploy to fc1 (commit→push fc1/prod→deploy.sh→restart), end-to-end Layer 1+Layer 2 smoke (boundary transition with source='scheduler' + restart survival), farmer attestation checkpoint.
-
-### Phase 31: Experimental forcing modes (`force-condensation`, `force-evaporation`)
-
-**Goal:** Add two timed override modes the farmer can trigger for short experiments: `force-condensation` (100% duty for N minutes) and `force-evaporation` (0% duty for N minutes), both with auto-revert to the prior mode on timeout. Start/end + measured RH delta logged to TimescaleDB so the farmer can review experiment outcomes after the fact.
-
-**Requirements:** EXPT-01, EXPT-02, EXPT-03.
-
-**Dependencies:** Builds on Phase 28 mode primitive (override modes are just additional mode definitions with auto-revert). Surface integration with Phase 25 (Signal command for trigger) and the farmer-app (button trigger; backlog 999.11). Auto-revert pattern echoes Phase 28's `set_mode` service.
-
-**Plans:** Not yet planned.
 
 ## Backlog (parking lot)
 

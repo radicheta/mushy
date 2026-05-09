@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Analog Humidity Control & Condensation/Evaporation Forcing
-status: executing
-stopped_at: Phase 30 + 31 shipped — milestone-close-ready pending farmer attestations
-last_updated: "2026-05-09T22:55:00.000Z"
-last_activity: 2026-05-09 Phase 30-03 smoke PASSED (Layer 1 boundary transition + Layer 2 persist + restart survival); 30-03-SMOKE.md captured
+status: shipped
+stopped_at: v1.5 SHIPPED 2026-05-09 — archived; awaiting next milestone
+last_updated: "2026-05-09T23:15:00.000Z"
+last_activity: 2026-05-09 v1.5 milestone closed — ROADMAP collapsed, REQUIREMENTS archived, audit status tech_debt
 progress:
   total_phases: 9
   completed_phases: 8

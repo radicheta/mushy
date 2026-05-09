@@ -94,9 +94,27 @@ Phase 27.2 fc-core systemd hardening (cold-reboot SYS-04 scenario 1 PASS, 41s).
 to backlog (999.36, 999.28). See `.planning/milestones/v1.5.0.1-ROADMAP.md`.
 See `.planning/MILESTONES.md`.
 
-## Current Milestone: v1.5 — Analog Humidity Control & Condensation/Evaporation Forcing (in progress)
+## Current State: v1.5 SHIPPED 2026-05-09
 
-**Status (2026-05-08):** Phases 27, 28, 29 shipped. Phase 30 (time-of-day mode scheduling) and Phase 31 (experimental forcing modes) ahead. Phase 27 PID + slow-PWM live on fc1; Phase 28 mode primitive (`fruiting`, `pinning`) shipped with runtime override delivery via fc_buffer relay; Phase 29 alerter mode-awareness + cooldown tuning live (closes 999.22).
+PID + slow-PWM, named modes, runtime config delivery, alerter mode-awareness, time-of-day scheduling, and experimental force modes all live on fc1. 16/17 v1.5 requirements satisfied (ALRT-10 calendar-deferred). Bridge curl path proven E2E for Phase 31; Signal command path code-correct but blocked on pre-existing signal-cli linked-secondary limitation.
+
+**Archives:**
+- `.planning/milestones/v1.5-ROADMAP.md`
+- `.planning/milestones/v1.5-REQUIREMENTS.md`
+- `.planning/v1.5-MILESTONE-AUDIT.md` (status: tech_debt — no critical blockers)
+
+## Next Milestone Goals (v1.6 candidates)
+
+- **signal-cli primary re-registration** — unlocks Signal-driven Phase 31 UAT and any future bidirectional commands (memory `project_signal_cli_primary_reregister_path`)
+- **MC active-experiment widget** — bridge already broadcasts `experiment_event` + `current_mode` source='experiment'; UI gap from Phase 31
+- **Schedule gap-mode default** — `default_mode_in_gap` parameter (D-08 side-finding from 30-03 smoke)
+- **Mode editor UI in farmer app** — depends on 999.11 farmer-app maturity
+- **Per-mode PID gains** — stage-aware tuning
+- **Phase 19 (FarmOS admin actions)** — still Zoy/farm-team gated (carried since v1.3)
+- **ALRT-10 cooldown tuning** — calendar gate (≥2 weeks live alerter data) now likely satisfied — re-evaluate
+
+<details>
+<summary>Previous milestone goals (v1.5 frame)</summary>
 
 ## Parent Milestone Frame: v1.5 — Analog Humidity Control & Condensation/Evaporation Forcing
 
@@ -122,6 +140,8 @@ mode primitive.
 `.planning/phases/999.9-pid-time-proportional-humidity-control/CALIBRATION-FINDINGS-2026-04-11.md`
 
 **Carry deferred to v1.6:** Phase 19 (FarmOS admin actions, Zoy-gated).
+
+</details>
 
 ### Out of Scope
 
