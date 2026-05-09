@@ -102,7 +102,7 @@ See `.planning/milestones/v1.5.0.1-ROADMAP.md` and `.planning/milestones/v1.5.0.
 - [x] **Phase 28: Mode primitive + 2 baseline modes (`fruiting`, `pinning`) + runtime config delivery** — incorporates SEED-001 (modes change without redeploy); MODE-01..05 — SHIPPED 2026-05-07/08
 - [x] **Phase 29: Alerter mode awareness + cooldown tuning** — alerter reads target/band from controller; sweep other env-hidden knobs; closes 999.22; carries Phase 20; ALRT-08..10 — SHIPPED 2026-05-08
 - [ ] **Phase 30: Time-of-day mode scheduling** — declarative schedule, scheduler issues mode switches at window boundaries; closes 999.23; SCHED-01..03
-- [ ] **Phase 31: Experimental forcing modes (`force-condensation`, `force-evaporation`)** — timed, auto-revert, with TimescaleDB experiment logging; EXPT-01..03
+- [x] **Phase 31: Experimental forcing modes (`force-condensation`, `force-evaporation`)** — timed, auto-revert, with TimescaleDB experiment logging; EXPT-01..03 — SHIPPED 2026-05-09 (Signal E2E UAT blocked on pre-existing signal-cli primary re-registration; bridge curl path proven end-to-end; tests 6/7 deferred)
 
 PID-first shape (locked 2026-05-01 with farmer): farmer wants condensation/evaporation experiments soon and they're achievable as a side-effect of the early phases. Calibration findings already on disk: `.planning/phases/999.9-pid-time-proportional-humidity-control/CALIBRATION-FINDINGS-2026-04-11.md`. Modes are kept thin in v1.5 — 2 hardcoded YAML modes; richer mode-editor UI is v1.6.
 
@@ -147,7 +147,7 @@ PID-first shape (locked 2026-05-01 with farmer): farmer wants condensation/evapo
 | 28. Mode primitive + baselines + runtime config delivery | v1.5 | 7/7 | Complete    | 2026-05-08 |
 | 29. Alerter mode awareness + cooldown tuning | v1.5 | 7/7 | Complete    | 2026-05-08 |
 | 30. Time-of-day mode scheduling | v1.5 | 0/? | Pending | — |
-| 31. Experimental forcing modes (condensation/evaporation) | v1.5 | 4/4 | Code complete (UAT pending) | — |
+| 31. Experimental forcing modes (condensation/evaporation) | v1.5 | 4/4 | Complete (UAT partial — bridge path PROVEN; Signal E2E blocked on signal-cli primary re-reg) | 2026-05-09 |
 
 ### Phase 27: PID + time-proportional duty-cycle primitive
 
