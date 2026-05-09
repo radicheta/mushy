@@ -92,13 +92,13 @@ curl -X POST -H 'content-type: application/json' \
   -d '{"node":"fc_controller","param":"schedule_windows","value":"[]"}'
 ```
 
-## Self-Check: PARTIAL
+## Self-Check: COMPLETE (Tasks 1-3); Task 4 farmer attestation pending
 
-- [x] Task 1 — yaml default (committed)
-- [ ] Task 2 — live deploy to fc1
-- [ ] Task 3 — Layer 1/2 smoke + 30-03-SMOKE.md
-- [ ] Task 4 — farmer attestation
+- [x] Task 1 — yaml default (committed `8c09a6a`)
+- [x] Task 2 — live deploy verified (fc1 at `338894c`, functionally current; scheduler tick alive)
+- [x] Task 3 — Layer 1/2 smoke + 30-03-SMOKE.md (PASSED 2026-05-09 22:45-22:53 UTC)
+- [ ] Task 4 — farmer attestation (operator review of 30-03-SMOKE.md)
 
 ## Farmer Attestation
 
-[pending — awaiting Tasks 2–4 + operator response]
+**Status:** Awaiting operator review of `30-03-SMOKE.md`. All technical evidence captured; chamber restored to baseline (`schedule_windows="[]"`, `active_mode=fruiting`). Side-finding worth surfacing: scheduler keeps the previous mode in gaps between windows (CONTEXT D-08 design), so a one-shot pinning window leaves the chamber in pinning until something else resets it.
