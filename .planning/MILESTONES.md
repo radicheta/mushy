@@ -1,5 +1,45 @@
 # Milestones
 
+## v1.5 Analog Humidity Control & Condensation/Evaporation Forcing (Shipped: 2026-05-09)
+
+**Phases shipped:** 5 (27, 28, 29, 30, 31)
+**Plans:** 26
+**Timeline:** 2026-05-01 → 2026-05-09 (9 days; includes 5-day v1.5.0.1 detour from 2026-05-02 incident)
+**Commits:** 175 in milestone range; +10,543 / -362 LOC across 59 files
+**Tag:** `v1.5`
+**Audit:** `.planning/v1.5-MILESTONE-AUDIT.md` (status: tech_debt — 16/17 requirements satisfied; ALRT-10 calendar-deferred)
+
+### Highlights
+
+- **Phase 27** — PID + slow-PWM duty-cycle primitive on `fc1/actuators/humidifier_duty`; closed structural ±2% RH ceiling. Farmer-attested HUMID-04 on 2026-05-02.
+- **Phase 28** — Mode primitive (`fruiting`, `pinning`) + Layer 1 / Layer 2 runtime config delivery via `/control/param` + `/control/persist` → `runtime_overrides.yaml`. Closed SEED-001; reconciled MODE-01 schema with SEED-004.
+- **Phase 29** — Alerter consumes `current_mode` topic instead of static env vars. Closed backlog 999.22 (env-hidden ops thresholds).
+- **Phase 30** — Time-of-day mode scheduling. Layer 1+2 smoke PASSED 2026-05-09 (boundary transition `fruiting → pinning at 22:47`, persist + restart-survival via `runtime_overrides.yaml`).
+- **Phase 31** — Experimental forcing modes (`force-condensation`, `force-evaporation`) with auto-revert + TimescaleDB `fc_experiments` logging. Bridge curl path PROVEN E2E.
+
+### What Got Carried Forward
+
+- **ALRT-10** (alert cooldown tuning) — calendar-gated; tracked as backlog 999.20.
+- **signal-cli primary re-registration** — pre-existing infra; prerequisite for Signal-driven Phase 31 UAT.
+- **Phase 31 boot-recovery D-09 + scheduler-suppression live attestation** — unit-test-covered; runnable via direct curl + ssh restart.
+- **Phase 28 + Phase 30 missing VERIFICATION.md** — workflow gap, not code.
+- **MC active-experiment widget** — file as 999.x.
+- **humidity_target post-restart re-init** — transient cosmetic overshoot; opt-ignored.
+
+### Lessons
+
+- **9-day milestone with embedded hotfix** — v1.5.0.1 detour from the 2026-05-02 blackout consumed 5 of the 9 days but produced lasting infrastructure (kernel-WG transport switch, fc-core systemd hardening). Net: parallel resilience + feature work was the right shape.
+- **Live cross-phase exercise can substitute for an integration phase.** This session's Layer-1+2+restart-survival smoke chained Phase 28→29→30→31 in one run; integration verified without a separate phase.
+- **Alerter env-name conventions matter** — Phase 31-04 invented `BRIDGE_URL` instead of using existing `BRIDGE_HTTP_URL`; silently broken in deployment because alerter is on compose-network and bridge is host-network. Memory `feedback_alerter_env_convention_bridge_http_url`.
+
+### See Also
+
+- Full roadmap snapshot: `.planning/milestones/v1.5-ROADMAP.md`
+- Requirements archive: `.planning/milestones/v1.5-REQUIREMENTS.md`
+- Sister hotfix milestone: `v1.5.0.1` (below)
+
+---
+
 ## v1.5.0.1 Resilience Hotfix (Shipped: 2026-05-07 PARTIAL)
 
 **Phases shipped:** 2 (27.1, 27.2) + 27.3 + 27.4 MOOTED by transport switch
