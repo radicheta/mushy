@@ -89,7 +89,9 @@ function makeStartHandler(rosNode, opts = {}) {
             const resp = await _callService(
                 rosNode,
                 'fc_msgs/srv/StartExperiment',
-                '/fc_controller/start_experiment',
+                // 2026-05-09 lab: namespaced path /fc_controller/start_experiment hangs at service-discovery
+                // even from local CLI; un-namespaced /start_experiment works. Both appear in `ros2 service list`.
+                '/start_experiment',
                 { experiment_name: body.name, duration_minutes: v.duration_minutes },
                 timeoutMs,
             );
@@ -117,7 +119,8 @@ function makeCancelHandler(rosNode, opts = {}) {
             const resp = await _callService(
                 rosNode,
                 'fc_msgs/srv/CancelExperiment',
-                '/fc_controller/cancel_experiment',
+                // see start_experiment note above — un-namespaced path is the working one
+                '/cancel_experiment',
                 {},
                 timeoutMs,
             );
