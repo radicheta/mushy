@@ -27,7 +27,9 @@ function createReceiveLoop({
   logger = console,
   clock = Date.now,
   // Phase 31: bridge URL for experiment dispatch + fetch seam for tests.
-  bridgeUrl = process.env.BRIDGE_URL || 'http://bridge:8080',
+  // Uses BRIDGE_HTTP_URL (project convention; already set in docker-compose.override.yml
+  // alongside BRIDGE_WS_URL). BRIDGE_URL kept as legacy fallback.
+  bridgeUrl = process.env.BRIDGE_HTTP_URL || process.env.BRIDGE_URL || 'http://bridge:8080',
   fetchImpl = (typeof fetch !== 'undefined' ? fetch : null),
 }) {
   let timer = null;
