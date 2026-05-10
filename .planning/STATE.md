@@ -1,11 +1,11 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.5
-milestone_name: Analog Humidity Control & Condensation/Evaporation Forcing
-status: shipped
-stopped_at: v1.5 SHIPPED 2026-05-09 — archived; awaiting next milestone
-last_updated: "2026-05-09T23:15:00.000Z"
-last_activity: 2026-05-09 v1.5 milestone closed — ROADMAP collapsed, REQUIREMENTS archived, audit status tech_debt
+milestone: v1.6
+milestone_name: (scaffolding deferred — Phase 32 ran ahead)
+status: executing
+stopped_at: Phase 32 — VPS hub MVP scaffolded; ready for T0 (SSH bootstrap)
+last_updated: "2026-05-10T00:30:00.000Z"
+last_activity: 2026-05-10 Phase 32 CONTEXT + PLAN written for IT all-nighter on Hetzner CX22 Nuremberg
 progress:
   total_phases: 9
   completed_phases: 8

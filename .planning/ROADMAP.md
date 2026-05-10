@@ -148,6 +148,21 @@ See `.planning/milestones/v1.5.0.1-ROADMAP.md` and `.planning/milestones/v1.5.0.
 | 29. Alerter mode awareness + cooldown tuning | v1.5 | 7/7 | Complete    | 2026-05-08 |
 | 30. Time-of-day mode scheduling | v1.5 | 3/3 | Complete (smoke PASSED, farmer attestation pending review of 30-03-SMOKE.md) | 2026-05-09 |
 | 31. Experimental forcing modes (condensation/evaporation) | v1.5 | 4/4 | Complete (UAT partial — bridge path PROVEN; Signal E2E blocked on signal-cli primary re-reg) | 2026-05-09 |
+| 32. VPS multi-purpose hub (WireGuard MVP) | v1.6 | 0/1 | Active — all-nighter 2026-05-10 (Hetzner CX22 Nuremberg already provisioned; install/config tonight) | — |
+
+### Phase 32: VPS multi-purpose hub (WireGuard MVP)
+
+**Goal:** Stand up a public-facing infrastructure box (Hetzner CX22 Nuremberg, already provisioned 2026-05-09) hardened with UFW + fail2ban + key-only SSH + unattended-upgrades; install WireGuard hub on `10.66.0.0/24` port 51820/udp; connect fc1, elder-plops, gumbald (operator laptop), and zoy (beta-tester #1) as peers. Existing fc1↔elder-plops `wg0` LAN tunnel preserved (additive, not replacement). MVP scope only — heartbeat receiver / outside-in monitoring / offsite backups deferred to future phases (33+).
+
+**Requirements:** None formally declared yet (v1.6 milestone scaffolding deferred — Phase 32 ran ahead of /gsd-new-milestone).
+
+**CONTEXT.md:** `.planning/phases/32-vps-multi-purpose-hub/32-CONTEXT.md`. Sourced from DECISION-6 in `.planning/notes/2026-05-09-fire-conversation.md`.
+
+**Dependencies:** None within v1.6. Loosely related to memories `project_fc1_link_architecture_options`, `project_fc1_cgnat_confirmed`, `project_2026_05_07_fc1_reboot_unrecoverable`, `project_2026_05_03_ssd_failure`, `feedback_stopping_tailscaled_kills_pid` (D-12 enforces existing-transport preservation).
+
+**Plans:** 1 plan tonight; possible 2nd plan if scope creeps.
+
+- [ ] 32-01-PLAN.md — Tasks T0-T9: SSH bootstrap → hardening → WG hub → 4 peers (fc1, elder-plops, gumbald, zoy) → smoke tests → runbook → commit + memories.
 
 ### Phase 27.1: Edge buffering — fc1 telemetry replay-on-reconnect — SHIPPED 2026-05-03
 
