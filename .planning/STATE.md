@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: (scaffolding deferred — Phase 32 ran ahead)
-status: executing
-stopped_at: Phase 32 — VPS hub MVP scaffolded; ready for T0 (SSH bootstrap)
-last_updated: "2026-05-10T00:30:00.000Z"
-last_activity: 2026-05-10 Phase 32 CONTEXT + PLAN written for IT all-nighter on Hetzner CX22 Nuremberg
+status: shipped
+stopped_at: Phase 32 SHIPPED 2026-05-10 — VPS WG hub LIVE; farmer #1 reaching MC over hub; farmer #2/#3 configs queued for Signal delivery
+last_updated: "2026-05-10T03:00:00.000Z"
+last_activity: 2026-05-10 IT all-nighter — Phase 32 (VPS hub) shipped end-to-end
 progress:
   total_phases: 9
   completed_phases: 8

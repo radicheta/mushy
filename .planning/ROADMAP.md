@@ -148,7 +148,7 @@ See `.planning/milestones/v1.5.0.1-ROADMAP.md` and `.planning/milestones/v1.5.0.
 | 29. Alerter mode awareness + cooldown tuning | v1.5 | 7/7 | Complete    | 2026-05-08 |
 | 30. Time-of-day mode scheduling | v1.5 | 3/3 | Complete (smoke PASSED, farmer attestation pending review of 30-03-SMOKE.md) | 2026-05-09 |
 | 31. Experimental forcing modes (condensation/evaporation) | v1.5 | 4/4 | Complete (UAT partial — bridge path PROVEN; Signal E2E blocked on signal-cli primary re-reg) | 2026-05-09 |
-| 32. VPS multi-purpose hub (WireGuard MVP) | v1.6 | 0/1 | Active — all-nighter 2026-05-10 (Hetzner CX22 Nuremberg already provisioned; install/config tonight) | — |
+| 32. VPS multi-purpose hub (WireGuard MVP) | v1.6 | 1/1 | Complete — farmer #1 reaching MC via VPS hub LIVE; fc1 + elder-plops + farmer1/2/3 peers configured; gumbald deferred (operator skip) | 2026-05-10 |
 
 ### Phase 32: VPS multi-purpose hub (WireGuard MVP)
 
@@ -162,7 +162,7 @@ See `.planning/milestones/v1.5.0.1-ROADMAP.md` and `.planning/milestones/v1.5.0.
 
 **Plans:** 1 plan tonight; possible 2nd plan if scope creeps.
 
-- [ ] 32-01-PLAN.md — Tasks T0-T9: SSH bootstrap → hardening → WG hub → 4 peers (fc1, elder-plops, gumbald, zoy) → smoke tests → runbook → commit + memories.
+- [x] 32-01-PLAN.md — SHIPPED 2026-05-10. SSH bootstrap → hardening → WG hub → 5 peers (fc1, elder-plops, farmer1 LIVE, farmer2 + farmer3 configured for Signal delivery) → smoke + farmer #1 MC-via-VPS proven → runbook → commit. gumbald + 4th iOS device deferred. See `.planning/phases/32-vps-multi-purpose-hub/32-01-SUMMARY.md`.
 
 ### Phase 27.1: Edge buffering — fc1 telemetry replay-on-reconnect — SHIPPED 2026-05-03
 
