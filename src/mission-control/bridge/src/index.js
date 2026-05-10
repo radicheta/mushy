@@ -609,6 +609,52 @@ app.get('/control/experiment', (req, res) => {
     return handler(req, res);
 });
 
+// Phase 33 D-09: heartbeat alert relay. VPS heartbeat receiver POSTs here
+// over wg-hub when a monitored source (fc1, elder-plops, …) goes silent.
+// Bridge forwards to signal-cli on host loopback (127.0.0.1:8085, mapped from
+// the signal-cli compose container; see docker-compose.override.yml).
+// Mirrors src/agents/alerter/src/signal.js POST shape (/v2/send).
+const HEARTBEAT_SIGNAL_URL = process.env.SIGNAL_API_URL || 'http://localhost:8085';
+const HEARTBEAT_SIGNAL_SENDER = process.env.SIGNAL_SENDER;
+const HEARTBEAT_SIGNAL_RECIPIENT = process.env.SIGNAL_RECIPIENT;
+app.post('/heartbeat-alert', express.json(), async (req, res) => {
+    const { source, message } = req.body || {};
+    if (!source || !message) {
+        return res.status(400).json({ ok: false, error: 'source and message required' });
+    }
+    if (!HEARTBEAT_SIGNAL_SENDER || !HEARTBEAT_SIGNAL_RECIPIENT) {
+        console.error('[heartbeat-alert] SIGNAL_SENDER/SIGNAL_RECIPIENT not configured');
+        return res.status(503).json({ ok: false, error: 'signal not configured' });
+    }
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    try {
+        const r = await fetch(`${HEARTBEAT_SIGNAL_URL}/v2/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message,
+                number: HEARTBEAT_SIGNAL_SENDER,
+                recipients: [HEARTBEAT_SIGNAL_RECIPIENT],
+            }),
+            signal: ctrl.signal,
+        });
+        if (!r.ok) {
+            const text = await r.text().catch(() => '');
+            console.error(`[heartbeat-alert] signal-cli ${r.status}: ${text.slice(0, 200)}`);
+            return res.status(502).json({ ok: false, error: `signal-cli ${r.status}` });
+        }
+        const json = await r.json().catch(() => ({}));
+        console.log(`[heartbeat-alert] dispatched source=${source} (${message.length} chars)`);
+        return res.json({ ok: true, timestamp: json.timestamp || Date.now() });
+    } catch (e) {
+        console.error(`[heartbeat-alert] dispatch failed: ${e.message}`);
+        return res.status(502).json({ ok: false, error: e.message });
+    } finally {
+        clearTimeout(timer);
+    }
+});
+
 // Store connected WebSocket clients
 const clients = new Set();
 
