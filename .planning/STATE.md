@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: (scaffolding deferred — Phase 32 ran ahead)
-status: shipped
-stopped_at: Phase 32 SHIPPED 2026-05-10 — VPS WG hub LIVE; farmer #1 reaching MC over hub; farmer #2/#3 configs queued for Signal delivery
-last_updated: "2026-05-10T03:00:00.000Z"
-last_activity: 2026-05-10 IT all-nighter — Phase 32 (VPS hub) shipped end-to-end
+status: paused
+stopped_at: Phase 33 SCAFFOLDED but NOT DEPLOYED — see .planning/phases/33-vps-heartbeat-receiver/33-HANDOFF.md to pick up
+last_updated: "2026-05-11T00:00:00.000Z"
+last_activity: 2026-05-10/11 IT all-nighter — Phase 32 shipped + Phase 33 scaffolded (CONTEXT + receiver + sender + systemd unit + installer; zero production touch); paused at user request to keep handoff clean
 progress:
   total_phases: 9
   completed_phases: 8

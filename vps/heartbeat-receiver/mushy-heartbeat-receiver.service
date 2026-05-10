@@ -1,0 +1,33 @@
+[Unit]
+Description=Mushy heartbeat receiver (Phase 33)
+After=network-online.target wg-quick@wg-hub.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mushy
+Group=mushy
+WorkingDirectory=/opt/mushy-heartbeat-receiver
+ExecStart=/usr/bin/node /opt/mushy-heartbeat-receiver/index.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/mushy-heartbeat
+ProtectHome=true
+PrivateTmp=true
+
+# Required envs (override per-deploy if needed)
+Environment=HEARTBEAT_PORT=9000
+Environment=HEARTBEAT_BIND=127.0.0.1,10.66.0.1
+Environment=HEARTBEAT_DATA_DIR=/var/lib/mushy-heartbeat
+Environment=HEARTBEAT_SECRET_FILE=/etc/mushy-heartbeat/secret
+Environment=BRIDGE_URL=http://10.66.0.12:8081
+Environment=CHECK_INTERVAL_MS=30000
+
+[Install]
+WantedBy=multi-user.target
