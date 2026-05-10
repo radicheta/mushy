@@ -13,6 +13,11 @@ services:
       - CYCLONEDDS_URI=file:///etc/cyclonedds.xml
       # Phase 999.1 buffer-replay endpoint — points at fc1's WG IP (was 100.96.239.75 / Tailscale, retired 2026-05-03)
       - FC1_BUFFER_URL=http://172.16.10.5:8765
+      # Phase 33 D-09: bridge dispatches /heartbeat-alert via signal-cli on host loopback
+      # (signal-cli ports: 127.0.0.1:8085:8080 in this same file).
+      - SIGNAL_API_URL=${SIGNAL_API_URL:-http://localhost:8085}
+      - SIGNAL_SENDER=${SIGNAL_SENDER}
+      - SIGNAL_RECIPIENT=${SIGNAL_RECIPIENT}
     volumes:
       - /home/santi/.config/cyclonedds.xml:/etc/cyclonedds.xml:ro
       - /data/snapshots-burnt:/data/snapshots-burnt
@@ -40,6 +45,12 @@ services:
     restart: unless-stopped
     environment:
       - MODE=normal
+    # Phase 33 D-09: bind to host loopback so the bridge (network_mode: host)
+    # can reach signal-cli for /heartbeat-alert dispatch. The alerter still
+    # reaches it on the signal-net compose network at signal-cli:8080.
+    # 127.0.0.1 only — NOT exposed to LAN or wg-hub.
+    ports:
+      - "127.0.0.1:8085:8080"
     volumes:
       - signal-cli-data:/home/.local/share/signal-cli
     networks:
