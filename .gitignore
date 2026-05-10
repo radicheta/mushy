@@ -29,3 +29,4 @@ log/
 
 # Bridge runtime state (buffer-replay cursor)
 bridge-state/
+.planning/phases/32-vps-multi-purpose-hub/32-INVENTORY.md
