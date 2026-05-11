@@ -8,6 +8,8 @@ fc_sensors.py -- timer-based, config-driven, non-blocking.
 Pi prerequisite: sudo apt install python3-opencv
 Verify: python3 -c "import cv2; print(cv2.__version__)"
 """
+import time
+
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage
@@ -31,6 +33,9 @@ class FcCamera(Node):
                 ('camera_jpeg_quality', 65),  # D-06: 60-70% default
                 ('camera_active_fps', 1.0),           # D-01: FPS when Mission Control viewers connected
                 ('camera_subscriber_grace_sec', 5.0),  # D-07: seconds before dropping to idle after last viewer
+                # 999.24: re-open VideoCapture on stuck cap.read() failures
+                ('camera_reopen_threshold', 5),  # consecutive failures before reopen attempt
+                ('camera_reopen_max_backoff_sec', 60.0),
             ]
         )
 
@@ -39,6 +44,14 @@ class FcCamera(Node):
         device = self.get_parameter('camera_device').value
         width = self.get_parameter('camera_width').value
         height = self.get_parameter('camera_height').value
+        # 999.24: persist these so we can re-apply them on auto-reopen.
+        self._camera_device = device
+        self._camera_width = width
+        self._camera_height = height
+        self._simulation_mode = simulation_mode
+        self._consecutive_read_failures = 0
+        self._reopen_backoff_sec = 1.0
+        self._next_reopen_attempt_monotonic = 0.0
         fps = self.get_parameter('camera_fps').value
         self._jpeg_quality = self.get_parameter('camera_jpeg_quality').value
         self._idle_fps = fps  # camera_fps is now the idle rate (D-03)
@@ -144,6 +157,13 @@ class FcCamera(Node):
             self._start_grace()
 
         if self.cap is None or not self.cap.isOpened():
+            # 999.24: if cap is None or closed AND we've already exceeded the
+            # reopen threshold (i.e. a prior _attempt_reopen wiped self.cap
+            # because the device wasn't ready), keep trying with backoff.
+            # Otherwise this early-return would strand the camera dead.
+            threshold = self.get_parameter('camera_reopen_threshold').value
+            if not self._simulation_mode and self._consecutive_read_failures >= threshold:
+                self._attempt_reopen()
             return
 
         try:
@@ -151,8 +171,28 @@ class FcCamera(Node):
 
             ret, frame = self.cap.read()
             if not ret:
-                self.get_logger().warn('fc_camera: cap.read() failed, skipping frame')
+                # 999.24: track consecutive cap.read() failures and auto-reopen
+                # the VideoCapture handle after a threshold. Prior behavior was
+                # to warn-and-skip forever — a single cap.read() stall left the
+                # camera dead until manual fc-core restart (24h+ outage 2026-04-28).
+                self._consecutive_read_failures += 1
+                self.get_logger().warn(
+                    f'fc_camera: cap.read() failed '
+                    f'(consecutive={self._consecutive_read_failures}), skipping frame'
+                )
+                threshold = self.get_parameter('camera_reopen_threshold').value
+                if self._consecutive_read_failures >= threshold:
+                    self._attempt_reopen()
                 return
+
+            # Successful read — reset failure tracking and backoff
+            if self._consecutive_read_failures > 0:
+                self.get_logger().info(
+                    f'fc_camera: cap.read() recovered after '
+                    f'{self._consecutive_read_failures} consecutive failures'
+                )
+            self._consecutive_read_failures = 0
+            self._reopen_backoff_sec = 1.0
 
             ok, buf = cv2.imencode(
                 '.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality]
@@ -171,6 +211,53 @@ class FcCamera(Node):
         except Exception as e:
             # Non-blocking: log and skip frame. Next timer tick retries automatically.
             self.get_logger().error(f'fc_camera: capture_and_publish error: {e}')
+
+    def _attempt_reopen(self):
+        """999.24: release the current VideoCapture handle and reconstruct it
+        with the original device + width/height settings. Exponential backoff
+        so we don't hammer a genuinely-dead device.
+
+        Called from capture_and_publish when consecutive cap.read() failures
+        exceed `camera_reopen_threshold`. On success, the next tick's read()
+        will set _consecutive_read_failures back to 0.
+        """
+        now_mono = time.monotonic()
+        if now_mono < self._next_reopen_attempt_monotonic:
+            # Within backoff window — still skipping frames
+            return
+        if self._simulation_mode:
+            return
+        try:
+            import cv2
+            old_cap = self.cap
+            self.cap = None
+            if old_cap is not None:
+                try:
+                    old_cap.release()
+                except Exception as e:
+                    self.get_logger().warn(f'fc_camera: cap.release() during reopen: {e}')
+            new_cap = cv2.VideoCapture(self._camera_device)
+            if new_cap.isOpened():
+                new_cap.set(cv2.CAP_PROP_FRAME_WIDTH, self._camera_width)
+                new_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._camera_height)
+                self.cap = new_cap
+                self._reopen_backoff_sec = 1.0
+                self._next_reopen_attempt_monotonic = 0.0
+                self.get_logger().info(
+                    f'fc_camera: VideoCapture re-opened successfully '
+                    f'(device={self._camera_device})'
+                )
+            else:
+                # Failed — schedule next attempt with backoff
+                max_backoff = self.get_parameter('camera_reopen_max_backoff_sec').value
+                self._next_reopen_attempt_monotonic = now_mono + self._reopen_backoff_sec
+                self.get_logger().warn(
+                    f'fc_camera: reopen failed, next attempt in '
+                    f'{self._reopen_backoff_sec:.1f}s'
+                )
+                self._reopen_backoff_sec = min(self._reopen_backoff_sec * 2.0, max_backoff)
+        except Exception as e:
+            self.get_logger().error(f'fc_camera: reopen exception: {e}')
 
     def _ramp_up(self):
         """Switch from idle to active rate (per D-05)."""
