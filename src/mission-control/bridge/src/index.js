@@ -716,12 +716,23 @@ function broadcast(data) {
 // Insert a telemetry row — never throws; DB errors are logged only.
 // Phase 999.1 Plan 03: tsMs/tsNs are optional. When passed, tsMs is written to
 // the time column instead of new Date() (so backfilled rows from buffer_replay
-// land at their original DDS timestamp), and tsNs advances the buffer-replay
-// cursor so the first post-restart poll doesn't re-fetch the entire 24h buffer.
-// Live ON CONFLICT DO NOTHING is required because backfill races with live
-// inserts when reconnect happens mid-second (the unique constraint added in
-// Plan 01 would otherwise raise on the live insert too).
-async function insertTelemetry(topic, value, tsMs, tsNs) {
+// land at their original DDS timestamp). Live ON CONFLICT DO NOTHING is
+// required because backfill races with live inserts when reconnect happens
+// mid-second (the unique constraint added in Plan 01 would otherwise raise on
+// the live insert too).
+//
+// 999.36 fix (2026-05-11): live-insert cursor advance REMOVED. The original
+// "advance on every successful insert" was an optimization to skip the 24h
+// buffer on cold start, but it defeated reconnect-replay during the exact
+// scenario buffer_replay was designed for: bridge reconnects after a long
+// gap, the first live message (timestamped *now*) jumped the cursor past the
+// entire gap, and the next /telemetry/since poll asked fc_buffer for
+// "newer than now" — getting only the latest 3 rows. The 2026-05-07 11h
+// outage saw zero of ~199k buffered rows backfill until manual psql recovery.
+// Cursor now advances only inside buffer_replay.js on successful poll batches
+// (which already track maxTs and call saveLastTs). The tsNs param is retained
+// for API stability; callers still pass it but it's no longer used here.
+async function insertTelemetry(topic, value, tsMs, _tsNs) {
     if (!dbReady) return;
     const tsMsResolved = tsMs || Date.now();
     try {
@@ -729,12 +740,6 @@ async function insertTelemetry(topic, value, tsMs, tsNs) {
             'INSERT INTO telemetry (time, topic, value) VALUES (to_timestamp($1::double precision / 1000), $2, $3) ON CONFLICT (topic, time) DO NOTHING',
             [tsMsResolved, topic, value]
         );
-        // Advance the buffer-replay cursor on every successful live insert so
-        // a post-restart poll doesn't re-fetch the 24h buffer (RESEARCH §Q5).
-        // tsNs MUST be passed by every caller — null defaults silently skip advance.
-        if (tsNs !== null && tsNs !== undefined) {
-            buffer_replay.advanceLastIngested(buffer_replay.DEFAULT_STATE_FILE, tsNs);
-        }
     } catch (err) {
         console.error('[db] insert failed:', err.message);
     }
