@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.7
-milestone_name: Multimodal Signal to FarmOS Events
-status: ready_to_plan
-stopped_at: Phase 36 (Signal Pre-gate) — not started. Roadmap written 2026-05-11; schema locked (farmos d4e5a30); ready for /gsd-discuss-phase 36 or /gsd-plan-phase 36.
-last_updated: "2026-05-11T14:00:00.000Z"
-last_activity: 2026-05-11 — v1.7 roadmap created (7 phases, 31 requirements mapped). Schema locked in joint session with zoy (C1-C5 + B1-B7 + P1-P5). 999.2 closed by v1.7.
+milestone_name: Multimodal Signal → FarmOS Events
+status: planning
+stopped_at: Phase 37 context gathered
+last_updated: "2026-05-11T19:24:23.113Z"
+last_activity: 2026-05-11 — v1.7 roadmap written; 7 phases (36–42) covering 31 requirements; schema locked (farmos d4e5a30); v1.6 retroactive snapshot at .planning/milestones/v1.6-ROADMAP.md.
 progress:
-  total_phases: 7
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_phases: 15
+  completed_phases: 1
+  total_plans: 5
+  completed_plans: 8
+  percent: 100
 ---
 
 # Project State
@@ -178,8 +178,8 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 ## Session Continuity
 
-Last session: 2026-05-11 v1.7 roadmap creation
-Stopped at: Phase 36 (Signal Pre-gate) — roadmap written, ready to plan
+Last session: --stopped-at
+Stopped at: Phase 37 context gathered
 Next up: /gsd-discuss-phase 36 or /gsd-plan-phase 36
 
 v1.7 phase order (hard sequencing):
