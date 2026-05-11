@@ -281,8 +281,15 @@ describe('alerter integration', () => {
 
     await waitFor(() => bridge.wss.clients.size > 0, { timeoutMs: 2000 });
 
-    // Heartbeat scheduler fires on start() if hour >= heartbeatHour
-    // Wait for the heartbeat tick to propagate
+    // The scheduler also fires on start(), but post-3bc11cb it defers when the
+    // bridge summary is empty (avoids `RH: null` heartbeats on cold-boot). This
+    // integration test isn't validating the scheduler — it's validating that
+    // cap=0 doesn't suppress heartbeat-class sends — so we dispatch the event
+    // directly with a non-empty summary.
+    alerter.dispatch({
+      type: 'heartbeat_tick',
+      summary: { rh: 90, temp: 22, co2: 800, humidifier: 'OFF', humidifierCycles: 0, piLastSeenSec: 5 },
+    });
     await waitFor(() => signalServer.sent.length >= 1, { timeoutMs: 3000 });
 
     expect(signalServer.sent).toHaveLength(1);

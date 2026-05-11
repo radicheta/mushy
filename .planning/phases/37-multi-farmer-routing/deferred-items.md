@@ -1,10 +1,9 @@
 
 ## Phase 37 Plan 03 — deferred items
 
-### test/integration.test.js heartbeat_fires_and_bypasses_cap failure
-- **Status:** pre-existing relative to Plan 03 start (introduced by commit 3bc11cb `fix(alerter): defer heartbeat when bridge summary is empty + null-safe rendering`)
-- **Root cause:** That hotfix added "defer when bridge summary is empty" behavior; the integration test starts the alerter and immediately expects a heartbeat send without sending bridge data first.
-- **Fix:** Either (a) push a bridge summary payload before waitFor, or (b) seed alerter state with a non-empty summary in the test. Out of scope for Plan 03 (does not relate to multi-farmer routing).
+### ~~test/integration.test.js heartbeat_fires_and_bypasses_cap failure~~ — RESOLVED
+- Originally introduced by commit 3bc11cb (heartbeat deferral on empty bridge summary).
+- **Resolved post-Plan-03:** test now dispatches `heartbeat_tick` directly with a populated summary, matching the test's actual intent (validate cap=0 doesn't suppress heartbeat sends). Suite back to 268/269 with only the dashboardUrl drift remaining.
 
 ### test/config.test.js Test A — dashboardUrl drift
 - **Status:** pre-existing (carried from Plan 37-01)
