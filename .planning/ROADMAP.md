@@ -152,6 +152,7 @@ See `.planning/milestones/v1.5.0.1-ROADMAP.md` and `.planning/milestones/v1.5.0.
 | 33. VPS heartbeat receiver + outage-alert relay | v1.6 | scaffold + deploy | Complete — Tier 1 E2E PROVEN (VPS detects 3min silence → bridge → signal-cli → operator phone) | 2026-05-11 |
 | 999.43.1. ntfy.sh Tier 2 out-of-band alert channel | v1.6 | promoted | Complete — Tier 2 E2E PROVEN (induced Tier 1 fail → ntfy push delivered to operator phone). Closes the actual 11h-blind incident class. | 2026-05-11 |
 | 34. VPS uptime-kuma outside-in monitoring | v1.6 | infra + seed | Complete — admin live, ntfy channel wired (same topic as 999.43.1), 4 monitors UP (fc1+elder-plops pings, MC HTTP, Bridge keyword); seed driven via uptime-kuma-api lib | 2026-05-11 |
+| 35. VPS Tier A backup (small irreplaceable bits) | v1.6 | ship | Complete — `.env` files + fc1 runtime knobs + VPS heartbeat secrets nightly age-encrypted to VPS at 03:30. ~20KB/day. **Known SPOF: decrypt key is `~/.ssh/id_ed25519` on elder-plops, not backed up offline (operator-acknowledged, deferred).** 999.45 (Tier B + borg) still open for vfx-studio offsite. | 2026-05-11 |
 
 ### Phase 32: VPS multi-purpose hub (WireGuard MVP)
 
@@ -197,6 +198,20 @@ See `.planning/milestones/v1.5.0.1-ROADMAP.md` and `.planning/milestones/v1.5.0.
 
 - [x] 34-INFRA — 2026-05-11. docker engine installed on VPS; uptime-kuma container running; UFW opened on wg-hub interface for port 3001; reachability verified from elder-plops.
 - [x] 34-SEED — 2026-05-11. Operator created admin in browser (~30s), then `vps/uptime-kuma/seed.py` (uptime-kuma-api / socket.io) drove notification channel + 4 monitors + test fire from elder-plops. ntfy push delivered to operator phone. 5th monitor (receiver self-check) deleted — Docker bridge can't reach the receiver's wg-hub binding locally; documented in `34-SUMMARY.md` "Deferred / discovered during deploy."
+
+### Phase 35: VPS Tier A backup (small irreplaceable bits) — SHIPPED 2026-05-11
+
+**Goal:** Close the painful half of `project_2026_05_03_ssd_failure` (env vars + chamber tuning knobs + secrets recovery) without committing the VPS to a 20+GB pg_dump backup-target role. "Empezar chiquito" subset of backlog 999.45 — Tier B (Timescale + farmOS db data) deferred until vfx studio offsite infra lands.
+
+**Requirements:** None formally declared (v1.6 milestone scaffolding deferred per Phase 32 note).
+
+**SUMMARY.md:** `.planning/phases/35-vps-tierA-backup/35-SUMMARY.md` — bundle contents, architecture, acceptance, **SPOF section.**
+
+**Dependencies:** Phase 33 + 999.43.1 (failure path POSTs to bridge `/heartbeat-alert`); existing operator SSH keys + access to fc1 + VPS.
+
+**Plans:** Single ship.
+
+- [x] 35-SHIP — 2026-05-11. `scripts/backup-tierA/` (bash + systemd timer at 03:30 daily); `age` apt-installed on both ends; bundle: 5 source files (mushy `.env`, farmOS `.env`, fc1 `runtime_overrides.yaml`, fc1 heartbeat systemd units, VPS heartbeat HMAC + ntfy.env). First-run smoke: 20692-byte ciphertext on VPS at `/var/backups/mushy-tierA/`, decrypt round-trip verified, all 5 files + manifest intact. **Known SPOF (operator-acknowledged 2026-05-11, deferred):** `~/.ssh/id_ed25519` on elder-plops is the only key that decrypts; not backed up offline. Mitigation paths in 35-SUMMARY.md.
 
 ### Phase 27.1: Edge buffering — fc1 telemetry replay-on-reconnect — SHIPPED 2026-05-03
 

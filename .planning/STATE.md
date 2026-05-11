@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: (scaffolding deferred — Phase 32 ran ahead)
 status: idle
-stopped_at: Phase 33 + 999.43.1 + Phase 34 fully SHIPPED 2026-05-11 — full outage-alert stack live (heartbeat + Signal Tier 1 + ntfy Tier 2 + uptime-kuma outside-in with 4 monitors and ntfy alerts wired)
-last_updated: "2026-05-11T00:50:00.000Z"
-last_activity: 2026-05-11 — closed Phase 34 by driving uptime-kuma seed via uptime-kuma-api lib (admin login via operator-supplied password, then headless add-notification + add-monitor x4 + test-fire). Notification + 4 monitors live; ntfy push confirmed by operator. 5th monitor (receiver self-check) dropped due to Docker-bridge can't reach wg-hub-bound listener locally; documented in 34-SUMMARY. Plus research-only burn for 999.45 (borg recommended) + 999.46 (CycloneDDS multi-iface w/ presence_required=false).
+stopped_at: Phase 35 (Tier A backup) SHIPPED 2026-05-11 — full v1.6 outage + recovery stack now live (heartbeat + Signal Tier 1 + ntfy Tier 2 + uptime-kuma outside-in + nightly age-encrypted Tier A backup to VPS). Operator-acknowledged SPOF: id_ed25519 not yet offline.
+last_updated: "2026-05-11T01:40:00.000Z"
+last_activity: 2026-05-11 — Phase 35 shipped (scripts/backup-tierA/ + age 1.0/1.1 apt + systemd timer at 03:30; first-run smoke 20692 bytes on VPS, decrypt round-trip OK with operator's id_ed25519). Plus seed SEED-008 planted (avahi-style name resolution via dnsmasq on VPS, surfaces v1.7).
 progress:
-  total_phases: 12
-  completed_phases: 11
-  total_plans: 34
-  completed_plans: 34
+  total_phases: 13
+  completed_phases: 12
+  total_plans: 35
+  completed_plans: 35
   percent: 100
 ---
 
