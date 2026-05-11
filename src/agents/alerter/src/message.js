@@ -9,6 +9,13 @@ const ALERT_TITLES = {
   scd41:      'CO2 Sensor offline',
 };
 
+// Round a number to 1 decimal and strip trailing ".0".
+// e.g. 94.39994 -> "94.4", 90 -> "90", 1.5000000000000013 -> "1.5"
+function fmtNum(n) {
+  if (n == null || Number.isNaN(Number(n))) return String(n);
+  return String(+Number(n).toFixed(1));
+}
+
 /**
  * Format elapsed milliseconds as "Xm YYs" (or "Xh YYm" for >= 60 min).
  */
@@ -53,7 +60,7 @@ function formatProblem({ alertType, severity, fields, config, nowMs }) {
 
   if (alertType === 'rh') {
     const { value, firstOobMs } = fields;
-    body += `Now: ${value}% · target ${config.rhTarget}±${config.rhBand}%\n`;
+    body += `Now: ${fmtNum(value)}% · target ${fmtNum(config.rhTarget)}±${fmtNum(config.rhBand)}%\n`;
     if (firstOobMs != null) {
       body += `First OOB: ${fmtRelative(firstOobMs, nowMs)}\n`;
     }
@@ -65,7 +72,7 @@ function formatProblem({ alertType, severity, fields, config, nowMs }) {
     if (lastKnown) {
       // Phase 29 / 999.39 — situational context for offline alarms.
       // Schema: { rh: number, temp: number, humidifier: 'ON'|'OFF', tsMs: number|null }
-      body += `Last sample: RH ${lastKnown.rh}% · T ${lastKnown.temp}°C · humidifier ${lastKnown.humidifier}\n`;
+      body += `Last sample: RH ${fmtNum(lastKnown.rh)}% · T ${fmtNum(lastKnown.temp)}°C · humidifier ${lastKnown.humidifier}\n`;
       if (lastKnown.tsMs != null) {
         body += `(captured ${fmtRelative(lastKnown.tsMs, nowMs)})\n`;
       }
@@ -85,7 +92,7 @@ function formatProblem({ alertType, severity, fields, config, nowMs }) {
       body += `On for: ${fmtDuration(nowMs - onSinceMs)}\n`;
     }
     if (rhAtOn != null && currentRh != null) {
-      body += `RH at ON: ${rhAtOn}% · Now: ${currentRh}%\n`;
+      body += `RH at ON: ${fmtNum(rhAtOn)}% · Now: ${fmtNum(currentRh)}%\n`;
     }
   }
 
@@ -107,7 +114,7 @@ function formatRecovery({ alertType, fields, durationMs, config }) {
   let body = `[RECOVERY] FC-1 · ${title} back\n`;
 
   if (alertType === 'rh' && fields && fields.value != null) {
-    body += `Now: ${fields.value}%\n`;
+    body += `Now: ${fmtNum(fields.value)}%\n`;
   }
 
   if (durationMs != null) {
@@ -126,7 +133,7 @@ function formatRecovery({ alertType, fields, durationMs, config }) {
 function formatHeartbeat({ summary, config, nowMs: _nowMs }) {
   const { rh, temp, co2, humidifier, humidifierCycles, piLastSeenSec } = summary;
   let body = '[HEARTBEAT] FC-1 watchdog alive\n';
-  body += `RH: ${rh}%  ·  Temp: ${temp}°C  ·  CO2: ${co2} ppm\n`;
+  body += `RH: ${fmtNum(rh)}%  ·  Temp: ${fmtNum(temp)}°C  ·  CO2: ${co2} ppm\n`;
   body += `Humidifier: ${humidifier} (cycled ${humidifierCycles}× in last 24h)\n`;
   if (piLastSeenSec != null) {
     body += `Pi last seen: ${piLastSeenSec} seconds ago\n`;

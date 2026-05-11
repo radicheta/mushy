@@ -183,3 +183,44 @@ describe('ALRT-08: every message contains dashboard URL exactly once', () => {
     expect(count).toBe(1);
   });
 });
+
+describe('numeric formatting (round to 1 decimal, strip trailing .0)', () => {
+  test('RH PROBLEM rounds floaty value and band to 1 decimal', () => {
+    const body = formatProblem({
+      alertType: 'rh',
+      severity: 'WARN',
+      fields: { value: 94.3999389639124, firstOobMs: 1 },
+      config: { ...config, rhTarget: 96, rhBand: 1.5000000000000013 },
+      nowMs: 60000,
+    });
+    expect(body).toContain('Now: 94.4%');
+    expect(body).toContain('target 96±1.5%');
+    expect(body).not.toContain('94.3999');
+    expect(body).not.toContain('1.5000000000000013');
+  });
+
+  test('RH RECOVERY rounds floaty value to 1 decimal', () => {
+    const body = formatRecovery({
+      alertType: 'rh',
+      fields: { value: 94.4151979858091 },
+      durationMs: 4 * 60000 + 54000,
+      config,
+    });
+    expect(body).toContain('Now: 94.4%');
+    expect(body).not.toContain('94.4151979858091');
+  });
+
+  test('integer values render without trailing .0', () => {
+    const body = formatProblem({
+      alertType: 'rh',
+      severity: 'WARN',
+      fields: { value: 83, firstOobMs: 1 },
+      config,
+      nowMs: 60000,
+    });
+    expect(body).toContain('Now: 83%');
+    expect(body).toContain('target 90±3%');
+    expect(body).not.toContain('83.0');
+    expect(body).not.toContain('90.0');
+  });
+});
