@@ -1,0 +1,12 @@
+[Unit]
+Description=Mushy Tier A nightly backup (envs + tuning knobs + VPS secrets, age-encrypted, push to VPS)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=santi
+Group=santi
+ExecStart=/usr/local/bin/mushy-tierA-backup.sh
+StandardOutput=journal
+StandardError=journal

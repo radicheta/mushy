@@ -1,0 +1,11 @@
+[Unit]
+Description=Mushy Tier A nightly backup (run at 03:30 local)
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=10m
+Unit=mushy-tierA-backup.service
+
+[Install]
+WantedBy=timers.target
