@@ -16,6 +16,7 @@ roadmap; promote via `/gsd:plant-seed` workflow when a trigger fires.
 | SEED-006 | Farmer freeform stream → automatic farmOS bookkeeping | Next major milestone (v1.6+) — agentic / farmer-UX / multimodal Signal | Large |
 | SEED-007 | Power-bank UPS for fc1 Pi (gap short blackouts)    | Next infra/hardening milestone OR another unscheduled-reboot incident   | Small         |
 | SEED-008 | VPN name resolution — split-horizon `*.mushy.mossrock.space` (delegate from HostGator → VPS auth DNS + dnsmasq + LE wildcard cert) | v1.7 milestone planning OR any peer-renumbering or 7th+ peer onboarding | Medium        |
+| SEED-009 | VPN tunnel should be fallback, not primary — shortest-path routing for on-site farmers (LAN direct when same subnet, hub only when remote) | Any phase touching WG routing, farmer-device onboarding, MC latency complaints, or VPS bandwidth-cost concerns | Medium        |
 
 ## Files
 
@@ -27,6 +28,7 @@ roadmap; promote via `/gsd:plant-seed` workflow when a trigger fires.
 - [SEED-006-farmer-freeform-stream-to-farmos.md](SEED-006-farmer-freeform-stream-to-farmos.md)
 - [SEED-007-fc1-power-bank-ups.md](SEED-007-fc1-power-bank-ups.md)
 - [SEED-008-vpn-name-resolution.md](SEED-008-vpn-name-resolution.md)
+- [SEED-009-vpn-shortest-path-routing.md](SEED-009-vpn-shortest-path-routing.md)
 
 ## Composition notes
 
