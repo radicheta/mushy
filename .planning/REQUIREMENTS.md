@@ -19,9 +19,12 @@
 
 ### ROUTE — Multi-farmer routing (load-bearing, was 999.20)
 
-- [ ] **ROUTE-01**: Bot replies to `envelope.source` (the message sender), not a fixed recipient — DM-to-DM is correct for every farmer.
-- [ ] **ROUTE-02**: Bot participates in the "Mushroom Farm" group thread — distinguishes DM context from group context; in groups, only responds to explicit commands and @mentions (default: no spam).
-- [ ] **ROUTE-03**: Per-farmer identity binding — incoming messages are tagged with the farmer's farmOS person record (resolved through Signal phone number → farmOS people directory lookup). Unknown numbers tagged `(unassigned)` per B6 sentinel pattern; never silently dropped.
+- [x] **ROUTE-01
+**: Bot replies to `envelope.source` (the message sender), not a fixed recipient — DM-to-DM is correct for every farmer.
+- [x] **ROUTE-02
+**: Bot participates in the "Mushroom Farm" group thread — distinguishes DM context from group context; in groups, only responds to explicit commands and @mentions (default: no spam).
+- [x] **ROUTE-03
+**: Per-farmer identity binding — incoming messages are tagged with the farmer's farmOS person record (resolved through Signal phone number → farmOS people directory lookup). Unknown numbers tagged `(unassigned)` per B6 sentinel pattern; never silently dropped.
 
 ### EXT — Schema-aware LLM extraction
 

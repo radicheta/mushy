@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.7
 milestone_name: Multimodal Signal → FarmOS Events
-status: planning
-stopped_at: Phase 37 context gathered
-last_updated: "2026-05-11T20:23:31.287Z"
-last_activity: 2026-05-11 — v1.7 roadmap written; 7 phases (36–42) covering 31 requirements; schema locked (farmos d4e5a30); v1.6 retroactive snapshot at .planning/milestones/v1.6-ROADMAP.md.
+status: in_progress
+stopped_at: Phase 37 Plan 02 complete
+last_updated: "2026-05-11T20:57:59.578Z"
+last_activity: "2026-05-11 — Phase 37 plan 02 (Multi-farmer Routing foundation: signal.js send({to})+defaultTarget; config.signalGroupId+signalFarmerMap; capture-db ADD COLUMN migration) shipped; 238/239 alerter jest green (1 pre-existing dashboardUrl drift)."
 progress:
   total_phases: 15
   completed_phases: 1
   total_plans: 9
-  completed_plans: 8
-  percent: 89
+  completed_plans: 10
+  percent: 100
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 
 ## Current Position
 
-Phase: 36 (Not started)
-Plan: —
-Status: Ready to plan
+Phase: 37 (in progress)
+Plan: 02 of 04 (complete; Wave 2 done)
+Status: in_progress
 Milestone: v1.7 — Multimodal Signal to FarmOS Events
-Last activity: 2026-05-11 — v1.7 roadmap written; 7 phases (36–42) covering 31 requirements; schema locked (farmos d4e5a30); v1.6 retroactive snapshot at .planning/milestones/v1.6-ROADMAP.md.
-Next up: /gsd-discuss-phase 36 or /gsd-plan-phase 36 (Signal Pre-gate — hard pre-gate for everything)
+Last activity: 2026-05-11 — Phase 37 plan 02 (Multi-farmer Routing foundation: signal.js send({to})+defaultTarget; config.signalGroupId+signalFarmerMap; capture-db ADD COLUMN migration) shipped; 238/239 alerter jest green (1 pre-existing dashboardUrl drift).
+Next up: /gsd-execute-phase 37 (Plan 03 — wire capture.js + receive-loop.js to USE the new send choke-point + farmer map + schema fields)
 
 ## Previous Milestones
 
@@ -129,6 +129,7 @@ Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (for
 - [Phase 28-07] Overlay scope = fc_controller only (D-17); other 5 nodes keep parameters=[LaunchConfiguration('config_file')] verbatim
 - [Phase 28-07] PI_HOST default 172.16.10.5 (wg0); fc1-ts removed as stale post-v1.5.0.1 (memory feedback_ssh_tailscale)
 - [Phase 28-07] colcon build order in deploy.sh = fc_msgs first, then fc_core (Pitfall 5 explicit)
+- [37-02] signal.js uses isStringTarget/isGroupTarget boolean discriminators (functional equivalent of PATTERNS.md typeof inline check; required for invalid-target validation gate)
 
 ### Pending Todos
 
@@ -175,11 +176,12 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 | Phase 28 P05 | 3min | 2 tasks | 3 files |
 | Phase Phase 28 PP06 | 10min | 2 tasks tasks | 5 files files |
 | Phase 28 P07 | 752s | 3 tasks | 2 files |
+| Phase Phase 37 P02 P37-02 | 12min | 3 tasks | 6 files |
 
 ## Session Continuity
 
-Last session: --stopped-at
-Stopped at: Phase 37 context gathered
+Last session: 2026-05-11T20:57:59.571Z
+Stopped at: Phase 37 Plan 02 complete
 Next up: /gsd-discuss-phase 36 or /gsd-plan-phase 36
 
 v1.7 phase order (hard sequencing):
