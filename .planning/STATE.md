@@ -26,11 +26,16 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 37 (in progress)
-Plan: 3 of 04 (complete; Wave 2 done)
-Status: Ready to execute
+Plan: 04 (PARTIAL — Tasks 1+2 shipped; Task 3 live human-verify attestations deferred to operator)
+Status: Awaiting operator deploy + live attestations per 37-RUNBOOK.md §4-§8
 Milestone: v1.7 — Multimodal Signal to FarmOS Events
-Last activity: 2026-05-11
-Next up: /gsd-execute-phase 37 (Plan 03 — wire capture.js + receive-loop.js to USE the new send choke-point + farmer map + schema fields)
+Last activity: 2026-05-11 21:20 UTC
+Next up: Operator runs 37-RUNBOOK.md (deploy alerter against authored .env; execute attestations A/B/C/D + Phase 33 non-regression E); on PASS, append outcomes table to 37-04-SUMMARY.md and re-run /gsd-execute-phase or /gsd-verify-work to close Phase 37.
+
+Plan 04 progress:
+- Task 1 (index.js wire-up + compose env plumbing) — commit 7b7256c
+- Task 2 (37-RUNBOOK.md authored) — commit 7bff438
+- Task 3 (live attestations A/B/C/D + Phase 33 E) — DEFERRED to operator (cannot be automated; requires three live farmers + operator-authored .env)
 
 ## Previous Milestones
 
@@ -131,6 +136,9 @@ Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (for
 - [Phase 28-07] colcon build order in deploy.sh = fc_msgs first, then fc_core (Pitfall 5 explicit)
 - [37-02] signal.js uses isStringTarget/isGroupTarget boolean discriminators (functional equivalent of PATTERNS.md typeof inline check; required for invalid-target validation gate)
 - [37-03] @-prefix-aware command regex + status keyword dropped (no handler exists in snooze.js)
+- [37-04] SIGNAL_GROUP_ID is the bare internal_id form, NOT the prefixed group.<...> id form — alerter signal.js wraps internally. 37-SMOKE Probe A documented the 400 failure when passing the prefixed form; 37-RUNBOOK §2 calls this out explicitly.
+- [37-04] Boot-log lines `[boot] signal defaultTarget = …` + `[boot] farmer-map entries = N` are operator-visible mitigation for T-37-04-01 (wrong-group leak) and T-37-04-03 (slug-typo mis-attribution); 37-RUNBOOK §5 makes both lines a hard pre-attestation gate.
+- [37-04] Tasks 1+2 executed sequentially on main; Task 3 (live attestations) deferred to operator — requires three live farmers + operator-authored .env, none automatable from executor seat.
 
 ### Pending Todos
 
