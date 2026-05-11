@@ -2,7 +2,14 @@
 
 const { maskNumber } = require('./config');
 
-function createSignalClient({ apiUrl, sender, recipient, maxSendsPerHour, getMaxSendsPerHour, logger = console, timeoutMs = 10000 }) {
+function createSignalClient({ apiUrl, sender, recipient, defaultTarget, maxSendsPerHour, getMaxSendsPerHour, logger = console, timeoutMs = 10000 }) {
+  // Phase 37 D-01: single choke-point send. defaultTarget can be a string phone
+  // OR { groupId } object; falls back to legacy `recipient` if absent (back-compat).
+  const effectiveDefault = defaultTarget !== undefined ? defaultTarget : recipient;
+  if (effectiveDefault === undefined || effectiveDefault === null || effectiveDefault === '') {
+    throw new Error('createSignalClient: defaultTarget or recipient is required');
+  }
+
   const sendHistory = []; // array of ms timestamps within the last hour
 
   function pruneHistory(now) {
@@ -22,7 +29,7 @@ function createSignalClient({ apiUrl, sender, recipient, maxSendsPerHour, getMax
     return maxSendsPerHour;
   }
 
-  async function send(body, { bypassCap = false } = {}) {
+  async function send(body, { bypassCap = false, to } = {}) {
     const now = Date.now();
     pruneHistory(now);
     const cap = currentCap();
@@ -31,13 +38,24 @@ function createSignalClient({ apiUrl, sender, recipient, maxSendsPerHour, getMax
       return { ok: false, reason: 'rate-cap' };
     }
 
+    // Phase 37 D-01: resolve target — per-call {to} overrides defaultTarget.
+    const target = to !== undefined ? to : effectiveDefault;
+    const isStringTarget = typeof target === 'string' && target.length > 0;
+    const isGroupTarget = target && typeof target === 'object' && typeof target.groupId === 'string' && target.groupId.length > 0;
+    if (!isStringTarget && !isGroupTarget) {
+      throw new Error('invalid send target');
+    }
+    const recipients = isStringTarget
+      ? [target]
+      : [`group.${target.groupId}`];
+
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
       const res = await fetch(`${apiUrl}/v2/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: body, number: sender, recipients: [recipient] }),
+        body: JSON.stringify({ message: body, number: sender, recipients }),
         signal: ctrl.signal,
       });
       if (!res.ok) {
@@ -46,7 +64,10 @@ function createSignalClient({ apiUrl, sender, recipient, maxSendsPerHour, getMax
       }
       const json = await res.json().catch(() => ({}));
       sendHistory.push(now);
-      logger.info(`[signal] sent -> ${maskNumber(recipient)} (${body.length} chars)`);
+      const label = isStringTarget
+        ? maskNumber(target)
+        : `group:${String(target.groupId).slice(0, 8)}…`;
+      logger.info(`[signal] sent -> ${label} (${body.length} chars)`);
       return { ok: true, timestamp: json.timestamp || now };
     } finally {
       clearTimeout(timer);
