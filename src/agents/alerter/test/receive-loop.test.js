@@ -1,7 +1,18 @@
 'use strict';
 
-const { createReceiveLoop } = require('../src/receive-loop');
+const { createReceiveLoop, collectGroupTriggers } = require('../src/receive-loop');
 const fakeSignalServer = require('./helpers/fake-signal-server');
+
+const BOT_PHONE = '+59891840205';
+const F2_PHONE = '+59892893012';
+const UNKNOWN_PHONE = '+15550009999';
+
+const groupSilentEnv = require('./fixtures/envelopes/group-silent.json')[0];
+const groupMentionEnv = require('./fixtures/envelopes/group-mention.json')[0];
+const groupCommandEnv = require('./fixtures/envelopes/group-command.json')[0];
+const groupReplyToBotEnv = require('./fixtures/envelopes/group-reply-to-bot.json')[0];
+const groupMentionAndCommandEnv = require('./fixtures/envelopes/group-mention-and-command.json')[0];
+const groupUnknownSenderEnv = require('./fixtures/envelopes/group-unknown-sender.json')[0];
 
 const silentLogger = { info: () => {}, warn: () => {}, error: () => {} };
 
@@ -348,6 +359,280 @@ describe('createReceiveLoop', () => {
 
     expect(receiveCalls).toBeGreaterThanOrEqual(2); // loop kept ticking
     expect(warnings.some((w) => /capture/i.test(w) && /boom/.test(w))).toBe(true);
+  });
+
+  // ============================================================
+  // Phase 37 Plan 03 — Group routing tests
+  // ============================================================
+
+  describe('collectGroupTriggers (pure helper)', () => {
+    test('group-silent → empty Set', () => {
+      const out = collectGroupTriggers(groupSilentEnv, BOT_PHONE);
+      expect(out.size).toBe(0);
+    });
+
+    test('group-mention → Set has "mention"', () => {
+      const out = collectGroupTriggers(groupMentionEnv, BOT_PHONE);
+      expect(out.has('mention')).toBe(true);
+      expect(out.size).toBe(1);
+    });
+
+    test('group-command → Set has "command"', () => {
+      const out = collectGroupTriggers(groupCommandEnv, BOT_PHONE);
+      expect(out.has('command')).toBe(true);
+      expect(out.size).toBe(1);
+    });
+
+    test('group-reply-to-bot → Set has "quote"', () => {
+      const out = collectGroupTriggers(groupReplyToBotEnv, BOT_PHONE);
+      expect(out.has('quote')).toBe(true);
+    });
+
+    test('group-mention-and-command → Set has both', () => {
+      const out = collectGroupTriggers(groupMentionAndCommandEnv, BOT_PHONE);
+      expect(out.has('mention')).toBe(true);
+      expect(out.has('command')).toBe(true);
+      expect(out.size).toBe(2);
+    });
+
+    test('wrong botPhone → no false positives on mention fixture', () => {
+      const out = collectGroupTriggers(groupMentionEnv, '+9999999999');
+      expect(out.has('mention')).toBe(false);
+    });
+
+    test('wrong botPhone → no false positives on quote fixture', () => {
+      const out = collectGroupTriggers(groupReplyToBotEnv, '+9999999999');
+      expect(out.has('quote')).toBe(false);
+    });
+
+    test('quote matcher accepts authorNumber field (Risk #9 defensive)', () => {
+      const env = {
+        envelope: {
+          dataMessage: {
+            quote: { authorNumber: BOT_PHONE, author: undefined, text: 'foo' },
+          },
+        },
+      };
+      const out = collectGroupTriggers(env, BOT_PHONE);
+      expect(out.has('quote')).toBe(true);
+    });
+
+    test('accepts both env shapes (env.envelope vs env directly)', () => {
+      // Direct dataMessage shape — capture's envWrapper sometimes passes the inner envelope
+      const env = { dataMessage: { message: 'mute' } };
+      const out = collectGroupTriggers(env, BOT_PHONE);
+      expect(out.has('command')).toBe(true);
+    });
+  });
+
+  describe('group routing (receive-loop integration)', () => {
+    const groupConfig = {
+      signalSender: BOT_PHONE,
+      signalRecipient: BOT_PHONE,
+      signalAdditionalSenders: [F2_PHONE, UNKNOWN_PHONE],
+      receivePollSec: 0.05,
+    };
+
+    function makeClient(envelopes) {
+      let n = 0;
+      const sends = [];
+      return {
+        sends,
+        client: {
+          receive: async () => {
+            n++;
+            if (n === 1) return envelopes;
+            return [];
+          },
+          send: jest.fn(async (body, opts) => { sends.push({ body, opts }); return { ok: true }; }),
+        },
+      };
+    }
+
+    test('group-silent: capture row written with kind=none, no signal send', async () => {
+      const captureCalls = [];
+      const { client, sends } = makeClient([groupSilentEnv]);
+      const capturePipeline = { handle: async (env, ctx) => { captureCalls.push({ env, ctx }); } };
+      loop = createReceiveLoop({
+        signalClient: client,
+        dispatch: () => {},
+        config: groupConfig,
+        capturePipeline,
+        logger: silentLogger,
+        clock: () => 1000,
+      });
+      loop.start();
+      await new Promise((r) => setTimeout(r, 200));
+      loop.stop();
+
+      expect(captureCalls).toHaveLength(1);
+      expect(captureCalls[0].ctx.replyTargetKind).toBe('none');
+      expect(captureCalls[0].ctx.groupId).toBe('hKw0KX1gte8Mnjw7fMlMCsPc7s/g3drpkpVsBwPcxwE=');
+      expect(captureCalls[0].ctx.suppressReply).toBe(true);
+      expect(sends).toHaveLength(0); // no signal send fired
+    });
+
+    test('group-mention: ONE signal send to {groupId} via capture branch', async () => {
+      const captureCalls = [];
+      const { client } = makeClient([groupMentionEnv]);
+      const capturePipeline = { handle: async (env, ctx) => { captureCalls.push({ env, ctx }); } };
+      loop = createReceiveLoop({
+        signalClient: client,
+        dispatch: () => {},
+        config: groupConfig,
+        capturePipeline,
+        logger: silentLogger,
+        clock: () => 1000,
+      });
+      loop.start();
+      await new Promise((r) => setTimeout(r, 200));
+      loop.stop();
+
+      expect(captureCalls).toHaveLength(1);
+      expect(captureCalls[0].ctx.replyTargetKind).toBe('group');
+      expect(captureCalls[0].ctx.suppressReply).toBe(false);
+    });
+
+    test('group-command (mute): ONE dispatch, snooze branch fires; capture suppresses reply', async () => {
+      const dispatched = [];
+      const captureCalls = [];
+      const { client, sends } = makeClient([groupCommandEnv]);
+      const capturePipeline = { handle: async (env, ctx) => { captureCalls.push({ env, ctx }); } };
+      loop = createReceiveLoop({
+        signalClient: client,
+        dispatch: (e) => dispatched.push(e),
+        config: groupConfig,
+        capturePipeline,
+        logger: silentLogger,
+        clock: () => 1000,
+      });
+      loop.start();
+      await new Promise((r) => setTimeout(r, 200));
+      loop.stop();
+
+      // mute → snooze dispatch
+      expect(dispatched).toHaveLength(1);
+      expect(dispatched[0].type).toBe('snooze');
+      // snooze branch sent the ack (one send only)
+      expect(sends).toHaveLength(1);
+      // command branch hard-stops (continue) — capture not called for group-command
+      // because existing snooze branch ends with `continue`. Capture is NOT called here.
+      // That preserves D-09 single-reply.
+      expect(captureCalls).toHaveLength(0);
+    });
+
+    test('group-mention-and-command: EXACTLY ONE reply (D-09 dedupe)', async () => {
+      const dispatched = [];
+      const captureCalls = [];
+      const { client, sends } = makeClient([groupMentionAndCommandEnv]);
+      const capturePipeline = { handle: async (env, ctx) => { captureCalls.push({ env, ctx }); } };
+      loop = createReceiveLoop({
+        signalClient: client,
+        dispatch: (e) => dispatched.push(e),
+        config: groupConfig,
+        capturePipeline,
+        logger: silentLogger,
+        clock: () => 1000,
+      });
+      loop.start();
+      await new Promise((r) => setTimeout(r, 200));
+      loop.stop();
+
+      // mute keyword matches snooze parser → dispatch fires
+      expect(dispatched).toHaveLength(1);
+      // ONE signal send (the snooze ack); capture branch does not run after `continue`
+      expect(sends).toHaveLength(1);
+    });
+
+    test('group-command from F2 (non-operator) still dispatches mute (D-10)', async () => {
+      const dispatched = [];
+      // F2_PHONE is already the source in group-command.json
+      const { client } = makeClient([groupCommandEnv]);
+      const capturePipeline = { handle: async () => {} };
+      loop = createReceiveLoop({
+        signalClient: client,
+        dispatch: (e) => dispatched.push(e),
+        config: groupConfig,
+        capturePipeline,
+        logger: silentLogger,
+        clock: () => 1000,
+      });
+      loop.start();
+      await new Promise((r) => setTimeout(r, 200));
+      loop.stop();
+
+      expect(dispatched).toHaveLength(1);
+      expect(dispatched[0].type).toBe('snooze');
+      expect(dispatched[0].alertType).toBe('all');
+    });
+
+    test('group-unknown-sender (whitelisted but not in farmer-map): capture runs normally', async () => {
+      const captureCalls = [];
+      const { client } = makeClient([groupUnknownSenderEnv]);
+      const capturePipeline = { handle: async (env, ctx) => { captureCalls.push({ env, ctx }); } };
+      loop = createReceiveLoop({
+        signalClient: client,
+        dispatch: () => {},
+        config: groupConfig,
+        capturePipeline,
+        logger: silentLogger,
+        clock: () => 1000,
+      });
+      loop.start();
+      await new Promise((r) => setTimeout(r, 200));
+      loop.stop();
+
+      expect(captureCalls).toHaveLength(1);
+      expect(captureCalls[0].ctx.replyTargetKind).toBe('none'); // silent group msg
+      expect(captureCalls[0].ctx.groupId).toBeTruthy();
+    });
+
+    test('DM envelope unchanged: ctx.replyTargetKind=dm passed to capture', async () => {
+      const captureCalls = [];
+      const dmEnv = require('./fixtures/envelopes/text.json')[0];
+      const { client } = makeClient([dmEnv]);
+      const capturePipeline = { handle: async (env, ctx) => { captureCalls.push({ env, ctx }); } };
+      loop = createReceiveLoop({
+        signalClient: client,
+        dispatch: () => {},
+        config: groupConfig,
+        capturePipeline,
+        logger: silentLogger,
+        clock: () => 1000,
+      });
+      loop.start();
+      await new Promise((r) => setTimeout(r, 200));
+      loop.stop();
+
+      expect(captureCalls).toHaveLength(1);
+      expect(captureCalls[0].ctx.replyTargetKind).toBe('dm');
+      expect(captureCalls[0].ctx.groupId).toBeNull();
+      expect(captureCalls[0].ctx.suppressReply).toBe(false);
+    });
+
+    test('groupInfo.type=UPDATE → treated as non-group, no trigger eval', async () => {
+      const updateEnv = JSON.parse(JSON.stringify(groupMentionEnv));
+      updateEnv.envelope.dataMessage.groupInfo.type = 'UPDATE';
+      const captureCalls = [];
+      const { client, sends } = makeClient([updateEnv]);
+      const capturePipeline = { handle: async (env, ctx) => { captureCalls.push({ env, ctx }); } };
+      loop = createReceiveLoop({
+        signalClient: client,
+        dispatch: () => {},
+        config: groupConfig,
+        capturePipeline,
+        logger: silentLogger,
+        clock: () => 1000,
+      });
+      loop.start();
+      await new Promise((r) => setTimeout(r, 200));
+      loop.stop();
+
+      // Treated as non-group → DM-style handling. text='@bot status' — no snooze parse,
+      // not an experiment command, falls to capture branch as a DM.
+      expect(captureCalls).toHaveLength(1);
+      expect(captureCalls[0].ctx.replyTargetKind).toBe('dm');
+    });
   });
 
   test('Test E: stop() halts further receive() calls', async () => {
