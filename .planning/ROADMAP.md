@@ -163,7 +163,7 @@ Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 202
 **Plans:** 4 plans
 - [ ] 37-01-PLAN.md — Wave 0 smoke probe + six group envelope fixtures + jest baseline
 - [ ] 37-02-PLAN.md — signal.js send({to}) refactor + config.js (SIGNAL_GROUP_ID, SIGNAL_FARMER_MAP) + capture-db.js ALTER TABLE migrations
-- [ ] 37-03-PLAN.md — receive-loop.js group gate + collectGroupTriggers + D-09 dedupe; capture.js replyTarget threading + farmer-map + new row fields
+- [x] 37-03-PLAN.md — receive-loop.js group gate + collectGroupTriggers + D-09 dedupe; capture.js replyTarget threading + farmer-map + new row fields
 - [ ] 37-04-PLAN.md — docker-compose env plumbing + index.js wire-up + 37-RUNBOOK.md + live A/B/C/D/E attestations
 
 ### Phase 38: Extraction Pipeline
