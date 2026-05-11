@@ -1,0 +1,42 @@
+[
+  {
+    "number": "+<REDACTED>",
+    "status": "TRUSTED_VERIFIED",
+    "fingerprint": "05 d1 a5 89 50 7c ec 3e 1a 47 96 92 7a 44 53 46 a3 7f 2d af ed 63 75 f5 bb 89 d5 06 4a d4 19 84 41",
+    "added": "1776545709054",
+    "safety_number": "93510 24902 04865 28448 03302 55191 93510 24902 04865 28448 03302 55191",
+    "uuid": "<uuid-redacted>"
+  },
+  {
+    "number": "+<REDACTED>",
+    "status": "TRUSTED_UNVERIFIED",
+    "fingerprint": "05 e3 6d ed f7 07 6a 61 a2 e4 e6 08 e4 d1 a1 69 86 80 0e db 53 78 05 a4 23 fc f7 03 ad e6 4b 8b 58",
+    "added": "1776545727914",
+    "safety_number": "04244 98563 27911 12103 45449 44659 93510 24902 04865 28448 03302 55191",
+    "uuid": "<uuid-redacted>"
+  },
+  {
+    "number": "+<REDACTED>",
+    "status": "TRUSTED_UNVERIFIED",
+    "fingerprint": "05 a3 d2 96 c2 aa bf e8 c5 46 48 c3 3a 61 4e 45 8c d4 b1 44 79 4a de 2e 05 aa ff c3 42 8b 22 68 48",
+    "added": "1777156591358",
+    "safety_number": "31725 53847 61339 70954 00404 33226 93510 24902 04865 28448 03302 55191",
+    "uuid": "<uuid-redacted>"
+  },
+  {
+    "number": "",
+    "status": "TRUSTED_UNVERIFIED",
+    "fingerprint": "05 de c0 28 a7 06 f2 02 24 44 bf a3 45 fb 93 67 ce 95 06 c5 39 6b e0 cf e3 93 24 7b e3 a4 47 78 54",
+    "added": "1777156595858",
+    "safety_number": "92740 90825 75171 07944 36394 79586 93510 24902 04865 28448 03302 55191",
+    "uuid": "<uuid-redacted>"
+  },
+  {
+    "number": "+<REDACTED>",
+    "status": "TRUSTED_UNVERIFIED",
+    "fingerprint": "05 73 cf b3 c0 81 d9 35 60 86 e0 4a 11 cf 8e 53 45 1b 5f 87 60 51 2c 5d d2 c9 0d 80 37 64 a5 a8 52",
+    "added": "1778454644590",
+    "safety_number": "57497 28218 48552 02632 41201 18469 93510 24902 04865 28448 03302 55191",
+    "uuid": ""
+  }
+]

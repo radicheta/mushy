@@ -1,0 +1,14 @@
+[
+  {
+    "id": 1,
+    "name": "",
+    "last_seen_timestamp": 1776643200000,
+    "creation_timestamp": 1776544420244
+  },
+  {
+    "id": 2,
+    "name": "mushy-alerter",
+    "last_seen_timestamp": 1778457600000,
+    "creation_timestamp": 1776545710011
+  }
+]
