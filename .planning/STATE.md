@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: (scaffolding deferred — Phase 32 ran ahead)
 status: idle
-stopped_at: Phase 33 SHIPPED 2026-05-11 — Tier 1 outage alerts E2E proven (VPS detect → bridge → signal-cli → operator phone); Tier 2 (ntfy.sh out-of-band) filed as 999.43.1
-last_updated: "2026-05-11T00:18:00.000Z"
-last_activity: 2026-05-11 — Phase 33 deploy completed; 3 deploy-time bugs caught + fixed (bridge↔signal-cli network path, install.sh perms, dispatch timeout); real smoke test (stop fc1 timer for >3min) → Signal alert delivered + recovery logged; SUMMARY + ROADMAP + 999.43.1 filed
+stopped_at: Phase 33 + 999.43.1 + Phase 34 SHIPPED 2026-05-11 — full outage-alert stack live (heartbeat + Signal + ntfy + outside-in monitoring); only operator UI setup pending for uptime-kuma
+last_updated: "2026-05-11T00:31:00.000Z"
+last_activity: 2026-05-11 — completed Phase 33 + promoted 999.43.1 (ntfy.sh Tier 2 E2E proven by induced-Tier-1-fail smoke) + Phase 34 (uptime-kuma container deployed on VPS, UFW opened, bound to 10.66.0.1:3001 wg-hub-only). Operator UI setup for uptime-kuma admin/monitors/notification channel pending in browser at http://10.66.0.1:3001/.
 progress:
-  total_phases: 10
-  completed_phases: 9
-  total_plans: 32
-  completed_plans: 32
+  total_phases: 12
+  completed_phases: 11
+  total_plans: 34
+  completed_plans: 34
   percent: 100
 ---
 
