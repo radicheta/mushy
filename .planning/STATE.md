@@ -4,8 +4,8 @@ milestone: v1.6
 milestone_name: (scaffolding deferred — Phase 32 ran ahead)
 status: idle
 stopped_at: Phase 35 (Tier A backup) SHIPPED 2026-05-11 — full v1.6 outage + recovery stack now live (heartbeat + Signal Tier 1 + ntfy Tier 2 + uptime-kuma outside-in + nightly age-encrypted Tier A backup to VPS). Operator-acknowledged SPOF: id_ed25519 not yet offline.
-last_updated: "2026-05-11T01:40:00.000Z"
-last_activity: 2026-05-11 — Phase 35 shipped (scripts/backup-tierA/ + age 1.0/1.1 apt + systemd timer at 03:30; first-run smoke 20692 bytes on VPS, decrypt round-trip OK with operator's id_ed25519). Plus seed SEED-008 planted (avahi-style name resolution via dnsmasq on VPS, surfaces v1.7).
+last_updated: "2026-05-11T13:30:00.000Z"
+last_activity: 2026-05-11 — backlog sweep + live-bug fix session. Closed 10 backlog items end-to-end (999.41/.22/.39/.40/.31/.32/.36/.24/.42/.49) + filed 999.50 (ROS_LOCALHOST_ONLY deprecation) + SEED-009 (VPN shortest-path routing). 5 prod changes deployed live (fc-core 999.32 LPF + 999.49 integrator decay + 999.24 camera reopen + 999.31 PWM deque; bridge 999.36 cursor; alerter 999.42 SHT30 mute). 999.49 was farmer-flagged mid-session as "duty stuck at 0.27 for hours" — root-caused to Phase 28 D-09 in-band integrator freeze; same-session fix shipped. PROJECT.md v1.6 candidates updated to bundle bidirectional Signal "close the loop" work. Worktree cleanup: 15 stale gsd-executor agent worktrees + 16 merged branches purged.
 progress:
   total_phases: 13
   completed_phases: 12
