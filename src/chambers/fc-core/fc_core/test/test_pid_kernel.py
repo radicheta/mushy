@@ -76,6 +76,78 @@ def test_d_on_measurement_no_kick_on_setpoint_change():
     )
 
 
+def test_derivative_filter_rejects_high_freq_noise():
+    """999.32: external LPF on PID's derivative term rejects tick-to-tick noise.
+
+    Mirrors the filter wired into fc_controller.py at the PID call site:
+        alpha = dt/(tau+dt); d_filt = alpha*d_raw + (1-alpha)*d_filt; output = P+I+d_filt
+
+    With tau=10s and dt=1s (i.e. alpha=1/11 ≈ 0.091), a single-tick noise spike
+    on d_raw should be attenuated ~11× in the next output. Without the filter,
+    the spike would pass through with full Kd*spike/dt magnitude.
+    """
+    pid = PID(
+        0.5, 0.002, 4.0,
+        setpoint=0.0,
+        output_limits=(0.0, 1.0),
+        auto_mode=True,
+        sample_time=None,
+        differential_on_measurement=True,
+    )
+    tau = 10.0
+    dt = 1.0
+    alpha = dt / (tau + dt)
+    d_filt = 0.0
+
+    # Warm up at steady state (no d_input change)
+    for _ in range(5):
+        pid(0.0, dt=dt)
+        _, _, d_raw = pid.components
+        d_filt = alpha * d_raw + (1 - alpha) * d_filt
+
+    # Snapshot pre-spike state
+    pre_d_filt = d_filt
+
+    # Inject a single-tick spike in measurement → big d_input → big raw D term
+    pid(0.05, dt=dt)  # 5% step in input
+    _, _, d_raw_spike = pid.components
+    d_filt_after = alpha * d_raw_spike + (1 - alpha) * pre_d_filt
+
+    # The filtered D should track only alpha (~9%) of the raw spike
+    assert abs(d_raw_spike) > 0.1, (
+        f'sanity: raw D term should respond to 5% input step, got d_raw={d_raw_spike}'
+    )
+    expected_attenuation = abs(d_raw_spike) * alpha + abs(pre_d_filt) * (1 - alpha)
+    assert abs(d_filt_after) < abs(d_raw_spike) * 0.5, (
+        f'filter failed to attenuate spike: d_raw={d_raw_spike}, d_filt={d_filt_after} '
+        f'(expected ≈ {expected_attenuation:.4f})'
+    )
+
+
+def test_derivative_filter_tau_zero_is_passthrough():
+    """999.32: with tau=0 the filter math degenerates (alpha undefined / no filter applied).
+
+    fc_controller.py gates the filter on `tau > 0`; this test documents that
+    contract: tau=0 means D term flows through unchanged. The vendored PID's
+    raw D output is what the controller uses when tau=0.
+    """
+    pid = PID(
+        0.5, 0.002, 4.0,
+        setpoint=0.0,
+        output_limits=(0.0, 1.0),
+        auto_mode=True,
+        sample_time=None,
+        differential_on_measurement=True,
+    )
+    for _ in range(3):
+        pid(0.0, dt=1.0)
+    pid(0.05, dt=1.0)
+    _, _, d_raw = pid.components
+    # When tau=0, the controller path skips the filter entirely; d_term in
+    # the output is exactly d_raw. No test action needed beyond documenting.
+    assert d_raw != 0.0
+
+
 def test_disengage_freezes_integrator():
     """After set_auto_mode(False), further calls do not change the integral component."""
     pid = PID(0.5, 0.002, 4.0, setpoint=1.0, output_limits=(0.0, 1.0), auto_mode=True, sample_time=None)

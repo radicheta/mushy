@@ -377,6 +377,11 @@ class FruitingChamberController(Node):
         # to _engage_pid_bumplessly — carries the integrator across mode swaps
         # without a kick.
         self._last_published_duty = 0.0
+        # 999.32: low-pass-filtered derivative term. Vendored simple_pid lacks
+        # native derivative filtering; we filter outside the library after each
+        # PID call. Reset on every (re-)engage so the filter doesn't carry
+        # stale state across mode swaps / experiments / restarts.
+        self._d_filtered = 0.0
 
         # Control timer
         self.timer = self.create_timer(
@@ -1405,6 +1410,10 @@ class FruitingChamberController(Node):
         """
         self._pid.set_auto_mode(True, last_output=last_output)
         self._pid_engaged = True
+        # 999.32: reset D filter so the filtered derivative doesn't carry
+        # stale state across re-engage. Starts at 0 so the filter ramps in
+        # naturally as new d_input samples flow.
+        self._d_filtered = 0.0
         self.get_logger().info(f'PID engaged with bumpless preload: duty={last_output:.3f}')
 
     def _disengage_pid(self):
@@ -1712,7 +1721,21 @@ class FruitingChamberController(Node):
                 if not self._pid.auto_mode:
                     # Re-engage bumplessly from Mode C / clamp.
                     self._pid.set_auto_mode(True, last_output=1.0)
+                    # 999.32: reset D filter on Mode C exit; the new d_input
+                    # baseline starts fresh.
+                    self._d_filtered = 0.0
                 raw_pid_output = self._pid(error_pct, dt=dt)
+                # 999.32: replace the PID's raw derivative term with a
+                # low-pass-filtered version. tau=0 disables filtering.
+                # alpha = dt/(tau+dt); d_filt += alpha * (d_raw - d_filt).
+                # Vendored simple_pid lacks native derivative filtering, so
+                # we filter externally and recompute the clamped output.
+                tau = self.get_parameter('pid_derivative_filter_tau').value
+                if tau > 0 and dt > 0:
+                    p_term, i_term, d_raw = self._pid.components
+                    alpha = dt / (tau + dt)
+                    self._d_filtered = alpha * d_raw + (1 - alpha) * self._d_filtered
+                    raw_pid_output = max(0.0, min(1.0, p_term + i_term + self._d_filtered))
                 duty = raw_pid_output
 
             self._publish_duty(duty)
