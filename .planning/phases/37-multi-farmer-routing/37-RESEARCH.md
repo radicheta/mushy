@@ -210,7 +210,7 @@ The existing `test/fixtures/envelopes/` has `text.json`, `snooze.json`, `photo-b
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should `farmos_person` map be live-reloadable, or boot-only?** D-12 says "operator updates env + restart to map them" → boot-only is the locked decision. Confirmed; no question.
 

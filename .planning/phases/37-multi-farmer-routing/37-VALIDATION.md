@@ -2,7 +2,7 @@
 phase: 37
 slug: multi-farmer-routing
 status: draft
-nyquist_compliant: false
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-05-11
 ---
@@ -43,7 +43,18 @@ This file will be filled in by the planner / Wave 0 task with concrete per-task 
 
 | Task ID | Plan | Wave | Requirement | Decision | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|----------|-----------|-------------------|-------------|--------|
-| TBD     |      |      |             |          |           |                   |             | ⬜ pending |
+| 37-01-01 | 01 | 1 | ROUTE-01/02/03 | Wave 0 fixtures | manual | live signal-cli probe (see plan) | ❌ W0 | ⬜ pending |
+| 37-02-01 | 02 | 2 | ROUTE-01 | D-01/D-02 | unit | `npx jest signal.test` | ❌ W0 | ⬜ pending |
+| 37-02-02 | 02 | 2 | ROUTE-03 | D-11/D-12 | unit | `npx jest config.test` | ✅ | ⬜ pending |
+| 37-02-03 | 02 | 2 | ROUTE-03 | D-14/D-15 | unit | `npx jest capture-db.test` | ✅ | ⬜ pending |
+| 37-03-01 | 03 | 2 | ROUTE-02 | D-06/D-08/D-09/D-10 | unit | `npx jest receive-loop.test` | ❌ W0 | ⬜ pending |
+| 37-03-02 | 03 | 2 | ROUTE-01/03 | D-02/D-12/D-13 | unit | `npx jest capture.test` | ❌ W0 | ⬜ pending |
+| 37-03-03 | 03 | 2 | ROUTE-01/02/03 | wave merge | integration | `npx jest` (full alerter suite) | ❌ W0 | ⬜ pending |
+| 37-04-01 | 04 | 3 | ROUTE-02 | D-04/D-16 | config | grep override.yml | ✅ | ⬜ pending |
+| 37-04-02 | 04 | 3 | ROUTE-01/02/03 | wire-up | integration | `docker compose up -d --build alerter` + log scan | ✅ | ⬜ pending |
+| 37-04-03 | 04 | 3 | ROUTE-01/02/03 | live UAT | manual | A/B/C/D/E attestations (see plan) | ✅ | ⬜ pending |
+
+*Detailed per-test rows live in `37-RESEARCH.md` §Validation Architecture — this table is the executor's at-a-glance map.*
 
 ---
 
