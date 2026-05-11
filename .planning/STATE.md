@@ -21,32 +21,26 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase --phase — 31
+**Current focus:** v1.6 outage + recovery stack — all shipped; milestone scaffolding still deferred.
 
 ## Current Position
 
-Phase: --phase (31) — EXECUTING
-Milestone: v1.5 — Analog Humidity Control & Condensation/Evaporation Forcing
+Status: IDLE
+Milestone: v1.6 (scaffolding deferred — Phase 32 ran ahead of `/gsd-new-milestone`)
+Last activity: 2026-05-11 — backlog sweep + live-bug fix session.
 
-**v1.5.0.1 archived 2026-05-08 (see `.planning/milestones/v1.5.0.1-ROADMAP.md`):**
+**v1.5 shipped 2026-05-09** (audit: `.planning/v1.5-MILESTONE-AUDIT.md`, status tech_debt — 16/17 reqs):
+Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (forcing modes).
 
-- Phase 27.1 — Edge buffering: SHIPPED 2026-05-03 over wg0 (BUF-04 → 999.36)
-- Phase 27.2 — fc-core systemd hardening: SHIPPED 2026-05-07 PARTIAL (SYS-04 scenario 2 → 999.28)
-- Phase 27.3 + 27.4 — MOOTED by transport switch
+**v1.6 progress (no REQUIREMENTS.md yet):**
 
-**v1.5 progress:**
+- Phase 32 — VPS multi-purpose hub (WireGuard MVP): SHIPPED 2026-05-10. Hetzner CX22; wg-hub `10.66.0.0/24`; fc1 + elder-plops + farmer #1 (LIVE) + farmers #2/#3 configured.
+- Phase 33 — VPS heartbeat receiver + Tier 1 Signal alert: SHIPPED 2026-05-11. Closes backlog 999.43 Tier 1.
+- Phase 999.43.1 — ntfy.sh Tier 2 out-of-band push: SHIPPED 2026-05-11 (promoted from backlog). Closes the actual 11h-blind incident class.
+- Phase 34 — VPS uptime-kuma outside-in monitoring: SHIPPED 2026-05-11. 4 monitors UP.
+- Phase 35 — VPS Tier A backup (age-encrypted nightly tarball): SHIPPED 2026-05-11. ~20KB/day. ⚠ SPOF: `id_ed25519` decrypt key not yet offline (operator-acknowledged, deferred).
 
-- Phase 27 — PID + slow-PWM: SHIPPED 2026-05-02
-- Phase 28 — Mode primitive + baselines + runtime config delivery: SHIPPED 2026-05-07/08 (MODE-01..05)
-- Phase 29 — Alerter mode awareness + cooldown tuning: SHIPPED 2026-05-08 (ALRT-08/09; ALRT-10 carries)
-- Phase 30 — Time-of-day mode scheduling: SHIPPED 2026-05-09 (SCHED-01..03). 30-01/02 code committed 2026-05-08; 30-03 Layer 1 (boundary transition) + Layer 2 (persist + restart survival) PROVEN this session — see 30-03-SMOKE.md. Side-finding worth farmer note: scheduler keeps current mode in gaps between windows (D-08 design); one-shot windows leave mode "stuck" until next window or manual reset. Farmer attestation pending review of SMOKE.md.
-- Phase 31 — Experimental forcing modes: SHIPPED 2026-05-09 (EXPT-01..03). Bridge curl path PROVEN end-to-end (DB row 7 + controller logs + auto-revert). Alerter BRIDGE_HTTP_URL bug fixed mid-UAT. Signal-driven UAT (tests 3-5) blocked on pre-existing signal-cli primary re-reg (deviceId=2 today; needs deviceId=1). Tests 6 (boot recovery D-09) and 7 (scheduler suppression) deferred but unit-test-covered; can be run via direct bridge curl any time.
-
-Plan: 1 of --name
-Status: Executing Phase --phase
-Last activity: 2026-05-08 -- Phase --phase execution started
-
-Progress: [██████░░░░] 60%
+**2026-05-11 backlog sweep:** closed 10 items end-to-end (999.41/.22/.39/.40/.31/.32/.36/.24/.42/.49) + filed 999.50 + SEED-009. 5 prod changes deployed live to fc1.
 
 **Carried from v1.3 (not blocking v1.4):**
 
@@ -177,12 +171,18 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 ## Session Continuity
 
-Last session: --stopped-at
-Stopped at: Phase 29 context gathered
-Next up: pick from { (a) close 27.2 SYS-01 + SYS-04, (b) cyclonedds-tailscale.xml → cyclonedds.xml rename, (c) PID Kp 0.5 → 0.35 retune per 2026-05-03 calibration notes, (d) resume v1.5 main with /gsd:discuss-phase 28 }
+Last session: 2026-05-11 backlog sweep + Phase 35 ship + live-bug fixes
+Stopped at: IDLE — v1.6 outage+recovery stack complete; v1.6 milestone never formally scaffolded
+Next up: pick from {
+  (a) `/gsd-new-milestone v1.6` retroactive scaffold + `/gsd-audit-milestone v1.6`,
+  (b) `/gsd-cleanup` to archive v1.5 phase dirs (27–31),
+  (c) `/gsd-review-backlog` to seed v1.7 candidates,
+  (d) close operator id_ed25519 SPOF (Phase 35 deferred item),
+  (e) tackle stale-test debt (999.51)
+}
 
 ---
-*Roadmap phases: v1.0 (1–8), v1.1 (9–10), v1.2 (11–13), v1.2.1 (14–16), v1.3 (17–20), v1.4 (21–26), v1.5 (27–31), v1.5.0.1 (27.1, 27.2)*
-*Last updated: 2026-05-04 — v1.5.0.1 realignment after wg0 architectural detour*
+*Roadmap phases: v1.0 (1–8), v1.1 (9–10), v1.2 (11–13), v1.2.1 (14–16), v1.3 (17–20), v1.4 (21–26), v1.5 (27–31), v1.5.0.1 (27.1, 27.2), v1.6 (32–35 + 999.43.1) — scaffolding deferred*
+*Last updated: 2026-05-11 — post v1.6 outage+recovery stack ship + backlog sweep*
 
-**Planned Phase:** 31 (experimental-forcing-modes) — 4 plans — 2026-05-08T19:18:25.821Z
+**Last completed:** Phase 35 (vps-tierA-backup) SHIPPED 2026-05-11
