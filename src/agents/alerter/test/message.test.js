@@ -210,6 +210,19 @@ describe('numeric formatting (round to 1 decimal, strip trailing .0)', () => {
     expect(body).not.toContain('94.4151979858091');
   });
 
+  test('HEARTBEAT renders null/undefined fields as em-dash, not "null"', () => {
+    const body = formatHeartbeat({
+      summary: { rh: null, temp: undefined, co2: null, humidifier: 'OFF', humidifierCycles: 0, piLastSeenSec: null },
+      config,
+      nowMs: Date.now(),
+    });
+    expect(body).not.toContain('null');
+    expect(body).not.toContain('undefined');
+    expect(body).toContain('RH: —%');
+    expect(body).toContain('Temp: —°C');
+    expect(body).toContain('CO2: — ppm');
+  });
+
   test('integer values render without trailing .0', () => {
     const body = formatProblem({
       alertType: 'rh',

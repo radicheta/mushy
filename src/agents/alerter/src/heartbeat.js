@@ -52,9 +52,19 @@ function createHeartbeatScheduler({
       const heartbeatHour = (getEffective ? getEffective().heartbeatHour : config.heartbeatHour);
 
       if (hour >= heartbeatHour && day !== lastFiredDay) {
-        lastFiredDay = day;
-        dispatch({ type: 'heartbeat_tick', summary: getSummary() });
-        logger.info(`[heartbeat] fired for ${day}`);
+        const summary = getSummary();
+        // Defer firing when the bridge hasn't replayed a sample yet (post-boot
+        // race — e.g. restart at 17:00 with heartbeatHour=17 fires before any
+        // RH/Temp/CO2 reaches state). Don't update lastFiredDay; next tick
+        // (15min) retries. If data never arrives, we just skip the day —
+        // better than sending "RH: null  ·  Temp: null  ·  CO2: null".
+        if (summary && (summary.rh != null || summary.temp != null || summary.co2 != null)) {
+          lastFiredDay = day;
+          dispatch({ type: 'heartbeat_tick', summary });
+          logger.info(`[heartbeat] fired for ${day}`);
+        } else {
+          logger.info(`[heartbeat] deferred for ${day} — bridge summary empty, will retry next tick`);
+        }
       }
     } catch (e) {
       logger.error(`[heartbeat] tick error: ${e.message}`);
