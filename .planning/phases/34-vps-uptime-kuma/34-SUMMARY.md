@@ -1,6 +1,6 @@
 # Phase 34 — VPS uptime-kuma outside-in monitoring — SUMMARY
 
-**Status:** INFRA DEPLOYED 2026-05-11. **Operator UI setup pending** (admin user, monitor seed, ntfy notification channel — uptime-kuma owns its own credentials, not seedable headless).
+**Status:** SHIPPED 2026-05-11 — admin live + 4 monitors UP + ntfy alerts wired. Operator setup was driven via `uptime-kuma-api` socket.io client (not in-browser as initially planned — see "Operator setup" section below).
 
 ## What shipped (infra side)
 
@@ -16,9 +16,34 @@
 
 Reachability verified: `curl http://10.66.0.1:3001/` from elder-plops returns HTTP 302 (redirect to login — expected).
 
-## Operator setup (NOT done by Claude)
+## Operator setup (DONE 2026-05-11 — driven via uptime-kuma-api lib, not in-browser)
 
-uptime-kuma has no headless way to seed admin credentials or monitors. From any wg-hub peer (your laptop if it joins as a peer per 999.47, or the farmer Android, or fc1):
+The "no headless seed" assumption in the original CONTEXT was wrong: there IS a programmatic path via `uptime-kuma-api` (PyPI), which speaks the same socket.io protocol the web UI uses. Operator did first-time admin in browser (~30s), then provided the password; the rest of the seed (notification channel + 5 monitors + test fire) was driven via `/tmp/kuma_seed.py` running from elder-plops in a venv.
+
+For future redeploys (e.g. fresh VPS), the seed script can do EVERYTHING including admin creation by calling `api.setup(user, pass)` — no browser needed. Capture the script under `vps/uptime-kuma/seed.py` if we ever need to re-provision.
+
+Live state:
+- Admin: `Mushy` (operator-owned password, not in repo)
+- Notification: `mushy ntfy` → `https://ntfy.sh/mushy-alerts-7f3a9c2b8e` (same topic as 999.43.1 — one app, both alert sources). Test push delivered to operator phone 2026-05-11.
+- 4 monitors live and UP (5th deleted, see follow-up note below):
+
+| Monitor | Type | Latency observed | Status |
+|---|---|---|---|
+| fc1 ping (wg-hub) | Ping `10.66.0.11` | 248ms | UP |
+| elder-plops ping (wg-hub) | Ping `10.66.0.12` | 248ms | UP |
+| Mission Control (openmct) | HTTP `http://10.66.0.12:8080/` | 526ms | UP (200 OK) |
+| Bridge health | HTTP+keyword `http://10.66.0.12:8081/health` keyword `"status":"ok"` | 499ms | UP (keyword found) |
+
+All 4 monitors have notification → mushy ntfy enabled, retries=2, retry interval=20s, heartbeat interval=60s.
+
+## Deferred / discovered during deploy
+
+- **5th monitor (VPS heartbeat receiver self-check) DELETED.** uptime-kuma container is on Docker bridge network; the receiver listens on `127.0.0.1:9000` + `10.66.0.1:9000` (wg-hub). Container can't reach 10.66.0.1 from inside docker0 — UFW FORWARD doesn't route docker0 → wg-hub locally back to the host's own listeners on the wg-hub interface. Pings TO wg-hub peers (10.66.0.11/.12) DO work because the destination is on the other side of the tunnel; pings/HTTP TO 10.66.0.1 (the VPS's own wg-hub IP) don't because they need to loop back through the host's network namespace. The receiver is on the same VPS as uptime-kuma anyway — its liveness is implicit (if uptime-kuma is responding, the VPS is up). External outside-in monitoring of the VPS itself is a future Phase 999.X concern and would NOT live on this VPS.
+- **If we ever want this self-check working:** add `extra_hosts: ["host.docker.internal:host-gateway"]` to uptime-kuma compose, and monitor `http://host.docker.internal:9000/health`. Untested; deferred until needed.
+
+## Original 5-step in-browser recipe (preserved for posterity / fresh-VPS deploys without the seed script)
+
+If you ever rebuild on a new VPS and don't want to use `uptime-kuma-api`, here's the manual recipe. From any wg-hub peer (your laptop if it joins as a peer per 999.47, or the farmer Android, or fc1):
 
 1. Open `http://10.66.0.1:3001/`
 2. **Set admin user + password** on first-visit screen
