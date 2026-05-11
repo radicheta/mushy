@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.6
-milestone_name: (scaffolding deferred — Phase 32 ran ahead)
-status: idle
-stopped_at: Phase 35 (Tier A backup) SHIPPED 2026-05-11 — full v1.6 outage + recovery stack now live (heartbeat + Signal Tier 1 + ntfy Tier 2 + uptime-kuma outside-in + nightly age-encrypted Tier A backup to VPS). Operator-acknowledged SPOF: id_ed25519 not yet offline.
-last_updated: "2026-05-11T13:30:00.000Z"
-last_activity: 2026-05-11 — backlog sweep + live-bug fix session. Closed 10 backlog items end-to-end (999.41/.22/.39/.40/.31/.32/.36/.24/.42/.49) + filed 999.50 (ROS_LOCALHOST_ONLY deprecation) + SEED-009 (VPN shortest-path routing). 5 prod changes deployed live (fc-core 999.32 LPF + 999.49 integrator decay + 999.24 camera reopen + 999.31 PWM deque; bridge 999.36 cursor; alerter 999.42 SHT30 mute). 999.49 was farmer-flagged mid-session as "duty stuck at 0.27 for hours" — root-caused to Phase 28 D-09 in-band integrator freeze; same-session fix shipped. PROJECT.md v1.6 candidates updated to bundle bidirectional Signal "close the loop" work. Worktree cleanup: 15 stale gsd-executor agent worktrees + 16 merged branches purged.
+milestone: v1.7
+milestone_name: Multimodal Signal to FarmOS Events
+status: ready_to_plan
+stopped_at: Phase 36 (Signal Pre-gate) — not started. Roadmap written 2026-05-11; schema locked (farmos d4e5a30); ready for /gsd-discuss-phase 36 or /gsd-plan-phase 36.
+last_updated: "2026-05-11T14:00:00.000Z"
+last_activity: 2026-05-11 — v1.7 roadmap created (7 phases, 31 requirements mapped). Schema locked in joint session with zoy (C1-C5 + B1-B7 + P1-P5). 999.2 closed by v1.7.
 progress:
-  total_phases: 13
-  completed_phases: 12
-  total_plans: 35
-  completed_plans: 35
-  percent: 100
+  total_phases: 7
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,11 +25,12 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 36 (Not started)
 Plan: —
-Status: Defining requirements
-Milestone: v1.7 — Multimodal Signal → FarmOS Events
-Last activity: 2026-05-11 — v1.7 started; schema locked 2026-05-11 (farmos `d4e5a30`); v1.6 retroactive snapshot at `.planning/milestones/v1.6-ROADMAP.md`.
+Status: Ready to plan
+Milestone: v1.7 — Multimodal Signal to FarmOS Events
+Last activity: 2026-05-11 — v1.7 roadmap written; 7 phases (36–42) covering 31 requirements; schema locked (farmos d4e5a30); v1.6 retroactive snapshot at .planning/milestones/v1.6-ROADMAP.md.
+Next up: /gsd-discuss-phase 36 or /gsd-plan-phase 36 (Signal Pre-gate — hard pre-gate for everything)
 
 ## Previous Milestones
 
@@ -177,15 +178,18 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 ## Session Continuity
 
-Last session: 2026-05-11 backlog sweep + Phase 35 ship + live-bug fixes
-Stopped at: IDLE — v1.6 outage+recovery stack complete; v1.6 milestone never formally scaffolded
-Next up: pick from {
-  (a) `/gsd-new-milestone v1.6` retroactive scaffold + `/gsd-audit-milestone v1.6`,
-  (b) `/gsd-cleanup` to archive v1.5 phase dirs (27–31),
-  (c) `/gsd-review-backlog` to seed v1.7 candidates,
-  (d) close operator id_ed25519 SPOF (Phase 35 deferred item),
-  (e) tackle stale-test debt (999.51)
-}
+Last session: 2026-05-11 v1.7 roadmap creation
+Stopped at: Phase 36 (Signal Pre-gate) — roadmap written, ready to plan
+Next up: /gsd-discuss-phase 36 or /gsd-plan-phase 36
+
+v1.7 phase order (hard sequencing):
+  Phase 36: Signal Pre-gate — MUST ship before anything else (PRE-01/02)
+  Phase 37: Multi-farmer Routing — MUST ship before extraction (ROUTE-01..03)
+  Phase 38: Extraction Pipeline — can start after 37 (EXT-01..05)
+  Phase 39: Farmer Confirmation Loop — after 38 (CONF-01..05)
+  Phase 40: FarmOS Write Path — after 39; parallel-safe with 38/39 against fixtures (FOS-01..06)
+  Phase 41: Ingestion Harness — after 38; parallel-safe with 40 (INGEST-01..04)
+  Phase 42: SHI-on-Sawdust Pilot — last; requires 40+41+39 (PILOT-01..06)
 
 ---
 *Roadmap phases: v1.0 (1–8), v1.1 (9–10), v1.2 (11–13), v1.2.1 (14–16), v1.3 (17–20), v1.4 (21–26), v1.5 (27–31), v1.5.0.1 (27.1, 27.2), v1.6 (32–35 + 999.43.1) — scaffolding deferred*

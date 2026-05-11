@@ -89,4 +89,34 @@
 
 | REQ-ID | Phase | Status |
 |---|---|---|
-| _Populated by roadmapper_ | | |
+| PRE-01 | Phase 36 | Pending |
+| PRE-02 | Phase 36 | Pending |
+| ROUTE-01 | Phase 37 | Pending |
+| ROUTE-02 | Phase 37 | Pending |
+| ROUTE-03 | Phase 37 | Pending |
+| EXT-01 | Phase 38 | Pending |
+| EXT-02 | Phase 38 | Pending |
+| EXT-03 | Phase 38 | Pending |
+| EXT-04 | Phase 38 | Pending |
+| EXT-05 | Phase 38 | Pending |
+| CONF-01 | Phase 39 | Pending |
+| CONF-02 | Phase 39 | Pending |
+| CONF-03 | Phase 39 | Pending |
+| CONF-04 | Phase 39 | Pending |
+| CONF-05 | Phase 39 | Pending |
+| FOS-01 | Phase 40 | Pending |
+| FOS-02 | Phase 40 | Pending |
+| FOS-03 | Phase 40 | Pending |
+| FOS-04 | Phase 40 | Pending |
+| FOS-05 | Phase 40 | Pending |
+| FOS-06 | Phase 40 | Pending |
+| INGEST-01 | Phase 41 | Pending |
+| INGEST-02 | Phase 41 | Pending |
+| INGEST-03 | Phase 41 | Pending |
+| INGEST-04 | Phase 41 | Pending |
+| PILOT-01 | Phase 42 | Pending |
+| PILOT-02 | Phase 42 | Pending |
+| PILOT-03 | Phase 42 | Pending |
+| PILOT-04 | Phase 42 | Pending |
+| PILOT-05 | Phase 42 | Pending |
+| PILOT-06 | Phase 42 | Pending |
