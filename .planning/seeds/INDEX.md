@@ -15,6 +15,7 @@ roadmap; promote via `/gsd:plant-seed` workflow when a trigger fires.
 | SEED-005 | Chamber water-mass observer + condensation camera macro | VPD scoping decision OR Phase 31 surfaces sensor-saturation pain | Medium |
 | SEED-006 | Farmer freeform stream → automatic farmOS bookkeeping | Next major milestone (v1.6+) — agentic / farmer-UX / multimodal Signal | Large |
 | SEED-007 | Power-bank UPS for fc1 Pi (gap short blackouts)    | Next infra/hardening milestone OR another unscheduled-reboot incident   | Small         |
+| SEED-008 | VPN name resolution — `fc1.mushy` instead of `10.66.0.11` (dnsmasq on VPS) | v1.7 milestone planning OR any peer-renumbering or 7th+ peer onboarding | Small         |
 
 ## Files
 
@@ -24,6 +25,8 @@ roadmap; promote via `/gsd:plant-seed` workflow when a trigger fires.
 - [SEED-004-pinning-cycle-and-vpd-mode-schema.md](SEED-004-pinning-cycle-and-vpd-mode-schema.md)
 - [SEED-005-chamber-water-mass-observer.md](SEED-005-chamber-water-mass-observer.md)
 - [SEED-006-farmer-freeform-stream-to-farmos.md](SEED-006-farmer-freeform-stream-to-farmos.md)
+- [SEED-007-fc1-power-bank-ups.md](SEED-007-fc1-power-bank-ups.md)
+- [SEED-008-vpn-name-resolution.md](SEED-008-vpn-name-resolution.md)
 
 ## Composition notes
 
