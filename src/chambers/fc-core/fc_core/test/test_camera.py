@@ -276,6 +276,60 @@ class TestCameraPublishesCompressedImage(unittest.TestCase):
         node.destroy_node()
 
 
+class TestCameraReopenOnStuckRead(unittest.TestCase):
+    """999.24: after N consecutive cap.read() failures, the camera releases
+    its handle and reconstructs VideoCapture rather than warn-and-skip forever.
+    """
+
+    def test_reopen_fires_at_threshold(self):
+        fc_camera = _load_fc_camera()
+
+        # First VideoCapture instance: opens fine but read() always fails
+        stuck_cap = MagicMock()
+        stuck_cap.isOpened.return_value = True
+        stuck_cap.read.return_value = (False, None)
+
+        # Second VideoCapture instance: opens fine and reads successfully
+        good_frame = MagicMock()
+        good_cap = MagicMock()
+        good_cap.isOpened.return_value = True
+        good_cap.read.return_value = (True, good_frame)
+
+        fake_buf = MagicMock()
+        fake_buf.tobytes.return_value = b'\xff\xd8\xff\xe0jpeg'
+
+        mock_cv2 = MagicMock()
+        # First constructor call returns the stuck cap; subsequent calls return the good cap
+        mock_cv2.VideoCapture.side_effect = [stuck_cap, good_cap]
+        mock_cv2.imencode.return_value = (True, fake_buf)
+        mock_cv2.IMWRITE_JPEG_QUALITY = 1
+
+        with patch.dict(sys.modules, {'cv2': mock_cv2}):
+            with _patch_params({
+                'camera_simulation_mode': False,
+                'camera_reopen_threshold': 3,  # keep test fast
+            }):
+                node = fc_camera.FcCamera()
+
+                # Three failures: on the 3rd tick the threshold check fires
+                # _attempt_reopen, which release()es stuck_cap and constructs good_cap.
+                node.capture_and_publish()
+                node.capture_and_publish()
+                node.capture_and_publish()
+                self.assertTrue(stuck_cap.release.called,
+                                'cap.release() should fire once threshold hit')
+                self.assertIs(node.cap, good_cap,
+                              'node.cap should be the new (good) VideoCapture instance')
+
+                # 4th tick uses good_cap; successful read resets the counter
+                node.capture_and_publish()
+
+        self.assertEqual(node._consecutive_read_failures, 0,
+                         'counter should reset on successful read')
+
+        node.destroy_node()
+
+
 class TestCameraParametersDeclared(unittest.TestCase):
     """Test 4: All 6 required parameters are declared on the node."""
 
