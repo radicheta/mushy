@@ -75,6 +75,7 @@ services:
       - SIGNAL_SENDER=${SIGNAL_SENDER}
       - SIGNAL_RECIPIENT=${SIGNAL_RECIPIENT}
       - SIGNAL_ADDITIONAL_SENDERS=${SIGNAL_ADDITIONAL_SENDERS}
+      - KNOWN_GOOD_PATH=/opt/scripts/signal/known-good-identity.json
       - ALERT_RH_TARGET=${ALERT_RH_TARGET:-90}
       - ALERT_RH_BAND=${ALERT_RH_BAND:-3}
       - ALERT_OOB_N=${ALERT_OOB_N:-5}
@@ -108,6 +109,16 @@ services:
       - CAPTURE_RETENTION_CRON=${CAPTURE_RETENTION_CRON:-15 3 * * *}
     volumes:
       - /data/signal-capture:/data/signal-capture
+      - ./scripts/signal:/opt/scripts/signal:ro
+    healthcheck:
+      # Phase 36 D-10/D-14 — verifies signal-cli identity-trust integrity across
+      # alerter rebuilds. exit=0 verdict=ok/recovered, exit=1 verdict=hard_mismatch
+      # (container marked unhealthy; restart policy `unless-stopped` does NOT restart).
+      test: ["CMD", "/opt/scripts/signal/post-rebuild-trust-check.sh"]
+      interval: 5m
+      timeout: 15s
+      retries: 2
+      start_period: 60s
     networks:
       - signal-net
       - default

@@ -1,7 +1,7 @@
 {
   "bot_number_placeholder": "+<BOT>",
-  "bot_fingerprint": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
-  "captured_at": "2026-05-11T00:00:00Z",
-  "source": "Plan 36-03 Task 1 stub — replaced by Plan 36-03 Task 2 with real post-reg fingerprint",
+  "bot_fingerprint": "05 d1 a5 89 50 7c ec 3e 1a 47 96 92 7a 44 53 46 a3 7f 2d af ed 63 75 f5 bb 89 d5 06 4a d4 19 84 41",
+  "captured_at": "2026-05-11T18:26:22Z",
+  "source": "2026-05-11 live signal-cli /v1/identities (Phase 36 no-op outcome — no re-reg performed)",
   "fingerprint_format": "signal-cli /v1/identities .fingerprint field (hex bytes, optionally space-separated)"
 }
