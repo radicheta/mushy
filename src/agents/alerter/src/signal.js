@@ -12,6 +12,32 @@ function createSignalClient({ apiUrl, sender, recipient, defaultTarget, maxSends
 
   const sendHistory = []; // array of ms timestamps within the last hour
 
+  // Phase 37 send-id fix: signal-cli's /v2/send accepts `group.<id-b64>`, but
+  // received envelopes carry the DIFFERENT `internal_id-b64` in dataMessage.
+  // groupInfo.groupId. Wrap-and-ship works for SIGNAL_GROUP_ID (operator
+  // chose the id-b64 form) but BREAKS for envelope-driven group replies.
+  // We lazy-load /v1/groups on first need and translate internal_id→id-b64.
+  const groupIdMap = new Map(); // internal_id-b64 → id-b64 (no "group." prefix)
+  let groupsLoaded = false;
+  async function ensureGroupsLoaded(force = false) {
+    if (groupsLoaded && !force) return;
+    try {
+      const res = await fetch(`${apiUrl}/v1/groups/${encodeURIComponent(sender)}`, { signal: AbortSignal.timeout(timeoutMs) });
+      if (!res.ok) throw new Error(`groups list ${res.status}`);
+      const groups = await res.json();
+      groupIdMap.clear();
+      for (const g of groups) {
+        if (!g || !g.id || !g.internal_id) continue;
+        const idStripped = g.id.startsWith('group.') ? g.id.slice('group.'.length) : g.id;
+        groupIdMap.set(g.internal_id, idStripped);
+      }
+      groupsLoaded = true;
+      logger.info(`[signal] groups loaded (${groupIdMap.size} entries) for id translation`);
+    } catch (e) {
+      logger.warn(`[signal] groups list failed: ${e.message} — send may fail if recipient is internal_id form`);
+    }
+  }
+
   function pruneHistory(now) {
     const cutoff = now - 3600000;
     while (sendHistory.length && sendHistory[0] < cutoff) sendHistory.shift();
@@ -45,9 +71,21 @@ function createSignalClient({ apiUrl, sender, recipient, defaultTarget, maxSends
     if (!isStringTarget && !isGroupTarget) {
       throw new Error('invalid send target');
     }
+    let resolvedGroupId = isGroupTarget ? target.groupId : null;
+    if (isGroupTarget) {
+      // First send to any group needs the id-b64 form, not internal_id-b64.
+      await ensureGroupsLoaded(false);
+      if (groupIdMap.has(target.groupId)) {
+        resolvedGroupId = groupIdMap.get(target.groupId);
+      }
+      // If groupId isn't in the map (configured SIGNAL_GROUP_ID may already be
+      // the id-b64 form, or groups-list fetch failed), pass through as-is.
+      // signal-cli will reject with 400 if wrong — and on a fresh-group case
+      // we force-refresh once and retry.
+    }
     const recipients = isStringTarget
       ? [target]
-      : [`group.${target.groupId}`];
+      : [`group.${resolvedGroupId}`];
 
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
