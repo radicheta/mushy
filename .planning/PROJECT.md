@@ -94,30 +94,44 @@ Phase 27.2 fc-core systemd hardening (cold-reboot SYS-04 scenario 1 PASS, 41s).
 to backlog (999.36, 999.28). See `.planning/milestones/v1.5.0.1-ROADMAP.md`.
 See `.planning/MILESTONES.md`.
 
-## Current State: v1.5 SHIPPED 2026-05-09
+## Current State: v1.6 SHIPPED 2026-05-10/11 — VPS hub + outage/recovery stack
 
-PID + slow-PWM, named modes, runtime config delivery, alerter mode-awareness, time-of-day scheduling, and experimental force modes all live on fc1. 16/17 v1.5 requirements satisfied (ALRT-10 calendar-deferred). Bridge curl path proven E2E for Phase 31; Signal command path code-correct but blocked on pre-existing signal-cli linked-secondary limitation.
+Phase 32 (VPS WireGuard hub) + Phase 33 (heartbeat receiver + Signal Tier 1) + Phase 999.43.1 (ntfy Tier 2) + Phase 34 (uptime-kuma outside-in) + Phase 35 (age-encrypted Tier A backup) all live. Milestone scaffolding deferred (Phase 32 ran ahead); retroactive snapshot at `.planning/milestones/v1.6-ROADMAP.md`. Companion 2026-05-11 backlog sweep closed 10 items.
 
-**Archives:**
-- `.planning/milestones/v1.5-ROADMAP.md`
-- `.planning/milestones/v1.5-REQUIREMENTS.md`
+**v1.5 archives:**
+- `.planning/milestones/v1.5-ROADMAP.md` / `v1.5-REQUIREMENTS.md`
 - `.planning/v1.5-MILESTONE-AUDIT.md` (status: tech_debt — no critical blockers)
 
-## Next Milestone Goals (v1.6 candidates)
+## Current Milestone: v1.7 Multimodal Signal → FarmOS Events
 
-- **Bidirectional Signal comms — close the loop end-to-end** — Phase 25 shipped the channel 2026-04-28 (text/audio/image capture + Whisper + LLM reply *path*), but as of 2026-05-11 production usage is **9 capture rows total, all operator self-tests during UAT; zero in last 7 days, zero LLM replies ever**. The infrastructure works; the user-facing capability does not. Group of related work:
-  - **signal-cli primary re-registration** (pre-gate, ~30-60min) — unblocks deviceId=2 limitation that's been blocking Signal-driven experiment UAT and likely contributing to farmer-side friction. Memory `project_signal_cli_primary_reregister_path` + spike PASS 2026-04-27 (`project_phase25_pregate_spike_state`).
-  - **999.20** — multi-farmer reply routing (reply to envelope.source, not fixed recipient) + group-chat participation (the "Mushroom Farm" Signal group where farmers actually coordinate). Without 999.20, farmer #2/#3 DMs reply to farmer #1, and the group thread is invisible to the bot.
-  - **999.19** — alert link → real farmer destination (currently OpenMCT, target is farmOS story view).
-  - **SEED-002** (composes) — farmOS event writer from captured Signal content (the bot already has accurate transcripts; route them into farmOS records). Trigger met: ≥2 weeks since Phase 25 ship.
-  - **Acceptance:** at least one farmer organically uses the channel (text or audio) and gets a non-trivial reply within v1.6 window; daily capture rows trend > 0 instead of flat-zero; at least one captured event makes it into farmOS automatically.
-- **Farmer freeform stream → automatic farmOS bookkeeping (SEED-006)** — the bigger UX vision the "close the loop" bundle is a stepping-stone toward. SEED-006 (Large scope) frames Signal as the farmer's *entire* farmOS interface: multimodal text + audio + photo → LLM extracts events → farmOS records, replacing manual data entry entirely. Sequencing: ship the "close the loop" bundle FIRST to get organic farmer use + accuracy data; promote SEED-006 in the same milestone only if the bundle produces ≥2 weeks of clean transcripts AND farmer signals interest in giving up manual bookkeeping. If those gates aren't met by mid-milestone, SEED-006 stays seeded and slides to v1.7.
-- **MC active-experiment widget** — bridge already broadcasts `experiment_event` + `current_mode` source='experiment'; UI gap from Phase 31
-- **Schedule gap-mode default** — `default_mode_in_gap` parameter (D-08 side-finding from 30-03 smoke)
-- **Mode editor UI in farmer app** — depends on 999.11 farmer-app maturity
-- **Per-mode PID gains** — stage-aware tuning
-- **Phase 19 (FarmOS admin actions)** — still Zoy/farm-team gated (carried since v1.3)
-- **ALRT-10 cooldown tuning** — calendar gate (≥2 weeks live alerter data) now likely satisfied — re-evaluate
+**Goal:** Ship the multimodal extraction pipeline (photo + voice + text → LLM → farmOS event writes) that exercises and validates the 2026-05-11 schema lock, ending with one SHI-on-sawdust block driven end-to-end through farmOS by Signal alone.
+
+**Why now:** the farmOS schema (C1–C5 conventions + B1–B7 mushroom-specifics + P1–P5 SHI-pilot scope) was locked 2026-05-11 by a joint session with Zoy (farmos repo `d4e5a30`). Pilot scope P3 explicitly names the multimodal pipeline as the validation driver — so this milestone exercises and validates the schema in one stroke. Closes the "long-arc" UX vision behind Phase 25 (SEED-006): the farmer's freeform Signal stream becomes their entire farmOS interface; no bookkeeping tax.
+
+**Target features:**
+- Schema-aware LLM extraction (JSON-mode against locked contracts; confidence + ask-back)
+- Farmer-in-the-loop confirmation (YES/NO/EDIT idempotent commit)
+- FarmOS write path (auth, retries, idempotency; asset creates + log creates per B7)
+- Multi-source ingestion (synthetic + historical paper logs + audio recordings per P3)
+- Multi-farmer routing (999.20 — reply to envelope.source; group-thread participation)
+- SHI-on-sawdust pilot end-to-end (sterilize → archive_spent per P4)
+- Signal pre-gate: signal-cli primary re-registration (unblock deviceId=2)
+
+**Schema source-of-truth (read before planning):**
+- `/mnt/slime-kingdom/shared/farmos/.planning/notes/2026-05-09-fungi-schema-strawman.md`
+- `/mnt/slime-kingdom/shared/farmos/.planning/notes/2026-05-11-session-chat.md`
+
+**Out of scope (deferred / carry):**
+- ML vision (contamination, pin emergence) — needs 999.26 camera coverage first
+- farmOS UI / admin (Zoy side)
+- Multi-chamber expansion (999.6)
+
+**v1.6 carries (slot opportunistically if free):**
+- MC active-experiment widget (bridge already broadcasts; UI gap from Phase 31)
+- Schedule gap-mode default param (D-08 side-finding from Phase 30)
+- 999.19 alert link → farmOS story view
+- ALRT-10 cooldown tuning (calendar gate ≥2 weeks alerter data, likely satisfied)
+- Operator id_ed25519 SPOF (Phase 35 deferred — encrypts critical backup)
 
 <details>
 <summary>Previous milestone goals (v1.5 frame)</summary>
