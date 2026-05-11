@@ -10,6 +10,8 @@
 - ✅ **v1.4 Vision & Growth Insights** — Phases 21–26 (shipped 2026-05-01; Phase 24 deferred behind backlog 999.26 camera coverage)
 - ✅ **v1.5.0.1 Resilience hotfix from 2026-05-02 incident** — Phases 27.1 + 27.2 (shipped 2026-05-07 via wg0 architectural detour; 27.3 + 27.4 MOOTED). See `.planning/milestones/v1.5.0.1-ROADMAP.md`.
 - ✅ **v1.5 Analog Humidity Control & Condensation/Evaporation Forcing** — Phases 27–31 (shipped 2026-05-09; ALRT-10 calendar-deferred). See `.planning/milestones/v1.5-ROADMAP.md`.
+- ✅ **v1.6 VPS Hub + Outage/Recovery Stack** — Phases 32–35 + 999.43.1 (shipped 2026-05-10/11; scaffolding deferred). See `.planning/milestones/v1.6-ROADMAP.md`.
+- 🚧 **v1.7 Multimodal Signal → FarmOS Events** — Phases 36–42 (in progress)
 
 ## Phases
 
@@ -107,6 +109,120 @@ See `.planning/milestones/v1.5.0.1-ROADMAP.md` and `.planning/milestones/v1.5.0.
 16/17 requirements satisfied; 1 calendar-deferred (ALRT-10). Cross-phase integration verified live. See `.planning/milestones/v1.5-ROADMAP.md` and `.planning/v1.5-MILESTONE-AUDIT.md`.
 
 </details>
+
+<details>
+<summary>✅ v1.6 VPS Hub + Outage/Recovery Stack (Phases 32-35 + 999.43.1) — SHIPPED 2026-05-10/11</summary>
+
+- [x] Phase 32: VPS multi-purpose hub (WireGuard MVP) (1/1 plans) — 2026-05-10 (Hetzner CX22; wg-hub; fc1 + elder-plops + farmer #1 LIVE)
+- [x] Phase 33: VPS heartbeat receiver + Tier 1 Signal alert (scaffold + deploy) — 2026-05-11 (Tier 1 E2E PROVEN)
+- [x] Phase 999.43.1: ntfy.sh Tier 2 out-of-band push (promoted) — 2026-05-11 (Tier 2 E2E PROVEN; closes 11h-blind class)
+- [x] Phase 34: VPS uptime-kuma outside-in monitoring (infra + seed) — 2026-05-11 (4 monitors UP)
+- [x] Phase 35: VPS Tier A backup — small irreplaceable bits (ship) — 2026-05-11 (~20KB/day age-encrypted; SPOF id_ed25519 deferred)
+
+Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 2026-05-11 backlog sweep closed 10 items (999.41/.22/.39/.40/.31/.32/.36/.24/.42/.49).
+
+</details>
+
+<details>
+<summary>🚧 v1.7 Multimodal Signal → FarmOS Events (Phases 36-42) — IN PROGRESS</summary>
+
+- [ ] **Phase 36: Signal Pre-gate** — signal-cli primary re-registration; receive unblock; identity-trust verified
+- [ ] **Phase 37: Multi-farmer Routing** — DM routing to sender; group-thread participation; farmOS person lookup
+- [ ] **Phase 38: Extraction Pipeline** — schema-aware LLM extraction; multimodal fusion; confidence loop; lineage
+- [ ] **Phase 39: Farmer Confirmation Loop** — confirm-before-write; idempotent commit; EDIT loop; draft timeout
+- [ ] **Phase 40: FarmOS Write Path** — API client; asset + log creation; QR binding; photo upload; audit log
+- [ ] **Phase 41: Ingestion Harness** — synthetic corpus; paper-log replay; audio replay; cross-stream consistency
+- [ ] **Phase 42: SHI-on-Sawdust Pilot** — full lifecycle E2E (sterilize to inoc to colonize to harvest to archive)
+
+</details>
+
+### Phase 36: Signal Pre-gate
+
+**Goal:** Unblock all Signal-driven downstream phases by re-registering the bot account as primary (deviceId=1) and verifying round-trip Signal receive + reply from at least two farmers.
+**Depends on:** Nothing (first v1.7 phase; hard pre-gate per requirements)
+**Requirements:** PRE-01, PRE-02
+**Success Criteria** (what must be TRUE):
+  1. Operator can send a Signal message to the bot and receive a reply in the same DM thread
+  2. A second farmer sends a test message and receives a reply routed to their number (not farmer #1)
+  3. Alerter container rebuild does not break identity trust (signal-cli /v1/identities check passes after rebuild)
+**Plans:** TBD
+
+### Phase 37: Multi-farmer Routing
+
+**Goal:** Bot replies to the correct farmer (envelope.source routing), participates correctly in the group thread without spamming, and tags every incoming message with the sender's farmOS person record.
+**Depends on:** Phase 36 (receive must work before routing matters)
+**Requirements:** ROUTE-01, ROUTE-02, ROUTE-03
+**Success Criteria** (what must be TRUE):
+  1. Farmer #2 DMs the bot; bot reply arrives on farmer #2's phone, not farmer #1's
+  2. A message to the group thread produces no unsolicited reply; an @mention or command gets exactly one reply to the group
+  3. Known farmer numbers resolve to farmOS person IDs in the message metadata; unknown number gets (unassigned) tag and message is not silently dropped
+**Plans:** TBD
+
+### Phase 38: Extraction Pipeline
+
+**Goal:** A multimodal message (text, audio, photo, or any combination) produces a structured JSON draft of farmOS assets and logs that conforms to the locked schema, or triggers a targeted ask-back when confidence is too low.
+**Depends on:** Phase 37 (need sender identity before extraction can attribute the event)
+**Requirements:** EXT-01, EXT-02, EXT-03, EXT-04, EXT-05
+**Success Criteria** (what must be TRUE):
+  1. A text message describing inoculation of SHI blocks produces a seeding log draft with block names matching the B5 convention (YYMMDD_SHI_SEQ)
+  2. A voice note and a photo of the same session produce one combined draft, not two separate ones
+  3. When a required field is ambiguous, bot sends a targeted Signal reply asking for it; draft completes after farmer responds
+  4. A lineage cue ("from blocks 3, 4, and 5") extracts a multi-parent harvest batch ref per C4
+  5. No off-schema fields appear in any extracted draft; all log types are native per C5
+**Plans:** TBD
+
+### Phase 39: Farmer Confirmation Loop
+
+**Goal:** Every extraction draft requires explicit farmer YES before any farmOS write occurs; NO discards cleanly; EDIT loops back through the LLM; stale drafts never auto-commit.
+**Depends on:** Phase 38 (need extraction before confirm loop can function)
+**Requirements:** CONF-01, CONF-02, CONF-03, CONF-04, CONF-05
+**Success Criteria** (what must be TRUE):
+  1. After extraction, farmer receives a human-readable draft summary with YES/NO/EDIT reply instructions
+  2. Sending YES once commits the draft; a second YES does not produce a duplicate write in farmOS
+  3. NO discards the draft; bot confirms discard; original transcript remains in the Phase 25 capture store for audit
+  4. EDIT with correction text produces a revised draft; EDIT is accepted at least 3 times before the bot escalates
+  5. A draft with no response for 30 min gets one ping, then auto-discards with a note; it never auto-commits
+**Plans:** TBD
+
+### Phase 40: FarmOS Write Path
+
+**Goal:** A confirmed draft writes the correct assets and logs to farmOS, is idempotent on retry, binds QR tags through farmos_asset_link, attaches photos, and every write is observable in the audit log.
+**Depends on:** Phase 39 (writes only happen after confirm; can be developed in parallel against synthetic drafts)
+**Requirements:** FOS-01, FOS-02, FOS-03, FOS-04, FOS-05, FOS-06
+**Success Criteria** (what must be TRUE):
+  1. A sterilization batch, block, harvest batch, and bag asset can each be created via API from a confirmed draft and appear in farmOS dev stack
+  2. Re-confirming the same draft (duplicate YES) does not create duplicate assets or logs in farmOS
+  3. A photo from the originating Signal message appears as a file attachment on the observation or harvest log in farmOS
+  4. A QR code in a farmer message resolves to an existing block asset and appends a log to it rather than creating a new asset
+  5. Operator can query one endpoint or log stream and see every farmOS write from the last 24h with draft UUID, farmer ID, and farmOS response
+**Plans:** TBD
+**Composes-with:** 999.2 (this phase is its closure)
+
+### Phase 41: Ingestion Harness
+
+**Goal:** The pipeline produces consistent, auditable output across three input modalities — synthetic fixtures, historical paper log photos, and existing audio recordings — with per-field accuracy measured against hand-labeled expected outputs.
+**Depends on:** Phase 38 (extraction must work); parallel-safe with Phase 40 (harness exercises extraction without write path)
+**Requirements:** INGEST-01, INGEST-02, INGEST-03, INGEST-04
+**Success Criteria** (what must be TRUE):
+  1. CI runs the synthetic fixture corpus; all expected outputs match and the test suite passes
+  2. At least one batch of paper inoc log photos flows through the pipeline; a hand-labeled comparison report is produced showing per-field accuracy
+  3. At least one set of existing audio recordings flows through Whisper plus extraction; comparison report produced
+  4. The same underlying inoc session represented as both a paper-log photo and an audio recording produces identical seeding log content
+**Plans:** TBD
+
+### Phase 42: SHI-on-Sawdust Pilot
+
+**Goal:** One complete SHI-on-sawdust block lifecycle — sterilize through archive_spent — is driven end-to-end by Signal messages alone, with all writes verified in farmOS and the full lineage walk returning clean.
+**Depends on:** Phase 40 (write path live), Phase 41 (ingestion harness validates extraction quality), Phase 39 (confirm loop required)
+**Requirements:** PILOT-01, PILOT-02, PILOT-03, PILOT-04, PILOT-05, PILOT-06
+**Success Criteria** (what must be TRUE):
+  1. Sterilization batch appears in farmOS after a single Signal message describing the batch count (no form, no login required)
+  2. After inoculation, one block asset exists in farmOS with species=SHI, substrate=sawdust, QR bound, and a seeding log pointing at the batch
+  3. Cold_shock and fruiting transitions appear as activity and observation logs; current-stage derivation returns the correct stage at every checkpoint
+  4. Harvest batch and at least one bag asset exist in farmOS after a harvest Signal message; bag asset is QR-bound
+  5. Archive_spent activity log written on the block; lineage walk bag to harvest batch to block to sterilization batch returns clean with no broken refs
+  6. Operator reconstructs the full lifecycle from farmOS logs alone without referring to Signal history
+**Plans:** TBD
 
 ## Progress
 
@@ -268,13 +384,21 @@ Original justification: align repo netplan with fc1's currently-running farm-4G 
 
 **Carry-forward note:** the underlying anti-pattern (manual netplan edits on fc1 not reflected in the repo, fc-system-sync would clobber them) is permanent and worth re-addressing whenever fc1 returns to a 4G uplink.
 
+| 36. Signal Pre-gate | v1.7 | 0/TBD | Not started | — |
+| 37. Multi-farmer Routing | v1.7 | 0/TBD | Not started | — |
+| 38. Extraction Pipeline | v1.7 | 0/TBD | Not started | — |
+| 39. Farmer Confirmation Loop | v1.7 | 0/TBD | Not started | — |
+| 40. FarmOS Write Path | v1.7 | 0/TBD | Not started | — |
+| 41. Ingestion Harness | v1.7 | 0/TBD | Not started | — |
+| 42. SHI-on-Sawdust Pilot | v1.7 | 0/TBD | Not started | — |
+
 ## Backlog (parking lot)
 
 These are ideas captured during v1.0/v1.1 execution but not yet scoped into a
 milestone. Promote with `/gsd:review-backlog` when ready.
 
 - **Phase 999.1: Edge buffering — fc1-side ring buffer + replay on reconnect** — **PRIORITY BUMP 2026-05-02 (evening):** today's blackout-recovery session lost hours of telemetry forever — multiple multi-minute DERP-relay outages plus the 14:29→15:25 fc-core start-limit-hit window plus the wifi reassociation gap. With Phase 27 high-resolution PID telemetry, every dropout is a permanent hole in data we'd want for tuning, alerting, and post-mortem. The chamber controlled itself fine; we just have no idea what it actually did during ~2 hours of cumulative blackouts today. Wave 1+2 of the phase are already executed (commits `ad44a36..e8d15d0` on main, 8 commits, fc_buffer node + bridge replay poller GREEN); Wave 3 (deploy + soak + farmer attestation) is next. **Treat as the next thing to ship.** Original local SQLite/JSONL on fc1 captures all `fc.*` topics; on bridge reconnect, fc1 replays buffered points with original timestamps so Mission Control gets gap-fill instead of holes. **Earlier motivation 2026-05-02 morning:** ~13-min Tailscale dropout 00:19→00:32 UTC (PID held RH at 94.0±0.04% the whole time — control was unaffected, only visibility was lost). **Scope sketch:** (1) lightweight on-Pi store (sqlite or jsonl with size cap) for all `fc.*` topics keyed by `(topic, ts_ns)`; (2) bridge connection state observer on fc1 — when bridge reconnects, replay un-acked points oldest-first; (3) idempotent ingest on bridge/Timescale side (Timescale already accepts out-of-order inserts cleanly, `(topic, time)` key dedupes). **Compose with:** 999.27 (derived telemetry node — both touch the fc1 telemetry layer; sequence so derived metrics also get buffered), 999.25 (init race — buffer should survive fc-core restarts), 999.18 (true "last fresh" — replayed points should not poison sensor-health timestamps), 999.30 (sampling-rate reduction — composes naturally; less raw traffic per buffered minute = longer retention in same buffer size).
-- **Phase 999.2: FarmOS integration** — **UNBLOCKED 2026-05-11 — schema locked by joint session.** Promoted as the headline of v1.7 (multimodal Signal → farmOS events). C1–C5 farm-wide conventions + B1–B7 mushroom-specific bits + P1–P5 SHI-on-sawdust pilot scope all LOCKED (farmos repo commit `d4e5a30`). Strawman: `/mnt/slime-kingdom/shared/farmos/.planning/notes/2026-05-09-fungi-schema-strawman.md`; session-chat log: `2026-05-11-session-chat.md`. P3 explicitly names the multimodal extraction pipeline (photo + voice + text → LLM → schema writes) as the validation driver, so v1.7 exercises the schema and ships the pipeline in one milestone. Original framing: bridge into the farm-wide FarmOS instance for mushroom production tracking.
+- **Phase 999.2: FarmOS integration** — **CLOSED by v1.7 (Phases 36–42).** Schema locked 2026-05-11 by joint session (farmos repo `d4e5a30`); C1–C5 farm-wide conventions + B1–B7 mushroom-specific bits + P1–P5 SHI-on-sawdust pilot scope all LOCKED. v1.7 exercises the schema and ships the multimodal extraction pipeline (photo + voice + text → LLM → farmOS writes) in one milestone. See v1.7 phases 36–42 above. Original framing: bridge into the farm-wide FarmOS instance for mushroom production tracking.
 - **Phase 999.3: Alerts & notifications** — Signal bot for humidity/CO2/Pi-offline/actuator-stuck conditions. Foundation already in place (bridge `/health`, WebSocket broadcast, DB).
 - **Phase 999.4: Environmental expansion — fan & light telemetry** — GPIO27 fan MOSFET + fan/light state publishers + Mission Control charts.
 - **Phase 999.5: Vision — time-lapse & growth monitoring** — ffmpeg time-lapse composition, pinning/maturity detection, contamination alerts. Feeds Phase 999.3 for grower-facing pinning and "ready to pick" notifications.
