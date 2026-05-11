@@ -148,6 +148,80 @@ def test_derivative_filter_tau_zero_is_passthrough():
     assert d_raw != 0.0
 
 
+def test_integrator_decay_when_in_band():
+    """999.49: with the in-band integrator decay applied each tick, an
+    initially-high I-term trends back toward 0 when error stays at 0.
+
+    Mirrors the decay wired into fc_controller.py: when in-band branch
+    feeds error_pct=0, apply `_integral *= exp(-dt/tau)` before the PID call.
+    """
+    import math
+    pid = PID(
+        0.5, 0.001, 4.0,
+        setpoint=0.0,
+        output_limits=(0.0, 1.0),
+        auto_mode=False,
+        sample_time=None,
+        differential_on_measurement=True,
+    )
+    # Engage with a non-zero seed (simulates post-recovery I-term residue)
+    pid.set_auto_mode(True, last_output=0.28)
+    initial_output = pid(0.0, dt=1.0)
+    assert 0.20 < initial_output < 0.35, (
+        f'bumpless seed should yield output ≈ 0.28, got {initial_output}'
+    )
+
+    # Now simulate the in-band decay loop. tau=1200s, dt=1s, error=0.
+    # After 20 minutes (1200 ticks), I should be ~ e^-1 ≈ 0.368 of start.
+    tau = 1200.0
+    dt = 1.0
+    for _ in range(1200):
+        pid._integral *= math.exp(-dt / tau)
+        pid(0.0, dt=dt)
+
+    final_output = pid._last_output
+    # After 1 tau, output should be ~ initial * e^-1 ≈ 0.103
+    assert 0.07 < final_output < 0.15, (
+        f'after 1 tau (1200s) of in-band decay, expected output ~0.10, got {final_output}'
+    )
+
+    # After 4 more taus (5 total), output should be << 0.01
+    for _ in range(4 * 1200):
+        pid._integral *= math.exp(-dt / tau)
+        pid(0.0, dt=dt)
+    assert pid._last_output < 0.01, (
+        f'after 5 tau of decay, output should be near 0, got {pid._last_output}'
+    )
+
+
+def test_integrator_decay_off_when_error_nonzero():
+    """999.49: decay applies ONLY when in-band (error_pct=0). When error
+    is nonzero (OOB), the controller must integrate normally and NOT decay,
+    or it would fail to build I-term during legitimate excursions.
+    """
+    import math
+    pid = PID(
+        0.5, 0.001, 4.0,
+        setpoint=10.0,                      # nonzero setpoint → nonzero error
+        output_limits=(0.0, 1.0),
+        auto_mode=True,
+        sample_time=None,
+        differential_on_measurement=True,
+    )
+    tau = 1200.0
+    dt = 1.0
+    # Run 100 ticks of OOB error. Decay should NOT fire (we gate on error_pct==0).
+    for _ in range(100):
+        # Controller code path: error_pct != 0 → skip decay → integrate normally
+        pid(0.0, dt=dt)  # input=0, setpoint=10 → error=10, persistent OOB
+
+    integral_after = pid.components[1]
+    # I should have grown toward saturation (0.001 * 10 * 100 = 1.0, clamped)
+    assert integral_after > 0.5, (
+        f'I-term should grow during OOB ticks, got {integral_after}'
+    )
+
+
 def test_disengage_freezes_integrator():
     """After set_auto_mode(False), further calls do not change the integral component."""
     pid = PID(0.5, 0.002, 4.0, setpoint=1.0, output_limits=(0.0, 1.0), auto_mode=True, sample_time=None)

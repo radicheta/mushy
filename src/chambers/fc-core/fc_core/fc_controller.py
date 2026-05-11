@@ -8,7 +8,7 @@ from collections import deque
 from dataclasses import dataclass
 from diagnostic_msgs.msg import DiagnosticStatus, KeyValue
 from datetime import datetime, timezone, timedelta
-from math import isnan, nan
+from math import exp, isnan, nan
 from typing import Optional
 from statistics import median
 from fc_core import scheduler
@@ -90,6 +90,7 @@ class FruitingChamberController(Node):
                 ('pid_ki', 0.002),
                 ('pid_kd', 4.0),
                 ('pid_derivative_filter_tau', 10.0),
+                ('pid_integrator_decay_tau', 1200.0),
                 ('pid_setpoint_ramp_seconds', 30.0),
                 ('bypass_threshold', 0.025),
             ]
@@ -1724,6 +1725,19 @@ class FruitingChamberController(Node):
                     # 999.32: reset D filter on Mode C exit; the new d_input
                     # baseline starts fresh.
                     self._d_filtered = 0.0
+                # 999.49: in-band integrator decay. Phase 28 D-09 feeds
+                # error_pct=0 when RH is in-band, which freezes P/I/D at
+                # whatever values they reached during the last OOB excursion.
+                # Duty then pins at stale I-term forever, causing the chamber
+                # to over-humidify (or under-humidify) at residue energy.
+                # Exponentially decay I when in-band so the controller trends
+                # toward the chamber's passive equilibrium. tau=0 disables.
+                # Applied BEFORE the PID call so the PID's own update
+                # (which adds Ki*0*dt = 0 in this branch) sees the decayed
+                # value as the integrator state, and output = decayed I.
+                decay_tau = self.get_parameter('pid_integrator_decay_tau').value
+                if decay_tau > 0 and dt > 0 and error_pct == 0.0:
+                    self._pid._integral *= exp(-dt / decay_tau)
                 raw_pid_output = self._pid(error_pct, dt=dt)
                 # 999.32: replace the PID's raw derivative term with a
                 # low-pass-filtered version. tau=0 disables filtering.
