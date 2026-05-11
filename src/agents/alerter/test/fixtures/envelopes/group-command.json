@@ -1,0 +1,22 @@
+[
+  { "envelope": {
+      "source": "+59892893012",
+      "sourceNumber": "+59892893012",
+      "sourceUuid": "22222222-2222-2222-2222-222222222222",
+      "timestamp": 1714240000000,
+      "dataMessage": {
+        "timestamp": 1714240000000,
+        "message": "mute",
+        "expiresInSeconds": 0,
+        "viewOnce": false,
+        "attachments": [],
+        "groupInfo": {
+          "groupId": "hKw0KX1gte8Mnjw7fMlMCsPc7s/g3drpkpVsBwPcxwE=",
+          "groupName": "Mush Farm",
+          "revision": 7,
+          "type": "DELIVER"
+        }
+      }
+    }
+  }
+]
