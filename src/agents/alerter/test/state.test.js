@@ -477,6 +477,71 @@ describe('sht30_offline (D-04, D-05, D-06)', () => {
   });
 });
 
+describe('999.42 per-sensor enable flags', () => {
+  test('sht30Enabled=false suppresses sht30 alarm even when sht30_fresh=false', () => {
+    const cfg = makeConfigSensor({ sht30Enabled: false });
+    let state = initialState(T0);
+    let allActions = [];
+    // Establish baseline freshness — but the disabled path should not record
+    // an alarm transition either way.
+    let r = transition(state,
+      { type: 'sensor_health', level: 0, message: 'ok',
+        values: { sht30_fresh: 'true', scd41_fresh: 'true' } },
+      T0, cfg);
+    state = r.next;
+    allActions = allActions.concat(r.actions);
+    // Trigger explicit sht30 false flag past grace — the legacy path would
+    // FIRE sht30 immediately with oobN=1, but with sht30Enabled=false the
+    // block is skipped entirely.
+    r = transition(state,
+      { type: 'sensor_health', level: 0, message: 'ok',
+        values: { sht30_fresh: 'false', scd41_fresh: 'true' } },
+      T_PAST_GRACE, cfg);
+    state = r.next;
+    allActions = allActions.concat(r.actions);
+    const sht30Sends = allActions.filter(a => a.kind === 'send' && a.alertType === 'sht30');
+    expect(sht30Sends).toHaveLength(0);
+    // scd41 path remains active — scd41_fresh=true here so no scd41 alarm either,
+    // but the flag isolation is the point: setting sht30Enabled=false does NOT
+    // touch scd41 evaluation.
+    expect(state.perType.scd41.state).not.toBe(STATES.FIRING);
+  });
+
+  test('scd41Enabled=false suppresses scd41 alarm even when scd41_fresh=false', () => {
+    const cfg = makeConfigSensor({ scd41Enabled: false });
+    let state = initialState(T0);
+    let allActions = [];
+    let r = transition(state,
+      { type: 'sensor_health', level: 0, message: 'ok',
+        values: { sht30_fresh: 'true', scd41_fresh: 'true' } },
+      T0, cfg);
+    state = r.next;
+    allActions = allActions.concat(r.actions);
+    r = transition(state,
+      { type: 'sensor_health', level: 0, message: 'ok',
+        values: { sht30_fresh: 'true', scd41_fresh: 'false' } },
+      T_PAST_GRACE, cfg);
+    state = r.next;
+    allActions = allActions.concat(r.actions);
+    const scd41Sends = allActions.filter(a => a.kind === 'send' && a.alertType === 'scd41');
+    expect(scd41Sends).toHaveLength(0);
+  });
+
+  test('sensor_freshness arrival respects sht30Enabled=false', () => {
+    const cfg = makeConfigSensor({ sht30Enabled: false });
+    let state = initialState(T0);
+    // Push lastSeen into the stale past so isSensorSilent would return true.
+    // With sht30Enabled=false the sensor_freshness handler skips eval entirely.
+    state.sht30LastSeenMs = T0 - 60 * 60 * 1000;
+    const r = transition(state,
+      { type: 'sensor_freshness', sensor: 'sht30',
+        lastSeenMs: T0 - 60 * 60 * 1000 },
+      T_PAST_GRACE, cfg);
+    const sends = r.actions.filter(a => a.kind === 'send' && a.alertType === 'sht30');
+    expect(sends).toHaveLength(0);
+  });
+});
+
 describe('scd41_offline (D-04, D-05, D-06)', () => {
   test('scd41 fires after sensorOfflineMin minutes silent (Pi flag path)', () => {
     const cfg = makeConfigSensor();

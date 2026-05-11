@@ -48,6 +48,14 @@ function load(env = process.env) {
     criticalCooldownMin: parseIntEnv(env, 'ALERT_CRITICAL_COOLDOWN_MIN', 60),
     piOfflineMin:        parseIntEnv(env, 'ALERT_PI_OFFLINE_MIN', 5),
     sensorOfflineMin:    parseIntEnv(env, 'ALERT_SENSOR_OFFLINE_MIN', 5),
+    // 999.42: per-sensor enable flags. SHT30 has been physically disconnected
+    // since 2026-04-11 (SCD41 is the sole humidity source); the sht30 watchdog
+    // would otherwise fire hourly false alarms. Operator sets ALERT_SHT30_ENABLED=false
+    // in elder-plops .env to mute it without the blanket sensorOfflineMin=1440
+    // band-aid that also masks real SCD41 outages. Default true preserves test
+    // invariants and matches the legacy on-by-default behavior.
+    sht30Enabled:        (env.ALERT_SHT30_ENABLED || 'true').toLowerCase() !== 'false',
+    scd41Enabled:        (env.ALERT_SCD41_ENABLED || 'true').toLowerCase() !== 'false',
     humidifierStuckMin:  parseIntEnv(env, 'ALERT_HUMIDIFIER_STUCK_MIN', 30),
     heartbeatHour:       parseIntEnv(env, 'ALERT_HEARTBEAT_HOUR', 8),
     // Phase 29 plan 29-04 — D-03 freshness ceiling + cold-start grace (Tier D).
