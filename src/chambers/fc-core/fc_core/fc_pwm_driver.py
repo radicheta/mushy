@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import math
 from collections import deque
 
 import rclpy
@@ -80,7 +81,12 @@ class SlowPwmDriver(Node):
         self._last_duty_msg_ts = None
         self._window_start_ts = self.get_clock().now()
         self._window_on_seconds = 0.0        # locked at window-start
-        self._duty_history = deque(maxlen=300)  # 5min @ 1Hz tick
+        # 999.31 fix: deque appends once per window rollover (not per 1Hz tick),
+        # so maxlen must scale to pwm_window_seconds to actually cover ≥5 min.
+        # Previous `maxlen=300` was a 10-hour window, not 5 min.
+        # ceil so coverage is always ≥ 300s (e.g. window=120s → 3 entries = 360s).
+        _window_sec = self.get_parameter('pwm_window_seconds').value
+        self._duty_history = deque(maxlen=max(1, math.ceil(300.0 / _window_sec)))
         self._current_state = False
 
         # 1Hz tick

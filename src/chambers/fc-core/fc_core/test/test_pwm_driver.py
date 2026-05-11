@@ -38,6 +38,24 @@ def test_pwm_driver_initialization(ros_context):
     node.destroy_node()
 
 
+def test_duty_history_maxlen_matches_5min_window(ros_context):
+    """999.31: deque maxlen scales to pwm_window_seconds (≥5 min coverage),
+    not a constant 300 (which would be 10 hours at default 120s window).
+
+    At default window=120s: maxlen = ceil(300/120) = 3 entries (= 360s ≥ 5min).
+    A duty-history capacity of 3 means the cap engages over the last 3 windows,
+    not over 300 windows (10h), so the rolling-5min cap actually behaves as named.
+    """
+    import math
+    node = _make_driver(ros_context)
+    window = node.get_parameter('pwm_window_seconds').value
+    expected = max(1, math.ceil(300.0 / window))
+    assert node._duty_history.maxlen == expected
+    # Sanity: default 120s window → 3 entries, NOT the legacy 300
+    assert node._duty_history.maxlen == 3
+    node.destroy_node()
+
+
 def test_window_on_then_off(ros_context):
     """Relay is HIGH for the first on_seconds within a window, LOW thereafter.
 
@@ -102,9 +120,10 @@ def test_rolling_max_cap_engages(ros_context):
     node = _make_driver(ros_context)
     cap = 0.40
 
-    # Feed duty=1.0 over enough windows to fill the history
-    # Each window is 120s; deque(maxlen=300) @ 1Hz ≈ 5min history
-    # After a few windows of 100% duty, cap should kick in
+    # Feed duty=1.0 over enough windows to fill the history.
+    # 999.31 fix: deque appends once per window rollover, maxlen scales to
+    # ~5min/window — for window=120s that's 3 entries; for window=60s that's 5.
+    # After a few windows of 100% duty, cap should kick in.
     for i in range(12):  # 12 windows × 121s = enough for cap to engage
         t_before_ns = int(i * 121e9)
         t_after_ns = int((i + 1) * 121e9)
