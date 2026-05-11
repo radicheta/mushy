@@ -75,6 +75,10 @@ services:
       - SIGNAL_SENDER=${SIGNAL_SENDER}
       - SIGNAL_RECIPIENT=${SIGNAL_RECIPIENT}
       - SIGNAL_ADDITIONAL_SENDERS=${SIGNAL_ADDITIONAL_SENDERS}
+      # Phase 37 D-04/D-16 — operator-set in repo-root .env. Absence = back-compat DM-only.
+      - SIGNAL_GROUP_ID=${SIGNAL_GROUP_ID}
+      # Phase 37 D-11 — "+phone:slug,+phone:slug,..." map for farmOS person attribution.
+      - SIGNAL_FARMER_MAP=${SIGNAL_FARMER_MAP}
       - KNOWN_GOOD_PATH=/opt/scripts/signal/known-good-identity.json
       - ALERT_RH_TARGET=${ALERT_RH_TARGET:-90}
       - ALERT_RH_BAND=${ALERT_RH_BAND:-3}
