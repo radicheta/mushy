@@ -151,7 +151,7 @@ See `.planning/milestones/v1.5.0.1-ROADMAP.md` and `.planning/milestones/v1.5.0.
 | 32. VPS multi-purpose hub (WireGuard MVP) | v1.6 | 1/1 | Complete — farmer #1 reaching MC via VPS hub LIVE; fc1 + elder-plops + farmer1/2/3 peers configured; gumbald deferred (operator skip) | 2026-05-10 |
 | 33. VPS heartbeat receiver + outage-alert relay | v1.6 | scaffold + deploy | Complete — Tier 1 E2E PROVEN (VPS detects 3min silence → bridge → signal-cli → operator phone) | 2026-05-11 |
 | 999.43.1. ntfy.sh Tier 2 out-of-band alert channel | v1.6 | promoted | Complete — Tier 2 E2E PROVEN (induced Tier 1 fail → ntfy push delivered to operator phone). Closes the actual 11h-blind incident class. | 2026-05-11 |
-| 34. VPS uptime-kuma outside-in monitoring | v1.6 | infra + UI-pending | Infra DEPLOYED (docker + container + UFW); operator UI setup pending (admin user, ntfy channel, monitor seed) — uptime-kuma owns its own credentials by design | 2026-05-11 |
+| 34. VPS uptime-kuma outside-in monitoring | v1.6 | infra + seed | Complete — admin live, ntfy channel wired (same topic as 999.43.1), 4 monitors UP (fc1+elder-plops pings, MC HTTP, Bridge keyword); seed driven via uptime-kuma-api lib | 2026-05-11 |
 
 ### Phase 32: VPS multi-purpose hub (WireGuard MVP)
 
@@ -183,7 +183,7 @@ See `.planning/milestones/v1.5.0.1-ROADMAP.md` and `.planning/milestones/v1.5.0.
 - [x] 33-DEPLOY — 2026-05-11. Bridge `/heartbeat-alert` endpoint added (D-09 corrected — bridge ≠ alerter network path), VPS install via `bash install.sh`, fc1 + elder-plops senders + systemd timers, real smoke (stop fc1 sender for >3min → operator phone receives Signal). See `.planning/phases/33-vps-heartbeat-receiver/33-SUMMARY.md` and commits `e97b499`, `6c27610`.
 - [x] 999.43.1-PROMOTED — 2026-05-11. ntfy.sh wired as Tier 2 out-of-band channel; topic delivered to operator phone; Tier 2 fallback E2E proven by induced-Tier-1-failure smoke. See `.planning/phases/33-vps-heartbeat-receiver/999-43-1-SUMMARY.md`.
 
-### Phase 34: VPS uptime-kuma outside-in monitoring — INFRA SHIPPED 2026-05-11
+### Phase 34: VPS uptime-kuma outside-in monitoring — SHIPPED 2026-05-11
 
 **Goal:** Stand up uptime-kuma on the Phase 32 VPS to catch the *outside-in* failure mode (host up but invisible from outside — the 2026-05-07 elder-plops state) that Phase 33 / 999.43.1 cannot see. Promotes backlog 999.44.
 
@@ -196,7 +196,7 @@ See `.planning/milestones/v1.5.0.1-ROADMAP.md` and `.planning/milestones/v1.5.0.
 **Plans:** Single deploy + operator UI setup.
 
 - [x] 34-INFRA — 2026-05-11. docker engine installed on VPS; uptime-kuma container running; UFW opened on wg-hub interface for port 3001; reachability verified from elder-plops.
-- [ ] 34-UI-SETUP — pending operator. Open `http://10.66.0.1:3001/`, set admin user, add ntfy notification channel (same topic as 999.43.1), seed 5 monitors per `34-CONTEXT.md` table, verify simulated-outage push lands. See `34-SUMMARY.md` for the 5-step recipe.
+- [x] 34-SEED — 2026-05-11. Operator created admin in browser (~30s), then `vps/uptime-kuma/seed.py` (uptime-kuma-api / socket.io) drove notification channel + 4 monitors + test fire from elder-plops. ntfy push delivered to operator phone. 5th monitor (receiver self-check) deleted — Docker bridge can't reach the receiver's wg-hub binding locally; documented in `34-SUMMARY.md` "Deferred / discovered during deploy."
 
 ### Phase 27.1: Edge buffering — fc1 telemetry replay-on-reconnect — SHIPPED 2026-05-03
 

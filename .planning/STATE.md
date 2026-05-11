@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: (scaffolding deferred — Phase 32 ran ahead)
 status: idle
-stopped_at: Phase 33 + 999.43.1 + Phase 34 SHIPPED 2026-05-11 — full outage-alert stack live (heartbeat + Signal + ntfy + outside-in monitoring); only operator UI setup pending for uptime-kuma
-last_updated: "2026-05-11T00:31:00.000Z"
-last_activity: 2026-05-11 — completed Phase 33 + promoted 999.43.1 (ntfy.sh Tier 2 E2E proven by induced-Tier-1-fail smoke) + Phase 34 (uptime-kuma container deployed on VPS, UFW opened, bound to 10.66.0.1:3001 wg-hub-only). Operator UI setup for uptime-kuma admin/monitors/notification channel pending in browser at http://10.66.0.1:3001/.
+stopped_at: Phase 33 + 999.43.1 + Phase 34 fully SHIPPED 2026-05-11 — full outage-alert stack live (heartbeat + Signal Tier 1 + ntfy Tier 2 + uptime-kuma outside-in with 4 monitors and ntfy alerts wired)
+last_updated: "2026-05-11T00:50:00.000Z"
+last_activity: 2026-05-11 — closed Phase 34 by driving uptime-kuma seed via uptime-kuma-api lib (admin login via operator-supplied password, then headless add-notification + add-monitor x4 + test-fire). Notification + 4 monitors live; ntfy push confirmed by operator. 5th monitor (receiver self-check) dropped due to Docker-bridge can't reach wg-hub-bound listener locally; documented in 34-SUMMARY. Plus research-only burn for 999.45 (borg recommended) + 999.46 (CycloneDDS multi-iface w/ presence_required=false).
 progress:
   total_phases: 12
   completed_phases: 11
