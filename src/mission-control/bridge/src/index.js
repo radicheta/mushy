@@ -832,8 +832,11 @@ rclnodejs.init().then(async () => {
         }
     );
 
-    // QoS profile for humidifier — matches fc_controller.py TRANSIENT_LOCAL publisher (TDEBT-01)
-    const humidifierQos = new rclnodejs.QoS(
+    // Shared TRANSIENT_LOCAL/RELIABLE/depth=1 QoS profile — matches fc_controller.py
+    // publisher side (TDEBT-01). Reused for: humidifier, humidifier_duty, humidity_target,
+    // pid_output, sensor_health, current_mode_json, alerter_mode_overrides, alerter_globals,
+    // experiment_event. 999.40 dedup'd from two byte-identical inline copies.
+    const transientLocalQos = new rclnodejs.QoS(
         rclnodejs.QoS.HistoryPolicy.RMW_QOS_POLICY_HISTORY_KEEP_LAST,
         1,
         rclnodejs.QoS.ReliabilityPolicy.RMW_QOS_POLICY_RELIABILITY_RELIABLE,
@@ -846,7 +849,7 @@ rclnodejs.init().then(async () => {
     node.createSubscription(
         'std_msgs/msg/Bool',
         '/fc1/actuators/humidifier',
-        { qos: humidifierQos },
+        { qos: transientLocalQos },
         async (msg) => {
             const ts = Date.now();
             const tsNs = ts * 1_000_000;
@@ -865,7 +868,7 @@ rclnodejs.init().then(async () => {
     node.createSubscription(
         'std_msgs/msg/Float32',
         '/fc1/actuators/humidifier_duty',
-        { qos: humidifierQos },
+        { qos: transientLocalQos },
         async (msg) => {
             const value = msg.data;
             const ts = Date.now();
@@ -883,7 +886,7 @@ rclnodejs.init().then(async () => {
     node.createSubscription(
         'std_msgs/msg/Float32',
         '/fc1/control/humidity_target',
-        { qos: humidifierQos },
+        { qos: transientLocalQos },
         async (msg) => {
             const value = msg.data;
             const ts = Date.now();
@@ -901,7 +904,7 @@ rclnodejs.init().then(async () => {
     node.createSubscription(
         'std_msgs/msg/Float32',
         '/fc1/control/pid_output',
-        { qos: humidifierQos },
+        { qos: transientLocalQos },
         async (msg) => {
             const value = msg.data;
             const ts = Date.now();
@@ -914,18 +917,10 @@ rclnodejs.init().then(async () => {
     console.log('[bridge] PID-output subscription: TRANSIENT_LOCAL QoS');
 
     // Phase 16: forward /fc1/sensor_health (DiagnosticStatus, TRANSIENT_LOCAL) to WS clients
-    const sensorHealthQos = new rclnodejs.QoS(
-        rclnodejs.QoS.HistoryPolicy.RMW_QOS_POLICY_HISTORY_KEEP_LAST,
-        1,
-        rclnodejs.QoS.ReliabilityPolicy.RMW_QOS_POLICY_RELIABILITY_RELIABLE,
-        rclnodejs.QoS.DurabilityPolicy.RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL,
-        rclnodejs.QoS.LivelinessPolicy.RMW_QOS_POLICY_LIVELINESS_SYSTEM_DEFAULT,
-        false
-    );
     node.createSubscription(
         'diagnostic_msgs/msg/DiagnosticStatus',
         '/fc1/sensor_health',
-        { qos: sensorHealthQos },
+        { qos: transientLocalQos },
         (msg) => {
             // Flatten KeyValue[] into a plain object for easy browser consumption
             const values = {};
@@ -958,7 +953,7 @@ rclnodejs.init().then(async () => {
     node.createSubscription(
         'std_msgs/msg/String',
         '/fc1/control/current_mode_json',
-        { qos: humidifierQos },
+        { qos: transientLocalQos },
         (msg) => {
             let parsed;
             try {
@@ -989,7 +984,7 @@ rclnodejs.init().then(async () => {
     node.createSubscription(
         'std_msgs/msg/String',
         '/fc1/control/alerter_mode_overrides',
-        { qos: humidifierQos },
+        { qos: transientLocalQos },
         (msg) => {
             let parsed;
             try {
@@ -1008,7 +1003,7 @@ rclnodejs.init().then(async () => {
     node.createSubscription(
         'std_msgs/msg/String',
         '/fc1/control/alerter_globals',
-        { qos: humidifierQos },
+        { qos: transientLocalQos },
         (msg) => {
             let parsed;
             try {
@@ -1046,7 +1041,7 @@ rclnodejs.init().then(async () => {
     node.createSubscription(
         'std_msgs/msg/String',
         '/fc1/control/experiment_event',
-        { qos: humidifierQos },   // reuse TRANSIENT_LOCAL/RELIABLE/depth=1 profile
+        { qos: transientLocalQos },   // reuse TRANSIENT_LOCAL/RELIABLE/depth=1 profile
         (msg) => {
             let parsed;
             try {
