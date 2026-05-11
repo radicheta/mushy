@@ -145,7 +145,11 @@ Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 202
   1. Operator can send a Signal message to the bot and receive a reply in the same DM thread
   2. A second farmer sends a test message and receives a reply routed to their number (not farmer #1)
   3. Alerter container rebuild does not break identity trust (signal-cli /v1/identities check passes after rebuild)
-**Plans:** TBD
+**Plans:** 4 plans
+- [ ] 36-01-PLAN.md — Pre-flight snapshot + identity capture + Phase 35 coverage verdict + restore recipe
+- [ ] 36-02-PLAN.md — 36-RUNBOOK.md authored + live primary re-registration + kickoff message to farmers (interactive)
+- [ ] 36-03-PLAN.md — post-rebuild-trust-check.sh script + bats tests + alerter compose healthcheck wire-up
+- [ ] 36-04-PLAN.md — T0 round-trip + alerter rebuild attestation + T+24h re-run + final SC#1/2/3 attestation log
 
 ### Phase 37: Multi-farmer Routing
 
