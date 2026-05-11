@@ -92,6 +92,64 @@ describe('config.load', () => {
   });
 });
 
+describe('Phase 37: parseFarmerMap + signalGroupId + signalFarmerMap', () => {
+  test('signalGroupId === null when SIGNAL_GROUP_ID unset', () => {
+    const cfg = load({ ...BASE_ENV });
+    expect(cfg.signalGroupId).toBeNull();
+  });
+
+  test('signalGroupId reflects env value (bare base64, no prefix normalization)', () => {
+    const cfg = load({ ...BASE_ENV, SIGNAL_GROUP_ID: 'Z3JvdXBfaWQ=' });
+    expect(cfg.signalGroupId).toBe('Z3JvdXBfaWQ=');
+  });
+
+  test('signalFarmerMap is empty Map when SIGNAL_FARMER_MAP unset', () => {
+    const cfg = load({ ...BASE_ENV });
+    expect(cfg.signalFarmerMap).toBeInstanceOf(Map);
+    expect(cfg.signalFarmerMap.size).toBe(0);
+  });
+
+  test('signalFarmerMap parses single entry', () => {
+    const cfg = load({ ...BASE_ENV, SIGNAL_FARMER_MAP: '+5982:f1' });
+    expect(cfg.signalFarmerMap.size).toBe(1);
+    expect(cfg.signalFarmerMap.get('+5982')).toBe('f1');
+  });
+
+  test('signalFarmerMap parses three entries', () => {
+    const cfg = load({ ...BASE_ENV, SIGNAL_FARMER_MAP: '+5982:f1,+5983:zoy,+5984:f3' });
+    expect(cfg.signalFarmerMap.size).toBe(3);
+    expect(cfg.signalFarmerMap.get('+5983')).toBe('zoy');
+  });
+
+  test('signalFarmerMap trims whitespace', () => {
+    const cfg = load({ ...BASE_ENV, SIGNAL_FARMER_MAP: '+5982:f1, +5983:zoy , +5984:f3' });
+    expect(cfg.signalFarmerMap.size).toBe(3);
+    expect(cfg.signalFarmerMap.get('+5983')).toBe('zoy');
+  });
+
+  test('signalFarmerMap drops empty and malformed entries', () => {
+    const cfg = load({ ...BASE_ENV, SIGNAL_FARMER_MAP: '+5982:f1,,malformed,+5983:zoy' });
+    expect(cfg.signalFarmerMap.size).toBe(2);
+    expect(cfg.signalFarmerMap.get('+5982')).toBe('f1');
+    expect(cfg.signalFarmerMap.get('+5983')).toBe('zoy');
+  });
+
+  test('signalFarmerMap drops entries with no colon', () => {
+    const cfg = load({ ...BASE_ENV, SIGNAL_FARMER_MAP: 'justAphone' });
+    expect(cfg.signalFarmerMap.size).toBe(0);
+  });
+
+  test('signalFarmerMap drops entries with empty phone', () => {
+    const cfg = load({ ...BASE_ENV, SIGNAL_FARMER_MAP: ':orphanslug' });
+    expect(cfg.signalFarmerMap.size).toBe(0);
+  });
+
+  test('signalFarmerMap drops entries with empty slug', () => {
+    const cfg = load({ ...BASE_ENV, SIGNAL_FARMER_MAP: '+5982:' });
+    expect(cfg.signalFarmerMap.size).toBe(0);
+  });
+});
+
 describe('maskNumber', () => {
   test('Test E: masks middle digits, preserves first 2 and last 4, correct length', () => {
     const result = maskNumber('+15551234567');
