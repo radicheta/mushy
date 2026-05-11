@@ -61,14 +61,24 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
   // signal egress cap. signalClient reads getMaxSendsPerHour() on each send;
   // accessor returns the effective.maxSendsPerHour from current state if
   // alerter_globals has arrived, else falls back to bootstrap config.maxSendsPerHour.
+  // Phase 37 D-04: default non-reply destination flips from SIGNAL_RECIPIENT (f1)
+  // to SIGNAL_GROUP_ID when set. Falls back to phone recipient when env unset —
+  // back-compat with pre-Phase-37 DM-only behavior.
   const signalClient = createSignalClient({
     apiUrl: config.signalApiUrl,
     sender: config.signalSender,
     recipient: config.signalRecipient,
+    defaultTarget: config.signalGroupId
+      ? { groupId: config.signalGroupId }
+      : config.signalRecipient,
     maxSendsPerHour: config.maxSendsPerHour,
     getMaxSendsPerHour: () => stateLib.resolveEffectiveConfig(state, config, clock()).maxSendsPerHour,
     logger,
   });
+  logger.info(`[boot] signal defaultTarget = ${config.signalGroupId
+    ? `group:${config.signalGroupId.slice(0, 8)}…`
+    : 'DM:' + maskNumber(config.signalRecipient)}`);
+  logger.info(`[boot] farmer-map entries = ${config.signalFarmerMap.size}`);
 
   // Phase 25 capture pipeline factories
   const captureHealth = stateLib.createCaptureHealth();
@@ -87,6 +97,8 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
     baseDir: config.captureBaseDir,
     logger,
     clock,
+    // Phase 37 D-11/D-13: farmer-slug resolution at capture time.
+    signalFarmerMap: config.signalFarmerMap,
   });
 
   const retentionJob = createRetentionJob({ pool, config, state: captureHealth, logger });
@@ -100,6 +112,7 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
     state = result.next;
     for (const action of result.actions) {
       try {
+        // D-04: non-reply sends inherit defaultTarget (group when SIGNAL_GROUP_ID set).
         if (action.kind === 'send' || action.kind === 'recovery') {
           await signalClient.send(action.body);
         } else if (action.kind === 'heartbeat') {
