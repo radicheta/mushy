@@ -199,4 +199,37 @@ describe('createHeartbeatScheduler', () => {
     expect(dispatched[0].summary).toEqual(summaries[0]);
     expect(callCount).toBe(1);
   });
+
+  test('Test F: defers firing when summary has no rh/temp/co2 (post-boot race)', () => {
+    // Heartbeat hour reached, but bridge hasn't replayed any samples yet —
+    // summary fields are all null. Scheduler must NOT dispatch and must NOT
+    // burn the day's slot; next tick retries.
+    jest.useFakeTimers();
+    const clockMs = makeClockAt({ year: 2024, month: 4, day: 18, hour: 8, tz: 'America/Toronto' });
+    let callCount = 0;
+    const summaries = [
+      { rh: null, temp: null, co2: null, humidifier: 'OFF', humidifierCycles: 0, piLastSeenSec: null },
+      { rh: 90,   temp: 22,   co2: 800,  humidifier: 'OFF', humidifierCycles: 1, piLastSeenSec: 5    },
+    ];
+
+    const scheduler = createHeartbeatScheduler({
+      config: baseConfig,
+      getSummary: () => summaries[Math.min(callCount++, summaries.length - 1)],
+      dispatch: (e) => dispatched.push(e),
+      intervalMs: 100,
+      clock: () => clockMs,
+      logger: silentLogger,
+    });
+
+    scheduler.start(); // first tick: empty summary → defer
+    expect(dispatched).toHaveLength(0);
+
+    jest.advanceTimersByTime(150); // second tick: summary now has data → fire
+    scheduler.stop();
+    jest.useRealTimers();
+
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0].type).toBe('heartbeat_tick');
+    expect(dispatched[0].summary.rh).toBe(90);
+  });
 });

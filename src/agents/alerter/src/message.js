@@ -10,9 +10,11 @@ const ALERT_TITLES = {
 };
 
 // Round a number to 1 decimal and strip trailing ".0".
-// e.g. 94.39994 -> "94.4", 90 -> "90", 1.5000000000000013 -> "1.5"
+// e.g. 94.39994 -> "94.4", 90 -> "90", 1.5000000000000013 -> "1.5".
+// Null/undefined/NaN render as an em-dash "—" so farmer-facing strings
+// never expose raw "null"/"undefined" when upstream state hasn't populated yet.
 function fmtNum(n) {
-  if (n == null || Number.isNaN(Number(n))) return String(n);
+  if (n == null || Number.isNaN(Number(n))) return '—';
   return String(+Number(n).toFixed(1));
 }
 
@@ -133,7 +135,7 @@ function formatRecovery({ alertType, fields, durationMs, config }) {
 function formatHeartbeat({ summary, config, nowMs: _nowMs }) {
   const { rh, temp, co2, humidifier, humidifierCycles, piLastSeenSec } = summary;
   let body = '[HEARTBEAT] FC-1 watchdog alive\n';
-  body += `RH: ${fmtNum(rh)}%  ·  Temp: ${fmtNum(temp)}°C  ·  CO2: ${co2} ppm\n`;
+  body += `RH: ${fmtNum(rh)}%  ·  Temp: ${fmtNum(temp)}°C  ·  CO2: ${co2 == null ? '—' : co2} ppm\n`;
   body += `Humidifier: ${humidifier} (cycled ${humidifierCycles}× in last 24h)\n`;
   if (piLastSeenSec != null) {
     body += `Pi last seen: ${piLastSeenSec} seconds ago\n`;
