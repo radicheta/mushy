@@ -1,0 +1,21 @@
+# Phase 34 — uptime-kuma outside-in monitoring on VPS.
+# Single container, persistent state in named volume, web UI on port 3001
+# bound to 127.0.0.1 + 10.66.0.1 (wg-hub) only — NOT exposed to public.
+# UFW continues to block 3001 from the public side; only wg-hub peers can
+# reach the dashboard.
+
+services:
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: uptime-kuma
+    restart: unless-stopped
+    volumes:
+      - uptime-kuma-data:/app/data
+    # Bind explicitly so only loopback + wg-hub can reach it. UFW holds
+    # the public side regardless, but defense in depth.
+    ports:
+      - "127.0.0.1:3001:3001"
+      - "10.66.0.1:3001:3001"
+
+volumes:
+  uptime-kuma-data:

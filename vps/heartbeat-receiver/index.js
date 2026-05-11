@@ -25,6 +25,12 @@ const SECRET_FILE = process.env.HEARTBEAT_SECRET_FILE || '/etc/mushy-heartbeat/s
 const BRIDGE_URL = process.env.BRIDGE_URL || 'http://10.66.0.12:8081';
 const CHECK_INTERVAL_MS = parseInt(process.env.CHECK_INTERVAL_MS || '30000', 10);
 
+// Phase 999.43.1: ntfy.sh out-of-band Tier 2. NTFY_URL is the topic URL
+// (e.g. https://ntfy.sh/mushy-alerts-XXXX). When unset, Tier 2 falls back
+// to logging only (Phase 33 behavior). Topic is shared-secret, NOT public —
+// keep it out of git.
+const NTFY_URL = process.env.NTFY_URL || '';
+
 // Per-source staleness thresholds (ms). Sources not in here use DEFAULT.
 const STALENESS_THRESHOLDS = {
   'fc1':         3 * 60 * 1000,
@@ -193,16 +199,45 @@ async function dispatchAlertTier1(source, message) {
   }
 }
 
-function dispatchAlertTier2(source, message) {
-  // OUT-OF-BAND placeholder. Phase 999.43.1 wires ntfy.sh / Twilio here.
-  // For tonight, log clearly so operator sees the gap on next inspection.
-  appendAlertLog({
-    event: 'OUT_OF_BAND_ALERT_MISSED',
-    source,
-    message,
-    note: 'Tier 2 not yet implemented — install ntfy and wire here (Phase 999.43.1)',
-  });
-  log('error', `[OUT-OF-BAND ALERT MISSED — install ntfy and wire here] source=${source} msg="${message}"`);
+async function dispatchAlertTier2(source, message) {
+  // OUT-OF-BAND. Phase 999.43.1 wires ntfy.sh push (free, no account, app
+  // on operator phone is the receiver). When NTFY_URL is unset, falls
+  // back to log-only (Phase 33 behavior).
+  if (!NTFY_URL) {
+    appendAlertLog({
+      event: 'OUT_OF_BAND_ALERT_MISSED',
+      source,
+      message,
+      note: 'Tier 2 not configured — set NTFY_URL env to enable',
+    });
+    log('error', `[OUT-OF-BAND ALERT MISSED — NTFY_URL not set] source=${source} msg="${message}"`);
+    return false;
+  }
+  try {
+    const res = await fetch(NTFY_URL, {
+      method: 'POST',
+      headers: {
+        'Title': `mushy: ${source} silent`,
+        'Priority': 'urgent',
+        'Tags': 'rotating_light,mushroom',
+      },
+      body: message,
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    appendAlertLog({ event: 'tier2_dispatched', source, message, channel: 'ntfy' });
+    log('info', `Tier 2 (ntfy) dispatched for ${source}`);
+    return true;
+  } catch (e) {
+    appendAlertLog({
+      event: 'OUT_OF_BAND_ALERT_MISSED',
+      source,
+      message,
+      note: `Tier 2 ntfy dispatch failed: ${e.message}`,
+    });
+    log('error', `[OUT-OF-BAND ALERT MISSED — ntfy dispatch failed: ${e.message}] source=${source}`);
+    return false;
+  }
 }
 
 async function checkStaleness() {
@@ -224,7 +259,7 @@ async function checkStaleness() {
     appendAlertLog({ event: 'alert_fired', source, age_ms: age, fired_count: a.fired_count + 1, message });
 
     const tier1Ok = await dispatchAlertTier1(source, message);
-    if (!tier1Ok) dispatchAlertTier2(source, message);
+    if (!tier1Ok) await dispatchAlertTier2(source, message);
 
     a.fired_count += 1;
     a.last_alert_ms = now;
@@ -249,6 +284,7 @@ function main() {
   setInterval(checkStaleness, CHECK_INTERVAL_MS);
   log('info', `staleness checker every ${CHECK_INTERVAL_MS}ms; thresholds=${JSON.stringify(STALENESS_THRESHOLDS)}; backoff=${JSON.stringify(BACKOFF_SCHEDULE_MS)}`);
   log('info', `Tier 1 alert path: ${BRIDGE_URL}/heartbeat-alert`);
+  log('info', `Tier 2 alert path: ${NTFY_URL ? 'ntfy ' + NTFY_URL.replace(/\/[^/]+$/, '/<redacted>') : 'NOT CONFIGURED (NTFY_URL unset — will log only)'}`);
 }
 
 main();

@@ -29,5 +29,10 @@ Environment=HEARTBEAT_SECRET_FILE=/etc/mushy-heartbeat/secret
 Environment=BRIDGE_URL=http://10.66.0.12:8081
 Environment=CHECK_INTERVAL_MS=30000
 
+# Phase 999.43.1: Tier 2 ntfy.sh URL lives in this optional env file
+# (NTFY_URL=https://ntfy.sh/<topic>). Leading `-` makes it optional so
+# the service still starts in Phase-33-only deployments.
+EnvironmentFile=-/etc/mushy-heartbeat/ntfy.env
+
 [Install]
 WantedBy=multi-user.target
