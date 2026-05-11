@@ -207,6 +207,127 @@ describe('signal.js', () => {
     });
   });
 
+  describe('Phase 37: send({to}) + defaultTarget + group recipient', () => {
+    it('back-compat: no defaultTarget, recipient passed → recipients=[recipient]', async () => {
+      const result = await client.send('hi');
+      expect(result.ok).toBe(true);
+      expect(server.sent[0]).toMatchObject({ recipients: [RECIPIENT] });
+    });
+
+    it('defaultTarget="+15551112222" (no recipient) → recipients=[phone]', async () => {
+      const dtClient = createSignalClient({
+        apiUrl: server.url,
+        sender: SENDER,
+        defaultTarget: '+15551112222',
+        maxSendsPerHour: 20,
+      });
+      await dtClient.send('hi');
+      expect(server.sent[0]).toMatchObject({ recipients: ['+15551112222'] });
+    });
+
+    it('defaultTarget={groupId:"ABC="} → recipients=["group.ABC="]', async () => {
+      const grpClient = createSignalClient({
+        apiUrl: server.url,
+        sender: SENDER,
+        defaultTarget: { groupId: 'ABC=' },
+        maxSendsPerHour: 20,
+      });
+      await grpClient.send('hi');
+      expect(server.sent[0]).toMatchObject({ recipients: ['group.ABC='] });
+    });
+
+    it('send("hi",{to:{groupId:"XYZ="}}) overrides defaultTarget', async () => {
+      const grpClient = createSignalClient({
+        apiUrl: server.url,
+        sender: SENDER,
+        defaultTarget: { groupId: 'ABC=' },
+        maxSendsPerHour: 20,
+      });
+      await grpClient.send('hi', { to: { groupId: 'XYZ=' } });
+      expect(server.sent[0]).toMatchObject({ recipients: ['group.XYZ='] });
+    });
+
+    it('send("hi",{to:"+15553334444"}) overrides defaultTarget', async () => {
+      await client.send('hi', { to: '+15553334444' });
+      expect(server.sent[0]).toMatchObject({ recipients: ['+15553334444'] });
+    });
+
+    it('log line for group send includes "group:" prefix + first 8 chars of groupId', async () => {
+      const logLines = [];
+      const logger = {
+        info: (...a) => logLines.push(a.join(' ')),
+        warn: (...a) => logLines.push(a.join(' ')),
+        error: (...a) => logLines.push(a.join(' ')),
+      };
+      const grpClient = createSignalClient({
+        apiUrl: server.url,
+        sender: SENDER,
+        defaultTarget: { groupId: 'ABCDEFGHIJKLMNOP=' },
+        maxSendsPerHour: 20,
+        logger,
+      });
+      await grpClient.send('hi');
+      const sentLine = logLines.find((l) => l.includes('[signal] sent ->'));
+      expect(sentLine).toBeDefined();
+      expect(sentLine).toContain('group:ABCDEFGH');
+      expect(sentLine).not.toContain('ABCDEFGHIJKLMNOP');
+    });
+
+    it('log line for DM send still uses maskNumber()', async () => {
+      const logLines = [];
+      const logger = {
+        info: (...a) => logLines.push(a.join(' ')),
+        warn: (...a) => logLines.push(a.join(' ')),
+        error: (...a) => logLines.push(a.join(' ')),
+      };
+      const dmClient = createSignalClient({
+        apiUrl: server.url,
+        sender: SENDER,
+        recipient: RECIPIENT,
+        maxSendsPerHour: 20,
+        logger,
+      });
+      await dmClient.send('hi');
+      const sentLine = logLines.find((l) => l.includes('[signal] sent ->'));
+      expect(sentLine).toBeDefined();
+      expect(sentLine).not.toContain(RECIPIENT);
+      // maskNumber('+15552222222') -> '+1XXXXXX2222' (first 2 + Xs + last 4)
+      expect(sentLine).toMatch(/\+1X+2222/);
+    });
+
+    it('bypassCap option still works orthogonally to {to}', async () => {
+      const cappedClient = createSignalClient({
+        apiUrl: server.url,
+        sender: SENDER,
+        recipient: RECIPIENT,
+        maxSendsPerHour: 1,
+      });
+      await cappedClient.send('a');
+      const result = await cappedClient.send('hb', { bypassCap: true, to: '+15559998888' });
+      expect(result.ok).toBe(true);
+      expect(server.sent).toHaveLength(2);
+      expect(server.sent[1]).toMatchObject({ recipients: ['+15559998888'] });
+    });
+
+    it('construction throws when neither defaultTarget nor recipient is set', () => {
+      expect(() => createSignalClient({
+        apiUrl: server.url,
+        sender: SENDER,
+        maxSendsPerHour: 20,
+      })).toThrow(/defaultTarget or recipient is required/);
+    });
+
+    it('send throws on invalid target (empty object)', async () => {
+      const badClient = createSignalClient({
+        apiUrl: server.url,
+        sender: SENDER,
+        recipient: RECIPIENT,
+        maxSendsPerHour: 20,
+      });
+      await expect(badClient.send('hi', { to: {} })).rejects.toThrow(/invalid send target/);
+    });
+  });
+
   describe('no-full-number-in-log', () => {
     it('does not log full sender or recipient phone numbers', async () => {
       const logLines = [];
