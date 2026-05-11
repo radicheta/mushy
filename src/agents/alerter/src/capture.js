@@ -53,8 +53,12 @@ function createCapturePipeline({
   baseDir,
   logger = console,
   clock = Date.now,
+  // Phase 37 D-11/D-12 — boot-time static map from config.signalFarmerMap.
+  // Empty Map default keeps capture.js standalone-testable; unknown senders
+  // resolve to '(unassigned)' B6 sentinel.
+  signalFarmerMap = new Map(),
 }) {
-  async function handle(envWrapper) {
+  async function handle(envWrapper, ctx = {}) {
     // Extract fields from the signal-cli envelope shape:
     // { envelope: { source, dataMessage: { message, attachments } } }
     const env = envWrapper.envelope || envWrapper;
@@ -62,6 +66,18 @@ function createCapturePipeline({
     const dm = env.dataMessage || {};
     const text = dm.message || null;
     const attachments = dm.attachments || [];
+
+    // Phase 37 D-02/D-11/D-12/D-13/D-14 — reply target + farmOS person + row tags.
+    // ctx (from receive-loop) is authoritative; fall back to dm.groupInfo so
+    // capture.js is testable in isolation without a receive-loop driving it.
+    const groupId = ctx.groupId ?? (dm.groupInfo?.groupId ?? null);
+    const replyTarget = groupId ? { groupId } : source;
+    const farmosPerson = signalFarmerMap.get(source) ?? '(unassigned)';
+    const replyTargetKind = ctx.replyTargetKind ?? (groupId ? 'group' : 'dm');
+    const suppressReply = ctx.suppressReply === true;
+    if (typeof logger.debug === 'function') {
+      logger.debug(`[capture] routing: sender=${maskNumber(source)} kind=${replyTargetKind} farmos=${farmosPerson} groupId=${groupId ? groupId.slice(0, 8) + '…' : 'none'}`);
+    }
 
     const capturedAtMs = clock();
     const id = ulid(capturedAtMs);
@@ -110,6 +126,10 @@ function createCapturePipeline({
         llm_session_tag: null,
         llm_reply: null,
         degraded,
+        // Phase 37 D-14 — routing metadata stamped at capture time.
+        group_id: groupId,
+        farmos_person: farmosPerson,
+        reply_target_kind: replyTargetKind,
       });
     } catch (e) {
       logger.warn(`[capture] db insert failed: ${e.message}`);
@@ -143,7 +163,13 @@ function createCapturePipeline({
     }
 
     // Step 6: send reply (errors logged, never thrown)
-    await signalClient.send(replyText).catch((e) => logger.warn(`[capture] reply send failed: ${e.message}`));
+    // Phase 37 D-02/D-08 — route to envelope source (DM) or group (group);
+    // skip send entirely when receive-loop signals suppressReply (silent group
+    // listener, or command branch already handled the reply).
+    if (!suppressReply) {
+      await signalClient.send(replyText, { to: replyTarget })
+        .catch((e) => logger.warn(`[capture] reply send failed: ${e.message}`));
+    }
 
     // Step 7: update row with llm fields (best-effort)
     if (llmOk) {
