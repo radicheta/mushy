@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: (scaffolding deferred — Phase 32 ran ahead)
-status: paused
-stopped_at: Phase 33 SCAFFOLDED but NOT DEPLOYED — see .planning/phases/33-vps-heartbeat-receiver/33-HANDOFF.md to pick up
-last_updated: "2026-05-11T00:00:00.000Z"
-last_activity: 2026-05-10/11 IT all-nighter — Phase 32 shipped + Phase 33 scaffolded (CONTEXT + receiver + sender + systemd unit + installer; zero production touch); paused at user request to keep handoff clean
+status: idle
+stopped_at: Phase 33 SHIPPED 2026-05-11 — Tier 1 outage alerts E2E proven (VPS detect → bridge → signal-cli → operator phone); Tier 2 (ntfy.sh out-of-band) filed as 999.43.1
+last_updated: "2026-05-11T00:18:00.000Z"
+last_activity: 2026-05-11 — Phase 33 deploy completed; 3 deploy-time bugs caught + fixed (bridge↔signal-cli network path, install.sh perms, dispatch timeout); real smoke test (stop fc1 timer for >3min) → Signal alert delivered + recovery logged; SUMMARY + ROADMAP + 999.43.1 filed
 progress:
-  total_phases: 9
-  completed_phases: 8
-  total_plans: 31
-  completed_plans: 31
+  total_phases: 10
+  completed_phases: 9
+  total_plans: 32
+  completed_plans: 32
   percent: 100
 ---
 
