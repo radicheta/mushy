@@ -38,6 +38,7 @@
     pid_ki: 0.001  # halved from 0.002 → 0.001 2026-05-04 to address ~28-min integrator-driven limit cycle observed during afternoon falling-temp regime
     pid_kd: 4.0
     pid_derivative_filter_tau: 10.0
+    pid_integrator_decay_tau: 1200.0  # 999.49 — in-band I decay, 20min time constant
     pid_setpoint_ramp_seconds: 30.0  # D-07
     bypass_threshold: 0.025           # D-10 — Mode C entry when |error| > 2.5% RH
     # Slow-PWM (fc_pwm_driver — Phase 27)
