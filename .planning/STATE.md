@@ -25,9 +25,15 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 
 ## Current Position
 
-Status: IDLE
-Milestone: v1.6 (scaffolding deferred — Phase 32 ran ahead of `/gsd-new-milestone`)
-Last activity: 2026-05-11 — backlog sweep + live-bug fix session.
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Milestone: v1.7 — Multimodal Signal → FarmOS Events
+Last activity: 2026-05-11 — v1.7 started; schema locked 2026-05-11 (farmos `d4e5a30`); v1.6 retroactive snapshot at `.planning/milestones/v1.6-ROADMAP.md`.
+
+## Previous Milestones
+
+**v1.6 — VPS Hub + Outage/Recovery Stack (Shipped 2026-05-10/11; scaffolding deferred)**
 
 **v1.5 shipped 2026-05-09** (audit: `.planning/v1.5-MILESTONE-AUDIT.md`, status tech_debt — 16/17 reqs):
 Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (forcing modes).
