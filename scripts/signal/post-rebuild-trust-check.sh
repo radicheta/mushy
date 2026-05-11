@@ -100,22 +100,22 @@ fi
 # 6. Walk recipients; auto-re-trust any UNTRUSTED rows (rebuild-corruption case)
 RECOVERED=0
 CHECKED=0
-while IFS=$'\t' read -r number trust_level; do
+while IFS='|' read -r number status; do
   [ -z "$number" ] && continue
   [ "$number" = "$SIGNAL_SENDER" ] && continue
   CHECKED=$((CHECKED + 1))
   accepted=0
   for accepted_lvl in $ACCEPTED_TRUST_LEVELS; do
-    if [ "$trust_level" = "$accepted_lvl" ]; then accepted=1; break; fi
+    if [ "$status" = "$accepted_lvl" ]; then accepted=1; break; fi
   done
   if [ $accepted -eq 0 ]; then
     if ! _trust_recipient "$number"; then
-      _log "recovery_failed" "recipient_idx=${CHECKED}" "trust_level=${trust_level}"
+      _log "recovery_failed" "recipient_idx=${CHECKED}" "status=${status}"
       exit 1
     fi
     RECOVERED=$((RECOVERED + 1))
   fi
-done < <(echo "$IDENTITIES" | jq -r '.[] | [.number // "", .trust_level // ""] | @tsv')
+done < <(echo "$IDENTITIES" | jq -r '.[] | select((.number // "") != "") | "\(.number)|\(.status // "")"')
 
 # 7. If we recovered any, re-fetch to confirm the trust table actually clean now
 if [ $RECOVERED -gt 0 ]; then
@@ -124,7 +124,7 @@ if [ $RECOVERED -gt 0 ]; then
     exit 1
   fi
   STILL_UNTRUSTED=$(echo "$IDENTITIES" | jq --arg b "$SIGNAL_SENDER" \
-    '[.[] | select(.number != $b) | select(.trust_level != "TRUSTED_VERIFIED" and .trust_level != "TRUSTED_UNVERIFIED")] | length')
+    '[.[] | select(.number != $b) | select(.status != "TRUSTED_VERIFIED" and .status != "TRUSTED_UNVERIFIED")] | length')
   if [ "$STILL_UNTRUSTED" -gt 0 ]; then
     _log "recovery_failed" "still_untrusted=${STILL_UNTRUSTED}" "recovered=${RECOVERED}"
     exit 1
