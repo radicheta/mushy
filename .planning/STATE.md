@@ -4,14 +4,14 @@ milestone: v1.7
 milestone_name: Multimodal Signal → FarmOS Events
 status: planning
 stopped_at: Phase 37 context gathered
-last_updated: "2026-05-11T19:24:23.113Z"
+last_updated: "2026-05-11T20:23:31.287Z"
 last_activity: 2026-05-11 — v1.7 roadmap written; 7 phases (36–42) covering 31 requirements; schema locked (farmos d4e5a30); v1.6 retroactive snapshot at .planning/milestones/v1.6-ROADMAP.md.
 progress:
   total_phases: 15
   completed_phases: 1
-  total_plans: 5
+  total_plans: 9
   completed_plans: 8
-  percent: 100
+  percent: 89
 ---
 
 # Project State
@@ -196,3 +196,5 @@ v1.7 phase order (hard sequencing):
 *Last updated: 2026-05-11 — post v1.6 outage+recovery stack ship + backlog sweep*
 
 **Last completed:** Phase 35 (vps-tierA-backup) SHIPPED 2026-05-11
+
+**Planned Phase:** 37 (multi-farmer-routing) — 4 plans — 2026-05-11T20:23:31.281Z

@@ -160,7 +160,11 @@ Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 202
   1. Farmer #2 DMs the bot; bot reply arrives on farmer #2's phone, not farmer #1's
   2. A message to the group thread produces no unsolicited reply; an @mention or command gets exactly one reply to the group
   3. Known farmer numbers resolve to farmOS person IDs in the message metadata; unknown number gets (unassigned) tag and message is not silently dropped
-**Plans:** TBD
+**Plans:** 4 plans
+- [ ] 37-01-PLAN.md — Wave 0 smoke probe + six group envelope fixtures + jest baseline
+- [ ] 37-02-PLAN.md — signal.js send({to}) refactor + config.js (SIGNAL_GROUP_ID, SIGNAL_FARMER_MAP) + capture-db.js ALTER TABLE migrations
+- [ ] 37-03-PLAN.md — receive-loop.js group gate + collectGroupTriggers + D-09 dedupe; capture.js replyTarget threading + farmer-map + new row fields
+- [ ] 37-04-PLAN.md — docker-compose env plumbing + index.js wire-up + 37-RUNBOOK.md + live A/B/C/D/E attestations
 
 ### Phase 38: Extraction Pipeline
 
