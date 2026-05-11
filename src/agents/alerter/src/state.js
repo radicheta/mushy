@@ -370,21 +370,24 @@ function transition(prev, event, now, config) {
       // Drive sht30/scd41 alerts when value is explicitly 'false' (Pi-side
       // authoritative) OR alerter-side staleness exceeds threshold (Option C
       // hybrid — belt-and-braces). Skip during 60s startup grace.
+      // 999.42: per-sensor enable flags allow muting a permanently-disconnected
+      // sensor's watchdog (e.g. SHT30 since 2026-04-11) without blanket env
+      // band-aids that also mask real SCD41 outages.
       if (now - next.bootedAtMs >= 60000) {
         const sensorCfg = { ...config, oobN: 1, oobWindowMin: 0 };
 
-        const sht30Stale = v.sht30_fresh === 'false'
-          || isSensorSilent({ lastSeenMs: next.sht30LastSeenMs, nowMs: now, config });
-        {
+        if (config.sht30Enabled !== false) {
+          const sht30Stale = v.sht30_fresh === 'false'
+            || isSensorSilent({ lastSeenMs: next.sht30LastSeenMs, nowMs: now, config });
           const sht30Fields = { lastSeenMs: next.sht30LastSeenMs };
           const r = driveAlertType(next.perType.sht30, 'sht30', sht30Stale, sht30Fields, now, sensorCfg);
           next.perType.sht30 = r.next;
           actions.push(...r.actions);
         }
 
-        const scd41Stale = v.scd41_fresh === 'false'
-          || isSensorSilent({ lastSeenMs: next.scd41LastSeenMs, nowMs: now, config });
-        {
+        if (config.scd41Enabled !== false) {
+          const scd41Stale = v.scd41_fresh === 'false'
+            || isSensorSilent({ lastSeenMs: next.scd41LastSeenMs, nowMs: now, config });
           const scd41Fields = { lastSeenMs: next.scd41LastSeenMs };
           const r = driveAlertType(next.perType.scd41, 'scd41', scd41Stale, scd41Fields, now, sensorCfg);
           next.perType.scd41 = r.next;
@@ -406,8 +409,12 @@ function transition(prev, event, now, config) {
         break;
       }
       // Re-evaluate immediately so an arrival can clear a FIRING state — but
-      // only post-grace, mirroring pi_liveness.
-      if (now - next.bootedAtMs >= 60000) {
+      // only post-grace, mirroring pi_liveness. 999.42: respect per-sensor
+      // enable flags so a muted sensor doesn't get re-evaluated either.
+      const sensorEnabled = (sensor === 'sht30')
+        ? (config.sht30Enabled !== false)
+        : (config.scd41Enabled !== false);
+      if (sensorEnabled && now - next.bootedAtMs >= 60000) {
         const sensorCfg = { ...config, oobN: 1, oobWindowMin: 0 };
         const lastMs = (sensor === 'sht30') ? next.sht30LastSeenMs : next.scd41LastSeenMs;
         const stale = isSensorSilent({ lastSeenMs: lastMs, nowMs: now, config });
