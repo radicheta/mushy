@@ -1,0 +1,7 @@
+{
+  "bot_number_placeholder": "+<BOT>",
+  "bot_fingerprint": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+  "captured_at": "2026-05-11T00:00:00Z",
+  "source": "Plan 36-03 Task 1 stub — replaced by Plan 36-03 Task 2 with real post-reg fingerprint",
+  "fingerprint_format": "signal-cli /v1/identities .fingerprint field (hex bytes, optionally space-separated)"
+}

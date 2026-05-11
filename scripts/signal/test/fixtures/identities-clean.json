@@ -1,0 +1,26 @@
+[
+  {
+    "number": "+15550000001",
+    "fingerprint": "aa bb cc dd ee ff 00 11 22 33 44 55 66 77 88 99 aa bb cc dd ee ff 00 11 22 33 44 55 66 77 88 99",
+    "trust_level": "TRUSTED_VERIFIED",
+    "added": "1776545709054",
+    "safety_number": "00000",
+    "uuid": "00000000-0000-0000-0000-000000000001"
+  },
+  {
+    "number": "+15550000002",
+    "fingerprint": "11 22 33 44 55 66 77 88",
+    "trust_level": "TRUSTED_VERIFIED",
+    "added": "1776545709055",
+    "safety_number": "00001",
+    "uuid": "00000000-0000-0000-0000-000000000002"
+  },
+  {
+    "number": "+15550000003",
+    "fingerprint": "22 33 44 55 66 77 88 99",
+    "trust_level": "TRUSTED_UNVERIFIED",
+    "added": "1776545709056",
+    "safety_number": "00002",
+    "uuid": "00000000-0000-0000-0000-000000000003"
+  }
+]
