@@ -3,6 +3,26 @@
 const { parseSnoozeCommand } = require('./snooze');
 const { parseExperimentCommand } = require('./experiment_commands');
 
+// Phase 37 D-06/D-09 — pure helper for unit-testable trigger evaluation.
+// Defensive against both envelope wrapper shapes (env.envelope.dataMessage AND
+// env.dataMessage) — the receive loop sometimes forwards the inner shape and
+// callers in tests build either form. Risk #9: quote field cross-version drift —
+// accept both `quote.author` and `quote.authorNumber`.
+function collectGroupTriggers(env, botPhone) {
+  const out = new Set();
+  const dm = env?.envelope?.dataMessage || env?.dataMessage || {};
+  const text = dm.message || '';
+  if ((dm.mentions || []).some((m) => m && m.number === botPhone)) out.add('mention');
+  // Command keyword surface aligns with actual handlers in snooze.js (no 'status' —
+  // unwired; PATTERNS.md listed it as planner conjecture). Accepts optional
+  // `@mention<space>` prefix so '@bot mute' is recognized as a command in groups.
+  if (/^\s*(?:@\S+\s+)?(mute|snooze|quiet)\b/i.test(text)
+      || /^\/(force-|cancel-)/i.test(text)) out.add('command');
+  const q = dm.quote || {};
+  if ((q.author || q.authorNumber) === botPhone) out.add('quote');
+  return out;
+}
+
 /**
  * createReceiveLoop — polls signal-cli /v1/receive, parses snooze commands,
  * dispatches valid snooze events, replies with help text for invalid commands,
@@ -107,11 +127,46 @@ function createReceiveLoop({
         const text = dm?.message ?? null;
         const attachments = dm?.attachments || [];
 
+        // Phase 37 D-06/D-08/D-09 — group-context gate.
+        // D-05: VPS heartbeat is direct-to-f1, not via this loop.
+        const groupId = dm?.groupInfo?.groupId ?? null;
+        const groupType = dm?.groupInfo?.type ?? null;
+        // Risk #11 — UPDATE/QUIT envelopes treated as non-group (no triggers, no group reply).
+        const isGroup = !!groupId && groupType !== 'UPDATE' && groupType !== 'QUIT';
+        const botPhone = config.signalSender;
+        const triggers = isGroup ? collectGroupTriggers(env, botPhone) : new Set(['dm']);
+        const shouldReply = triggers.size > 0;
+        const replyTargetKind = isGroup ? (shouldReply ? 'group' : 'none') : 'dm';
+        const captureCtx = {
+          replyTargetKind,
+          groupId: isGroup ? groupId : null,
+          // Suppress capture-branch reply send when:
+          //  - group + no triggers (silent listener, D-08)
+          // Command-triggered groups don't reach the capture branch (snooze/experiment
+          // branches end with `continue`); mention/quote-only triggered groups DO reach
+          // capture and SHOULD reply, so suppressReply=false in that case.
+          suppressReply: isGroup && !shouldReply,
+        };
+
+        // Phase 37 D-09 — only run command branches when:
+        //   - DM (existing behavior), OR
+        //   - group + 'command' trigger fired
+        // This prevents an arbitrary @mention text from getting fuzzy-parsed as a snooze
+        // help reply and double-firing alongside the capture branch's reply.
+        const commandBranchAllowed = !isGroup || triggers.has('command');
+
+        // Phase 37 — in group context, strip an optional leading '@mention ' prefix
+        // so '@bot mute' is parsed as 'mute' by the existing snooze/experiment parsers.
+        // DM text passes through unchanged.
+        const commandText = (isGroup && text)
+          ? text.replace(/^\s*@\S+\s+/, '')
+          : text;
+
         // PHASE 31 D-15 — experiment command (must precede snooze so /force-*
         // isn't fuzzy-routed by snooze's prefix branch). Both /force-* and
         // /cancel-experiment short-circuit out of this iteration.
-        if (text) {
-          const exp = parseExperimentCommand(text);
+        if (commandText && commandBranchAllowed) {
+          const exp = parseExperimentCommand(commandText);
           if (exp.ok) {
             await dispatchExperiment(exp).catch((e) =>
               logger.warn(`[receive] experiment dispatch unexpected error: ${e.message}`),
@@ -129,8 +184,8 @@ function createReceiveLoop({
         }
 
         // FAST PATH — snooze (R4 / Pitfall 6 / R6 30s budget)
-        if (text) {
-          const parsed = parseSnoozeCommand(text, clock());
+        if (commandText && commandBranchAllowed) {
+          const parsed = parseSnoozeCommand(commandText, clock());
           if (parsed.ok) {
             logger.info(`[receive] snooze ${parsed.alertType} for ${parsed.durationMs}ms`);
             dispatch({ type: 'snooze', alertType: parsed.alertType, untilMs: parsed.untilMs });
@@ -150,8 +205,12 @@ function createReceiveLoop({
         }
 
         // SLOW PATH — capture (D-03 — error-isolated, fire-and-forget; NEVER awaited)
+        // Phase 37: thread routing context (replyTargetKind, groupId, suppressReply)
+        // so capture.js can populate row fields + pick reply target.
         if (capturePipeline && (text || attachments.length)) {
-          capturePipeline.handle(env).catch((e) => logger.warn(`[capture] pipeline error: ${e.message}`));
+          capturePipeline.handle(env, captureCtx).catch((e) =>
+            logger.warn(`[capture] pipeline error: ${e.message}`),
+          );
         }
       }
     } catch (e) {
@@ -174,4 +233,4 @@ function createReceiveLoop({
   };
 }
 
-module.exports = { createReceiveLoop };
+module.exports = { createReceiveLoop, collectGroupTriggers };
