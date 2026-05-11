@@ -105,7 +105,12 @@ PID + slow-PWM, named modes, runtime config delivery, alerter mode-awareness, ti
 
 ## Next Milestone Goals (v1.6 candidates)
 
-- **signal-cli primary re-registration** — unlocks Signal-driven Phase 31 UAT and any future bidirectional commands (memory `project_signal_cli_primary_reregister_path`)
+- **Bidirectional Signal comms — close the loop end-to-end** — Phase 25 shipped the channel 2026-04-28 (text/audio/image capture + Whisper + LLM reply *path*), but as of 2026-05-11 production usage is **9 capture rows total, all operator self-tests during UAT; zero in last 7 days, zero LLM replies ever**. The infrastructure works; the user-facing capability does not. Group of related work:
+  - **signal-cli primary re-registration** (pre-gate, ~30-60min) — unblocks deviceId=2 limitation that's been blocking Signal-driven experiment UAT and likely contributing to farmer-side friction. Memory `project_signal_cli_primary_reregister_path` + spike PASS 2026-04-27 (`project_phase25_pregate_spike_state`).
+  - **999.20** — multi-farmer reply routing (reply to envelope.source, not fixed recipient) + group-chat participation (the "Mushroom Farm" Signal group where farmers actually coordinate). Without 999.20, farmer #2/#3 DMs reply to farmer #1, and the group thread is invisible to the bot.
+  - **999.19** — alert link → real farmer destination (currently OpenMCT, target is farmOS story view).
+  - **SEED-002** (composes) — farmOS event writer from captured Signal content (the bot already has accurate transcripts; route them into farmOS records). Trigger met: ≥2 weeks since Phase 25 ship.
+  - **Acceptance:** at least one farmer organically uses the channel (text or audio) and gets a non-trivial reply within v1.6 window; daily capture rows trend > 0 instead of flat-zero; at least one captured event makes it into farmOS automatically.
 - **MC active-experiment widget** — bridge already broadcasts `experiment_event` + `current_mode` source='experiment'; UI gap from Phase 31
 - **Schedule gap-mode default** — `default_mode_in_gap` parameter (D-08 side-finding from 30-03 smoke)
 - **Mode editor UI in farmer app** — depends on 999.11 farmer-app maturity
