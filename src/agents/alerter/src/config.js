@@ -20,6 +20,22 @@ function parseFloatEnv(env, key, def) {
   return n;
 }
 
+// Phase 37 D-11: parse "+phone:slug,+phone:slug,..." into Map<E164,slug>.
+// Splits on FIRST colon only (phones contain no ':'; defensive for future slugs).
+// Silently drops malformed entries — operator notices via missing farmer_map size
+// in startup log (added in Plan 04 wire-up).
+function parseFarmerMap(raw) {
+  const m = new Map();
+  for (const entry of String(raw).split(',').map((s) => s.trim()).filter(Boolean)) {
+    const idx = entry.indexOf(':');
+    if (idx <= 0) continue;
+    const phone = entry.slice(0, idx).trim();
+    const slug = entry.slice(idx + 1).trim();
+    if (phone && slug) m.set(phone, slug);
+  }
+  return m;
+}
+
 // Phase 29 (D-03 / D-05) tier classification:
 //   Tier A (mode-driven, BOOTSTRAP-ONLY): rhTarget, rhBand
 //   Tier B (per-mode override, BOOTSTRAP-ONLY): oobN, oobWindowMin, cooldownMin,
@@ -40,6 +56,10 @@ function load(env = process.env) {
     signalRecipient:     mustEnv(env, 'SIGNAL_RECIPIENT'),
     signalAdditionalSenders: (env.SIGNAL_ADDITIONAL_SENDERS || '')
                               .split(',').map((s) => s.trim()).filter(Boolean),
+    // Phase 37 D-16 — bare base64; signal.js prepends 'group.' at send time.
+    signalGroupId:       env.SIGNAL_GROUP_ID || null,
+    // Phase 37 D-11 — boot-time static map; reload requires alerter restart.
+    signalFarmerMap:     parseFarmerMap(env.SIGNAL_FARMER_MAP || ''),
     rhTarget:            parseFloatEnv(env, 'ALERT_RH_TARGET', 90),
     rhBand:              parseFloatEnv(env, 'ALERT_RH_BAND', 3),
     oobN:                parseIntEnv(env, 'ALERT_OOB_N', 5),
