@@ -20,16 +20,20 @@ echo "node: $NODE_VER (need >=18 for built-in fetch)"
 id mushy >/dev/null 2>&1 || { echo "ERROR: mushy user must already exist (Phase 32 prerequisite)"; exit 1; }
 mkdir -p "$INSTALL_DIR" "$DATA_DIR" "$SECRET_DIR"
 chown mushy:mushy "$DATA_DIR"
-chmod 700 "$SECRET_DIR"
+# Secret dir: root-owned, group mushy, 750 so the service (User=mushy) can
+# traverse and read the secret. 700 here blocked the service on first install.
+chown root:mushy "$SECRET_DIR"
+chmod 750 "$SECRET_DIR"
 
 # 3. Generate HMAC secret if absent
 if [ ! -f "$SECRET_DIR/secret" ]; then
   head -c 48 /dev/urandom | base64 > "$SECRET_DIR/secret"
-  chmod 600 "$SECRET_DIR/secret"
   echo "generated new HMAC secret at $SECRET_DIR/secret"
 else
   echo "HMAC secret already present at $SECRET_DIR/secret (preserving)"
 fi
+chown root:mushy "$SECRET_DIR/secret"
+chmod 640 "$SECRET_DIR/secret"
 
 # 4. Copy code (caller is expected to have placed index.js + service file in /tmp)
 [ -f /tmp/heartbeat-index.js ] || { echo "ERROR: /tmp/heartbeat-index.js not found"; exit 1; }

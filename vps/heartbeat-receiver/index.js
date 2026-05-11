@@ -180,7 +180,10 @@ async function dispatchAlertTier1(source, message) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ source, message }),
-      signal: AbortSignal.timeout(5000),
+      // 15s: VPS↔home round-trip ~250ms plus signal-cli /v2/send is sometimes
+      // 5–10s on a cold path. 5s tripped on the first real fc1 alert
+      // 2026-05-11 even though the path was healthy (manual curl ok).
+      signal: AbortSignal.timeout(15000),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return true;
