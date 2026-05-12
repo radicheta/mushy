@@ -150,6 +150,48 @@ describe('Phase 37: parseFarmerMap + signalGroupId + signalFarmerMap', () => {
   });
 });
 
+describe('Phase 38: extraction knobs', () => {
+  test('extractionConfidenceThreshold defaults to 0.7', () => {
+    const cfg = load({ ...BASE_ENV });
+    expect(cfg.extractionConfidenceThreshold).toBe(0.7);
+  });
+
+  test('draftIdleGapMin defaults to 30', () => {
+    const cfg = load({ ...BASE_ENV });
+    expect(cfg.draftIdleGapMin).toBe(30);
+  });
+
+  test('maxAskbackTurns defaults to 3', () => {
+    const cfg = load({ ...BASE_ENV });
+    expect(cfg.maxAskbackTurns).toBe(3);
+  });
+
+  test('EXTRACTION_CONFIDENCE_THRESHOLD env override picked up', () => {
+    const cfg = load({ ...BASE_ENV, EXTRACTION_CONFIDENCE_THRESHOLD: '0.85' });
+    expect(cfg.extractionConfidenceThreshold).toBe(0.85);
+  });
+
+  test('DRAFT_IDLE_GAP_MIN env override picked up', () => {
+    const cfg = load({ ...BASE_ENV, DRAFT_IDLE_GAP_MIN: '45' });
+    expect(cfg.draftIdleGapMin).toBe(45);
+  });
+
+  test('MAX_ASKBACK_TURNS env override picked up', () => {
+    const cfg = load({ ...BASE_ENV, MAX_ASKBACK_TURNS: '5' });
+    expect(cfg.maxAskbackTurns).toBe(5);
+  });
+
+  test('out-of-range threshold (negative) falls back to default 0.7', () => {
+    const cfg = load({ ...BASE_ENV, EXTRACTION_CONFIDENCE_THRESHOLD: '-0.5' });
+    expect(cfg.extractionConfidenceThreshold).toBe(0.7);
+  });
+
+  test('out-of-range threshold (>1) falls back to default 0.7', () => {
+    const cfg = load({ ...BASE_ENV, EXTRACTION_CONFIDENCE_THRESHOLD: '1.5' });
+    expect(cfg.extractionConfidenceThreshold).toBe(0.7);
+  });
+});
+
 describe('maskNumber', () => {
   test('Test E: masks middle digits, preserves first 2 and last 4, correct length', () => {
     const result = maskNumber('+15551234567');
