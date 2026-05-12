@@ -72,10 +72,12 @@ const FEW_SHOT = [
       },
     ],
   },
-  // (2) Multimodal: text + photo + transcript fused into one observation.
+  // Tool-result ack closes the previous tool_use (Anthropic requires every
+  // tool_use to have a matching tool_result in the next user turn).
   {
     role: 'user',
     content: [
+      { type: 'tool_result', tool_use_id: 'tu_fewshot_1', content: [{ type: 'text', text: 'accepted' }] },
       { type: 'text', text: 'In-flight draft: none' },
       { type: 'text', text: 'New farmer text: block 4 looks great' },
       { type: 'text', text: 'Transcript: nice pinning on the limacela trays this morning' },
@@ -109,6 +111,7 @@ const FEW_SHOT = [
   {
     role: 'user',
     content: [
+      { type: 'tool_result', tool_use_id: 'tu_fewshot_2', content: [{ type: 'text', text: 'accepted' }] },
       { type: 'text', text: 'In-flight draft: {"type":"seeding","species":"shiitake","block_name":"260512_SHI_1","qty":12,"event_timestamp":"2026-05-12T00:00:00Z","confidence":{"qty":0.9}}' },
       { type: 'text', text: 'New farmer text: correction, it was 14 not 12' },
     ],

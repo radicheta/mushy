@@ -26,17 +26,40 @@ const { CACHEABLE_SYSTEM_BLOCKS, cacheableFewShot } = require('./prompts/system'
 const TOOL_NAME = 'submit_extraction';
 const TOOL_DESCRIPTION = 'Submit one farmOS draft with continuity decision and per-field confidence.';
 
+function inlineTopLevelRef(schema) {
+  // Plan 07 bug fix (Rule 1/3): zod-to-json-schema with a name arg emits
+  // {$ref: '#/definitions/Foo', definitions: {Foo: {...}}}. Anthropic rejects
+  // this with 400 "tools.0.custom.input_schema.type: Field required" because
+  // input_schema must have `type` at the top level. Inline the named definition
+  // while keeping `definitions` so nested $refs (e.g. for the discriminatedUnion
+  // members) still resolve.
+  if (!schema || typeof schema !== 'object' || !schema.$ref) return schema;
+  const m = /^#\/definitions\/(.+)$/.exec(schema.$ref);
+  if (!m || !schema.definitions || !schema.definitions[m[1]]) return schema;
+  const inlined = { ...schema.definitions[m[1]], definitions: schema.definitions };
+  delete inlined.$ref;
+  return inlined;
+}
+
 function buildToolSpec() {
   return {
     name: TOOL_NAME,
     description: TOOL_DESCRIPTION,
-    input_schema: SUBMISSION_JSON_SCHEMA,
+    input_schema: inlineTopLevelRef(SUBMISSION_JSON_SCHEMA),
   };
 }
 
 function buildInitialUserContent({ captures, inFlightDraft }) {
   // Capture set -> a single user turn with: in-flight summary, then per-capture text/transcript/images.
+  // Plan 07 bug fix (Rule 1): close the last few-shot tool_use (tu_fewshot_3) with a
+  // tool_result block. Anthropic rejects 400 if any tool_use lacks an immediately-following
+  // tool_result in the next user message.
   const blocks = [];
+  blocks.push({
+    type: 'tool_result',
+    tool_use_id: 'tu_fewshot_3',
+    content: [{ type: 'text', text: 'accepted' }],
+  });
   blocks.push({
     type: 'text',
     text: `In-flight draft: ${inFlightDraft ? JSON.stringify(inFlightDraft) : 'none'}`,
