@@ -135,5 +135,44 @@ A multimodal Signal message (text, audio, photo, or any combination) from a know
 
 ---
 
+<plan_08_delta>
+## Plan 08 Delta -- 2026-05-12
+
+Discoveries during Plan 08 live-API extractor work on mushdatadump (IMG_3775, IMG_3800) that amend the 2026-05-11 decisions above. These do not invalidate the original locks; they refine sections that the Plan 07 eval and the multimodal paper-log fixtures exposed.
+
+### D-08 -- B5 block-name regex relaxed to `{YYMMDD}_{A-Z}{2,4}_{SEQ}`
+
+The text "`{SPECIES3}`" at lines 18 and 119 was inherited from an earlier strawman. Production paper logs use 2-letter species codes (`DT` for "donkey tail" / Tremella) alongside 3- and 4-letter codes (`SHI`, `CAS`, `KING`). `BLOCK_NAME_RE` is now `/^[0-9]{6}_[A-Z]{2,4}_[0-9]+$/`. Treat lines 18 / 119 as historical; the live regex spec is the schema in `src/agents/alerter/src/extraction/schemas/seeding.js`.
+
+### D-09 -- Corpus context: paper notebook year is operator-supplied, not page-inferred
+
+mushdatadump pages have no year written on them (memory: `project_mushdatadump_is_2025_notebook`). The extractor was hallucinating years (2002, 2026) at ~0.6 confidence. Extractor now accepts `corpusContext.default_year` injected at call time; system prompt plumbed through to bind extracted MMDD shorthand to the operator-asserted year. mushdatadump is configured `default_year: 2025`.
+
+### D-10 -- Multi-event per page: extractor returns `drafts[]`, not `draft`
+
+Original D-02 assumed one draft per capture: appropriate for conversational "I just inoculated 12 jars" messages. Paper-log scans contradict this: IMG_3800 is 21 individuation events on one page across DT / CAS / SHI columns. Tool schema is now `Submission = { drafts: [{draft, per_field_confidence}, ...], continuity, continuity_reason }`. The `draft` / `per_field_confidence` legacy fields are still exposed on `extractResult` (as `drafts[0]`) for back-compat during the multi-week migration.
+
+### D-11 -- Paper-log lineage: parent-batch shorthand decoded via corpus context
+
+Farmer-written column shorthand `0627-2` (DT column, page year=2025) decodes to canonical parent block `250627_DT_2`. Seeding schema now carries optional `parent_batch_name` matching the same B5 regex. Decode rule: when a parent ref omits species or year, the extractor uses the column header (species) + corpus default_year (year) + the page-local SEQ to construct the canonical name. Confidence on the constructed parent_batch_name is the LLM's call.
+
+### D-12 -- Pipeline batch mode forks on `drafts.length`
+
+`drafts.length === 1` keeps the conversational ask-back path (D-01..D-05 unchanged). `drafts.length > 1` enters batch mode (paper-log scan):
+
+- Forces `continuity = start_new`; expires any prior in-flight draft for the sender.
+- Persists N rows keyed by `(source_capture_ids, index)` via `computeDraftId(captureIds, draftIndex)`. Index 0 = legacy hash, so single-draft hashes are byte-identical.
+- Runs state-machine with `maxAskbackTurns = 0`. Clean drafts still hit AWAITING_FARMER + handoff_to_phase_39. Dirty drafts skip ask-back entirely and land in NEEDS_REVIEW with `needs_review_reason = 'batch_mode_low_conf'`.
+- Emits **one** `send_batch_review_summary` side effect for the whole page -- Signal DM to Don Santiago summarising N drafts (M clean, K needs review) with truncated id list. **No farmer messages in batch mode.** Rationale: 21 ask-back pings from one photo would violate NORTH-STAR (`feedback_no_farmer_bookkeeping_tax`).
+
+D-04 (ask-back shape) and D-05 (3-turn cap) still apply to the conversational path. Batch-mode review-summary text follows D-05's style rules (round numbers, no em-dashes, address Don Santiago by name).
+
+### D-13 -- Eval scorer audit needed before Plan 07 retroactive credit
+
+Plan 07's "PASS" verdict on the eval-harness scaffolding was structurally honest but content-vacuous: B5 0% precision was a scorer bug (no GT supplied -> `precision = 0/N` regardless of extraction quality), not an extractor bug. Scorer now reports `regexValidRate` alongside precision/recall so a regex-vs-GT mismatch is legible. The pass-bar reading in D-07 still stands but the harness now reports usage tokens + cost per run (38-EVAL-REPORT-results.jsonl) so a "pass" actually corresponds to known-quality output, not absence of evidence.
+
+</plan_08_delta>
+
 *Phase: 38-extraction-pipeline*
 *Context gathered: 2026-05-11*
+*Plan 08 delta appended: 2026-05-12*
