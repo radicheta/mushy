@@ -93,6 +93,12 @@ services:
       # cooldown. Pi-authoritative `sht30_fresh==='false'` path still detects real
       # failures. Revert when 999.35 (maintenance agent) or a controller heartbeat lands.
       - ALERT_SENSOR_OFFLINE_MIN=${ALERT_SENSOR_OFFLINE_MIN:-1440}
+      # 999.42 per-sensor enable flags. SHT30 physically disconnected since 2026-04-11;
+      # operator sets ALERT_SHT30_ENABLED=false in repo-root .env to mute its watchdog
+      # without the blanket sensorOfflineMin=1440 band-aid (which also masked SCD41 outages).
+      # Pre-fix omission caused hourly false-alarm spam to the farmer group 2026-05-12.
+      - ALERT_SHT30_ENABLED=${ALERT_SHT30_ENABLED:-true}
+      - ALERT_SCD41_ENABLED=${ALERT_SCD41_ENABLED:-true}
       - ALERT_HUMIDIFIER_STUCK_MIN=${ALERT_HUMIDIFIER_STUCK_MIN:-30}
       - ALERT_HEARTBEAT_HOUR=${ALERT_HEARTBEAT_HOUR:-8}
       - ALERT_RECEIVE_POLL_SEC=${ALERT_RECEIVE_POLL_SEC:-30}
