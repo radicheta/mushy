@@ -91,7 +91,14 @@ function createExtractor({
   apiKey,
   logger = console,
   model = 'claude-sonnet-4-6',
-  maxTokens = 2048,
+  // Plan 09 (2026-05-12): default bumped 2048 -> 16384. Multi-event paper-log
+  // pages produce 10-25 drafts; each ~150-250 output tokens; at 2048 the model
+  // silently truncates the tool_use input to {} and the validator returns
+  // schema_invalid (no drafts/continuity/continuity_reason). The original
+  // 2048 default came from single-event Plan 03 sizing -- Plan 07 missed this
+  // because the 2-fixture cap hit pages small enough to fit. Plan 08's
+  // eval-two.js seed already used 16384 for the same reason.
+  maxTokens = 16384,
   client: injectedClient = null,
 } = {}) {
   const client = injectedClient || new Anthropic({ apiKey, maxRetries: 2 });
