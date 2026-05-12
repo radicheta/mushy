@@ -97,7 +97,27 @@ function load(env = process.env) {
     bridgeHttpUrl:        env.BRIDGE_HTTP_URL    || 'http://host.docker.internal:8081',
     captureRetentionDays: parseIntEnv(env, 'CAPTURE_RETENTION_DAYS', 30),
     captureRetentionCron: env.CAPTURE_RETENTION_CRON || '15 3 * * *',
+    // Phase 38 extraction-pipeline knobs.
+    // D-03: per-field confidence ask-back threshold. Range [0,1]; out-of-range
+    // values fall back to default 0.7 (logger.warn surfaces the override miss).
+    extractionConfidenceThreshold: clampThreshold(
+      parseFloatEnv(env, 'EXTRACTION_CONFIDENCE_THRESHOLD', 0.7),
+      env.EXTRACTION_CONFIDENCE_THRESHOLD,
+    ),
+    // D-01a: idle-gap cap (minutes). Any new message after this much silence
+    // forces continuity_decision='start_new' regardless of LLM judgment.
+    draftIdleGapMin: parseIntEnv(env, 'DRAFT_IDLE_GAP_MIN', 30),
+    // D-05: hard cap on ask-back turns before status -> needs_review.
+    maxAskbackTurns: parseIntEnv(env, 'MAX_ASKBACK_TURNS', 3),
   });
+}
+
+function clampThreshold(parsed, raw) {
+  if (parsed >= 0 && parsed <= 1) return parsed;
+  // Out-of-range: fall back to default; surface to logs so an operator notices.
+  // eslint-disable-next-line no-console
+  console.warn(`[config] EXTRACTION_CONFIDENCE_THRESHOLD=${raw} out of [0,1]; using default 0.7`);
+  return 0.7;
 }
 
 /**
