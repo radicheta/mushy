@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.7
 milestone_name: Multimodal Signal → FarmOS Events
-status: Plan 06 (outbound dispatcher = real signal sends) SHIPPED; EXT-04 closed end-to-end; Plan 07 (eval/ship gate) unblocked
-stopped_at: Phase 38 Plan 06 shipped (14/14 outbound tests green, 401/402 alerter suite)
-last_updated: "2026-05-12T19:30:00Z"
-last_activity: 2026-05-12 Phase 38-06 executed
+status: Plan 07 (eval/ship gate) PARTIAL -- harness shipped, eval PASS, Task 3 Don Santiago verdict review pending
+stopped_at: Phase 38 Plan 07 partial (Tasks 1+2 shipped; eval PASS at .planning/phases/38-extraction-pipeline/38-EVAL-REPORT.md; Task 3 human-action gate pending)
+last_updated: "2026-05-12T04:30:00Z"
+last_activity: 2026-05-12 Phase 38-07 Tasks 1+2 executed; eval PASS
 progress:
   total_phases: 22
   completed_phases: 2
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 38 (in progress)
-Plan: 06 (SHIPPED — outbound dispatcher = real signal sends; EXT-04 closed)
-Status: Plan 07 (eval/ship gate, corpus replay) unblocked
-Milestone: v1.7 — Multimodal Signal to FarmOS Events
-Last activity: 2026-05-12 Phase 38-06 executed
-Next up: /gsd-execute-phase 38 plan 07 (eval/ship gate)
+Plan: 07 (PARTIAL -- harness + eval PASS shipped autonomously; Task 3 Don Santiago verdict review pending)
+Status: Don Santiago to review .planning/phases/38-extraction-pipeline/38-EVAL-REPORT.md (verdict PASS); on attestation, Phase 38 closes pending Plan 08 deferred-path decision
+Milestone: v1.7 -- Multimodal Signal to FarmOS Events
+Last activity: 2026-05-12 Phase 38-07 Tasks 1+2 executed; eval PASS
+Next up: Don Santiago verdict review (Task 3, human-action gate)
 
 Phase 37 Plan 04 remains PARTIAL — Tasks 1+2 shipped (7b7256c, 7bff438); Task 3 live attestations deferred to operator per 37-RUNBOOK.md.
 
@@ -147,6 +147,9 @@ Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (for
 - [38-01] Activity name enum hardcoded to 7 values (sterilize, sterilize_failed, water, relocate, cold_shock, archive_spent, contam) per CONTEXT D-04.
 - [Phase ?]: [38-04] 3-turn cap semantics: currentTurns+1 >= maxAskbackTurns triggers needs_review (off-by-one fix vs plan text)
 - [Phase ?]: [38-04] fmtNum exported from message.js (was internal); preview-builder requires it per plan key_links
+- [38-07] Plan 03 shipped two API-shape bugs that mocked-client unit tests didn't catch: (a) zod-to-json-schema named output is {$ref, definitions} but Anthropic input_schema requires top-level type=object (fix: inlineTopLevelRef in extractor.buildToolSpec); (b) few-shot tool_use blocks had no matching tool_result in following user turns (fix: tool_result blocks closing tu_fewshot_1/2 in system.js + tu_fewshot_3 prepended in extractor.buildInitialUserContent). Backlog candidate: live-API smoke test in CI/pre-deploy.
+- [38-07] Ground-truth adaptation: mushdatadump v1.6 CSVs are page-grain (829 entries across 73 JPEGs), NOT per-image. Aligning rows to JPEG regions requires OCR (out of scope). Eval reduced to per-image schema-validity + B5 regex-validity + confidence calibration; richer per-event ground truth deferred to Plan 08.
+- [38-07] Eval verdict: PASS (100% schema conformance, 100% combined field-or-ask-back across 73 fixtures; 48/73 produced regex-valid B5 block_names; wall time 742s; cost ~$1-3 with prompt caching).
 
 ### Pending Todos
 
@@ -198,12 +201,13 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 | Phase 38 P01 | 12min | 3 tasks | 8 files |
 | Phase 38 P04 | 25min | 3 tasks | 7 files |
 | Phase 38 P06 | 8min | 2 tasks | 3 files |
+| Phase 38 P07 | 70min | 2 of 3 tasks | 9 files (incl. 2 Plan 03 Rule 1 fixes) |
 
 ## Session Continuity
 
-Last session: 2026-05-12T19:30:00Z
-Stopped at: Phase 38 Plan 06 shipped (outbound dispatcher = real signal sends; EXT-04 closed)
-Next up: /gsd-execute-phase 38 plan 07 (eval/ship gate)
+Last session: 2026-05-12T04:30:00Z
+Stopped at: Phase 38 Plan 07 partial (Tasks 1+2 shipped; eval verdict PASS in 38-EVAL-REPORT.md; Task 3 Don Santiago verdict review pending)
+Next up: Don Santiago verdict review on .planning/phases/38-extraction-pipeline/38-EVAL-REPORT.md (human-action gate); on attest move to /gsd-execute-phase 38 plan 08 or close phase
 
 v1.7 phase order (hard sequencing):
   Phase 36: Signal Pre-gate — MUST ship before anything else (PRE-01/02)
