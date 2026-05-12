@@ -24,6 +24,24 @@
 // In Plan 05 it is a logging stub; Plan 06 swaps in the real signal-client send.
 
 const { DRAFT_STATUS, REQUIRED_FIELDS } = require('./state-machine');
+const { readImageToBase64 } = require('./multimodal');
+
+const IMAGE_EXT_RE = /\.(jpe?g|png|gif|webp)$/i;
+
+async function loadImageBlocks(paths, logger) {
+  if (!Array.isArray(paths) || paths.length === 0) return [];
+  const blocks = [];
+  for (const p of paths) {
+    if (typeof p !== 'string' || !IMAGE_EXT_RE.test(p)) continue;
+    const r = await readImageToBase64(p, { logger }).catch((e) => ({ ok: false, reason: e.message }));
+    if (!r || !r.ok) {
+      logger.warn && logger.warn(`[pipeline] image load skipped: ${p} (${r && r.reason})`);
+      continue;
+    }
+    blocks.push({ data: r.data, media_type: r.media_type });
+  }
+  return blocks;
+}
 
 function createExtractionPipeline({
   pool,
@@ -169,11 +187,15 @@ function createExtractionPipeline({
       const treatInFlight = forced === 'start_new' ? null : inFlight;
 
       // 3. extractor
+      // BUG FIX 2026-05-12: attachmentPaths are filesystem path strings, but multimodal.buildContentBlocks
+      // expects {data, media_type} base64 blocks. Load images here before handing to extractor;
+      // otherwise every image is silently skipped and Claude sees an empty prompt -> schema_invalid.
+      const imageBlocks = await loadImageBlocks(captureCtx.attachmentPaths, logger);
       const captures = [{
         captureId,
         text: captureCtx.text || null,
         transcript: Array.isArray(captureCtx.transcripts) ? captureCtx.transcripts.join('\n') : null,
-        images: Array.isArray(captureCtx.attachmentPaths) ? captureCtx.attachmentPaths : [],
+        images: imageBlocks,
       }];
       let extractResult;
       try {
