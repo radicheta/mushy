@@ -17,6 +17,7 @@ const { createBridgeClient } = require('./bridge-client');
 const { createHeartbeatScheduler } = require('./heartbeat');
 const { createReceiveLoop } = require('./receive-loop');
 const captureDb = require('./capture-db');
+const extractionDb = require('./extraction/extraction-db');
 const { createTranscribeClient } = require('./transcribe-client');
 const { createLlmClient } = require('./llm-client');
 const { createCaptureHistory } = require('./capture-history');
@@ -55,6 +56,14 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
     logger.info(`[boot] signal_capture schema initialized (db=${config.timescaleDb} host=${config.timescaleHost})`);
   } catch (e) {
     logger.warn(`[boot] signal_capture initDb failed (capture pipeline will degrade): ${e.message}`);
+  }
+  // Phase 38 Plan 02: signal_draft schema (extraction pipeline persistence).
+  // Best-effort, mirrors captureDb pattern. Extraction will degrade if DB unreachable.
+  try {
+    await extractionDb.initDb(pool);
+    logger.info('[boot] signal_draft schema initialized');
+  } catch (e) {
+    logger.warn(`[boot] signal_draft initDb failed (extraction will degrade): ${e.message}`);
   }
 
   // Phase 29 plan 29-04 BLOCKER 3 / ALRT-09 — Tier C runtime overrides for
