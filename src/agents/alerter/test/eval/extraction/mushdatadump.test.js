@@ -19,7 +19,20 @@ const FIXTURE_DIR = process.env.EXTRACTION_FIXTURE_DIR || '/mnt/mossrock/shared/
 const REPORT_PATH = process.env.EVAL_REPORT_PATH
   || path.resolve(__dirname, '../../../../../../.planning/phases/38-extraction-pipeline/38-EVAL-REPORT.md');
 const PARTIAL_PATH = REPORT_PATH.replace(/\.md$/, '.partial.json');
+const RESULTS_JSON_PATH = REPORT_PATH.replace(/\.md$/, '-results.json');
+const RESULTS_JSONL_PATH = REPORT_PATH.replace(/\.md$/, '-results.jsonl');
 const MODEL = 'claude-sonnet-4-6';
+// Optional cap for smoke runs. Set EVAL_MAX_FIXTURES=2 to run on 2 images first.
+const MAX_FIXTURES = process.env.EVAL_MAX_FIXTURES
+  ? Math.max(1, parseInt(process.env.EVAL_MAX_FIXTURES, 10))
+  : Infinity;
+// Sonnet 4.6 pricing per MTok ($USD).
+const PRICE = {
+  input: 3.0,
+  output: 15.0,
+  cache_write: 3.75,
+  cache_read: 0.30,
+};
 
 const ADAPTATION_NOTE = [
   'mushdatadump v1.6 does NOT ship a per-image ground-truth.csv. The 73 JPEGs',
@@ -53,8 +66,13 @@ describe('mushdatadump eval (D-07 ship-gate)', () => {
     if (!process.env.ANTHROPIC_API_KEY) {
       throw new Error('ANTHROPIC_API_KEY must be set in env to run this eval.');
     }
-    const fixtures = loadFixtures(FIXTURE_DIR);
-    console.info(`[eval] loaded ${fixtures.length} fixtures from ${FIXTURE_DIR}`);
+    const allFixtures = loadFixtures(FIXTURE_DIR);
+    const fixtures = Number.isFinite(MAX_FIXTURES) ? allFixtures.slice(0, MAX_FIXTURES) : allFixtures;
+    console.info(`[eval] loaded ${fixtures.length}/${allFixtures.length} fixtures from ${FIXTURE_DIR}${Number.isFinite(MAX_FIXTURES) ? ` (capped at ${MAX_FIXTURES})` : ''}`);
+
+    // Fresh JSONL — truncate so re-runs don't accumulate stale entries.
+    try { fs.mkdirSync(path.dirname(RESULTS_JSONL_PATH), { recursive: true }); } catch (_) { /* noop */ }
+    try { fs.writeFileSync(RESULTS_JSONL_PATH, ''); } catch (_) { /* noop */ }
 
     const extractor = createExtractor({
       apiKey: process.env.ANTHROPIC_API_KEY,
@@ -104,7 +122,20 @@ describe('mushdatadump eval (D-07 ship-gate)', () => {
       }
       results.push({ fixture: fx, actual: r });
 
-      // Checkpoint partial state every 10 cases so a mid-run crash doesn't lose work.
+      // Stream per-fixture JSONL append — never lose a paid-for draft again.
+      try {
+        const line = JSON.stringify({
+          idx: i,
+          fixture_name: fx.name,
+          fixture_path: fx.imagePath,
+          actual: r,
+        });
+        fs.appendFileSync(RESULTS_JSONL_PATH, line + '\n');
+      } catch (e) {
+        console.warn(`[eval] jsonl append failed: ${e.message}`);
+      }
+
+      // Coarse checkpoint every 10 cases for at-a-glance progress (kept for back-compat).
       if ((i + 1) % 10 === 0) {
         try {
           fs.writeFileSync(PARTIAL_PATH, JSON.stringify({ done: i + 1, total: fixtures.length, results }, null, 2));
@@ -120,6 +151,45 @@ describe('mushdatadump eval (D-07 ship-gate)', () => {
     }
     const wallSec = ((Date.now() - t0) / 1000).toFixed(1);
     console.info(`[eval] completed ${results.length} fixtures in ${wallSec}s (${hardErrors} hard errors, ${skipped} skipped)`);
+
+    // Aggregate Anthropic usage tokens across all calls + estimate spend.
+    const usageTotals = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, calls_with_usage: 0 };
+    for (const row of results) {
+      const u = row.actual && row.actual.usage;
+      if (!u) continue;
+      usageTotals.calls_with_usage += 1;
+      usageTotals.input_tokens += u.input_tokens || 0;
+      usageTotals.output_tokens += u.output_tokens || 0;
+      usageTotals.cache_creation_input_tokens += u.cache_creation_input_tokens || 0;
+      usageTotals.cache_read_input_tokens += u.cache_read_input_tokens || 0;
+    }
+    const costUsd =
+        (usageTotals.input_tokens / 1e6) * PRICE.input
+      + (usageTotals.output_tokens / 1e6) * PRICE.output
+      + (usageTotals.cache_creation_input_tokens / 1e6) * PRICE.cache_write
+      + (usageTotals.cache_read_input_tokens / 1e6) * PRICE.cache_read;
+    console.info(`[eval] tokens: in=${usageTotals.input_tokens} out=${usageTotals.output_tokens} cache_w=${usageTotals.cache_creation_input_tokens} cache_r=${usageTotals.cache_read_input_tokens} -> $${costUsd.toFixed(4)}`);
+
+    // Final full-results dump (separate from per-fixture JSONL stream).
+    try {
+      fs.writeFileSync(RESULTS_JSON_PATH, JSON.stringify({
+        meta: {
+          model: MODEL,
+          fixtureDir: FIXTURE_DIR,
+          timestamp: new Date().toISOString(),
+          wallSec: Number(wallSec),
+          fixturesRun: results.length,
+          fixturesTotalAvailable: allFixtures.length,
+          skipped,
+          hardErrors,
+          usageTotals,
+          estimatedCostUsd: costUsd,
+        },
+        results,
+      }, null, 2));
+    } catch (e) {
+      console.warn(`[eval] final results.json write failed: ${e.message}`);
+    }
 
     const scores = {
       schemaConformance: scoring.schemaConformance(results),
@@ -142,7 +212,14 @@ describe('mushdatadump eval (D-07 ship-gate)', () => {
       adaptations: ADAPTATION_NOTE,
       skipped,
       errors: hardErrors,
-      notes: `Wall time: ${wallSec}s. Partial state checkpoint at ${PARTIAL_PATH}.`,
+      usageTotals,
+      costEstimateUsd: costUsd,
+      notes: [
+        `Wall time: ${wallSec}s.`,
+        `Per-fixture drafts: ${RESULTS_JSONL_PATH}`,
+        `Full results: ${RESULTS_JSON_PATH}`,
+        Number.isFinite(MAX_FIXTURES) ? `Capped run: EVAL_MAX_FIXTURES=${MAX_FIXTURES} (of ${allFixtures.length} available).` : null,
+      ].filter(Boolean).join(' '),
     });
     console.info(`[eval] wrote ${REPORT_PATH}`);
     console.info(`[eval] verdict: [${verdict}]`);

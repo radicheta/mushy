@@ -63,8 +63,9 @@ function buildReport(scores, fixtureCount, verdict, meta = {}) {
   const setEq = scores.setEquality || {};
   lines.push(`| Harvest set-equality (lineage) | ${pct(setEq.aggregate)} | over ${fmtNum(setEq.count || 0)} harvest fixtures |`);
   const b5 = scores.b5 || {};
-  lines.push(`| B5 block_name precision | ${pct(b5.precision)} | ${fmtNum(b5.correct || 0)} / ${fmtNum(b5.extracted || 0)} extracted |`);
-  lines.push(`| B5 block_name recall | ${pct(b5.recall)} | ${fmtNum(b5.correct || 0)} / ${fmtNum(b5.expected || 0)} expected |`);
+  lines.push(`| B5 block_name regex-valid rate | ${pct(b5.regexValidRate)} | ${fmtNum(b5.extracted || 0)} / ${fmtNum(b5.totalDrafts || 0)} drafts |`);
+  lines.push(`| B5 block_name precision (vs GT) | ${pct(b5.precision)} | ${fmtNum(b5.correct || 0)} / ${fmtNum(b5.extracted || 0)} extracted${(b5.expected || 0) === 0 ? ' [no GT supplied -- vacuous]' : ''} |`);
+  lines.push(`| B5 block_name recall (vs GT) | ${pct(b5.recall)} | ${fmtNum(b5.correct || 0)} / ${fmtNum(b5.expected || 0)} expected${(b5.expected || 0) === 0 ? ' [no GT supplied -- vacuous]' : ''} |`);
   lines.push(`| Brier score (confidence vs correct) | ${num(scores.brier, 4)} | lower is better |`);
   lines.push(`| ECE (expected calibration error) | ${num(scores.ece, 4)} | lower is better |`);
   lines.push('');
@@ -77,6 +78,21 @@ function buildReport(scores, fixtureCount, verdict, meta = {}) {
     for (const [f, v] of Object.entries(efm.perField)) {
       const acc = v.total === 0 ? 0 : v.match / v.total;
       lines.push(`| ${f} | ${pct(acc)} | ${fmtNum(v.match)} / ${fmtNum(v.total)} |`);
+    }
+    lines.push('');
+  }
+
+  if (meta.usageTotals) {
+    const u = meta.usageTotals;
+    lines.push('## Anthropic Usage (actual)');
+    lines.push('');
+    lines.push(`- Calls with usage telemetry: ${fmtNum(u.calls_with_usage || 0)}`);
+    lines.push(`- Input tokens (uncached): ${fmtNum(u.input_tokens || 0)}`);
+    lines.push(`- Output tokens: ${fmtNum(u.output_tokens || 0)}`);
+    lines.push(`- Cache write tokens: ${fmtNum(u.cache_creation_input_tokens || 0)}`);
+    lines.push(`- Cache read tokens: ${fmtNum(u.cache_read_input_tokens || 0)}`);
+    if (typeof meta.costEstimateUsd === 'number') {
+      lines.push(`- **Estimated spend:** $${meta.costEstimateUsd.toFixed(4)} USD`);
     }
     lines.push('');
   }
