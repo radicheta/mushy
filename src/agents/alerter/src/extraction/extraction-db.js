@@ -9,10 +9,18 @@ const IN_FLIGHT_STATUSES = ['pending', 'awaiting_farmer'];
 /**
  * Deterministic draft id from a capture-id set (D-02a, replay-safe).
  * SHA-256 over sorted ids joined by '|'.
+ *
+ * Plan 08 batch mode: when one page yields multiple drafts (drafts[] from
+ * multimodal paper-log extraction), each draft is keyed by (captureIds, index)
+ * to avoid PK collisions. Index is appended after a '#' before hashing so
+ * single-draft ids stay byte-identical to the pre-Plan-08 schema.
  */
-function computeDraftId(captureIds) {
+function computeDraftId(captureIds, draftIndex) {
   const sorted = captureIds.slice().sort().join('|');
-  return crypto.createHash('sha256').update(sorted).digest('hex');
+  const keyed = (draftIndex == null || draftIndex === 0)
+    ? sorted
+    : `${sorted}#${draftIndex}`;
+  return crypto.createHash('sha256').update(keyed).digest('hex');
 }
 
 async function initDb(pool) {

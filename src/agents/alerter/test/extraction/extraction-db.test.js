@@ -71,6 +71,21 @@ describe('extraction-db', () => {
       const id = computeDraftId(['cap-1']);
       expect(id).toMatch(/^[0-9a-f]{64}$/);
     });
+
+    test('draftIndex=undefined|0 yields the same legacy id (back-compat)', () => {
+      const legacy = computeDraftId(['cap-1', 'cap-2']);
+      expect(computeDraftId(['cap-1', 'cap-2'], 0)).toBe(legacy);
+      expect(computeDraftId(['cap-1', 'cap-2'], undefined)).toBe(legacy);
+    });
+
+    test('Plan 08 batch mode: non-zero draftIndex disambiguates ids for same captures', () => {
+      const a0 = computeDraftId(['cap-1'], 0);
+      const a1 = computeDraftId(['cap-1'], 1);
+      const a2 = computeDraftId(['cap-1'], 2);
+      expect(a0).not.toBe(a1);
+      expect(a1).not.toBe(a2);
+      expect(a0).not.toBe(a2);
+    });
   });
 
   describe('insertDraft', () => {

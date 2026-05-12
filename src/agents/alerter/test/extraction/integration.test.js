@@ -342,4 +342,160 @@ describe('createExtractionPipeline', () => {
     const dispatchOrder = outboundDispatcher.dispatch.mock.invocationCallOrder[0];
     expect(updateCallIdx).toBeLessThan(dispatchOrder);
   });
+
+  // Plan 08 batch mode: paper-log scan with drafts.length > 1.
+  describe('Plan 08 batch mode (drafts.length > 1)', () => {
+    function batchDraftsArr(n, opts = {}) {
+      const { dirtyAt = [] } = opts; // indices that should be missing event_timestamp
+      const out = [];
+      for (let i = 0; i < n; i += 1) {
+        const isDirty = dirtyAt.includes(i);
+        const d = validDraft();
+        d.qty = 10 + i;
+        d.block_name = `260512_DT_${i + 1}`;
+        if (isDirty) d.event_timestamp = null;
+        out.push({ draft: d, per_field_confidence: d.confidence });
+      }
+      return out;
+    }
+
+    test('(B1) 3 clean drafts -> 3 inserts, no send_ask_back, one send_batch_review_summary', async () => {
+      pool = makePool(null);
+      const drafts = batchDraftsArr(3);
+      extractor = makeExtractor({
+        ok: true,
+        drafts,
+        continuity_decision: 'start_new',
+        // legacy fields kept for back-compat but pipeline should NOT take that path
+        draft: drafts[0].draft,
+        per_field_confidence: drafts[0].per_field_confidence,
+      });
+
+      const { createExtractionPipeline } = require(REQUIRE_PIPELINE);
+      const pipeline = createExtractionPipeline({
+        pool, extractor, extractionDb, stateMachine, previewBuilder,
+        config, logger: silentLogger, clock, outboundDispatcher,
+      });
+      const res = await pipeline.enqueue(baseCaptureCtx());
+      expect(res.ok).toBe(true);
+      expect(res.mode).toBe('batch');
+      expect(res.count).toBe(3);
+      expect(res.cleanCount).toBe(3);
+      expect(res.needsReviewCount).toBe(0);
+
+      const insertCalls = pool.query.mock.calls.filter((c) => /INSERT INTO signal_draft/i.test(c[0]));
+      expect(insertCalls).toHaveLength(3);
+
+      const effects = outboundDispatcher.dispatch.mock.calls.map((c) => c[0]);
+      expect(effects).not.toContain('send_ask_back');
+      expect(effects).not.toContain('send_needs_review_ping');
+      expect(effects).toContain('send_batch_review_summary');
+      // Exactly one summary, not one-per-draft.
+      expect(effects.filter((e) => e === 'send_batch_review_summary')).toHaveLength(1);
+    });
+
+    test('(B2) mixed drafts: clean rows -> AWAITING_FARMER, dirty rows -> NEEDS_REVIEW (never ask-back)', async () => {
+      pool = makePool(null);
+      const drafts = batchDraftsArr(5, { dirtyAt: [1, 3] });
+      extractor = makeExtractor({
+        ok: true,
+        drafts,
+        continuity_decision: 'start_new',
+        draft: drafts[0].draft,
+        per_field_confidence: drafts[0].per_field_confidence,
+      });
+
+      const { createExtractionPipeline } = require(REQUIRE_PIPELINE);
+      const pipeline = createExtractionPipeline({
+        pool, extractor, extractionDb, stateMachine, previewBuilder,
+        config, logger: silentLogger, clock, outboundDispatcher,
+      });
+      const res = await pipeline.enqueue(baseCaptureCtx());
+      expect(res.ok).toBe(true);
+      expect(res.count).toBe(5);
+      expect(res.cleanCount).toBe(3);
+      expect(res.needsReviewCount).toBe(2);
+
+      const effects = outboundDispatcher.dispatch.mock.calls.map((c) => c[0]);
+      expect(effects).not.toContain('send_ask_back');
+      // Critical: dirty drafts do NOT trigger per-draft needs_review pings either.
+      expect(effects).not.toContain('send_needs_review_ping');
+      expect(effects).toContain('send_batch_review_summary');
+    });
+
+    test('(B3) batch ids are unique per (captureIds, index) -- no PK collisions', async () => {
+      pool = makePool(null);
+      const drafts = batchDraftsArr(4);
+      extractor = makeExtractor({
+        ok: true,
+        drafts,
+        continuity_decision: 'start_new',
+        draft: drafts[0].draft,
+        per_field_confidence: drafts[0].per_field_confidence,
+      });
+      const { createExtractionPipeline } = require(REQUIRE_PIPELINE);
+      const pipeline = createExtractionPipeline({
+        pool, extractor, extractionDb, stateMachine, previewBuilder,
+        config, logger: silentLogger, clock, outboundDispatcher,
+      });
+      const res = await pipeline.enqueue(baseCaptureCtx());
+      expect(res.ok).toBe(true);
+      const ids = res.draftIds;
+      expect(new Set(ids).size).toBe(ids.length);
+    });
+
+    test('(B4) drafts.length === 1 -> legacy single-draft path (NOT batch mode)', async () => {
+      pool = makePool(null);
+      const draft = validDraft();
+      extractor = makeExtractor({
+        ok: true,
+        drafts: [{ draft, per_field_confidence: draft.confidence }],
+        continuity_decision: 'start_new',
+        draft,
+        per_field_confidence: draft.confidence,
+      });
+      const { createExtractionPipeline } = require(REQUIRE_PIPELINE);
+      const pipeline = createExtractionPipeline({
+        pool, extractor, extractionDb, stateMachine, previewBuilder,
+        config, logger: silentLogger, clock, outboundDispatcher,
+      });
+      const res = await pipeline.enqueue(baseCaptureCtx());
+      expect(res.ok).toBe(true);
+      // mode field is only set on the batch branch.
+      expect(res.mode).toBeUndefined();
+      const effects = outboundDispatcher.dispatch.mock.calls.map((c) => c[0]);
+      expect(effects).not.toContain('send_batch_review_summary');
+    });
+
+    test('(B5) batch mode expires prior in-flight draft (paper-log resets conversational state)', async () => {
+      const stale = {
+        id: 'old_inflight',
+        sender_e164: '+59891840205',
+        status: 'awaiting_farmer',
+        source_capture_ids: ['cap_000'],
+        askback_turns: 1,
+        updated_at: new Date(NOW_MS - 5 * 60 * 1000), // 5min ago -- NOT idle, still in-flight
+      };
+      pool = makePool(stale);
+      const drafts = batchDraftsArr(2);
+      extractor = makeExtractor({
+        ok: true,
+        drafts,
+        continuity_decision: 'start_new',
+        draft: drafts[0].draft,
+        per_field_confidence: drafts[0].per_field_confidence,
+      });
+      const { createExtractionPipeline } = require(REQUIRE_PIPELINE);
+      const pipeline = createExtractionPipeline({
+        pool, extractor, extractionDb, stateMachine, previewBuilder,
+        config, logger: silentLogger, clock, outboundDispatcher,
+      });
+      const res = await pipeline.enqueue(baseCaptureCtx());
+      expect(res.ok).toBe(true);
+      // Expire UPDATE issued against old_inflight with status='expired'.
+      const expireCall = pool.query.mock.calls.find((c) =>
+        /UPDATE signal_draft/i.test(c[0]) && c[1] && c[1][0] === 'old_inflight' && c[1][1] === 'expired');
+      expect(expireCall).toBeTruthy();
+    });
+  });
 });
