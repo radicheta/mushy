@@ -34,7 +34,7 @@
     display_interval: 1.0  # Seconds between display updates
 
     # PID gains (Phase 27 — Skogestad SIMC defaults from 2026-04-11 calibration; error in %RH, output 0.0–1.0)
-    pid_kp: 0.35  # dropped from 0.5 → 0.35 2026-05-04 during calibration session 2; morning ±0.6% limit cycle decayed to ±0.1%
+    pid_kp: 0.36  # 0.5 → 0.35 2026-05-04 (calibration session 2); nudged 0.35 → 0.36 live 2026-05-12 — persisted
     pid_ki: 0.001  # halved from 0.002 → 0.001 2026-05-04 to address ~28-min integrator-driven limit cycle observed during afternoon falling-temp regime
     pid_kd: 4.0
     pid_derivative_filter_tau: 60.0  # 10→60 2026-05-12 to suppress PWM-period (120s) ripple in derivative term — duty was tracking its own PWM-induced RH wiggle

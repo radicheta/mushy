@@ -193,15 +193,53 @@ For a dead-time-dominated plant (θ ≈ 50 s, τ ≈ 10 min), a P-only limit cyc
 **Operating-point sensitivity warning:**
 The morning's calm at 0.94/9 °C with Kp=0.35 vs the afternoon's ringing at 0.96/18 °C with the same gains demonstrates the plant is **non-linear** (saturation pressure curve makes process gain temperature-dependent). Single-point PID tuning will always be a compromise. Long-term path: gain scheduling on temp, or move to controlling VPD instead of RH (composes with 999.27 derived telemetry).
 
+## Session 3 — 2026-05-12 (evening, fruiting target=0.96, band 0.945–0.975, defend=both)
+
+### Symptoms observed on live Mission Control
+1. **Low-frequency ~20-min limit cycle** in RH and duty, riding the low band edge (94.27 ↔ 94.69 %, duty 0.20 ↔ 0.59).
+2. **High-frequency PWM-synchronous wiggle** on the duty trace — duty up/down "in sync with its own PWM regime."
+
+### Diagnosis
+
+**~20-min cycle (limit-cycle from integrator-decay resonance):**
+- Cycle period ≈ `pid_integrator_decay_tau = 1200 s` — exact lock.
+- Mechanism: RH dips below band_low=94.5 → error_pct goes negative → I-term winds up (Ki·error·dt). Once RH re-enters band, error_pct=0 so PID delivers a frozen I-term as duty. In-band decay `_integral *= exp(-dt/1200)` is too slow vs the chamber's ~10-min thermal response → overshoot ~0.2 %, settle, dip below floor again, repeat.
+- Same family as Session 2's 28-min I-driven cycle (memory: `project_alerter_oob_window_8min`).
+
+**Duty-tracks-PWM wiggle (derivative-filter pass-through):**
+- `pid_derivative_filter_tau = 10 s` vs PWM window 120 s — PWM-period content passes the filter intact.
+- Kd=4.0 amplifies the resulting d/dt(RH) into visible duty wiggle. P-term contribution to PWM ripple is trivial (≈0.0003 of duty); D-term is the loud one.
+
+### Changes applied (live `ros2 param set` then persisted to YAML + pushed `main` & `fc1/prod`)
+
+| Param | From | To | Why |
+|---|---|---|---|
+| `pid_integrator_decay_tau` | 1200 s | **300 s** | Break period-lock with chamber thermal response; let I-term dissipate ~4× faster in-band so it doesn't carry overshoot energy across cycles. |
+| `pid_derivative_filter_tau` | 10 s | **60 s** | Half the PWM window — cuts off 120-s-period content in derivative without flattening genuine RH-event response. |
+| `pid_kp` | 0.35 | **0.36** | Already drifted live during earlier ad-hoc fiddling; persisted to YAML for consistency. |
+
+### What to watch
+- Cycle amplitude on RH should shrink (target ≤ ±0.1 %); duty's high-freq wiggle should visibly smooth on dashboard.
+- If 20-min cycle persists with similar amplitude: next move is **lower Ki 0.001 → 0.0005**, or add a hard cap on I-term wind-up while OOB (root-cause fix, code change).
+- If duty now feels sluggish on real RH events: dial derivative filter tau back toward 30 s.
+
+### Open thread (unchanged — still pending)
+- **Feedforward from temperature** remains the structural fix for the rising-/falling-temp regimes; today's tweaks address only the in-band limit cycle.
+- **Integrator anti-windup clamp** while OOB is the proper root-cause fix for cycle (1); today's decay shortening is the parameter-only palliative.
+
 ## Current PID Config (`src/chambers/fc-core/config/fc_config.yaml`)
 
-| Param | Value |
-|-------|-------|
-| `pid_kp` | 0.5 |
-| `pid_ki` | 0.002 |
-| `pid_kd` | 4.0 |
-| `pid_derivative_filter_tau` | 10.0s |
-| `pwm_window_seconds` | 120.0s (2-min duty cycle window) |
+| Param | Value | Last touched |
+|-------|-------|---|
+| `pid_kp` | 0.36 | 2026-05-12 |
+| `pid_ki` | 0.001 | 2026-05-04 |
+| `pid_kd` | 4.0 | 2026-04-11 |
+| `pid_derivative_filter_tau` | 60.0 s | 2026-05-12 |
+| `pid_integrator_decay_tau` | 300.0 s | 2026-05-12 |
+| `pid_setpoint_ramp_seconds` | 30.0 s | Phase 28 D-07 |
+| `bypass_threshold` | 0.025 (2.5 %RH) | Phase 28 D-10 |
+| `pwm_window_seconds` | 120.0 s | Phase 27 D-08 LOCKED |
+| `max_duty_5min_avg` | 0.90 | 2026-05-02 |
 
 Params are **live-reloadable** — re-read every control tick. Use `ros2 param set` to tune without restart. Changes don't write back to yaml; update manually once a value is confirmed good.
 
