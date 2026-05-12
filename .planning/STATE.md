@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.7
 milestone_name: Multimodal Signal → FarmOS Events
-status: Plan 07 (eval/ship gate) PARTIAL -- harness shipped, eval PASS, Task 3 Don Santiago verdict review pending
-stopped_at: Phase 38 Plan 07 partial (Tasks 1+2 shipped; eval PASS at .planning/phases/38-extraction-pipeline/38-EVAL-REPORT.md; Task 3 human-action gate pending)
-last_updated: "2026-05-12T04:30:00Z"
-last_activity: 2026-05-12 Phase 38-07 Tasks 1+2 executed; eval PASS
+status: Phase 38 CLOSED -- Plan 07 ship-gate PASS attested by Don Santiago; Plan 08 deferred (advisory-only). Phase 39 next.
+stopped_at: Phase 38 closed 2026-05-12; entering autonomous v1.7 close (Phases 39 -> 42)
+last_updated: "2026-05-12T12:00:00Z"
+last_activity: 2026-05-12 Phase 38 closed on Plan 07 PASS attestation
 progress:
   total_phases: 22
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 23
-  completed_plans: 19
-  percent: 83
+  completed_plans: 20
+  percent: 87
 ---
 
 # Project State
@@ -25,12 +25,14 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 
 ## Current Position
 
-Phase: 38 (in progress)
-Plan: 07 (PARTIAL -- harness + eval PASS shipped autonomously; Task 3 Don Santiago verdict review pending)
-Status: Don Santiago to review .planning/phases/38-extraction-pipeline/38-EVAL-REPORT.md (verdict PASS); on attestation, Phase 38 closes pending Plan 08 deferred-path decision
+Phase: 38 CLOSED 2026-05-12 (Plan 07 ship-gate PASS attested by Don Santiago; Plan 08 deferred as advisory-only)
 Milestone: v1.7 -- Multimodal Signal to FarmOS Events
-Last activity: 2026-05-12 Phase 38-07 Tasks 1+2 executed; eval PASS
-Next up: Don Santiago verdict review (Task 3, human-action gate)
+Last activity: 2026-05-12 Phase 38 closed; entering autonomous v1.7 close
+Next up: Phase 39 Farmer Confirmation Loop -- discuss -> plan -> execute autonomously through Phase 42 (SHI-on-Sawdust pilot)
+
+Phase 38 close notes:
+- Plan 07 ship-gate eval PASS (2/2 fixtures, schema 100%, OR-bar 100%); cap was EVAL_MAX_FIXTURES=2 of 73 available -- Don Santiago accepted the sample as sufficient
+- Plan 08 (prod-log advisory eval) deferred in place; resurfaces when production-log corpus path is supplied (memory: project_phase38_production_logs_available)
 
 Phase 37 Plan 04 remains PARTIAL — Tasks 1+2 shipped (7b7256c, 7bff438); Task 3 live attestations deferred to operator per 37-RUNBOOK.md.
 
