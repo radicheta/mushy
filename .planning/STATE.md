@@ -28,20 +28,20 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 Phase: 38 REOPENED 2026-05-12 -- prod inoc session live-replay surfaced two distinct failures
 Milestone: v1.7 -- Multimodal Signal to FarmOS Events
 Last activity: 2026-05-12 Phase 38 reopened after prod-session live-replay failures
-Next up: Phase 38 remediation plan -- triage whisper 500 + schema_invalid; re-run Plan 07 against expanded fixture set INCLUDING the prod inoc session before re-attesting
+Next up: Phase 38 Plan 09 execute -- remediation plan filed 2026-05-12 at .planning/phases/38-extraction-pipeline/38-09-PLAN.md
 
-Phase 38 reopen trigger:
-- Plan 07 PASS was on 2 curated photo-only fixtures (no audio, no real text)
-- Live replay on real inoc session (1 audio + 2 logsheet photos + 1 butt-dial) returned 0/4 successful extractions
-- Whisper service: 500 Internal Server Error on audio path (service-level bug; not an extractor issue)
-- Extractor: schema_invalid after retry on all attempts including image-only paths (real signal, not transcription-derived)
-- Outbound DM: bot replied 4 times despite extraction failure -- needs to surface "we are degraded" rather than auto-respond as if extraction succeeded
+Phase 38 reopen trigger (2026-05-12 evening session):
+- Plan 07 PASS was on 2 curated photo-only fixtures; live prod inoc session returned 0/4
+- Two latent bugs uncovered + FIXED (whisper GPU drift recovered by restart; pipeline image-wire bug at commit a04a6bc)
+- Replay against fixed pipeline: 30 schema-valid drafts from logsheet photos + 12 from audio -- PASS in isolation
+- Plan 09 scope: deep whisper /health, harness-pipeline parity, real-session fixture in ship-gate denominator, species-vocab additions, re-run eval, re-attest
+- Plan 08 (prod-log advisory eval) superseded by Plan 09 -- scope absorbed
 
 Prod inoc session corpus: /mnt/mossrock/shared/mushdatadump-prod/2026-05-12_inoc_santi/ (see MANIFEST.md)
-- Logsheet entries may NOT exactly match audio narration -- deliberate cross-check by Don Santiago to surface mismatches during validation
-- Harness must detect modality disagreement, not silently merge
+- Logsheet entries may NOT exactly match audio narration -- deliberate cross-check by Don Santiago
+- Replay surfaced mismatch on 04-25: sheet WIN x3 vs audio coded CAS x3 (species-vocab gap) + count off by 1
 
-Autonomous task #2 (Phase 39 -> 42 v1.7 close): PAUSED until Phase 38 actually passes a real-data eval, not just a 2-fixture curated one.
+Autonomous task #2 (Phase 39 -> 42 v1.7 close): PAUSED until Plan 09 executes + Don Santiago re-attests.
 
 Phase 37 Plan 04 remains PARTIAL — Tasks 1+2 shipped (7b7256c, 7bff438); Task 3 live attestations deferred to operator per 37-RUNBOOK.md.
 
