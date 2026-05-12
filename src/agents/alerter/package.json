@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/index.js",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "eval:extraction": "jest --config test/eval/extraction/jest.config.js --runInBand"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
