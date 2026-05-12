@@ -28,6 +28,7 @@ const { createExtractor } = require('./extraction/extractor');
 const stateMachineMod = require('./extraction/state-machine');
 const previewBuilderMod = require('./extraction/preview-builder');
 const { createExtractionPipeline } = require('./extraction');
+const { createOutboundDispatcher } = require('./extraction/outbound');
 
 /**
  * createAlerter({ env, clock, logger }) -> { dispatch, close, _state }
@@ -104,10 +105,19 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
   // the alerter-reply LLM (llm-client.js) decoupled from the structured-extract
   // LLM (extractor.js). Both reuse ANTHROPIC_API_KEY.
   const extractor = createExtractor({ apiKey: config.anthropicApiKey, logger });
-  // Plan 06 replaces this stub with the real signal-client outbound module.
-  const outboundDispatcher = {
-    dispatch: (effect, _draftRow) => logger.info(`[extraction] dispatch stub: ${effect}`),
-  };
+  // Phase 38 Plan 06: real outbound dispatcher. Ask-back replies route to the
+  // originating capture's reply_target_kind (DM vs group); needs-review pings
+  // go to operatorRecipient (Don Santiago via SIGNAL_RECIPIENT). The dispatcher
+  // never throws -- signal-cli outages return {ok:false} and the draft row
+  // stays in its persisted state for retry on the next farmer message.
+  const outboundDispatcher = createOutboundDispatcher({
+    signalClient,
+    config,
+    logger,
+    previewBuilder: previewBuilderMod,
+    operatorRecipient: config.signalRecipient,
+  });
+  logger.info(`[boot] extraction outbound dispatcher ready -> ${maskNumber(config.signalRecipient)}`);
   const extractionPipeline = createExtractionPipeline({
     pool,
     extractor,
