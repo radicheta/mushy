@@ -32,16 +32,24 @@ const DRAFT_JSON_SCHEMA = zodToJsonSchema(Draft, 'Draft');
 
 const LOG_TYPES = Object.freeze(['seeding', 'activity', 'input', 'observation', 'harvest']);
 
-// Phase 38 Plan 03 Task 2: SUBMISSION wrapper.
-// Anthropic submit_extraction tool input = {draft, continuity, continuity_reason,
-// per_field_confidence}. Keeps Plan 01's Draft schema pure (no _meta hacks) while
-// the wrapper carries the continuity decision the LLM makes per CONTEXT D-01.
-const Submission = z
+// Phase 38 Plan 08: SUBMISSION wrapper, multi-draft shape.
+// Anthropic submit_extraction tool input = {drafts: [{draft, per_field_confidence}],
+// continuity, continuity_reason}. Multi-draft because a single page (e.g. a 21-block
+// individuation page from mushdatadump) holds many distinct events that each need
+// their own farmOS asset. Continuity is per-call (the whole capture is start_new /
+// append / replace against the in-flight context).
+const DraftSubmission = z
   .object({
     draft: Draft,
+    per_field_confidence: z.record(z.string(), z.number().min(0).max(1)),
+  })
+  .strict();
+
+const Submission = z
+  .object({
+    drafts: z.array(DraftSubmission).min(1),
     continuity: z.enum(['append', 'replace', 'start_new']),
     continuity_reason: z.string().min(1),
-    per_field_confidence: z.record(z.string(), z.number().min(0).max(1)),
   })
   .strict();
 
@@ -50,6 +58,7 @@ const SUBMISSION_JSON_SCHEMA = zodToJsonSchema(Submission, 'Submission');
 module.exports = {
   Draft,
   DRAFT_JSON_SCHEMA,
+  DraftSubmission,
   Submission,
   SUBMISSION_JSON_SCHEMA,
   LOG_TYPES,

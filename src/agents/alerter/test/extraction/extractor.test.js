@@ -19,18 +19,23 @@ const { Submission, SUBMISSION_JSON_SCHEMA } = require('../../src/extraction/sch
 const silentLogger = { warn: () => {}, info: () => {}, error: () => {} };
 
 function validInput() {
+  // Plan 08 multi-draft Submission shape.
   return {
-    draft: {
-      type: 'seeding',
-      species: 'shiitake',
-      block_name: '260512_SHI_1',
-      qty: 12,
-      event_timestamp: '2026-05-12T00:00:00Z',
-      confidence: { species: 0.95, block_name: 0.95, qty: 0.95, event_timestamp: 0.6 },
-    },
+    drafts: [
+      {
+        draft: {
+          type: 'seeding',
+          species: 'shiitake',
+          block_name: '260512_SHI_1',
+          qty: 12,
+          event_timestamp: '2026-05-12T00:00:00Z',
+          confidence: { species: 0.95, block_name: 0.95, qty: 0.95, event_timestamp: 0.6 },
+        },
+        per_field_confidence: { species: 0.95, block_name: 0.95, qty: 0.95, event_timestamp: 0.6 },
+      },
+    ],
     continuity: 'start_new',
     continuity_reason: 'No in-flight draft.',
-    per_field_confidence: { species: 0.95, block_name: 0.95, qty: 0.95, event_timestamp: 0.6 },
   };
 }
 

@@ -49,8 +49,8 @@ function buildToolSpec() {
   };
 }
 
-function buildInitialUserContent({ captures, inFlightDraft }) {
-  // Capture set -> a single user turn with: in-flight summary, then per-capture text/transcript/images.
+function buildInitialUserContent({ captures, inFlightDraft, corpusContext }) {
+  // Capture set -> a single user turn with: corpus context, in-flight summary, then per-capture text/transcript/images.
   // Plan 07 bug fix (Rule 1): close the last few-shot tool_use (tu_fewshot_3) with a
   // tool_result block. Anthropic rejects 400 if any tool_use lacks an immediately-following
   // tool_result in the next user message.
@@ -60,6 +60,12 @@ function buildInitialUserContent({ captures, inFlightDraft }) {
     tool_use_id: 'tu_fewshot_3',
     content: [{ type: 'text', text: 'accepted' }],
   });
+  if (corpusContext && typeof corpusContext === 'object') {
+    blocks.push({
+      type: 'text',
+      text: `corpus_context: ${JSON.stringify(corpusContext)}`,
+    });
+  }
   blocks.push({
     type: 'text',
     text: `In-flight draft: ${inFlightDraft ? JSON.stringify(inFlightDraft) : 'none'}`,
@@ -92,11 +98,11 @@ function createExtractor({
   const toolSpec = buildToolSpec();
 
   return {
-    async extract({ captures, inFlightDraft } = {}) {
+    async extract({ captures, inFlightDraft, corpusContext } = {}) {
       try {
         const systemBlocks = CACHEABLE_SYSTEM_BLOCKS;
         const fewShot = cacheableFewShot();
-        const userContent = buildInitialUserContent({ captures, inFlightDraft });
+        const userContent = buildInitialUserContent({ captures, inFlightDraft, corpusContext });
         const messages = [...fewShot, { role: 'user', content: userContent }];
 
         const baseReq = {
@@ -116,14 +122,16 @@ function createExtractor({
           return { ok: false, reason: e.message };
         }
 
+        const usage1 = resp && resp.usage ? resp.usage : null;
+
         let toolUse = findToolUseBlock(resp);
         if (!toolUse) {
-          return { ok: false, reason: 'no_tool_use_in_response' };
+          return { ok: false, reason: 'no_tool_use_in_response', usage: usage1 };
         }
 
         let parsed = validateDraft(toolUse.input, Submission);
         if (parsed.ok) {
-          return packResult(parsed.draft);
+          return packResult(parsed.draft, sumUsage([usage1]));
         }
 
         // Retry once with tool_result is_error=true.
@@ -142,19 +150,22 @@ function createExtractor({
           resp2 = await client.messages.create(retryReq);
         } catch (e) {
           logger.warn && logger.warn(`[extractor] retry degraded: ${e.message}`);
-          return { ok: false, reason: e.message };
+          return { ok: false, reason: e.message, usage: usage1 };
         }
+
+        const usage2 = resp2 && resp2.usage ? resp2.usage : null;
+        const usageSum = sumUsage([usage1, usage2]);
 
         const toolUse2 = findToolUseBlock(resp2);
         if (!toolUse2) {
-          return { ok: false, reason: 'no_tool_use_in_response' };
+          return { ok: false, reason: 'no_tool_use_in_response', usage: usageSum };
         }
         const parsed2 = validateDraft(toolUse2.input, Submission);
         if (parsed2.ok) {
-          return packResult(parsed2.draft);
+          return packResult(parsed2.draft, usageSum);
         }
         logger.warn && logger.warn(`[extractor] schema_invalid after retry`);
-        return { ok: false, reason: 'schema_invalid', errors: parsed2.errors };
+        return { ok: false, reason: 'schema_invalid', errors: parsed2.errors, raw_first: toolUse && toolUse.input, raw_retry: toolUse2 && toolUse2.input, usage: usageSum };
       } catch (e) {
         logger.warn && logger.warn(`[extractor] degraded: ${e.message}`);
         return { ok: false, reason: e.message };
@@ -163,14 +174,36 @@ function createExtractor({
   };
 }
 
-function packResult(submission) {
+function packResult(submission, usage) {
+  // Plan 08: multi-draft shape. Submission = {drafts: [{draft, per_field_confidence}], continuity, continuity_reason}.
+  // Back-compat: also expose .draft/.per_field_confidence as the first element when drafts.length === 1
+  // so call sites that still want the single-event view keep working until pipeline.js / state-machine.js are rewired.
+  const drafts = Array.isArray(submission.drafts) ? submission.drafts : [];
+  const first = drafts[0] || null;
   return {
     ok: true,
-    draft: submission.draft,
+    drafts,
     continuity_decision: submission.continuity,
     continuity_reason: submission.continuity_reason,
-    per_field_confidence: submission.per_field_confidence,
+    // Legacy fields (single-event view).
+    draft: first ? first.draft : null,
+    per_field_confidence: first ? first.per_field_confidence : null,
+    usage: usage || null,
   };
+}
+
+function sumUsage(list) {
+  const out = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
+  let any = false;
+  for (const u of list || []) {
+    if (!u) continue;
+    any = true;
+    out.input_tokens += u.input_tokens || 0;
+    out.output_tokens += u.output_tokens || 0;
+    out.cache_creation_input_tokens += u.cache_creation_input_tokens || 0;
+    out.cache_read_input_tokens += u.cache_read_input_tokens || 0;
+  }
+  return any ? out : null;
 }
 
 module.exports = {

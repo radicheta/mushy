@@ -25,17 +25,30 @@ function validateDraft(rawToolInput, schema) {
       errors: result.error.issues.map((i) => ({ path: i.path, message: i.message })),
     };
   }
-  const draft = result.data;
-  if (draft && draft.type === 'observation') {
-    if (!hasStateOrNotes(draft)) {
-      return {
-        ok: false,
-        reason: 'schema_invalid',
-        errors: [{ path: ['state'], message: 'observation requires state or notes' }],
-      };
+  const parsed = result.data;
+  // New Submission shape: walk drafts[] and re-apply the observation refine.
+  if (parsed && Array.isArray(parsed.drafts)) {
+    for (let i = 0; i < parsed.drafts.length; i += 1) {
+      const d = parsed.drafts[i] && parsed.drafts[i].draft;
+      if (d && d.type === 'observation' && !hasStateOrNotes(d)) {
+        return {
+          ok: false,
+          reason: 'schema_invalid',
+          errors: [{ path: ['drafts', i, 'draft', 'state'], message: 'observation requires state or notes' }],
+        };
+      }
     }
+    return { ok: true, draft: parsed };
   }
-  return { ok: true, draft };
+  // Legacy shape (single draft) -- still used by some unit tests / callers.
+  if (parsed && parsed.type === 'observation' && !hasStateOrNotes(parsed)) {
+    return {
+      ok: false,
+      reason: 'schema_invalid',
+      errors: [{ path: ['state'], message: 'observation requires state or notes' }],
+    };
+  }
+  return { ok: true, draft: parsed };
 }
 
 function buildToolResultRetry(toolUseId, errors) {
