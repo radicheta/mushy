@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.7
 milestone_name: Multimodal Signal → FarmOS Events
-status: Plan 04 (state machine) unblocked; extractor + multimodal fusion + Zod retry envelope live; SUBMISSION wrapper schema in barrel
-stopped_at: Phase 38 Plan 03 shipped (extractor + multimodal + validator + prompts)
-last_updated: "2026-05-12T15:00:00Z"
-last_activity: 2026-05-12 Phase 38-03 executed
+status: Plan 04 (state machine + ask-back preview) SHIPPED; Plan 05 (signal_draft DB + wiring) unblocked
+stopped_at: Phase 38 Plan 04 shipped (state machine + preview-builder + config knobs)
+last_updated: "2026-05-12T16:30:00Z"
+last_activity: 2026-05-12 Phase 38-04 executed
 progress:
   total_phases: 22
   completed_phases: 2
   total_plans: 23
-  completed_plans: 16
-  percent: 70
+  completed_plans: 17
+  percent: 74
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 38 (in progress)
-Plan: 03 (SHIPPED — extractor + multimodal + validator + prompts)
-Status: Plan 04 (state machine) unblocked; extractor.extract({captures, inFlightDraft}) returns Zod-valid Submission via forced tool-use with one-shot tool_result retry; multimodal fusion (text+transcript+image) in one Anthropic call; jimp@0.22 image downscale at 1.15MP/5MB
+Plan: 04 (SHIPPED — state-machine + ask-back preview-builder + 3 config knobs)
+Status: Plan 05 (signal_draft DB + state-machine wiring into capture pipeline) unblocked; pure state-machine + farmer-facing preview both green with 42 new unit tests
 Milestone: v1.7 — Multimodal Signal to FarmOS Events
-Last activity: 2026-05-12 Phase 38-03 executed
-Next up: /gsd-execute-phase 38 plan 04 (state machine — pending/awaiting_farmer/needs_review/expired transitions around extractor)
+Last activity: 2026-05-12 Phase 38-04 executed
+Next up: /gsd-execute-phase 38 plan 05 (signal_draft DB schema + extraction-pipeline wiring)
 
 Phase 37 Plan 04 remains PARTIAL — Tasks 1+2 shipped (7b7256c, 7bff438); Task 3 live attestations deferred to operator per 37-RUNBOOK.md.
 
@@ -145,6 +145,8 @@ Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (for
 - [38-01] ObservationLogBase exported (no .refine) alongside ObservationLog (with .refine) — Zod discriminatedUnion requires pure z.object inputs; downstream validator must re-apply state-or-notes check when type==='observation'.
 - [38-01] DRAFT_JSON_SCHEMA shape is `{$ref: '#/definitions/Draft', definitions: {Draft: {anyOf: [...]}}}` -- draft-7, Anthropic-compatible as a single JSON object; Plan 03 passes verbatim as tools[0].input_schema.
 - [38-01] Activity name enum hardcoded to 7 values (sterilize, sterilize_failed, water, relocate, cold_shock, archive_spent, contam) per CONTEXT D-04.
+- [Phase ?]: [38-04] 3-turn cap semantics: currentTurns+1 >= maxAskbackTurns triggers needs_review (off-by-one fix vs plan text)
+- [Phase ?]: [38-04] fmtNum exported from message.js (was internal); preview-builder requires it per plan key_links
 
 ### Pending Todos
 
@@ -194,10 +196,11 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 | Phase Phase 37 P02 P37-02 | 12min | 3 tasks | 6 files |
 | Phase 37 P03 | 25min | 3 tasks | 4 files |
 | Phase 38 P01 | 12min | 3 tasks | 8 files |
+| Phase 38 P04 | 25min | 3 tasks | 7 files |
 
 ## Session Continuity
 
-Last session: 2026-05-12T03:47:14.475Z
+Last session: 2026-05-12T03:54:36.950Z
 Stopped at: Phase 38 context gathered (extraction pipeline decisions D-01..D-07)
 Next up: /gsd-discuss-phase 36 or /gsd-plan-phase 36
 
