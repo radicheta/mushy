@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.7
 milestone_name: Multimodal Signal → FarmOS Events
-status: Phase 38 CLOSED -- Plan 07 ship-gate PASS attested by Don Santiago; Plan 08 deferred (advisory-only). Phase 39 next.
-stopped_at: Phase 38 closed 2026-05-12; entering autonomous v1.7 close (Phases 39 -> 42)
-last_updated: "2026-05-12T12:00:00Z"
-last_activity: 2026-05-12 Phase 38 closed on Plan 07 PASS attestation
+status: Phase 38 REOPENED -- live prod inoc session failed (whisper 500 + schema_invalid on real audio + uncurated text). Plan 07 PASS retracted. Remediation pending.
+stopped_at: Phase 38 reopened 2026-05-12 -- prod inoc session corpus at /mnt/mossrock/shared/mushdatadump-prod/2026-05-12_inoc_santi/ surfaced whisper service brittleness + schema_invalid on real input
+last_updated: "2026-05-12T12:30:00Z"
+last_activity: 2026-05-12 Phase 38 reopened on prod-session live-replay failures
 progress:
   total_phases: 22
-  completed_phases: 3
+  completed_phases: 2
   total_plans: 23
-  completed_plans: 20
-  percent: 87
+  completed_plans: 19
+  percent: 83
 ---
 
 # Project State
@@ -25,14 +25,23 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 
 ## Current Position
 
-Phase: 38 CLOSED 2026-05-12 (Plan 07 ship-gate PASS attested by Don Santiago; Plan 08 deferred as advisory-only)
+Phase: 38 REOPENED 2026-05-12 -- prod inoc session live-replay surfaced two distinct failures
 Milestone: v1.7 -- Multimodal Signal to FarmOS Events
-Last activity: 2026-05-12 Phase 38 closed; entering autonomous v1.7 close
-Next up: Phase 39 Farmer Confirmation Loop -- discuss -> plan -> execute autonomously through Phase 42 (SHI-on-Sawdust pilot)
+Last activity: 2026-05-12 Phase 38 reopened after prod-session live-replay failures
+Next up: Phase 38 remediation plan -- triage whisper 500 + schema_invalid; re-run Plan 07 against expanded fixture set INCLUDING the prod inoc session before re-attesting
 
-Phase 38 close notes:
-- Plan 07 ship-gate eval PASS (2/2 fixtures, schema 100%, OR-bar 100%); cap was EVAL_MAX_FIXTURES=2 of 73 available -- Don Santiago accepted the sample as sufficient
-- Plan 08 (prod-log advisory eval) deferred in place; resurfaces when production-log corpus path is supplied (memory: project_phase38_production_logs_available)
+Phase 38 reopen trigger:
+- Plan 07 PASS was on 2 curated photo-only fixtures (no audio, no real text)
+- Live replay on real inoc session (1 audio + 2 logsheet photos + 1 butt-dial) returned 0/4 successful extractions
+- Whisper service: 500 Internal Server Error on audio path (service-level bug; not an extractor issue)
+- Extractor: schema_invalid after retry on all attempts including image-only paths (real signal, not transcription-derived)
+- Outbound DM: bot replied 4 times despite extraction failure -- needs to surface "we are degraded" rather than auto-respond as if extraction succeeded
+
+Prod inoc session corpus: /mnt/mossrock/shared/mushdatadump-prod/2026-05-12_inoc_santi/ (see MANIFEST.md)
+- Logsheet entries may NOT exactly match audio narration -- deliberate cross-check by Don Santiago to surface mismatches during validation
+- Harness must detect modality disagreement, not silently merge
+
+Autonomous task #2 (Phase 39 -> 42 v1.7 close): PAUSED until Phase 38 actually passes a real-data eval, not just a 2-fixture curated one.
 
 Phase 37 Plan 04 remains PARTIAL — Tasks 1+2 shipped (7b7256c, 7bff438); Task 3 live attestations deferred to operator per 37-RUNBOOK.md.
 
