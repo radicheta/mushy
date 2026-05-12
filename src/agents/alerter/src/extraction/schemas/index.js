@@ -32,9 +32,26 @@ const DRAFT_JSON_SCHEMA = zodToJsonSchema(Draft, 'Draft');
 
 const LOG_TYPES = Object.freeze(['seeding', 'activity', 'input', 'observation', 'harvest']);
 
+// Phase 38 Plan 03 Task 2: SUBMISSION wrapper.
+// Anthropic submit_extraction tool input = {draft, continuity, continuity_reason,
+// per_field_confidence}. Keeps Plan 01's Draft schema pure (no _meta hacks) while
+// the wrapper carries the continuity decision the LLM makes per CONTEXT D-01.
+const Submission = z
+  .object({
+    draft: Draft,
+    continuity: z.enum(['append', 'replace', 'start_new']),
+    continuity_reason: z.string().min(1),
+    per_field_confidence: z.record(z.string(), z.number().min(0).max(1)),
+  })
+  .strict();
+
+const SUBMISSION_JSON_SCHEMA = zodToJsonSchema(Submission, 'Submission');
+
 module.exports = {
   Draft,
   DRAFT_JSON_SCHEMA,
+  Submission,
+  SUBMISSION_JSON_SCHEMA,
   LOG_TYPES,
   SeedingLog,
   ActivityLog,
