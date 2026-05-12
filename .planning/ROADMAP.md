@@ -177,7 +177,16 @@ Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 202
   3. When a required field is ambiguous, bot sends a targeted Signal reply asking for it; draft completes after farmer responds
   4. A lineage cue ("from blocks 3, 4, and 5") extracts a multi-parent harvest batch ref per C4
   5. No off-schema fields appear in any extracted draft; all log types are native per C5
-**Plans:** TBD
+**Plans:** 8 plans
+Plans:
+- [ ] 38-01-PLAN.md — Wave 0 zod schemas (B7 log types + discriminated union + Anthropic input_schema)
+- [ ] 38-02-PLAN.md — Wave 0 signal_draft table + CRUD module (extraction-db.js)
+- [ ] 38-03-PLAN.md — Wave 1 extractor + multimodal fusion + tool-use retry
+- [ ] 38-04-PLAN.md — Wave 1 state machine + ask-back trigger + 3-turn cap + preview builder
+- [ ] 38-05-PLAN.md — Wave 2 pipeline orchestration + capture.js hook
+- [ ] 38-06-PLAN.md — Wave 2 outbound dispatcher (ask-back + needs-review ping)
+- [ ] 38-07-PLAN.md — Wave 3 mushdatadump eval harness (D-07 ship-gate)
+- [ ] 38-08-PLAN.md — Wave 3 production-log advisory smoke (deferred path)
 
 ### Phase 39: Farmer Confirmation Loop
 
@@ -190,7 +199,16 @@ Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 202
   3. NO discards the draft; bot confirms discard; original transcript remains in the Phase 25 capture store for audit
   4. EDIT with correction text produces a revised draft; EDIT is accepted at least 3 times before the bot escalates
   5. A draft with no response for 30 min gets one ping, then auto-discards with a note; it never auto-commits
-**Plans:** TBD
+**Plans:** 8 plans
+Plans:
+- [ ] 38-01-PLAN.md — Wave 0 zod schemas (B7 log types + discriminated union + Anthropic input_schema)
+- [ ] 38-02-PLAN.md — Wave 0 signal_draft table + CRUD module (extraction-db.js)
+- [ ] 38-03-PLAN.md — Wave 1 extractor + multimodal fusion + tool-use retry
+- [ ] 38-04-PLAN.md — Wave 1 state machine + ask-back trigger + 3-turn cap + preview builder
+- [ ] 38-05-PLAN.md — Wave 2 pipeline orchestration + capture.js hook
+- [ ] 38-06-PLAN.md — Wave 2 outbound dispatcher (ask-back + needs-review ping)
+- [ ] 38-07-PLAN.md — Wave 3 mushdatadump eval harness (D-07 ship-gate)
+- [ ] 38-08-PLAN.md — Wave 3 production-log advisory smoke (deferred path)
 
 ### Phase 40: FarmOS Write Path
 
@@ -203,7 +221,16 @@ Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 202
   3. A photo from the originating Signal message appears as a file attachment on the observation or harvest log in farmOS
   4. A QR code in a farmer message resolves to an existing block asset and appends a log to it rather than creating a new asset
   5. Operator can query one endpoint or log stream and see every farmOS write from the last 24h with draft UUID, farmer ID, and farmOS response
-**Plans:** TBD
+**Plans:** 8 plans
+Plans:
+- [ ] 38-01-PLAN.md — Wave 0 zod schemas (B7 log types + discriminated union + Anthropic input_schema)
+- [ ] 38-02-PLAN.md — Wave 0 signal_draft table + CRUD module (extraction-db.js)
+- [ ] 38-03-PLAN.md — Wave 1 extractor + multimodal fusion + tool-use retry
+- [ ] 38-04-PLAN.md — Wave 1 state machine + ask-back trigger + 3-turn cap + preview builder
+- [ ] 38-05-PLAN.md — Wave 2 pipeline orchestration + capture.js hook
+- [ ] 38-06-PLAN.md — Wave 2 outbound dispatcher (ask-back + needs-review ping)
+- [ ] 38-07-PLAN.md — Wave 3 mushdatadump eval harness (D-07 ship-gate)
+- [ ] 38-08-PLAN.md — Wave 3 production-log advisory smoke (deferred path)
 **Composes-with:** 999.2 (this phase is its closure)
 
 ### Phase 41: Ingestion Harness
@@ -216,7 +243,16 @@ Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 202
   2. At least one batch of paper inoc log photos flows through the pipeline; a hand-labeled comparison report is produced showing per-field accuracy
   3. At least one set of existing audio recordings flows through Whisper plus extraction; comparison report produced
   4. The same underlying inoc session represented as both a paper-log photo and an audio recording produces identical seeding log content
-**Plans:** TBD
+**Plans:** 8 plans
+Plans:
+- [ ] 38-01-PLAN.md — Wave 0 zod schemas (B7 log types + discriminated union + Anthropic input_schema)
+- [ ] 38-02-PLAN.md — Wave 0 signal_draft table + CRUD module (extraction-db.js)
+- [ ] 38-03-PLAN.md — Wave 1 extractor + multimodal fusion + tool-use retry
+- [ ] 38-04-PLAN.md — Wave 1 state machine + ask-back trigger + 3-turn cap + preview builder
+- [ ] 38-05-PLAN.md — Wave 2 pipeline orchestration + capture.js hook
+- [ ] 38-06-PLAN.md — Wave 2 outbound dispatcher (ask-back + needs-review ping)
+- [ ] 38-07-PLAN.md — Wave 3 mushdatadump eval harness (D-07 ship-gate)
+- [ ] 38-08-PLAN.md — Wave 3 production-log advisory smoke (deferred path)
 
 ### Phase 42: SHI-on-Sawdust Pilot
 
@@ -230,7 +266,16 @@ Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 202
   4. Harvest batch and at least one bag asset exist in farmOS after a harvest Signal message; bag asset is QR-bound
   5. Archive_spent activity log written on the block; lineage walk bag to harvest batch to block to sterilization batch returns clean with no broken refs
   6. Operator reconstructs the full lifecycle from farmOS logs alone without referring to Signal history
-**Plans:** TBD
+**Plans:** 8 plans
+Plans:
+- [ ] 38-01-PLAN.md — Wave 0 zod schemas (B7 log types + discriminated union + Anthropic input_schema)
+- [ ] 38-02-PLAN.md — Wave 0 signal_draft table + CRUD module (extraction-db.js)
+- [ ] 38-03-PLAN.md — Wave 1 extractor + multimodal fusion + tool-use retry
+- [ ] 38-04-PLAN.md — Wave 1 state machine + ask-back trigger + 3-turn cap + preview builder
+- [ ] 38-05-PLAN.md — Wave 2 pipeline orchestration + capture.js hook
+- [ ] 38-06-PLAN.md — Wave 2 outbound dispatcher (ask-back + needs-review ping)
+- [ ] 38-07-PLAN.md — Wave 3 mushdatadump eval harness (D-07 ship-gate)
+- [ ] 38-08-PLAN.md — Wave 3 production-log advisory smoke (deferred path)
 
 ## Progress
 
