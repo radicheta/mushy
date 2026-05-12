@@ -128,7 +128,7 @@ Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 202
 
 - [ ] **Phase 36: Signal Pre-gate** — signal-cli primary re-registration; receive unblock; identity-trust verified
 - [x] **Phase 37: Multi-farmer Routing** — DM routing to sender; group-thread participation; farmOS person lookup
-- [ ] **Phase 38: Extraction Pipeline** — schema-aware LLM extraction; multimodal fusion; confidence loop; lineage
+- [x] **Phase 38: Extraction Pipeline** — schema-aware LLM extraction; multimodal fusion; confidence loop; lineage
 - [ ] **Phase 39: Farmer Confirmation Loop** — confirm-before-write; idempotent commit; EDIT loop; draft timeout
 - [ ] **Phase 40: FarmOS Write Path** — API client; asset + log creation; QR binding; photo upload; audit log
 - [ ] **Phase 41: Ingestion Harness** — synthetic corpus; paper-log replay; audio replay; cross-stream consistency
