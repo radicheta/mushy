@@ -123,7 +123,11 @@ fc_controller:
     modes.fruiting.alerter.critical_cooldown_min: 75   # critical:standard ratio held at ~1.67
     modes.fruiting.alerter.humidifier_stuck_min:  30   # narrow band → fast incident, keep tight
     modes.fruiting.alerter.oob_n:                 5
-    modes.fruiting.alerter.oob_window_min:        3
+    # 2026-05-12: 3→8 to honor "don't bother me for little things". Don Santiago
+    # doesn't care about <~8min RH drifts in fruiting; band defense + PID handle
+    # transients without needing a Signal ping. Same intent as the mooted env
+    # band-aid ALERT_OOB_WINDOW_MIN=8 (Phase 29 Tier B wins over env).
+    modes.fruiting.alerter.oob_window_min:        8
     modes.pinning.alerter.cooldown_min:           75   # pinning > fruiting prevents D-09 swap-spam
     modes.pinning.alerter.critical_cooldown_min:  120
     modes.pinning.alerter.humidifier_stuck_min:   75   # pinning intentionally swings (D-05)
