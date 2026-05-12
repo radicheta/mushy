@@ -1,0 +1,553 @@
+[
+  {
+    "name": "IMG_3800.jpg",
+    "path": "/mnt/mossrock/shared/mushdatadump/jpeg/IMG_3800.jpg",
+    "latencyMs": 38796,
+    "result": {
+      "ok": true,
+      "drafts": [
+        {
+          "draft": {
+            "type": "seeding",
+            "species": "DT",
+            "block_name": "250806_DT_1",
+            "qty": 1,
+            "event_timestamp": "2025-08-06T00:00:00Z",
+            "parent_batch_name": "250627_DT_2",
+            "confidence": {
+              "species": 0.95,
+              "block_name": 0.9,
+              "qty": 0.95,
+              "event_timestamp": 0.85,
+              "parent_batch_name": 0.9
+            }
+          },
+          "per_field_confidence": {
+            "species": 0.95,
+            "block_name": 0.9,
+            "qty": 0.95,
+            "event_timestamp": 0.85,
+            "parent_batch_name": 0.9
+          }
+        },
+        {
+          "draft": {
+            "type": "seeding",
+            "species": "DT",
+            "block_name": "250806_DT_2",
+            "qty": 1,
+            "event_timestamp": "2025-08-06T00:00:00Z",
+            "parent_batch_name": "250627_DT_2",
+            "confidence": {
+              "species": 0.95,
+              "block_name": 0.9,
+              "qty": 0.95,
+              "event_timestamp": 0.85,
+              "parent_batch_name": 0.9
+            }
+          },
+          "per_field_confidence": {
+            "species": 0.95,
+            "block_name": 0.9,
+            "qty": 0.95,
+            "event_timestamp": 0.85,
+            "parent_batch_name": 0.9
+          }
+        },
+        {
+          "draft": {
+            "type": "seeding",
+            "species": "DT",
+            "block_name": "250806_DT_3",
+            "qty": 1,
+            "event_timestamp": "2025-08-06T00:00:00Z",
+            "parent_batch_name": "250627_DT_2",
+            "notes": "Row 3 annotated as rice substrate",
+            "confidence": {
+              "species": 0.95,
+              "block_name": 0.9,
+              "qty": 0.95,
+              "event_timestamp": 0.85,
+              "parent_batch_name": 0.9
+            }
+          },
+          "per_field_confidence": {
+            "species": 0.95,
+            "block_name": 0.9,
+            "qty": 0.95,
+            "event_timestamp": 0.85,
+            "parent_batch_name": 0.9
+          }
+        },
+        {
+          "draft": {
+            "type": "seeding",
+            "species": "DT",
+            "block_name": "250806_DT_4",
+            "qty": 1,
+            "event_timestamp": "2025-08-06T00:00:00Z",
+            "parent_batch_name": "250627_DT_2",
+            "notes": "Row 4 annotated as rice substrate",
+            "confidence": {
+              "species": 0.95,
+              "block_name": 0.9,
+              "qty": 0.95,
+              "event_timestamp": 0.85,
+              "parent_batch_name": 0.9
+            }
+          },
+          "per_field_confidence": {
+            "species": 0.95,
+            "block_name": 0.9,
+            "qty": 0.95,
+            "event_timestamp": 0.85,
+            "parent_batch_name": 0.9
+          }
+        },
+        {
+          "draft": {
+            "type": "seeding",
+            "species": "CAS",
+            "block_name": "250806_CAS_5",
+            "qty": 1,
+            "event_timestamp": "2025-08-06T00:00:00Z",
+            "parent_batch_name": "250625_CAS_7",
+            "confidence": {
+              "species": 0.95,
+              "block_name": 0.9,
+              "qty": 0.95,
+              "event_timestamp": 0.85,
+              "parent_batch_name": 0.85
+            }
+          },
+          "per_field_confidence": {
+            "species": 0.95,
+            "block_name": 0.9,
+            "qty": 0.95,
+            "event_timestamp": 0.85,
+            "parent_batch_name": 0.85
+          }
+        },
+        {
+          "draft": {
+            "type": "seeding",
+            "species": "CAS",
+            "block_name": "250806_CAS_6",
+            "qty": 1,
+            "event_timestamp": "2025-08-06T00:00:00Z",
+            "parent_batch_name": "250625_CAS_7",
+            "confidence": {
+              "species": 0.95,
+              "block_name": 0.9,
+              "qty": 0.95,
+              "event_timestamp": 0.85,
+              "parent_batch_name": 0.85
+            }
+          },
+          "per_field_confidence": {
+            "species": 0.95,
+            "block_name": 0.9,
+            "qty": 0.95,
+            "event_timestamp": 0.85,
+            "parent_batch_name": 0.85
+          }
+        },
+        {
+          "draft": {
+            "type": "seeding",
+            "species": "CAS",
+            "block_name": "250806_CAS_7",
+            "qty": 1,
+            "event_timestamp": "2025-08-06T00:00:00Z",
+            "parent_batch_name": "250625_CAS_7",
+            "confidence": {
+              "species": 0.95,
+              "block_name": 0.9,
+              "qty": 0.95,
+              "event_timestamp": 0.85,
+              "parent_batch_name": 0.85
+            }
+          },
+          "per_field_confidence": {
+            "species": 0.95,
+            "block_name": 0.9,
+            "qty": 0.95,
+            "event_timestamp": 0.85,
+            "parent_batch_name": 0.85
+          }
+        },
+        {
+          "draft": {
+            "type": "seeding",
+            "species": "CAS",
+            "block_name": "250806_CAS_8",
+            "qty": 1,
+            "event_timestamp": "2025-08-06T00:00:00Z",
+            "parent_batch_name": "250625_CAS_7",
+            "confidence": {
+              "species": 0.95,
+              "block_name": 0.9,
+              "qty": 0.95,
+              "event_timestamp": 0.85,
+              "parent_batch_name": 0.85
+            }
+          },
+          "per_field_confidence": {
+            "species": 0.95,
+            "block_name": 0.9,
+            "qty": 0.95,
+            "event_timestamp": 0.85,
+            "parent_batch_name": 0.85
+          }
+        },
+        {
+          "draft": {
+            "type": "seeding",
+            "species": "CAS",
+            "block_name": "250806_CAS_9",
+            "qty": 1,
+            "event_timestamp": "2025-08-06T00:00:00Z",
+            "parent_batch_name": "250625_CAS_7",
+            "confidence": {
+              "species": 0.95,
+              "block_name": 0.9,
+              "qty": 0.95,
+              "event_timestamp": 0.85,
+              "parent_batch_name": 0.85
+            }
+          },
+          "per_field_confidence": {
+            "species": 0.95,
+            "block_name": 0.9,
+            "qty": 0.95,
+            "event_timestamp": 0.85,
+            "parent_batch_name": 0.85
+          }
+        },
+        {
+          "draft": {
+            "type": "seeding",
+            "species": "CAS",
+            "block_name": "250806_CAS_10",
+            "qty": 1,
+            "event_timestamp": "2025-08-06T00:00:00Z",
+            "parent_batch_name": "250625_CAS_7",
+            "confidence": {
+              "species": 0.95,
+              "block_name": 0.9,
+              "qty": 0.95,
+              "event_timestamp": 0.85,
+              "parent_batch_name": 0.85
+            }
+          },
+          "per_field_confidence": {
+            "species": 0.95,
+            "block_name": 0.9,
+            "qty": 0.95,
+            "event_timestamp": 0.85,
+            "parent_batch_name": 0.85
+          }
+        },
+        {
+          "draft": {
+            "type": "seeding",
+            "species": "CAS",
+            "block_name": "250806_CAS_11",
+            "qty": 1,
+            "event_timestamp": "2025-08-06T00:00:00Z",
+            "parent_batch_name": "250625_CAS_7",
+            "confidence": {
+              "species": 0.95,
+              "block_name": 0.9,
+              "qty": 0.95,
+              "event_timestamp": 0.85,
+              "parent_batch_name": 0.85
+            }
+          },
+          "per_field_confidence": {
+            "species": 0.95,
+            "block_name": 0.9,
+            "qty": 0.95,
+            "event_timestamp": 0.85,
+            "parent_batch_name": 0.85
+          }
+        },
+        {
+          "draft": {
+            "type": "seeding",
+            "species": "CAS",
+            "block_name": "250806_CAS_12",
+            "qty": 1,
+            "event_timestamp": "2025-08-06T00:00:00Z",
+            "parent_batch_name": "250511_CAS_30",
+            "notes": "Source reads 25 05 11-30; decoded as 250511_CAS_30",
+            "confidence": {
+              "species": 0.95,
+              "block_name": 0.9,
+              "qty": 0.95,
+              "event_timestamp": 0.85,
+              "parent_batch_name": 0.75
+            }
+          },
+          "per_field_confidence": {
+            "species": 0.95,
+            "block_name": 0.9,
+            "qty": 0.95,
+            "event_timestamp": 0.85,
+            "parent_batch_name": 0.75
+          }
+        },
+        {
+          "draft": {
+            "type": "seeding",
+            "species": "CAS",
+            "block_name": "250806_CAS_13",
+            "qty": 1,
+            "event_timestamp": "2025-08-06T00:00:00Z",
+            "parent_batch_name": "250511_CAS_30",
+            "notes": "Source reads 25 05 11-30; decoded as 250511_CAS_30",
+            "confidence": {
+              "species": 0.95,
+              "block_name": 0.9,
+              "qty": 0.95,
+              "event_timestamp": 0.85,
+              "parent_batch_name": 0.75
+            }
+          },
+          "per_field_confidence": {
+            "species": 0.95,
+            "block_name": 0.9,
+            "qty": 0.95,
+            "event_timestamp": 0.85,
+            "parent_batch_name": 0.75
+          }
+        },
+        {
+          "draft": {
+            "type": "seeding",
+            "species": "CAS",
+            "block_name": "250806_CAS_14",
+            "qty": 1,
+            "event_timestamp": "2025-08-06T00:00:00Z",
+            "parent_batch_name": "250511_CAS_30",
+            "notes": "Source reads 25 05 11-30; decoded as 250511_CAS_30",
+            "confidence": {
+              "species": 0.95,
+              "block_name": 0.9,
+              "qty": 0.95,
+              "event_timestamp": 0.85,
+              "parent_batch_name": 0.75
+            }
+          },
+          "per_field_confidence": {
+            "species": 0.95,
+            "block_name": 0.9,
+            "qty": 0.95,
+            "event_timestamp": 0.85,
+            "parent_batch_name": 0.75
+          }
+        },
+        {
+          "draft": {
+            "type": "seeding",
+            "species": "CAS",
+            "block_name": "250806_CAS_15",
+            "qty": 1,
+            "event_timestamp": "2025-08-06T00:00:00Z",
+            "parent_batch_name": "250511_CAS_30",
+            "notes": "Source reads 25 05 11-30; decoded as 250511_CAS_30",
+            "confidence": {
+              "species": 0.95,
+              "block_name": 0.9,
+              "qty": 0.95,
+              "event_timestamp": 0.85,
+              "parent_batch_name": 0.75
+            }
+          },
+          "per_field_confidence": {
+            "species": 0.95,
+            "block_name": 0.9,
+            "qty": 0.95,
+            "event_timestamp": 0.85,
+            "parent_batch_name": 0.75
+          }
+        },
+        {
+          "draft": {
+            "type": "seeding",
+            "species": "CAS",
+            "block_name": "250806_CAS_16",
+            "qty": 1,
+            "event_timestamp": "2025-08-06T00:00:00Z",
+            "parent_batch_name": "250511_CAS_30",
+            "notes": "Source reads 25 05 11-30; decoded as 250511_CAS_30",
+            "confidence": {
+              "species": 0.95,
+              "block_name": 0.9,
+              "qty": 0.95,
+              "event_timestamp": 0.85,
+              "parent_batch_name": 0.75
+            }
+          },
+          "per_field_confidence": {
+            "species": 0.95,
+            "block_name": 0.9,
+            "qty": 0.95,
+            "event_timestamp": 0.85,
+            "parent_batch_name": 0.75
+          }
+        },
+        {
+          "draft": {
+            "type": "seeding",
+            "species": "SHI",
+            "block_name": "250806_SHI_17",
+            "qty": 1,
+            "event_timestamp": "2025-08-06T00:00:00Z",
+            "parent_batch_name": "250625_SHI_11",
+            "confidence": {
+              "species": 0.95,
+              "block_name": 0.9,
+              "qty": 0.95,
+              "event_timestamp": 0.85,
+              "parent_batch_name": 0.88
+            }
+          },
+          "per_field_confidence": {
+            "species": 0.95,
+            "block_name": 0.9,
+            "qty": 0.95,
+            "event_timestamp": 0.85,
+            "parent_batch_name": 0.88
+          }
+        },
+        {
+          "draft": {
+            "type": "seeding",
+            "species": "SHI",
+            "block_name": "250806_SHI_18",
+            "qty": 1,
+            "event_timestamp": "2025-08-06T00:00:00Z",
+            "parent_batch_name": "250625_SHI_11",
+            "confidence": {
+              "species": 0.95,
+              "block_name": 0.9,
+              "qty": 0.95,
+              "event_timestamp": 0.85,
+              "parent_batch_name": 0.88
+            }
+          },
+          "per_field_confidence": {
+            "species": 0.95,
+            "block_name": 0.9,
+            "qty": 0.95,
+            "event_timestamp": 0.85,
+            "parent_batch_name": 0.88
+          }
+        },
+        {
+          "draft": {
+            "type": "seeding",
+            "species": "SHI",
+            "block_name": "250806_SHI_19",
+            "qty": 1,
+            "event_timestamp": "2025-08-06T00:00:00Z",
+            "parent_batch_name": "250625_SHI_11",
+            "confidence": {
+              "species": 0.95,
+              "block_name": 0.9,
+              "qty": 0.95,
+              "event_timestamp": 0.85,
+              "parent_batch_name": 0.88
+            }
+          },
+          "per_field_confidence": {
+            "species": 0.95,
+            "block_name": 0.9,
+            "qty": 0.95,
+            "event_timestamp": 0.85,
+            "parent_batch_name": 0.88
+          }
+        },
+        {
+          "draft": {
+            "type": "seeding",
+            "species": "SHI",
+            "block_name": "250806_SHI_20",
+            "qty": 1,
+            "event_timestamp": "2025-08-06T00:00:00Z",
+            "parent_batch_name": "250625_SHI_11",
+            "confidence": {
+              "species": 0.95,
+              "block_name": 0.9,
+              "qty": 0.95,
+              "event_timestamp": 0.85,
+              "parent_batch_name": 0.88
+            }
+          },
+          "per_field_confidence": {
+            "species": 0.95,
+            "block_name": 0.9,
+            "qty": 0.95,
+            "event_timestamp": 0.85,
+            "parent_batch_name": 0.88
+          }
+        },
+        {
+          "draft": {
+            "type": "seeding",
+            "species": "SHI",
+            "block_name": "250806_SHI_21",
+            "qty": 1,
+            "event_timestamp": "2025-08-06T00:00:00Z",
+            "parent_batch_name": "250625_SHI_11",
+            "confidence": {
+              "species": 0.95,
+              "block_name": 0.9,
+              "qty": 0.95,
+              "event_timestamp": 0.85,
+              "parent_batch_name": 0.88
+            }
+          },
+          "per_field_confidence": {
+            "species": 0.95,
+            "block_name": 0.9,
+            "qty": 0.95,
+            "event_timestamp": 0.85,
+            "parent_batch_name": 0.88
+          }
+        }
+      ],
+      "continuity_decision": "start_new",
+      "continuity_reason": "No in-flight draft; these are 21 new individuation events from a fresh paper log page dated 08/06.",
+      "draft": {
+        "type": "seeding",
+        "species": "DT",
+        "block_name": "250806_DT_1",
+        "qty": 1,
+        "event_timestamp": "2025-08-06T00:00:00Z",
+        "parent_batch_name": "250627_DT_2",
+        "confidence": {
+          "species": 0.95,
+          "block_name": 0.9,
+          "qty": 0.95,
+          "event_timestamp": 0.85,
+          "parent_batch_name": 0.9
+        }
+      },
+      "per_field_confidence": {
+        "species": 0.95,
+        "block_name": 0.9,
+        "qty": 0.95,
+        "event_timestamp": 0.85,
+        "parent_batch_name": 0.9
+      },
+      "usage": {
+        "input_tokens": 1590,
+        "output_tokens": 4116,
+        "cache_creation_input_tokens": 5067,
+        "cache_read_input_tokens": 0
+      }
+    }
+  }
+]

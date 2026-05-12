@@ -127,9 +127,11 @@ function b5PrecisionRecall(results) {
   let extracted = 0;
   let expectedTotal = 0;
   let correct = 0;
+  let totalDrafts = 0;
   for (const r of results) {
     const expBlock = r.fixture && r.fixture.expected && r.fixture.expected.fields && r.fixture.expected.fields.block_name;
     const actBlock = r.actual && r.actual.ok && r.actual.draft && r.actual.draft.block_name;
+    if (r.actual && r.actual.ok) totalDrafts += 1;
     if (expBlock) expectedTotal += 1;
     if (actBlock && BLOCK_NAME_RE.test(actBlock)) {
       extracted += 1;
@@ -138,7 +140,10 @@ function b5PrecisionRecall(results) {
   }
   const precision = extracted === 0 ? 0 : correct / extracted;
   const recall = expectedTotal === 0 ? 0 : correct / expectedTotal;
-  return { precision, recall, extracted, correct, expected: expectedTotal };
+  // Regex-valid rate: of all successful drafts, fraction whose block_name passes the regex.
+  // Meaningful even when ground truth is absent (the Plan 07 mushdatadump case).
+  const regexValidRate = totalDrafts === 0 ? 0 : extracted / totalDrafts;
+  return { precision, recall, extracted, correct, expected: expectedTotal, totalDrafts, regexValidRate };
 }
 
 // 6. Brier score: mean( (confidence - correct)^2 ) across (confidence, correct?) pairs.
