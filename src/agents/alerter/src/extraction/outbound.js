@@ -75,6 +75,30 @@ function createOutboundDispatcher({
     return res;
   }
 
+  async function sendBatchReviewSummary(batch) {
+    // Plan 08 batch mode (paper-log scan: drafts.length > 1).
+    // batch = { sender_e164, draftIds: [{id, type, status}, ...], reply_target_kind, group_id, source_capture_ids }
+    // One Signal message to Don Santiago summarising the page instead of N per-draft pings.
+    if (!operatorRecipient || typeof operatorRecipient !== 'string' || operatorRecipient.length === 0) {
+      logger.warn && logger.warn(`[outbound] batch_review_summary: no_target (operatorRecipient unset)`);
+      return { ok: false, reason: 'no_target' };
+    }
+    const drafts = (batch && Array.isArray(batch.draftIds)) ? batch.draftIds : [];
+    const sender = (batch && batch.sender_e164) || '(unknown)';
+    const total = drafts.length;
+    const needReview = drafts.filter((d) => d && d.status === 'needs_review').length;
+    const clean = total - needReview;
+    const idsPreview = drafts.slice(0, 3).map((d) => truncId(d && d.id)).join(', ');
+    const more = drafts.length > 3 ? `, +${drafts.length - 3} more` : '';
+    const raw = `Hey Don Santiago, paper-log scan from ${sender}: ${total} drafts (${clean} clean, ${needReview} need review). IDs: ${idsPreview}${more}.`;
+    const text = sanitize(raw);
+    const res = await safeSend(text, operatorRecipient);
+    if (res.ok) {
+      logger.info && logger.info(`[outbound] batch_review_summary sent total=${total} clean=${clean} needs_review=${needReview}`);
+    }
+    return res;
+  }
+
   async function sendNeedsReviewPing(draftRow) {
     if (!operatorRecipient || typeof operatorRecipient !== 'string' || operatorRecipient.length === 0) {
       logger.warn && logger.warn(`[outbound] needs_review_ping: no_target (operatorRecipient unset)`);
@@ -100,6 +124,9 @@ function createOutboundDispatcher({
           return await sendAskBack(draftRow || {});
         case 'send_needs_review_ping':
           return await sendNeedsReviewPing(draftRow || {});
+        case 'send_batch_review_summary':
+          // draftRow carries the batch payload for this side effect.
+          return await sendBatchReviewSummary(draftRow || {});
         case 'mark_expired':
         case 'handoff_to_phase_39':
         case 'noop':

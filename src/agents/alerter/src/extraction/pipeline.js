@@ -43,6 +43,95 @@ function createExtractionPipeline({
   if (!previewBuilder) throw new Error('createExtractionPipeline: previewBuilder required');
   if (!config) throw new Error('createExtractionPipeline: config required');
 
+  // Plan 08 batch mode: multi-draft paper-log scan. Forces start_new, never asks the
+  // farmer back, summarises the whole page to the operator in one Signal message.
+  // Each draft gets a unique id via (sourceCaptureIds, index).
+  async function runBatchMode({ draftsArr, captureCtx, sender, captureId, sourceCaptureIdsBase, nowMs, inFlight }) {
+    const logger_ = logger;
+    // Expire any prior in-flight before the batch lands -- paper-log scan resets conversational state.
+    if (inFlight) {
+      const exp = await extractionDb.updateDraftStatus(pool, inFlight.id, DRAFT_STATUS.EXPIRED);
+      if (!exp.ok) {
+        logger_.warn && logger_.warn(`[extraction] batch: expire prior draft failed: ${exp.reason}`);
+      }
+    }
+
+    const persisted = [];
+    for (let i = 0; i < draftsArr.length; i += 1) {
+      const item = draftsArr[i] || {};
+      const draft = item.draft || null;
+      const perFieldConfidence = item.per_field_confidence || null;
+      const draftId = extractionDb.computeDraftId(sourceCaptureIdsBase, i);
+
+      const ins = await extractionDb.insertDraft(pool, {
+        id: draftId,
+        sender_e164: sender,
+        farmos_person: captureCtx.farmosPerson || null,
+        source_capture_ids: sourceCaptureIdsBase,
+        status: DRAFT_STATUS.PENDING,
+        log_type: (draft && draft.type) || null,
+        draft_json: draft,
+        per_field_confidence: perFieldConfidence,
+        askback_turns: 0,
+        reply_target_kind: captureCtx.replyTargetKind || null,
+        group_id: captureCtx.groupId || null,
+      });
+      if (!ins.ok) {
+        logger_.warn && logger_.warn(`[extraction] batch: insertDraft idx=${i} failed: ${ins.reason}`);
+        continue;
+      }
+
+      // Run state-machine with maxAskbackTurns=0 to force NEEDS_REVIEW path
+      // instead of send_ask_back for any draft that has missing/low-conf fields.
+      // Clean drafts still take the AWAITING_FARMER + handoff_to_phase_39 path.
+      const transition = stateMachine.transition(
+        { status: DRAFT_STATUS.PENDING, askback_turns: 0, last_updated_at_ms: nowMs },
+        {
+          type: 'extraction_result',
+          draft,
+          perFieldConfidence: perFieldConfidence || {},
+          threshold: config.extractionConfidenceThreshold,
+          maxAskbackTurns: 0,
+          now_ms: nowMs,
+        },
+      );
+
+      const extras = {};
+      if (transition.reason === 'askback_cap') {
+        extras.needs_review_reason = 'batch_mode_low_conf';
+      }
+      const finalUpd = await extractionDb.updateDraftStatus(pool, draftId, transition.nextStatus, extras);
+      if (!finalUpd.ok) {
+        logger_.warn && logger_.warn(`[extraction] batch: final status update idx=${i} failed: ${finalUpd.reason}`);
+      }
+      persisted.push({ id: draftId, type: draft && draft.type, status: transition.nextStatus });
+    }
+
+    // One summary ping to the operator for the whole page.
+    if (persisted.length > 0) {
+      try {
+        outboundDispatcher.dispatch('send_batch_review_summary', {
+          sender_e164: sender,
+          source_capture_ids: sourceCaptureIdsBase,
+          reply_target_kind: captureCtx.replyTargetKind || null,
+          group_id: captureCtx.groupId || null,
+          draftIds: persisted,
+        });
+      } catch (e) {
+        logger_.warn && logger_.warn(`[extraction] batch: dispatch summary failed: ${e.message}`);
+      }
+    }
+
+    return {
+      ok: true,
+      mode: 'batch',
+      count: persisted.length,
+      draftIds: persisted.map((d) => d.id),
+      cleanCount: persisted.filter((d) => d.status === DRAFT_STATUS.AWAITING_FARMER).length,
+      needsReviewCount: persisted.filter((d) => d.status === DRAFT_STATUS.NEEDS_REVIEW).length,
+    };
+  }
+
   async function enqueue(captureCtx) {
     try {
       const nowMs = clock.now();
@@ -100,6 +189,24 @@ function createExtractionPipeline({
         const reason = extractResult && extractResult.reason ? extractResult.reason : 'extractor_failed';
         logger.warn && logger.warn(`[extraction] extractor returned ok:false reason=${reason}`);
         return { ok: false, reason };
+      }
+
+      // Plan 08: extractor now returns drafts[] (multi-event per page for paper-log scans).
+      // drafts.length === 1: legacy single-draft path (conversational, ask-back enabled).
+      // drafts.length  >  1: batch mode -- force start_new, persist N rows, no per-draft
+      // ask-back (would spam farmer with 21+ messages from one photo), one summary ping to
+      // Don Santiago. See discuss with Don Santiago 2026-05-12.
+      const draftsArr = Array.isArray(extractResult.drafts) ? extractResult.drafts : [];
+      if (draftsArr.length > 1) {
+        return await runBatchMode({
+          draftsArr,
+          captureCtx,
+          sender,
+          captureId,
+          sourceCaptureIdsBase: [captureId],
+          nowMs,
+          inFlight,
+        });
       }
 
       // 4. resolve continuity
