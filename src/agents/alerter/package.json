@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
+    "jimp": "^0.22.12",
     "node-cron": "^4.0.0",
     "pg": "^8.20.0",
     "ulid": "^3.0.2",
