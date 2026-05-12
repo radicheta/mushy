@@ -48,7 +48,7 @@ describe('extraction-db', () => {
       expect(sql2).toMatch(/WHERE status IN \('pending','awaiting_farmer'\)/);
     });
 
-    test('is idempotent — second invocation yields 8 total queries with same shape', async () => {
+    test('is idempotent -- second invocation yields 8 total queries with same shape', async () => {
       await initDb(pool);
       await initDb(pool);
       expect(pool.query).toHaveBeenCalledTimes(8);
