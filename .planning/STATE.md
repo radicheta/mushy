@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.7
 milestone_name: Multimodal Signal → FarmOS Events
-status: Plan 04 (state machine + ask-back preview) SHIPPED; Plan 05 (signal_draft DB + wiring) unblocked
-stopped_at: Phase 38 Plan 04 shipped (state machine + preview-builder + config knobs)
-last_updated: "2026-05-12T16:30:00Z"
-last_activity: 2026-05-12 Phase 38-04 executed
+status: Plan 05 (extraction pipeline orchestrator + capture hook) SHIPPED; Plan 06 (outbound dispatcher = real signal sends) unblocked
+stopped_at: Phase 38 Plan 05 shipped (pipeline + capture.js fire-and-forget enqueue, 8/8 integration tests green)
+last_updated: "2026-05-12T17:30:00Z"
+last_activity: 2026-05-12 Phase 38-05 executed
 progress:
   total_phases: 22
   completed_phases: 2
   total_plans: 23
-  completed_plans: 17
-  percent: 74
+  completed_plans: 18
+  percent: 78
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 38 (in progress)
-Plan: 04 (SHIPPED — state-machine + ask-back preview-builder + 3 config knobs)
-Status: Plan 05 (signal_draft DB + state-machine wiring into capture pipeline) unblocked; pure state-machine + farmer-facing preview both green with 42 new unit tests
+Plan: 05 (SHIPPED — pipeline orchestrator + capture.js hook + index.js boot wiring)
+Status: Plan 06 (outbound dispatcher = real signal-client sends) unblocked
 Milestone: v1.7 — Multimodal Signal to FarmOS Events
-Last activity: 2026-05-12 Phase 38-04 executed
-Next up: /gsd-execute-phase 38 plan 05 (signal_draft DB schema + extraction-pipeline wiring)
+Last activity: 2026-05-12 Phase 38-05 executed
+Next up: /gsd-execute-phase 38 plan 06 (real outbound dispatcher: send_ask_back + send_needs_review_ping via signal-client)
 
 Phase 37 Plan 04 remains PARTIAL — Tasks 1+2 shipped (7b7256c, 7bff438); Task 3 live attestations deferred to operator per 37-RUNBOOK.md.
 
