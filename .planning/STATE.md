@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.7
 milestone_name: Multimodal Signal → FarmOS Events
-status: Plan 05 (extraction pipeline orchestrator + capture hook) SHIPPED; Plan 06 (outbound dispatcher = real signal sends) unblocked
-stopped_at: Phase 38 Plan 05 shipped (pipeline + capture.js fire-and-forget enqueue, 8/8 integration tests green)
-last_updated: "2026-05-12T17:30:00Z"
-last_activity: 2026-05-12 Phase 38-05 executed
+status: Plan 06 (outbound dispatcher = real signal sends) SHIPPED; EXT-04 closed end-to-end; Plan 07 (eval/ship gate) unblocked
+stopped_at: Phase 38 Plan 06 shipped (14/14 outbound tests green, 401/402 alerter suite)
+last_updated: "2026-05-12T19:30:00Z"
+last_activity: 2026-05-12 Phase 38-06 executed
 progress:
   total_phases: 22
   completed_phases: 2
   total_plans: 23
-  completed_plans: 18
-  percent: 78
+  completed_plans: 19
+  percent: 83
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 38 (in progress)
-Plan: 05 (SHIPPED — pipeline orchestrator + capture.js hook + index.js boot wiring)
-Status: Plan 06 (outbound dispatcher = real signal-client sends) unblocked
+Plan: 06 (SHIPPED — outbound dispatcher = real signal sends; EXT-04 closed)
+Status: Plan 07 (eval/ship gate, corpus replay) unblocked
 Milestone: v1.7 — Multimodal Signal to FarmOS Events
-Last activity: 2026-05-12 Phase 38-05 executed
-Next up: /gsd-execute-phase 38 plan 06 (real outbound dispatcher: send_ask_back + send_needs_review_ping via signal-client)
+Last activity: 2026-05-12 Phase 38-06 executed
+Next up: /gsd-execute-phase 38 plan 07 (eval/ship gate)
 
 Phase 37 Plan 04 remains PARTIAL — Tasks 1+2 shipped (7b7256c, 7bff438); Task 3 live attestations deferred to operator per 37-RUNBOOK.md.
 
@@ -197,12 +197,13 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 | Phase 37 P03 | 25min | 3 tasks | 4 files |
 | Phase 38 P01 | 12min | 3 tasks | 8 files |
 | Phase 38 P04 | 25min | 3 tasks | 7 files |
+| Phase 38 P06 | 8min | 2 tasks | 3 files |
 
 ## Session Continuity
 
-Last session: 2026-05-12T03:54:36.950Z
-Stopped at: Phase 38 context gathered (extraction pipeline decisions D-01..D-07)
-Next up: /gsd-discuss-phase 36 or /gsd-plan-phase 36
+Last session: 2026-05-12T19:30:00Z
+Stopped at: Phase 38 Plan 06 shipped (outbound dispatcher = real signal sends; EXT-04 closed)
+Next up: /gsd-execute-phase 38 plan 07 (eval/ship gate)
 
 v1.7 phase order (hard sequencing):
   Phase 36: Signal Pre-gate — MUST ship before anything else (PRE-01/02)
