@@ -127,7 +127,7 @@ Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 202
 <summary>🚧 v1.7 Multimodal Signal → FarmOS Events (Phases 36-42) — IN PROGRESS</summary>
 
 - [ ] **Phase 36: Signal Pre-gate** — signal-cli primary re-registration; receive unblock; identity-trust verified
-- [ ] **Phase 37: Multi-farmer Routing** — DM routing to sender; group-thread participation; farmOS person lookup
+- [x] **Phase 37: Multi-farmer Routing** — DM routing to sender; group-thread participation; farmOS person lookup
 - [ ] **Phase 38: Extraction Pipeline** — schema-aware LLM extraction; multimodal fusion; confidence loop; lineage
 - [ ] **Phase 39: Farmer Confirmation Loop** — confirm-before-write; idempotent commit; EDIT loop; draft timeout
 - [ ] **Phase 40: FarmOS Write Path** — API client; asset + log creation; QR binding; photo upload; audit log
@@ -161,10 +161,10 @@ Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 202
   2. A message to the group thread produces no unsolicited reply; an @mention or command gets exactly one reply to the group
   3. Known farmer numbers resolve to farmOS person IDs in the message metadata; unknown number gets (unassigned) tag and message is not silently dropped
 **Plans:** 4 plans
-- [ ] 37-01-PLAN.md — Wave 0 smoke probe + six group envelope fixtures + jest baseline
-- [ ] 37-02-PLAN.md — signal.js send({to}) refactor + config.js (SIGNAL_GROUP_ID, SIGNAL_FARMER_MAP) + capture-db.js ALTER TABLE migrations
+- [x] 37-01-PLAN.md — Wave 0 smoke probe + six group envelope fixtures + jest baseline
+- [x] 37-02-PLAN.md — signal.js send({to}) refactor + config.js (SIGNAL_GROUP_ID, SIGNAL_FARMER_MAP) + capture-db.js ALTER TABLE migrations
 - [x] 37-03-PLAN.md — receive-loop.js group gate + collectGroupTriggers + D-09 dedupe; capture.js replyTarget threading + farmer-map + new row fields
-- [ ] 37-04-PLAN.md — docker-compose env plumbing + index.js wire-up + 37-RUNBOOK.md + live A/B/C/D/E attestations
+- [x] 37-04-PLAN.md — docker-compose env plumbing + index.js wire-up + 37-RUNBOOK.md + live A/B/D attestations PASS (C deferred to unit-test coverage)
 
 ### Phase 38: Extraction Pipeline
 

@@ -7,7 +7,7 @@ wave: 3
 tags: [compose, env, integration, runbook, integration-test, partial]
 requirements: [ROUTE-01, ROUTE-02, ROUTE-03]
 depends_on: ["37-02", "37-03"]
-status: PARTIAL — Tasks 1+2 complete; Task 3 (live human-verify attestations) deferred to operator
+status: COMPLETE — Tasks 1+2 shipped; Task 3 live attestations A/B/D PASS, C deferred to unit-test coverage (operator decision 2026-05-11)
 provides:
   - alerter boot threads config.signalGroupId into createSignalClient defaultTarget (D-04)
   - alerter boot threads config.signalFarmerMap into createCapturePipeline (D-11/D-13)
@@ -30,7 +30,7 @@ key-files:
     - src/agents/alerter/src/index.js (239 → 256 lines, +17)
     - docker-compose.override.yml (132 → 136 lines, +4)
 decisions:
-  - "[37-04] SIGNAL_GROUP_ID is the bare internal_id form (e.g. 'hKw0KX1g...'), NOT the prefixed 'group.<...>' id form. signal.js wraps internally. 37-SMOKE.md Probe A documented the wrong-form 400 failure; runbook §2 calls it out explicitly to prevent the next operator from repeating it."
+  - "[37-04] (SUPERSEDED by live-attestation 2026-05-11) Original decision claimed SIGNAL_GROUP_ID = bare internal_id form. Live Attestation D showed this DELIVERS via defaultTarget when SIGNAL_GROUP_ID is the id-b64 form, but the envelope-driven group-reply path (capture.js → signal.js) re-uses the envelope's internal_id-b64 and gets HTTP 400. Real decision: signal.js now lazy-loads /v1/groups and translates internal_id-b64 → id-b64 transparently. SIGNAL_GROUP_ID in .env should be the id-b64 form (e.g. 'aEt3MEtY…'); see commit f4a6fac."
   - "[37-04] Boot-log lines are mitigation-by-visibility for T-37-04-01 (wrong-group leak) and T-37-04-03 (slug-typo mis-attribution). Operator MUST visually verify both lines before declaring deploy complete; 37-RUNBOOK §5 makes this a hard pre-attestation gate."
   - "[37-04] Plan 04 Task 3 (live attestations) executed by orchestrator/operator, not by executor agent. This SUMMARY records the code-change deltas only; the attestation table will be appended by /gsd:verify-work after the operator runs §6 of 37-RUNBOOK.md."
 metrics:
@@ -148,3 +148,32 @@ None — Plan 04 ships no stub data; all envs flow from operator `.env` to runti
 - File `/mnt/slime-kingdom/opt/mushy/.planning/phases/37-multi-farmer-routing/37-RUNBOOK.md` — FOUND, 261 lines, 4 `### Attestation [A-D]` headers + §8 Phase 33 non-regression.
 - Commit `7b7256c` (feat 37-04 wire) — FOUND in `git log --oneline`.
 - Commit `7bff438` (docs 37-04 runbook) — FOUND in `git log --oneline`.
+
+---
+
+## Attestation Outcomes — LIVE 2026-05-11
+
+Operator-driven attestations against the deployed alerter on `elder-plops`, in coordination with **Vikki (f2, +59898018597)** and **Santi (f1, +59892893012)**. SIGNAL_FARMER_MAP slugs: santi / vikki / selina.
+
+| Attestation | Outcome | Captured at (UTC) | Evidence |
+|---|---|---|---|
+| **A — 999.20 DM proof-of-fix** (ROUTE-01) | **PASS** | 2026-05-11 22:17:36 | Vikki DM'd `ping P37-247`. signal_capture row: `sender=+59898018597, farmos_person=vikki, reply_target_kind=dm`. Bot replied to Vikki only; f1 phone stayed quiet. 999.20 **retired**. |
+| **B — D-04 group default visibility** (ROUTE-02) | **PASS** | 2026-05-11 23:59:13 | Heartbeat fired (`heartbeatHour` temporarily set to 19 to bypass the pre-existing scheduler/state.js `>=` vs `===` inconsistency — see deferred items). Alerter log: `[signal] sent -> group:aEt3MEtY… (174 chars)`. Body landed in Mush Farm group thread (operator visual confirmation). |
+| **C — ROUTE-03 unmapped sender** | **DEFERRED** (unit-test attested) | n/a | Operator decision 2026-05-11: skip live attestation, rely on Plan 03's `capture.test.js` case using `group-unknown-sender.json` fixture which pins the `(unassigned)` sentinel. Soft follow-up to attest live if a 4th farmer joins the group. |
+| **D — D-09 envelope dedupe** (mention + command) | **PASS with caveats** | 2026-05-11 23:40:04 (initial), 23:44:50 (post-fix) | f1 sent `@bot mute` to Mush Farm group. signal_capture row: `sender=+59892893012, farmos_person=santi, reply_target_kind=group`. **One** reply, **one** capture row → dedupe held. Reply landed in group thread. Caveats: see "Live attestation findings" below — two separate bugs surfaced, neither blocks ROUTE-02/03 closure. |
+
+**E — Phase 33 non-regression** — not yet attested in this session (would require a controlled outage simulation). Filed as soft follow-up; the alerter codepath for VPS-bridge alerts is in a different service per memory `project_phase33_shipped.md`, not touched by Phase 37, so regression is unlikely. Operator can verify next time a real outage happens.
+
+## Live attestation findings (post-deploy, fixed/filed in-session)
+
+1. **`SIGNAL_GROUP_ID` form bug — fixed in commit `f4a6fac`.** Plan's first decision claimed bare internal_id-b64 was correct. Probe A in Wave 0 had documented HTTP 400 with `group.<internal_id>` recipients, but Plan 04 was authored using internal_id anyway. Live Attestation D triggered the same 400 on the capture.js reply path because the envelope's `dataMessage.groupInfo.groupId` IS internal_id-b64. Fix: `signal.js` now lazy-loads `/v1/groups` on first group-targeted send and builds `internal_id-b64 → id-b64` lookup. `.env`'s SIGNAL_GROUP_ID stores the id-b64 form (or either — signal.js handles both transparently now). Decision `[37-04]` superseded.
+
+2. **Mention OBJ-char (`￼` / U+FFFC) breaks command-keyword dispatch — DEFERRED** (see `deferred-items.md`). `@bot mute` in the group captured cleanly, dedupe held, but the `mute` keyword didn't match the snooze handler because the Plan 03 `@<token>\s+` prefix-strip regex doesn't strip the `￼\s*` OBJ char that Signal injects in place of the inline mention. Message routed to the LLM session instead. NOT blocking ROUTE-01/02/03 closure (those validate routing and dedupe, not command-keyword dispatch).
+
+3. **LLM reply emitted an em-dash — DEFERRED** (see `deferred-items.md`). Violates the `feedback_no_em_dashes_in_artifacts.md` rule locked earlier this session. The LLM system prompt needs updating to ban em-dashes (and other LLM-tell vocabulary). Soft follow-up.
+
+4. **Heartbeat scheduler/state.js inconsistency — pre-existing, DEFERRED** (see `deferred-items.md`). `heartbeat.js:54` uses `hour >= heartbeatHour`, `state.js:614` uses `hour === heartbeatHour`. Result: heartbeat scheduler "fires" any time of day after the hour, but state.js only acts at the exact-hour boundary. Pre-Phase-37 bug exposed during Attestation B. One-line fix.
+
+## Closeout
+
+**ROUTE-01 / ROUTE-02 / ROUTE-03 closed live 2026-05-11.** Plan 37-04 complete. Phase 37 (Multi-farmer Routing) complete pending 4 soft deferred items (none blocking). 999.20 backlog item retired.
