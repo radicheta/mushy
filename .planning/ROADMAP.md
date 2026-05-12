@@ -177,12 +177,12 @@ Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 202
   3. When a required field is ambiguous, bot sends a targeted Signal reply asking for it; draft completes after farmer responds
   4. A lineage cue ("from blocks 3, 4, and 5") extracts a multi-parent harvest batch ref per C4
   5. No off-schema fields appear in any extracted draft; all log types are native per C5
-**Plans:** 3/8 plans executed
+**Plans:** 4/8 plans executed
 Plans:
 - [x] 38-01-PLAN.md — Wave 0 zod schemas (B7 log types + discriminated union + Anthropic input_schema)
 - [x] 38-02-PLAN.md — Wave 0 signal_draft table + CRUD module (extraction-db.js)
 - [x] 38-03-PLAN.md — Wave 1 extractor + multimodal fusion + tool-use retry
-- [ ] 38-04-PLAN.md — Wave 1 state machine + ask-back trigger + 3-turn cap + preview builder
+- [x] 38-04-PLAN.md — Wave 1 state machine + ask-back trigger + 3-turn cap + preview builder
 - [ ] 38-05-PLAN.md — Wave 2 pipeline orchestration + capture.js hook
 - [ ] 38-06-PLAN.md — Wave 2 outbound dispatcher (ask-back + needs-review ping)
 - [ ] 38-07-PLAN.md — Wave 3 mushdatadump eval harness (D-07 ship-gate)
@@ -203,7 +203,7 @@ Plans:
 Plans:
 - [x] 38-01-PLAN.md — Wave 0 zod schemas (B7 log types + discriminated union + Anthropic input_schema)
 - [x] 38-02-PLAN.md — Wave 0 signal_draft table + CRUD module (extraction-db.js)
-- [ ] 38-03-PLAN.md — Wave 1 extractor + multimodal fusion + tool-use retry
+- [x] 38-03-PLAN.md — Wave 1 extractor + multimodal fusion + tool-use retry
 - [ ] 38-04-PLAN.md — Wave 1 state machine + ask-back trigger + 3-turn cap + preview builder
 - [ ] 38-05-PLAN.md — Wave 2 pipeline orchestration + capture.js hook
 - [ ] 38-06-PLAN.md — Wave 2 outbound dispatcher (ask-back + needs-review ping)
@@ -224,7 +224,7 @@ Plans:
 **Plans:** 8 plans
 Plans:
 - [x] 38-01-PLAN.md — Wave 0 zod schemas (B7 log types + discriminated union + Anthropic input_schema)
-- [ ] 38-02-PLAN.md — Wave 0 signal_draft table + CRUD module (extraction-db.js)
+- [x] 38-02-PLAN.md — Wave 0 signal_draft table + CRUD module (extraction-db.js)
 - [ ] 38-03-PLAN.md — Wave 1 extractor + multimodal fusion + tool-use retry
 - [ ] 38-04-PLAN.md — Wave 1 state machine + ask-back trigger + 3-turn cap + preview builder
 - [ ] 38-05-PLAN.md — Wave 2 pipeline orchestration + capture.js hook
@@ -245,7 +245,7 @@ Plans:
   4. The same underlying inoc session represented as both a paper-log photo and an audio recording produces identical seeding log content
 **Plans:** 8 plans
 Plans:
-- [ ] 38-01-PLAN.md — Wave 0 zod schemas (B7 log types + discriminated union + Anthropic input_schema)
+- [x] 38-01-PLAN.md — Wave 0 zod schemas (B7 log types + discriminated union + Anthropic input_schema)
 - [ ] 38-02-PLAN.md — Wave 0 signal_draft table + CRUD module (extraction-db.js)
 - [ ] 38-03-PLAN.md — Wave 1 extractor + multimodal fusion + tool-use retry
 - [ ] 38-04-PLAN.md — Wave 1 state machine + ask-back trigger + 3-turn cap + preview builder
@@ -439,7 +439,7 @@ Original justification: align repo netplan with fc1's currently-running farm-4G 
 
 | 36. Signal Pre-gate | v1.7 | 0/TBD | Not started | — |
 | 37. Multi-farmer Routing | v1.7 | 0/TBD | Not started | — |
-| 38. Extraction Pipeline | v1.7 | 3/8 | In Progress|  |
+| 38. Extraction Pipeline | v1.7 | 4/8 | In Progress|  |
 | 39. Farmer Confirmation Loop | v1.7 | 0/TBD | Not started | — |
 | 40. FarmOS Write Path | v1.7 | 0/TBD | Not started | — |
 | 41. Ingestion Harness | v1.7 | 0/TBD | Not started | — |
