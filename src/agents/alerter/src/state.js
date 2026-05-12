@@ -375,9 +375,18 @@ function transition(prev, event, now, config) {
       // band-aids that also mask real SCD41 outages.
       if (now - next.bootedAtMs >= 60000) {
         const sensorCfg = { ...config, oobN: 1, oobWindowMin: 0 };
+        // 2026-05-12 flap-floor: a single Pi-side `xxx_fresh==='false'` event
+        // previously fired the watchdog immediately, then a `'true'` 1-2s later
+        // recovered it -- farmer got "CO2 sensor offline ... OOB for 0m 06s"
+        // for an I2C transient. Honor flag-false only when it's been sustained
+        // for sensorFlapMinSec. Slow-silence path (isSensorSilent) is unchanged
+        // and continues to gate on sensorOfflineMin (minutes).
+        const flapMs = (config.sensorFlapMinSec || 0) * 1000;
+        const piFlagStale = (lastSeenMs) =>
+          lastSeenMs != null && (now - lastSeenMs) >= flapMs;
 
         if (config.sht30Enabled !== false) {
-          const sht30Stale = v.sht30_fresh === 'false'
+          const sht30Stale = (v.sht30_fresh === 'false' && piFlagStale(next.sht30LastSeenMs))
             || isSensorSilent({ lastSeenMs: next.sht30LastSeenMs, nowMs: now, config });
           const sht30Fields = { lastSeenMs: next.sht30LastSeenMs };
           const r = driveAlertType(next.perType.sht30, 'sht30', sht30Stale, sht30Fields, now, sensorCfg);
@@ -386,7 +395,7 @@ function transition(prev, event, now, config) {
         }
 
         if (config.scd41Enabled !== false) {
-          const scd41Stale = v.scd41_fresh === 'false'
+          const scd41Stale = (v.scd41_fresh === 'false' && piFlagStale(next.scd41LastSeenMs))
             || isSensorSilent({ lastSeenMs: next.scd41LastSeenMs, nowMs: now, config });
           const scd41Fields = { lastSeenMs: next.scd41LastSeenMs };
           const r = driveAlertType(next.perType.scd41, 'scd41', scd41Stale, scd41Fields, now, sensorCfg);

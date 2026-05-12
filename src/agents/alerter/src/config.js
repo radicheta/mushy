@@ -76,6 +76,12 @@ function load(env = process.env) {
     // invariants and matches the legacy on-by-default behavior.
     sht30Enabled:        (env.ALERT_SHT30_ENABLED || 'true').toLowerCase() !== 'false',
     scd41Enabled:        (env.ALERT_SCD41_ENABLED || 'true').toLowerCase() !== 'false',
+    // 2026-05-12: Pi-flag flap floor. Suppresses single-tick `xxx_fresh=false`
+    // transients (I2C glitches, controller cleanup races) from firing instant
+    // alarms. Watchdog only fires when the flag has stayed false for
+    // sensorFlapMinSec seconds. Slow-silence path (sensorOfflineMin) still
+    // catches hard failures via its own timeout.
+    sensorFlapMinSec:    parseIntEnv(env, 'ALERT_SENSOR_FLAP_MIN_SEC', 60),
     humidifierStuckMin:  parseIntEnv(env, 'ALERT_HUMIDIFIER_STUCK_MIN', 30),
     heartbeatHour:       parseIntEnv(env, 'ALERT_HEARTBEAT_HOUR', 8),
     // Phase 29 plan 29-04 — D-03 freshness ceiling + cold-start grace (Tier D).
