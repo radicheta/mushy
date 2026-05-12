@@ -100,4 +100,48 @@ function splitCsvLine(line) {
   return out;
 }
 
-module.exports = { loadFixtures, parseCsvSimple, splitCsvLine };
+// Plan 09 Task 3: load prod-session fixtures from /mnt/mossrock/shared/mushdatadump-prod/.
+// Each subdir = one capture (matches live pipeline: one Signal message = one capture).
+// A subdir may contain audio (.m4a/.aac/.ogg/.wav/.mp3), images (.jpg/.jpeg/.png), and a
+// MANIFEST.md (optional, ignored by loader). Files flagged BUTT-DIAL in MANIFEST are
+// skipped by name convention (om01* etc.) -- caller passes skipNames array if needed.
+const IMG_RE = /\.(jpe?g|png|gif|webp)$/i;
+const AUDIO_RE = /\.(m4a|aac|ogg|opus|wav|mp3)$/i;
+
+function loadProdFixtures(dir, { logger = console, skipNames = [] } = {}) {
+  if (!fs.existsSync(dir)) {
+    logger.warn && logger.warn(`[fixtures-loader] prod dir not found at ${dir}; skipping`);
+    return [];
+  }
+  const subdirs = fs.readdirSync(dir, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort();
+  const skipSet = new Set(skipNames);
+  const out = [];
+  for (const sub of subdirs) {
+    const subPath = path.join(dir, sub);
+    const files = fs.readdirSync(subPath).filter((f) => !skipSet.has(f));
+    const imagePaths = files.filter((f) => IMG_RE.test(f)).map((f) => path.join(subPath, f));
+    const audioPaths = files.filter((f) => AUDIO_RE.test(f) && !/butt[-_]?dial/i.test(f)).map((f) => path.join(subPath, f));
+    if (imagePaths.length === 0 && audioPaths.length === 0) continue;
+    out.push({
+      name: `prod:${sub}`,
+      isProd: true,
+      imagePaths,
+      audioPaths,
+      // The manifest may flag the butt-dial; we pre-skip by name pattern but the
+      // pass-through name is still 'prod:<subdir>' for reporting.
+      expected: {
+        type: 'seeding',
+        requiredFields: [],
+        fields: {},
+        ambiguous: false,
+      },
+    });
+  }
+  logger.info && logger.info(`[fixtures-loader] loaded ${out.length} prod sessions from ${dir}`);
+  return out;
+}
+
+module.exports = { loadFixtures, loadProdFixtures, parseCsvSimple, splitCsvLine };
