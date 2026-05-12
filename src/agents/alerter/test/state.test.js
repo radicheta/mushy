@@ -541,6 +541,60 @@ describe('999.42 per-sensor enable flags', () => {
     expect(sends).toHaveLength(0);
   });
 
+  test('scd41 flap < sensorFlapMinSec does NOT fire (regression 2026-05-12)', () => {
+    // Caught live: a 6-second I2C glitch on the Pi briefly set
+    // scd41_fresh='false', alerter fired CO2 Sensor offline immediately,
+    // then recovered 6s later -- farmer got "OOB for 0m 06s" for a
+    // sub-second sensor hiccup. flap floor suppresses sub-flapMinSec
+    // transients; the slow-silence (sensorOfflineMin) path still fires
+    // on real outages.
+    const cfg = makeConfigSensor({ sensorFlapMinSec: 60 });
+    let state = initialState(T0);
+    let allActions = [];
+    // Baseline: scd41 fresh just past grace -- lastSeenMs anchored fresh.
+    let r = transition(state,
+      { type: 'sensor_health', level: 0, message: 'ok',
+        values: { sht30_fresh: 'true', scd41_fresh: 'true' } },
+      T_PAST_GRACE, cfg);
+    state = r.next;
+    allActions = allActions.concat(r.actions);
+    // 6s later, Pi reports scd41_fresh='false' -- a flap, well under
+    // the 60s flap floor. Must NOT fire.
+    r = transition(state,
+      { type: 'sensor_health', level: 0, message: 'ok',
+        values: { sht30_fresh: 'true', scd41_fresh: 'false' } },
+      T_PAST_GRACE + 6000, cfg);
+    state = r.next;
+    allActions = allActions.concat(r.actions);
+    const scd41Sends = allActions.filter(a => a.kind === 'send' && a.alertType === 'scd41');
+    expect(scd41Sends).toHaveLength(0);
+    expect(state.perType.scd41.state).not.toBe(STATES.FIRING);
+  });
+
+  test('scd41 sustained flag-false past flapMinSec DOES fire', () => {
+    // Companion to the flap test: confirm a real sustained outage still
+    // fires once the floor is crossed.
+    const cfg = makeConfigSensor({ sensorFlapMinSec: 60 });
+    let state = initialState(T0);
+    let allActions = [];
+    let r = transition(state,
+      { type: 'sensor_health', level: 0, message: 'ok',
+        values: { sht30_fresh: 'true', scd41_fresh: 'true' } },
+      T_PAST_GRACE, cfg);
+    state = r.next;
+    allActions = allActions.concat(r.actions);
+    // 90s after last 'true' baseline, Pi still reports 'false' -- crosses
+    // the 60s floor -> fires.
+    r = transition(state,
+      { type: 'sensor_health', level: 0, message: 'ok',
+        values: { sht30_fresh: 'true', scd41_fresh: 'false' } },
+      T_PAST_GRACE + 90 * 1000, cfg);
+    state = r.next;
+    allActions = allActions.concat(r.actions);
+    const scd41Sends = allActions.filter(a => a.kind === 'send' && a.alertType === 'scd41');
+    expect(scd41Sends.length).toBeGreaterThan(0);
+  });
+
   test('periodic tick respects sht30Enabled=false (regression 2026-05-12)', () => {
     // Caught live: the sensor_health and sensor_freshness handlers both honored
     // sht30Enabled=false, but the `tick` re-evaluation at the bottom of the

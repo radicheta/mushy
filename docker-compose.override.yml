@@ -99,6 +99,10 @@ services:
       # Pre-fix omission caused hourly false-alarm spam to the farmer group 2026-05-12.
       - ALERT_SHT30_ENABLED=${ALERT_SHT30_ENABLED:-true}
       - ALERT_SCD41_ENABLED=${ALERT_SCD41_ENABLED:-true}
+      # 2026-05-12: Pi-flag flap floor. Suppresses sub-N-second freshness flips
+      # (e.g. 6s I2C glitches that previously fired "CO2 Sensor offline 0m 06s"
+      # alarms). Slow-silence (sensorOfflineMin) path unchanged.
+      - ALERT_SENSOR_FLAP_MIN_SEC=${ALERT_SENSOR_FLAP_MIN_SEC:-60}
       - ALERT_HUMIDIFIER_STUCK_MIN=${ALERT_HUMIDIFIER_STUCK_MIN:-30}
       - ALERT_HEARTBEAT_HOUR=${ALERT_HEARTBEAT_HOUR:-8}
       - ALERT_RECEIVE_POLL_SEC=${ALERT_RECEIVE_POLL_SEC:-30}
