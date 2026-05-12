@@ -57,6 +57,10 @@ function createCapturePipeline({
   // Empty Map default keeps capture.js standalone-testable; unknown senders
   // resolve to '(unassigned)' B6 sentinel.
   signalFarmerMap = new Map(),
+  // Phase 38 Plan 05 -- extraction pipeline (fire-and-forget enqueue after the
+  // signal_capture row lands). Optional; when absent, capture.js behaves as
+  // pre-Phase-38 (no extraction path).
+  extractionPipeline = null,
 }) {
   async function handle(envWrapper, ctx = {}) {
     // Extract fields from the signal-cli envelope shape:
@@ -134,6 +138,24 @@ function createCapturePipeline({
     } catch (e) {
       logger.warn(`[capture] db insert failed: ${e.message}`);
       // continue — still try to reply so farmer is not silenced (R6)
+    }
+
+    // Phase 38 Plan 05 -- fire-and-forget extraction enqueue. Gated on known
+    // farmer (farmosPerson resolved to a slug, not the '(unassigned)' sentinel).
+    // NEVER awaited (D-03 / PATTERNS): the capture path's 30s budget must not
+    // be blocked by the extraction LLM call.
+    if (extractionPipeline && farmosPerson && farmosPerson !== '(unassigned)') {
+      extractionPipeline.enqueue({
+        captureId: id,
+        sender: source,
+        farmosPerson,
+        text: text || null,
+        transcripts: transcript ? [transcript] : [],
+        attachmentPaths,
+        replyTargetKind,
+        groupId,
+        capturedAtMs,
+      }).catch((e) => logger.warn(`[capture] extraction enqueue failed: ${e.message}`));
     }
 
     // Step 4: LLM compose — gather context + call

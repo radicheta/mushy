@@ -24,6 +24,10 @@ const { createCaptureHistory } = require('./capture-history');
 const { createSensorSnapshotFetcher } = require('./sensor-snapshot');
 const { createCapturePipeline } = require('./capture');
 const { createRetentionJob } = require('./capture-retention');
+const { createExtractor } = require('./extraction/extractor');
+const stateMachineMod = require('./extraction/state-machine');
+const previewBuilderMod = require('./extraction/preview-builder');
+const { createExtractionPipeline } = require('./extraction');
 
 /**
  * createAlerter({ env, clock, logger }) -> { dispatch, close, _state }
@@ -96,6 +100,26 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
   const captureHistory = createCaptureHistory({ pool });
   const sensorSnapshot = createSensorSnapshotFetcher({ bridgeUrl: config.bridgeHttpUrl, timeoutMs: 2000, logger });
 
+  // Phase 38 Plan 05: extraction pipeline. Separate extractor instance keeps
+  // the alerter-reply LLM (llm-client.js) decoupled from the structured-extract
+  // LLM (extractor.js). Both reuse ANTHROPIC_API_KEY.
+  const extractor = createExtractor({ apiKey: config.anthropicApiKey, logger });
+  // Plan 06 replaces this stub with the real signal-client outbound module.
+  const outboundDispatcher = {
+    dispatch: (effect, _draftRow) => logger.info(`[extraction] dispatch stub: ${effect}`),
+  };
+  const extractionPipeline = createExtractionPipeline({
+    pool,
+    extractor,
+    extractionDb,
+    stateMachine: stateMachineMod,
+    previewBuilder: previewBuilderMod,
+    config,
+    logger,
+    clock: { now: () => clock() },
+    outboundDispatcher,
+  });
+
   const capturePipeline = createCapturePipeline({
     pool,
     signalClient,
@@ -108,6 +132,8 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
     clock,
     // Phase 37 D-11/D-13: farmer-slug resolution at capture time.
     signalFarmerMap: config.signalFarmerMap,
+    // Phase 38 Plan 05: fire-and-forget extraction enqueue for known farmers.
+    extractionPipeline,
   });
 
   const retentionJob = createRetentionJob({ pool, config, state: captureHealth, logger });
