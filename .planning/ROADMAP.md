@@ -184,7 +184,7 @@ Plans:
 - [x] 38-03-PLAN.md — Wave 1 extractor + multimodal fusion + tool-use retry
 - [x] 38-04-PLAN.md — Wave 1 state machine + ask-back trigger + 3-turn cap + preview builder
 - [x] 38-05-PLAN.md — Wave 2 pipeline orchestration + capture.js hook
-- [ ] 38-06-PLAN.md — Wave 2 outbound dispatcher (ask-back + needs-review ping)
+- [x] 38-06-PLAN.md — Wave 2 outbound dispatcher (ask-back + needs-review ping)
 - [ ] 38-07-PLAN.md — Wave 3 mushdatadump eval harness (D-07 ship-gate)
 - [ ] 38-08-PLAN.md — Wave 3 production-log advisory smoke (deferred path)
 
@@ -206,7 +206,7 @@ Plans:
 - [x] 38-03-PLAN.md — Wave 1 extractor + multimodal fusion + tool-use retry
 - [x] 38-04-PLAN.md — Wave 1 state machine + ask-back trigger + 3-turn cap + preview builder
 - [ ] 38-05-PLAN.md — Wave 2 pipeline orchestration + capture.js hook
-- [ ] 38-06-PLAN.md — Wave 2 outbound dispatcher (ask-back + needs-review ping)
+- [x] 38-06-PLAN.md — Wave 2 outbound dispatcher (ask-back + needs-review ping)
 - [ ] 38-07-PLAN.md — Wave 3 mushdatadump eval harness (D-07 ship-gate)
 - [ ] 38-08-PLAN.md — Wave 3 production-log advisory smoke (deferred path)
 
@@ -228,7 +228,7 @@ Plans:
 - [x] 38-03-PLAN.md — Wave 1 extractor + multimodal fusion + tool-use retry
 - [ ] 38-04-PLAN.md — Wave 1 state machine + ask-back trigger + 3-turn cap + preview builder
 - [ ] 38-05-PLAN.md — Wave 2 pipeline orchestration + capture.js hook
-- [ ] 38-06-PLAN.md — Wave 2 outbound dispatcher (ask-back + needs-review ping)
+- [x] 38-06-PLAN.md — Wave 2 outbound dispatcher (ask-back + needs-review ping)
 - [ ] 38-07-PLAN.md — Wave 3 mushdatadump eval harness (D-07 ship-gate)
 - [ ] 38-08-PLAN.md — Wave 3 production-log advisory smoke (deferred path)
 **Composes-with:** 999.2 (this phase is its closure)
@@ -250,7 +250,7 @@ Plans:
 - [ ] 38-03-PLAN.md — Wave 1 extractor + multimodal fusion + tool-use retry
 - [ ] 38-04-PLAN.md — Wave 1 state machine + ask-back trigger + 3-turn cap + preview builder
 - [ ] 38-05-PLAN.md — Wave 2 pipeline orchestration + capture.js hook
-- [ ] 38-06-PLAN.md — Wave 2 outbound dispatcher (ask-back + needs-review ping)
+- [x] 38-06-PLAN.md — Wave 2 outbound dispatcher (ask-back + needs-review ping)
 - [ ] 38-07-PLAN.md — Wave 3 mushdatadump eval harness (D-07 ship-gate)
 - [ ] 38-08-PLAN.md — Wave 3 production-log advisory smoke (deferred path)
 
@@ -273,7 +273,7 @@ Plans:
 - [ ] 38-03-PLAN.md — Wave 1 extractor + multimodal fusion + tool-use retry
 - [ ] 38-04-PLAN.md — Wave 1 state machine + ask-back trigger + 3-turn cap + preview builder
 - [ ] 38-05-PLAN.md — Wave 2 pipeline orchestration + capture.js hook
-- [ ] 38-06-PLAN.md — Wave 2 outbound dispatcher (ask-back + needs-review ping)
+- [x] 38-06-PLAN.md — Wave 2 outbound dispatcher (ask-back + needs-review ping)
 - [ ] 38-07-PLAN.md — Wave 3 mushdatadump eval harness (D-07 ship-gate)
 - [ ] 38-08-PLAN.md — Wave 3 production-log advisory smoke (deferred path)
 
