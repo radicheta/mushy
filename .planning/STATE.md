@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.7
 milestone_name: Multimodal Signal → FarmOS Events
-status: Plan 03 (extractor) unblocked; signal_draft schema + CRUD live, deterministic draft ids, one-in-flight-per-sender DB constraint enforced
-stopped_at: Phase 38 Plan 02 SHIPPED (signal_draft schema + CRUD module)
-last_updated: "2026-05-12T04:30:00.000Z"
-last_activity: 2026-05-12 Phase 38-02 executed
+status: Plan 04 (state machine) unblocked; extractor + multimodal fusion + Zod retry envelope live; SUBMISSION wrapper schema in barrel
+stopped_at: Phase 38 Plan 03 shipped (extractor + multimodal + validator + prompts)
+last_updated: "2026-05-12T15:00:00Z"
+last_activity: 2026-05-12 Phase 38-03 executed
 progress:
   total_phases: 22
   completed_phases: 2
   total_plans: 23
-  completed_plans: 15
-  percent: 65
+  completed_plans: 16
+  percent: 70
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Phase: 38 (in progress)
-Plan: 02 (SHIPPED — signal_draft schema + CRUD module)
-Status: Plan 03 (extractor) unblocked; signal_draft schema + CRUD live, deterministic draft ids, one-in-flight-per-sender DB constraint enforced
+Plan: 03 (SHIPPED — extractor + multimodal + validator + prompts)
+Status: Plan 04 (state machine) unblocked; extractor.extract({captures, inFlightDraft}) returns Zod-valid Submission via forced tool-use with one-shot tool_result retry; multimodal fusion (text+transcript+image) in one Anthropic call; jimp@0.22 image downscale at 1.15MP/5MB
 Milestone: v1.7 — Multimodal Signal to FarmOS Events
-Last activity: 2026-05-12 Phase 38-02 executed
-Next up: /gsd-execute-phase 38 plan 03 (extractor — LLM tool-use over multimodal capture)
+Last activity: 2026-05-12 Phase 38-03 executed
+Next up: /gsd-execute-phase 38 plan 04 (state machine — pending/awaiting_farmer/needs_review/expired transitions around extractor)
 
 Phase 37 Plan 04 remains PARTIAL — Tasks 1+2 shipped (7b7256c, 7bff438); Task 3 live attestations deferred to operator per 37-RUNBOOK.md.
 
@@ -197,7 +197,7 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 ## Session Continuity
 
-Last session: 2026-05-12T04:30:00.000Z
+Last session: 2026-05-12T03:47:14.475Z
 Stopped at: Phase 38 context gathered (extraction pipeline decisions D-01..D-07)
 Next up: /gsd-discuss-phase 36 or /gsd-plan-phase 36
 

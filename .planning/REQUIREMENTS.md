@@ -30,7 +30,7 @@
 
 - [x] **EXT-01**: Extraction returns JSON-mode output constrained to the locked schema (`fungi` assets: sterilization batch / block / harvest batch / bag; logs: seeding / activity / input / observation / harvest per B7). No off-schema fields.
 - [x] **EXT-02**: Block-naming extraction emits `{YYMMDD}_{SPECIES3}_{SEQ}` per B5 when the farmer's paper-log convention applies (e.g. "260511_SHI_4"). When the convention is ambiguous, the bot asks for the SEQ rather than guessing.
-- [ ] **EXT-03**: Multimodal fusion — when a message bundles text + audio + photo, the bot combines all three signals into one draft event (not three separate ones). Audio transcripts (Whisper, Phase 25 pipeline) feed extraction alongside text; photos contribute QR scans + optional vision-derived context (e.g. visible block tags).
+- [x] **EXT-03**: Multimodal fusion — when a message bundles text + audio + photo, the bot combines all three signals into one draft event (not three separate ones). Audio transcripts (Whisper, Phase 25 pipeline) feed extraction alongside text; photos contribute QR scans + optional vision-derived context (e.g. visible block tags).
 - [x] **EXT-04**: Confidence-aware behavior — when extraction confidence below threshold OR required field unresolved, bot ASKS the farmer (Signal reply with a targeted question) instead of guessing. Conversation state survives across multiple farmer turns until draft is complete.
 - [x] **EXT-05**: Lineage extraction — multi-parent log refs per C4 (e.g. harvest batch from N source blocks) are extracted from natural-language lineage cues ("from blocks 3, 4, and 5").
 
@@ -99,7 +99,7 @@
 | ROUTE-03 | Phase 37 | Pending |
 | EXT-01 | Phase 38 | Complete |
 | EXT-02 | Phase 38 | Complete |
-| EXT-03 | Phase 38 | Pending |
+| EXT-03 | Phase 38 | Complete |
 | EXT-04 | Phase 38 | Complete |
 | EXT-05 | Phase 38 | Complete |
 | CONF-01 | Phase 39 | Pending |
