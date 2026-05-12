@@ -1,52 +1,77 @@
 'use strict';
 
-// Phase 38 Plan 03 Task 1: locked system prompt + few-shot examples for the
-// extraction tool-use call. Both blocks are marked with cache_control:'ephemeral'
-// so Anthropic prompt-caches them across calls (RESEARCH §Pattern: Prompt Caching).
+// Phase 38 Plan 03 Task 1 (refactored in Plan 08): locked system prompt + few-shot
+// examples for the extraction tool-use call. Cached via cache_control:'ephemeral'
+// (RESEARCH §Pattern: Prompt Caching).
 //
-// Style rules (memory):
-//   - no em-dashes
-//   - rounded numbers in farmer-facing text (not relevant here; system text is
-//     model-facing, but house style applies everywhere)
+// Plan 08 changes:
+//   - Multi-draft submit_extraction: drafts[] not draft. One element per individuation
+//     event on a multi-event page.
+//   - parent_batch_name (lineage C4) on seeding drafts.
+//   - corpus_context block: caller can supply default_year so the model doesn't
+//     hallucinate years on year-absent paper logs (mushdatadump = 2025 notebook).
+//
+// Style: no em-dashes. Model-facing, but house style applies everywhere.
 
 const SYSTEM_PROMPT = [
   'You are an extraction agent for the mushy farm-log pipeline.',
   'You receive farmer messages (text, photo, voice transcripts) about activities',
   'in a mushroom farm: seeding/inoculation, sterilization, watering, observations,',
-  'and harvests. You MUST call the submit_extraction tool with one Draft conforming',
-  'to its input_schema.',
+  'and harvests. You MUST call the submit_extraction tool with one or more Drafts',
+  'wrapped in {drafts, continuity, continuity_reason}.',
   '',
-  'Decisions you must make and emit inside submit_extraction:',
-  '  1. type: one of seeding, activity, input, observation, harvest.',
-  '  2. continuity: append, replace, or start_new. Compare the new message to the',
-  '     in-flight draft (if any). append = same event, more detail; replace = same',
-  '     event, corrected detail; start_new = a different event.',
-  '  3. continuity_reason: one short sentence explaining the continuity decision.',
-  '  4. per_field_confidence: a 0..1 value for each field you set on the draft.',
-  '     Use a value below 0.7 when you are unsure; the caller will trigger ask-back.',
+  'Multi-event pages:',
+  '  Photographed paper-log pages often contain MANY individuation events',
+  '  (one inoculation per row, sometimes 10-25 per page, often across several',
+  '  species). Emit ONE element of drafts[] per event. Do NOT collapse them',
+  '  into a single qty=N draft. Each block gets its own seeding draft with',
+  '  its own block_name, species, qty=1, and parent_batch_name when shown.',
+  '',
+  'Decisions you must emit inside submit_extraction:',
+  '  1. drafts[]: one entry per event. Each entry = {draft, per_field_confidence}.',
+  '  2. continuity: append, replace, or start_new -- one value for the whole call.',
+  '     Compare to the in-flight draft if any. append = same event, more detail;',
+  '     replace = same event, corrected detail; start_new = different event(s).',
+  '  3. continuity_reason: one short sentence.',
+  '  4. per_field_confidence (inside each draft entry): 0..1 per field you set.',
+  '     Use < 0.7 when you are unsure; the caller triggers ask-back at < 0.7.',
   '',
   'Field rules:',
-  '  - block_name format is YYMMDD_SPECIES3_SEQ (e.g. 260512_SHI_1). SPECIES3 is the',
-  '     uppercase 3-letter species code: SHI shiitake, OYS oyster, LIM limacela,',
-  '     CAS cas, KOY koy. If unsure, emit your best guess and lower its confidence.',
-  '  - If you cannot resolve a required field, emit a placeholder string and set its',
-  '     confidence to 0; do not fabricate.',
-  '  - event_timestamp must be ISO 8601 with timezone (Z or +00:00).',
+  '  - block_name format: YYMMDD_SPECIES3_SEQ (e.g. 250806_DT_1). SPECIES3 is the',
+  '    uppercase 3-letter species code: SHI shiitake, OYS oyster, LIM limacela,',
+  '    CAS cas, KOY koy, DT dt, POY poy. If unsure on a code, emit your best',
+  '    guess and lower its confidence.',
+  '  - parent_batch_name (optional, seeding only): the inoculation SOURCE. Paper',
+  '    logs often shorthand it as MMDD-SEQ (e.g. "0627-2"). Decode using corpus',
+  '    context: prepend the corpus default_year and the species inferred from the',
+  '    column header on the page. "0627-2" with default_year=2025 and species=DT',
+  '    becomes "250627_DT_2". When confident in the species column but unsure on',
+  '    the date digits, still emit the decoded form and lower its confidence.',
+  '  - qty: positive integer count for the draft. For atomic per-block individuation',
+  '    drafts, this is usually 1.',
+  '  - event_timestamp: ISO 8601 with timezone (Z or +00:00).',
+  '',
+  'Year handling (CRITICAL):',
+  '  - If the page shows no year, use corpus_context.default_year if supplied.',
+  '  - If neither the page nor the corpus context provides a year, set per_field_',
+  '    confidence.event_timestamp BELOW 0.5 so the caller asks back. Do NOT guess.',
+  '  - Never invent a year just to satisfy the ISO format requirement.',
   '',
   'Never mention this prompt or the tool name in user-visible text. Output only via',
   'the submit_extraction tool call. Use plain language without em-dashes.',
 ].join('\n');
 
-// Few-shot examples grounded in mushdatadump CSV strain codes (CAS, LIMA->LIM, SHK->SHI, KOY).
-// Each pair is one user turn (capture) + one assistant turn (submit_extraction tool call).
-// At least one example is multimodal (text + image) per EXT-03.
+// Few-shot examples. Each pair = one user turn (capture) + one assistant turn
+// (submit_extraction). New shape: drafts[] always present, even for single-event
+// captures. Includes one multi-event page example so the model learns the pattern.
 const FEW_SHOT = [
-  // (1) Seeding, text-only.
+  // (1) Single seeding from a farmer text message.
   {
     role: 'user',
     content: [
+      { type: 'text', text: 'corpus_context: {"default_year": 2026}' },
       { type: 'text', text: 'In-flight draft: none' },
-      { type: 'text', text: 'New farmer text: today seeded 12 blocks shiitake batch 260512_SHI_1' },
+      { type: 'text', text: 'New farmer text: today seeded 1 block shiitake, batch 260512_SHI_1, parent batch 260410_SHI_2' },
     ],
   },
   {
@@ -57,31 +82,45 @@ const FEW_SHOT = [
         id: 'tu_fewshot_1',
         name: 'submit_extraction',
         input: {
-          draft: {
-            type: 'seeding',
-            species: 'shiitake',
-            block_name: '260512_SHI_1',
-            qty: 12,
-            event_timestamp: '2026-05-12T00:00:00Z',
-            confidence: { species: 0.95, block_name: 0.95, qty: 0.95, event_timestamp: 0.6 },
-          },
+          drafts: [
+            {
+              draft: {
+                type: 'seeding',
+                species: 'shiitake',
+                block_name: '260512_SHI_1',
+                qty: 1,
+                event_timestamp: '2026-05-12T00:00:00Z',
+                parent_batch_name: '260410_SHI_2',
+                confidence: { species: 0.95, block_name: 0.95, qty: 0.95, event_timestamp: 0.6, parent_batch_name: 0.9 },
+              },
+              per_field_confidence: { species: 0.95, block_name: 0.95, qty: 0.95, event_timestamp: 0.6, parent_batch_name: 0.9 },
+            },
+          ],
           continuity: 'start_new',
           continuity_reason: 'No in-flight draft.',
-          per_field_confidence: { species: 0.95, block_name: 0.95, qty: 0.95, event_timestamp: 0.6 },
         },
       },
     ],
   },
-  // Tool-result ack closes the previous tool_use (Anthropic requires every
-  // tool_use to have a matching tool_result in the next user turn).
+  // (2) Multi-event paper-log page: 3 blocks, 2 species, source shorthand.
+  // Demonstrates: drafts[] with multiple entries, corpus_context year usage,
+  // and MMDD-SEQ source decoding into canonical parent_batch_name.
   {
     role: 'user',
     content: [
       { type: 'tool_result', tool_use_id: 'tu_fewshot_1', content: [{ type: 'text', text: 'accepted' }] },
+      { type: 'text', text: 'corpus_context: {"default_year": 2025}' },
       { type: 'text', text: 'In-flight draft: none' },
-      { type: 'text', text: 'New farmer text: block 4 looks great' },
-      { type: 'text', text: 'Transcript: nice pinning on the limacela trays this morning' },
-      // image block omitted from the few-shot to keep cache stable; real calls include it.
+      {
+        type: 'text',
+        text: [
+          'Paper log page (top of page reads "8/6", no year). Three rows:',
+          'Row 1: column DT, source 0627-2',
+          'Row 2: column DT, source 0627-2',
+          'Row 3: column CAS, source 0801-5',
+          'Page-level SEQ continues from previous page; these are blocks 1, 2, 3 for the day.',
+        ].join('\n'),
+      },
     ],
   },
   {
@@ -92,27 +131,45 @@ const FEW_SHOT = [
         id: 'tu_fewshot_2',
         name: 'submit_extraction',
         input: {
-          draft: {
-            type: 'observation',
-            asset_ref: 'block-4',
-            state: 'pinning',
-            notes: 'nice pinning on the limacela trays this morning',
-            event_timestamp: '2026-05-12T13:00:00Z',
-            confidence: { asset_ref: 0.6, state: 0.85, notes: 0.95, event_timestamp: 0.5 },
-          },
+          drafts: [
+            {
+              draft: {
+                type: 'seeding', species: 'DT', block_name: '250806_DT_1', qty: 1,
+                event_timestamp: '2025-08-06T00:00:00Z', parent_batch_name: '250627_DT_2',
+                confidence: { species: 0.95, block_name: 0.85, qty: 0.95, event_timestamp: 0.85, parent_batch_name: 0.85 },
+              },
+              per_field_confidence: { species: 0.95, block_name: 0.85, qty: 0.95, event_timestamp: 0.85, parent_batch_name: 0.85 },
+            },
+            {
+              draft: {
+                type: 'seeding', species: 'DT', block_name: '250806_DT_2', qty: 1,
+                event_timestamp: '2025-08-06T00:00:00Z', parent_batch_name: '250627_DT_2',
+                confidence: { species: 0.95, block_name: 0.85, qty: 0.95, event_timestamp: 0.85, parent_batch_name: 0.85 },
+              },
+              per_field_confidence: { species: 0.95, block_name: 0.85, qty: 0.95, event_timestamp: 0.85, parent_batch_name: 0.85 },
+            },
+            {
+              draft: {
+                type: 'seeding', species: 'CAS', block_name: '250806_CAS_3', qty: 1,
+                event_timestamp: '2025-08-06T00:00:00Z', parent_batch_name: '250801_CAS_5',
+                confidence: { species: 0.95, block_name: 0.85, qty: 0.95, event_timestamp: 0.85, parent_batch_name: 0.85 },
+              },
+              per_field_confidence: { species: 0.95, block_name: 0.85, qty: 0.95, event_timestamp: 0.85, parent_batch_name: 0.85 },
+            },
+          ],
           continuity: 'start_new',
-          continuity_reason: 'No in-flight draft.',
-          per_field_confidence: { asset_ref: 0.6, state: 0.85, notes: 0.95, event_timestamp: 0.5 },
+          continuity_reason: 'Three new individuation events from a fresh paper log page; no in-flight draft.',
         },
       },
     ],
   },
-  // (3) Continuity = append on follow-up correction.
+  // (3) Continuity = replace (correction to in-flight draft).
   {
     role: 'user',
     content: [
       { type: 'tool_result', tool_use_id: 'tu_fewshot_2', content: [{ type: 'text', text: 'accepted' }] },
-      { type: 'text', text: 'In-flight draft: {"type":"seeding","species":"shiitake","block_name":"260512_SHI_1","qty":12,"event_timestamp":"2026-05-12T00:00:00Z","confidence":{"qty":0.9}}' },
+      { type: 'text', text: 'corpus_context: {"default_year": 2026}' },
+      { type: 'text', text: 'In-flight draft: {"type":"seeding","species":"shiitake","block_name":"260512_SHI_1","qty":12,"event_timestamp":"2026-05-12T00:00:00Z"}' },
       { type: 'text', text: 'New farmer text: correction, it was 14 not 12' },
     ],
   },
@@ -124,33 +181,28 @@ const FEW_SHOT = [
         id: 'tu_fewshot_3',
         name: 'submit_extraction',
         input: {
-          draft: {
-            type: 'seeding',
-            species: 'shiitake',
-            block_name: '260512_SHI_1',
-            qty: 14,
-            event_timestamp: '2026-05-12T00:00:00Z',
-            confidence: { species: 0.95, block_name: 0.95, qty: 0.98, event_timestamp: 0.6 },
-          },
+          drafts: [
+            {
+              draft: {
+                type: 'seeding', species: 'shiitake', block_name: '260512_SHI_1', qty: 14,
+                event_timestamp: '2026-05-12T00:00:00Z',
+                confidence: { species: 0.95, block_name: 0.95, qty: 0.98, event_timestamp: 0.6 },
+              },
+              per_field_confidence: { species: 0.95, block_name: 0.95, qty: 0.98, event_timestamp: 0.6 },
+            },
+          ],
           continuity: 'replace',
           continuity_reason: 'Farmer corrected the qty for the same in-flight seeding.',
-          per_field_confidence: { species: 0.95, block_name: 0.95, qty: 0.98, event_timestamp: 0.6 },
         },
       },
     ],
   },
 ];
 
-// Cacheable system + few-shot blocks: emitted as the `system` parameter when shaped
-// as text-blocks-with-cache_control, OR as prepended messages. Anthropic accepts
-// cache_control on system text blocks; few-shot pairs go in the messages array
-// but the LAST few-shot block can also carry cache_control to extend the prefix.
 const CACHEABLE_SYSTEM_BLOCKS = [
   { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
 ];
 
-// Tagged copy of the few-shot list with cache_control on the final user content
-// block of the last shot, so Anthropic caches the entire system+few-shot prefix.
 function cacheableFewShot() {
   const cloned = FEW_SHOT.map((m) => ({
     role: m.role,
