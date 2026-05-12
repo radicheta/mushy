@@ -30,3 +30,6 @@ log/
 # Bridge runtime state (buffer-replay cursor)
 bridge-state/
 .planning/phases/32-vps-multi-purpose-hub/32-INVENTORY.md
+
+# Phase 38 Plan 07 eval driver checkpoint state (base64-image-heavy, runtime only)
+.planning/phases/38-extraction-pipeline/38-EVAL-REPORT.partial.json
