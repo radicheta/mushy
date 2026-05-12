@@ -25,22 +25,44 @@ def client(monkeypatch, tmp_path):
             language_probability = 0.99
 
         class M:
-            def transcribe(self, p):
+            def transcribe(self, p, **kwargs):
                 return ([Seg()], Info())
 
         return M()
 
     monkeypatch.setattr(main, "get_model", fake_model)
-    return TestClient(main.app), tmp_path
+    # TestClient must be entered as a context manager for FastAPI startup events
+    # to fire (Plan 09: deep /health relies on a startup probe).
+    with TestClient(main.app) as tc:
+        yield tc, tmp_path
 
 
-def test_health(client):
+def test_health_ok_when_probe_succeeds(client):
     c, _ = client
     r = c.get("/health")
     assert r.status_code == 200
     body = r.json()
     assert body["ok"] is True
-    assert isinstance(body["model_loaded"], bool)
+    assert body["model_loaded"] is True
+
+
+def test_health_503_when_cuda_fails(monkeypatch, tmp_path):
+    """Plan 09 Task 1: GPU-drift / no-CUDA-device must surface as 503,
+    not green-with-broken-transcribe (the 2026-05-12 incident shape)."""
+    os.environ["ALLOWED_ROOT"] = str(tmp_path)
+    import main
+    importlib.reload(main)
+
+    def boom():
+        raise RuntimeError("CUDA failed with error no CUDA-capable device is detected")
+
+    monkeypatch.setattr(main, "_probe_model", boom)
+    with TestClient(main.app) as c:
+        r = c.get("/health")
+        assert r.status_code == 503
+        body = r.json()
+        assert body["ok"] is False
+        assert "CUDA" in body["reason"]
 
 
 def test_404_on_missing(client):

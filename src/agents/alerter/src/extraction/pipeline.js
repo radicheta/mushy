@@ -415,4 +415,4 @@ function createExtractionPipeline({
   return { enqueue };
 }
 
-module.exports = { createExtractionPipeline };
+module.exports = { createExtractionPipeline, loadImageBlocks };

@@ -10,12 +10,18 @@
 const path = require('path');
 const fs = require('fs');
 const { createExtractor } = require('../../../src/extraction/extractor');
-const { readImageToBase64 } = require('../../../src/extraction/multimodal');
-const { loadFixtures } = require('./fixtures-loader');
+// Plan 09 Task 2: route image loading through pipeline.js so the harness exercises
+// the same code path as the live alerter. A regression in pipeline's image wiring
+// (the 2026-05-12 bug) now fails this harness instead of slipping through.
+const { loadImageBlocks } = require('../../../src/extraction/pipeline');
+const { createTranscribeClient } = require('../../../src/transcribe-client');
+const { loadFixtures, loadProdFixtures } = require('./fixtures-loader');
 const scoring = require('./scoring');
 const { writeReport } = require('./report');
 
 const FIXTURE_DIR = process.env.EXTRACTION_FIXTURE_DIR || '/mnt/mossrock/shared/mushdatadump';
+const PROD_FIXTURE_DIR = process.env.EXTRACTION_PROD_FIXTURE_DIR || '/mnt/mossrock/shared/mushdatadump-prod';
+const WHISPER_URL = process.env.WHISPER_URL || 'http://host.docker.internal:8090';
 const REPORT_PATH = process.env.EVAL_REPORT_PATH
   || path.resolve(__dirname, '../../../../../../.planning/phases/38-extraction-pipeline/38-EVAL-REPORT.md');
 const PARTIAL_PATH = REPORT_PATH.replace(/\.md$/, '.partial.json');
@@ -66,9 +72,15 @@ describe('mushdatadump eval (D-07 ship-gate)', () => {
     if (!process.env.ANTHROPIC_API_KEY) {
       throw new Error('ANTHROPIC_API_KEY must be set in env to run this eval.');
     }
-    const allFixtures = loadFixtures(FIXTURE_DIR);
+    const curatedFixtures = loadFixtures(FIXTURE_DIR);
+    // Plan 09 Task 3: prod corpus fixtures contribute to the same denominator.
+    // Each prod fixture wraps a per-session subdir (audio + image(s)) -> ONE capture.
+    const prodFixtures = loadProdFixtures(PROD_FIXTURE_DIR, {
+      skipNames: ['MANIFEST.md'],
+    });
+    const allFixtures = [...curatedFixtures, ...prodFixtures];
     const fixtures = Number.isFinite(MAX_FIXTURES) ? allFixtures.slice(0, MAX_FIXTURES) : allFixtures;
-    console.info(`[eval] loaded ${fixtures.length}/${allFixtures.length} fixtures from ${FIXTURE_DIR}${Number.isFinite(MAX_FIXTURES) ? ` (capped at ${MAX_FIXTURES})` : ''}`);
+    console.info(`[eval] loaded ${fixtures.length}/${allFixtures.length} fixtures (${curatedFixtures.length} curated + ${prodFixtures.length} prod)${Number.isFinite(MAX_FIXTURES) ? ` capped at ${MAX_FIXTURES}` : ''}`);
 
     // Fresh JSONL — truncate so re-runs don't accumulate stale entries.
     try { fs.mkdirSync(path.dirname(RESULTS_JSONL_PATH), { recursive: true }); } catch (_) { /* noop */ }
@@ -79,6 +91,8 @@ describe('mushdatadump eval (D-07 ship-gate)', () => {
       logger: console,
       model: MODEL,
     });
+    // Plan 09 Task 3: whisper client for prod-session audio. Only constructed if needed.
+    const transcribeClient = createTranscribeClient({ apiUrl: WHISPER_URL, logger: console });
 
     const results = [];
     let hardErrors = 0;
@@ -88,26 +102,39 @@ describe('mushdatadump eval (D-07 ship-gate)', () => {
       const fx = fixtures[i];
       const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
       console.info(`[eval] ${i + 1}/${fixtures.length} (${elapsed}s) ${fx.name}`);
-      let imgBlock;
-      try {
-        imgBlock = await readImageToBase64(fx.imagePath, { logger: console });
-      } catch (e) {
-        console.warn(`[eval] image read failed: ${e.message}`);
+      // Plan 09 Task 2: image loading via pipeline.loadImageBlocks (NOT inline
+      // readImageToBase64). Wire-bugs in pipeline.js now fail the harness.
+      // Plan 09 Task 3: prod fixtures carry multi-modal payloads (audio + images);
+      // curated fixtures expose a single imagePath. Normalize both shapes here.
+      const imagePathList = fx.isProd
+        ? (fx.imagePaths || [])
+        : (fx.imagePath ? [fx.imagePath] : []);
+      const audioPathList = fx.isProd ? (fx.audioPaths || []) : [];
+
+      const imageBlocks = await loadImageBlocks(imagePathList, console);
+      if (imageBlocks.length === 0 && audioPathList.length === 0) {
+        console.warn(`[eval] no usable content for ${fx.name} (no images loaded, no audio)`);
         skipped += 1;
         continue;
       }
-      if (!imgBlock || !imgBlock.ok) {
-        console.warn(`[eval] image not loadable: ${imgBlock && imgBlock.reason}`);
-        skipped += 1;
-        continue;
+
+      let transcript = '';
+      for (const ap of audioPathList) {
+        const tr = await transcribeClient.transcribe(ap).catch((e) => ({ ok: false, reason: e.message }));
+        if (!tr || !tr.ok) {
+          console.warn(`[eval] audio transcribe failed for ${ap}: ${tr && tr.reason}`);
+          continue;
+        }
+        transcript = transcript ? `${transcript}\n${tr.text}` : tr.text;
       }
+
       let r;
       try {
         r = await extractor.extract({
           captures: [{
             text: '',
-            transcript: '',
-            images: [{ data: imgBlock.data, media_type: imgBlock.media_type }],
+            transcript: transcript || '',
+            images: imageBlocks,
           }],
           inFlightDraft: null,
         });

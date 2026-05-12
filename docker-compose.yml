@@ -104,14 +104,17 @@ services:
       - WHISPER_DEVICE=cuda
       - WHISPER_COMPUTE_TYPE=float16
       - ALLOWED_ROOT=/data/signal-capture
+      - HF_HOME=/cache/huggingface   # Plan 09: persist model cache across rebuilds
     volumes:
       - /data/signal-capture:/data/signal-capture:ro   # V13: read-only audio access
+      - whisper-hf-cache:/cache/huggingface             # Plan 09: HF model cache
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8090/health"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 120s   # cold-load of medium model + synthetic probe ~30-60s; give margin
 
 volumes:
   timescale-data:
+  whisper-hf-cache:
