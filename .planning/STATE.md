@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.7
 milestone_name: Multimodal Signal → FarmOS Events
-status: Awaiting operator deploy + live attestations per 37-RUNBOOK.md §4-§8
-stopped_at: Phase 38 context gathered (extraction pipeline decisions D-01..D-07)
-last_updated: "2026-05-12T02:49:19.571Z"
-last_activity: "2026-05-11 21:20 UTC"
+status: Phase 38 Plan 01 shipped — Zod schema foundation live
+stopped_at: Phase 38 Plan 01 complete; Plan 02 (validator) unblocked
+last_updated: "2026-05-12T03:35:56.810Z"
+last_activity: "2026-05-12 Phase 38-01 executed"
 progress:
   total_phases: 22
   completed_phases: 2
-  total_plans: 15
-  completed_plans: 12
-  percent: 80
+  total_plans: 23
+  completed_plans: 13
+  percent: 57
 ---
 
 # Project State
@@ -25,12 +25,14 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 
 ## Current Position
 
-Phase: 37 (in progress)
-Plan: 04 (PARTIAL — Tasks 1+2 shipped; Task 3 live human-verify attestations deferred to operator)
-Status: Awaiting operator deploy + live attestations per 37-RUNBOOK.md §4-§8
+Phase: 38 (in progress)
+Plan: 01 (SHIPPED — Zod schema foundation for B7 log types)
+Status: Plan 02 (validator) unblocked; can require('./extraction/schemas') and pass DRAFT_JSON_SCHEMA to Anthropic tool-use
 Milestone: v1.7 — Multimodal Signal to FarmOS Events
-Last activity: 2026-05-11 21:20 UTC
-Next up: Operator runs 37-RUNBOOK.md (deploy alerter against authored .env; execute attestations A/B/C/D + Phase 33 non-regression E); on PASS, append outcomes table to 37-04-SUMMARY.md and re-run /gsd-execute-phase or /gsd-verify-work to close Phase 37.
+Last activity: 2026-05-12 Phase 38-01 executed
+Next up: /gsd-execute-phase 38 plan 02 (validator + retry envelope)
+
+Phase 37 Plan 04 remains PARTIAL — Tasks 1+2 shipped (7b7256c, 7bff438); Task 3 live attestations deferred to operator per 37-RUNBOOK.md.
 
 Plan 04 progress:
 
@@ -140,6 +142,9 @@ Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (for
 - [37-04] SIGNAL_GROUP_ID is the bare internal_id form, NOT the prefixed group.<...> id form — alerter signal.js wraps internally. 37-SMOKE Probe A documented the 400 failure when passing the prefixed form; 37-RUNBOOK §2 calls this out explicitly.
 - [37-04] Boot-log lines `[boot] signal defaultTarget = …` + `[boot] farmer-map entries = N` are operator-visible mitigation for T-37-04-01 (wrong-group leak) and T-37-04-03 (slug-typo mis-attribution); 37-RUNBOOK §5 makes both lines a hard pre-attestation gate.
 - [37-04] Tasks 1+2 executed sequentially on main; Task 3 (live attestations) deferred to operator — requires three live farmers + operator-authored .env, none automatable from executor seat.
+- [38-01] ObservationLogBase exported (no .refine) alongside ObservationLog (with .refine) — Zod discriminatedUnion requires pure z.object inputs; downstream validator must re-apply state-or-notes check when type==='observation'.
+- [38-01] DRAFT_JSON_SCHEMA shape is `{$ref: '#/definitions/Draft', definitions: {Draft: {anyOf: [...]}}}` -- draft-7, Anthropic-compatible as a single JSON object; Plan 03 passes verbatim as tools[0].input_schema.
+- [38-01] Activity name enum hardcoded to 7 values (sterilize, sterilize_failed, water, relocate, cold_shock, archive_spent, contam) per CONTEXT D-04.
 
 ### Pending Todos
 
@@ -188,6 +193,7 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 | Phase 28 P07 | 752s | 3 tasks | 2 files |
 | Phase Phase 37 P02 P37-02 | 12min | 3 tasks | 6 files |
 | Phase 37 P03 | 25min | 3 tasks | 4 files |
+| Phase 38 P01 | 12min | 3 tasks | 8 files |
 
 ## Session Continuity
 
