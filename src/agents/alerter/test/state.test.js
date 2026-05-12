@@ -540,6 +540,21 @@ describe('999.42 per-sensor enable flags', () => {
     const sends = r.actions.filter(a => a.kind === 'send' && a.alertType === 'sht30');
     expect(sends).toHaveLength(0);
   });
+
+  test('periodic tick respects sht30Enabled=false (regression 2026-05-12)', () => {
+    // Caught live: the sensor_health and sensor_freshness handlers both honored
+    // sht30Enabled=false, but the `tick` re-evaluation at the bottom of the
+    // reducer did not. With lastSeenMs stale and the disabled flag set, the
+    // tick re-drove the sht30 watchdog into FIRING and re-fired every hour via
+    // critical cooldown -- spammed the farmer group all morning before fixing.
+    const cfg = makeConfigSensor({ sht30Enabled: false });
+    let state = initialState(T0);
+    state.sht30LastSeenMs = T0 - 60 * 60 * 1000;
+    const r = transition(state, { type: 'tick' }, T_PAST_GRACE, cfg);
+    const sends = r.actions.filter(a => a.kind === 'send' && a.alertType === 'sht30');
+    expect(sends).toHaveLength(0);
+    expect(r.next.perType.sht30.state).not.toBe(STATES.FIRING);
+  });
 });
 
 describe('scd41_offline (D-04, D-05, D-06)', () => {

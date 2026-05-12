@@ -569,6 +569,14 @@ function transition(prev, event, now, config) {
       if (now - next.bootedAtMs >= 60000) {
         const sensorCfg = { ...config, oobN: 1, oobWindowMin: 0 };
         for (const sensor of ['sht30', 'scd41']) {
+          // 999.42 gap fix: honor per-sensor enable flag here too. Without this,
+          // a muted sensor's tick re-evaluation kept driving the watchdog into
+          // FIRING and re-fired hourly via critical cooldown (caught 2026-05-12
+          // after the sensor_health-handler gate alone wasn't enough).
+          const enabled = sensor === 'sht30'
+            ? (config.sht30Enabled !== false)
+            : (config.scd41Enabled !== false);
+          if (!enabled) continue;
           const lastMs = sensor === 'sht30' ? next.sht30LastSeenMs : next.scd41LastSeenMs;
           const stale = isSensorSilent({ lastSeenMs: lastMs, nowMs: now, config });
           const fields = { lastSeenMs: lastMs };
