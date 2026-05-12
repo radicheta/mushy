@@ -144,4 +144,4 @@ function formatHeartbeat({ summary, config, nowMs: _nowMs }) {
   return body;
 }
 
-module.exports = { formatProblem, formatRecovery, formatHeartbeat };
+module.exports = { formatProblem, formatRecovery, formatHeartbeat, fmtNum, fmtDuration, fmtRelative };
