@@ -1,9 +1,9 @@
 # Phase 38 Plan 07: D-07 Ship-Gate Eval Report
 
-**Generated:** 2026-05-12T04:27:02.381Z
+**Generated:** 2026-05-12T11:38:19.152Z
 **Model:** claude-sonnet-4-6
 **Fixture dir:** `/mnt/mossrock/shared/mushdatadump`
-**Fixture count:** 73
+**Fixture count:** 2
 **Skipped (load errors):** 0
 **Hard API errors:** 0
 **Cost note:** 73 fixtures x ~1 turn x claude-sonnet-4-6 (~$3/MTok input cached, $15/MTok output) with image input. With prompt caching across the system+few-shot, expected spend $1-5 per full run. Re-runnable any time the extractor changes.
@@ -38,18 +38,27 @@ where farmer-curated single-event captures land 1:1 against extracted drafts.
 
 | Dimension | Score | Raw |
 |-----------|-------|-----|
-| Schema conformance | 100% | 73 / 73 |
+| Schema conformance | 100% | 2 / 2 |
 | Required-field exact-match | 0% | 0 / 0 |
 | Required-field OR appropriate ask-back | 100% | (the D-07 OR-bar denominator) |
-| Appropriate ask-back | 6.8% | (per-fixture) |
+| Appropriate ask-back | 0% | (per-fixture) |
 | Harvest set-equality (lineage) | n/a | over 0 harvest fixtures |
-| B5 block_name precision | 0% | 0 / 48 extracted |
+| B5 block_name precision | 0% | 0 / 2 extracted |
 | B5 block_name recall | 0% | 0 / 0 expected |
 | Brier score (confidence vs correct) | 0 | lower is better |
 | ECE (expected calibration error) | 0 | lower is better |
 
+## Anthropic Usage (actual)
+
+- Calls with usage telemetry: 2
+- Input tokens (uncached): 1602
+- Output tokens: 755
+- Cache write tokens: 5589
+- Cache read tokens: 4035
+- **Estimated spend:** $0.0383 USD
+
 ## Notes
 
-Wall time: 742.8s. Partial state checkpoint at /mnt/slime-kingdom/opt/mushy/.planning/phases/38-extraction-pipeline/38-EVAL-REPORT.partial.json.
+Wall time: 21.2s. Per-fixture drafts: /mnt/slime-kingdom/opt/mushy/.planning/phases/38-extraction-pipeline/38-EVAL-REPORT-results.jsonl Full results: /mnt/slime-kingdom/opt/mushy/.planning/phases/38-extraction-pipeline/38-EVAL-REPORT-results.json Capped run: EVAL_MAX_FIXTURES=2 (of 73 available).
 
 ## Verdict: [PASS]
