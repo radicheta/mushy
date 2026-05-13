@@ -121,6 +121,11 @@ services:
       - BRIDGE_HTTP_URL=${BRIDGE_HTTP_URL:-http://host.docker.internal:8081}
       - CAPTURE_RETENTION_DAYS=${CAPTURE_RETENTION_DAYS:-30}
       - CAPTURE_RETENTION_CRON=${CAPTURE_RETENTION_CRON:-15 3 * * *}
+      # Phase 39 (D-03a, D-04..D-04c): confirm-loop timeouts + edit cap.
+      - DRAFT_PENDING_TIMEOUT_MIN=${DRAFT_PENDING_TIMEOUT_MIN:-30}
+      - DRAFT_NUDGE_FRACTION=${DRAFT_NUDGE_FRACTION:-0.8}
+      - DRAFT_WATCHDOG_INTERVAL_MS=${DRAFT_WATCHDOG_INTERVAL_MS:-60000}
+      - MAX_EDIT_TURNS=${MAX_EDIT_TURNS:-3}
     volumes:
       - /data/signal-capture:/data/signal-capture
       - ./scripts/signal:/opt/scripts/signal:ro

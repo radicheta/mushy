@@ -115,7 +115,23 @@ function load(env = process.env) {
     draftIdleGapMin: parseIntEnv(env, 'DRAFT_IDLE_GAP_MIN', 30),
     // D-05: hard cap on ask-back turns before status -> needs_review.
     maxAskbackTurns: parseIntEnv(env, 'MAX_ASKBACK_TURNS', 3),
+    // Phase 39 (D-03a, D-04..D-04c): confirm-loop timeouts + edit cap. See
+    // docker-compose.override.yml for matching env passthrough.
+    draftPendingTimeoutMin: parseIntEnv(env, 'DRAFT_PENDING_TIMEOUT_MIN', 30),
+    draftNudgeFraction: clampFraction(
+      parseFloatEnv(env, 'DRAFT_NUDGE_FRACTION', 0.8),
+      env.DRAFT_NUDGE_FRACTION,
+    ),
+    draftWatchdogIntervalMs: parseIntEnv(env, 'DRAFT_WATCHDOG_INTERVAL_MS', 60000),
+    maxEditTurns: parseIntEnv(env, 'MAX_EDIT_TURNS', 3),
   });
+}
+
+function clampFraction(parsed, raw) {
+  if (parsed > 0 && parsed < 1) return parsed;
+  // eslint-disable-next-line no-console
+  console.warn(`[config] DRAFT_NUDGE_FRACTION=${raw} out of (0,1); using default 0.8`);
+  return 0.8;
 }
 
 function clampThreshold(parsed, raw) {
