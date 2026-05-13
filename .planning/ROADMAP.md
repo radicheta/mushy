@@ -130,7 +130,7 @@ Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 202
 - [x] **Phase 37: Multi-farmer Routing** — DM routing to sender; group-thread participation; farmOS person lookup
 - [x] **Phase 38: Extraction Pipeline** — schema-aware LLM extraction; multimodal fusion; confidence loop; lineage (reopened then re-closed 2026-05-12 via Plan 09: 95.8% schema conformance on 96-fixture eval including real prod inoc session)
 - [x] **Phase 39: Farmer Confirmation Loop** — confirm-before-write; idempotent commit; EDIT loop; draft timeout (shipped 2026-05-13; 127 unit + 11 integration PASS; live-farmer UAT deferred to 39-RUNBOOK.md)
-- [ ] **Phase 40: FarmOS Write Path** — API client; asset + log creation; QR binding; photo upload; audit log
+- [x] **Phase 40: FarmOS Write Path** — API client; asset + log creation; QR binding; photo upload; audit log (code-complete 2026-05-13; 92/92 unit PASS; live dev-farmOS integration + prod-fixture SHIP GATE deferred to operator per 40-RUNBOOK.md)
 - [ ] **Phase 41: Ingestion Harness** — synthetic corpus; paper-log replay; audio replay; cross-stream consistency
 - [ ] **Phase 42: SHI-on-Sawdust Pilot** — full lifecycle E2E (sterilize to inoc to colonize to harvest to archive)
 
@@ -441,7 +441,7 @@ Original justification: align repo netplan with fc1's currently-running farm-4G 
 | 37. Multi-farmer Routing | v1.7 | 0/TBD | Not started | — |
 | 38. Extraction Pipeline | v1.7 | 7/8 | In Progress|  |
 | 39. Farmer Confirmation Loop | v1.7 | 7/7 | Shipped 2026-05-13 | 127 unit + 11 integration PASS |
-| 40. FarmOS Write Path | v1.7 | 0/TBD | Not started | — |
+| 40. FarmOS Write Path | v1.7 | 8/8 | Code-complete 2026-05-13 | 92/92 unit PASS; live attestation pending |
 | 41. Ingestion Harness | v1.7 | 0/TBD | Not started | — |
 | 42. SHI-on-Sawdust Pilot | v1.7 | 0/TBD | Not started | — |
 
