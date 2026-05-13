@@ -5,4 +5,8 @@
 module.exports = {
   createFarmosClient: require('./client').createFarmosClient,
   commitDb: require('./commit-db'),
+  qr: require('./qr'),
+  files: require('./files'),
+  assets: require('./assets'),
+  logs: require('./logs'),
 };
