@@ -67,4 +67,28 @@ async function markExpiredOlderThan(pool, ageMs) {
   return { rowCount: r.rowCount };
 }
 
-module.exports = { initDb, insertCapture, markExpiredOlderThan };
+// Phase 40 Plan 06: photo attachment-path lookup for the commit pipeline.
+// Returns a deduped flat array of paths across all matching capture rows.
+// Never-throws shape: {ok, paths} | {ok:false, reason}.
+async function getAttachmentPathsForIds(pool, captureIds) {
+  if (!Array.isArray(captureIds) || captureIds.length === 0) {
+    return { ok: true, paths: [] };
+  }
+  try {
+    const r = await pool.query(
+      `SELECT attachment_paths FROM signal_capture WHERE id = ANY($1::text[])`,
+      [captureIds]
+    );
+    const set = new Set();
+    for (const row of (r.rows || [])) {
+      for (const p of (row.attachment_paths || [])) {
+        if (p) set.add(p);
+      }
+    }
+    return { ok: true, paths: Array.from(set) };
+  } catch (e) {
+    return { ok: false, reason: e.message };
+  }
+}
+
+module.exports = { initDb, insertCapture, markExpiredOlderThan, getAttachmentPathsForIds };

@@ -31,6 +31,8 @@ const { createExtractionPipeline } = require('./extraction');
 const { createOutboundDispatcher } = require('./extraction/outbound');
 // Phase 39 confirm-loop.
 const confirm = require('./confirm');
+// Phase 40 farmOS write path.
+const farmos = require('./farmos');
 
 /**
  * createAlerter({ env, clock, logger }) -> { dispatch, close, _state }
@@ -78,6 +80,13 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
     logger.info('[boot] signal_draft_event + confirm columns initialized');
   } catch (e) {
     logger.warn(`[boot] confirm-loop initDb failed (confirm loop will degrade): ${e.message}`);
+  }
+  // Phase 40 D-02/D-07: commit-pipeline schema additions on signal_draft.
+  try {
+    await farmos.commitDb.initDb(pool);
+    logger.info('[boot] signal_draft commit columns + index initialized');
+  } catch (e) {
+    logger.warn(`[boot] commit-db initDb failed (commit pipeline will degrade): ${e.message}`);
   }
 
   // Phase 29 plan 29-04 BLOCKER 3 / ALRT-09 — Tier C runtime overrides for
@@ -270,6 +279,46 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
     logger,
   });
 
+  // Phase 40: commit watchdog. Constructed only if FARMOS_USERNAME +
+  // FARMOS_PASSWORD are both set; otherwise the alerter still runs (Phase
+  // 39 confirm watchdog + receive loop stay alive) and a single WARN line
+  // surfaces the gate to the operator.
+  let commitWatchdog = null;
+  if (config.farmosUsername && config.farmosPassword) {
+    const farmosClient = farmos.createFarmosClient({
+      farmosUrl: config.farmosUrl,
+      username: config.farmosUsername,
+      password: config.farmosPassword,
+      logger,
+      backoffMs: config.commitRetryBackoffMs,
+      retryMax: config.commitRetryMax,
+    });
+    const auditLogger = farmos.createAuditLogger({
+      pool, logger, farmosUrl: config.farmosUrl, confirmDb: confirm.confirmDb,
+    });
+    const commitCtx = {
+      commitDb: farmos.commitDb,
+      capturePathsFor: async (ids) => {
+        const r = await captureDb.getAttachmentPathsForIds(pool, ids);
+        return r.ok ? r.paths : [];
+      },
+      logger,
+      clock: { now: () => Date.now() },
+    };
+    commitWatchdog = farmos.createCommitWatchdog({
+      pool,
+      commitDb: farmos.commitDb,
+      farmosClient,
+      commitRouter: farmos.commitRouter,
+      ctx: commitCtx,
+      config,
+      auditLogger,
+      logger,
+    });
+  } else {
+    logger.warn('[commit-watchdog] disabled: farmOS credentials missing');
+  }
+
   const receiveLoop = createReceiveLoop({
     signalClient,
     dispatch: applyEvent,
@@ -292,6 +341,11 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
   receiveLoop.start();
   // Phase 39 D-04d: start watchdog AFTER receive-loop is up (first tick fires immediately).
   watchdog.start().catch((e) => logger.warn(`[boot] watchdog start failed: ${e.message}`));
+  // Phase 40: start commit watchdog AFTER confirm watchdog so the read seam (Phase 39
+  // 'confirmed' transitions) is up before the commit pipeline starts draining.
+  if (commitWatchdog) {
+    commitWatchdog.start().catch((e) => logger.warn(`[boot] commit-watchdog start failed: ${e.message}`));
+  }
 
   return {
     dispatch: applyEvent,
@@ -300,6 +354,7 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
       heartbeat.stop();
       receiveLoop.stop();
       watchdog.stop();
+      if (commitWatchdog) commitWatchdog.stop();
       retentionJob.stop();
       clearInterval(tickTimer);
       pool.end().catch(() => {});
