@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.7
 milestone_name: Multimodal Signal → FarmOS Events
 status: Phase 38 CLOSED (real this time) -- Plan 09 PASS at 95.8% schema conformance (92/96) on 95 curated + 1 real prod session. Don Santiago attested 2026-05-12 evening.
-stopped_at: Phase 38 closed 2026-05-12 evening via Plan 09; ready to resume autonomous v1.7 close (Phases 39 -> 42) when authorized
-last_updated: "2026-05-13T01:30:00Z"
-last_activity: 2026-05-12 Plan 09 PASS attested; Phase 38 closed; Plan 09 spend $10.91 across cycle
+stopped_at: Phase 38 Plan 07 partial (Tasks 1+2 shipped; eval verdict PASS in 38-EVAL-REPORT.md; Task 3 Don Santiago verdict review pending)
+last_updated: "2026-05-13T02:00:16.372Z"
+last_activity: 2026-05-13 -- Phase 39 planning complete
 progress:
-  total_phases: 22
-  completed_phases: 3
-  total_plans: 24
-  completed_plans: 21
-  percent: 88
+  total_phases: 23
+  completed_phases: 2
+  total_plans: 31
+  completed_plans: 19
+  percent: 61
 ---
 
 # Project State
@@ -27,14 +27,18 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 
 Phase: 38 CLOSED (real) 2026-05-12 evening via Plan 09 PASS attestation
 Milestone: v1.7 -- Multimodal Signal to FarmOS Events
-Last activity: 2026-05-12 Plan 09 executed end-to-end, PASS attested by Don Santiago
+Last activity: 2026-05-13 -- Phase 39 planning complete
 Next up: Phase 39 Farmer Confirmation Loop -- autonomous v1.7 close gated on user re-authorization (long session; natural break point)
 
 Phase 38 close audit (Plan 09 trail):
+
 - Plan 09 ran 96-fixture re-eval (95 curated + 1 real prod session) -> PASS at 95.8% schema conformance
 - Bugs fixed in cycle: whisper GPU drift (restart + cache volume), pipeline image-wire (a04a6bc), fake-green whisper /health (deep probe), extractor maxTokens 2048 -> 16384 default, species-vocab gap (winecap->WIN), harness-pipeline parity (loadImageBlocks exported), real-session fixture in ship-gate denominator, whisper hallucination tail (VAD filter)
 - Plan 08 (prod-log advisory eval) superseded by Plan 09
-- Total Plan 09 spend: $10.91 paid Anthropic ($5.65 FAIL run-1 + $0.51 smoke + $4.75 PASS run-2)
+- Total Plan 09 spend: ## Current Position
+
+0.91 paid Anthropic ($5.65 FAIL run-1 + $0.51 smoke + $4.75 PASS run-2)
+
 - Paper trail in .planning/phases/38-extraction-pipeline/38-EVAL-REPORT-plan07.md | -plan09-smoke.md | -plan09-run1-FAIL.md | -plan09-run2-PASS.md
 - Prod inoc session corpus at /mnt/mossrock/shared/mushdatadump-prod/2026-05-12_inoc_santi/
 
