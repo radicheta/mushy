@@ -1,0 +1,59 @@
+{
+  "_provenance": {
+    "source_session": "/mnt/mossrock/shared/mushdatadump-prod/2026-05-12_inoc_santi/",
+    "source_files": [
+      "HOZad9ymvNJTXmRREgcW.m4a",
+      "YkBwglxBTAFiQE5JbRwr.jpg",
+      "XAbzzUidkLR3irhVmjea.jpg",
+      "transcript-HOZad9ymvNJTXmRREgcW.txt"
+    ],
+    "captured_at_local": "2026-05-12 ~18:26",
+    "real_sender": "REDACTED (mapped to synthetic +15550001234 below)",
+    "field_substitutions": [
+      "sender_e164: real f1 number replaced with +15550001234 (project policy)",
+      "farmos_person: phone-mapped slug preserved (santi)",
+      "source_capture_ids: synthetic cap- ids replace real capture ULIDs",
+      "id: SHA-256-equivalent test fixture id (synthetic)",
+      "qr_codes: production identifier strings preserved (not PII)",
+      "block_name, batch_name: production identifiers preserved (not PII)",
+      "notes: farmer free-text redacted of names"
+    ],
+    "operator_note": "Don Santiago, this is the ship-gate witness for Phase 40 -- a confirmed-state draft derived from the 2026-05-12 inoc session that Phase 39 just confirmed and Phase 40 must drive to a farmOS commit. Same source session as the Phase 39 fixture (prod-draft-awaiting.json); the difference is the status (confirmed vs awaiting_farmer) and the addition of confirmed_at. Phase 38 Plan 09 PASS attestation covers the extraction path; Phase 40 Plan 07 attests the commit path.",
+    "ship_gate_memory": "feedback_real_data_before_ship_gate_pass.md -- 2026-05-12 lesson: curated-only PASS is INSUFFICIENT for ship-gate attestation; at least one real-prod fixture MUST drive the same pipeline end-to-end before status can flip to PASS.",
+    "memory_pins": [
+      "feedback_real_data_before_ship_gate_pass",
+      "project_phase38_production_logs_available"
+    ]
+  },
+  "id": "prod-confirmed-fixture-2026-05-12-dt",
+  "sender_e164": "+15550001234",
+  "farmos_person": "santi",
+  "source_capture_ids": [
+    "cap-prod-fixture-audio-001",
+    "cap-prod-fixture-sheet-001"
+  ],
+  "status": "confirmed",
+  "log_type": "seeding",
+  "draft_json": {
+    "batch_name": "BATCH-2026-05-12-PROD",
+    "block_name": "260512_DT_11",
+    "species_code": "DT",
+    "qr_codes": ["QR-PROD-FIXTURE-001"],
+    "timestamp": 1747082040,
+    "notes": "source strain 118.24; substrate bag"
+  },
+  "per_field_confidence": {
+    "batch_name": 0.85,
+    "block_name": 0.88,
+    "species_code": 0.92,
+    "qr_codes": 0.80
+  },
+  "askback_turns": 0,
+  "farmer_facing_preview": "Does this seeding look right?\n\ntype: seeding\nspecies: DT\nblock_name: 260512_DT_11\nqty: 1\nevent_timestamp: 2026-05-12T21:14:00Z\nsource_strain: 118.24\nsubstrate: bag",
+  "needs_review_reason": null,
+  "reply_target_kind": "dm",
+  "group_id": null,
+  "edit_turn_count": 0,
+  "confirmed_at": "2026-05-12T21:15:00Z",
+  "terminal_reason": "farmer_yes"
+}

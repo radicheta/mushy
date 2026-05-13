@@ -1,0 +1,23 @@
+{
+  "id": "fx-harvest-multi-bag-001",
+  "sender_e164": "+15550001234",
+  "farmos_person": "santi",
+  "source_capture_ids": ["cap-harvest-1"],
+  "status": "confirmed",
+  "log_type": "harvest",
+  "draft_json": {
+    "source_qr_codes": ["QR-FX-SRC-001", "QR-FX-SRC-002"],
+    "harvest_batch_name": "HBATCH-2026-05-13-DT-001",
+    "bags": [
+      { "qr_code": "QR-FX-BAG-001", "weight_grams": 250 },
+      { "qr_code": "QR-FX-BAG-002", "weight_grams": 230 },
+      { "qr_code": "QR-FX-BAG-003", "weight_grams": 260 }
+    ],
+    "timestamp": 1747353600,
+    "notes": "morning harvest"
+  },
+  "per_field_confidence": {},
+  "farmer_facing_preview": "Harvest 3 bags from 2 source blocks",
+  "reply_target_kind": "dm",
+  "group_id": null
+}
