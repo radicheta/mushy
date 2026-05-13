@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.7
 milestone_name: Multimodal Signal → FarmOS Events
-status: Phase 38 REOPENED -- live prod inoc session failed (whisper 500 + schema_invalid on real audio + uncurated text). Plan 07 PASS retracted. Remediation pending.
-stopped_at: Phase 38 reopened 2026-05-12 -- prod inoc session corpus at /mnt/mossrock/shared/mushdatadump-prod/2026-05-12_inoc_santi/ surfaced whisper service brittleness + schema_invalid on real input
-last_updated: "2026-05-12T12:30:00Z"
-last_activity: 2026-05-12 Phase 38 reopened on prod-session live-replay failures
+status: Phase 38 CLOSED (real this time) -- Plan 09 PASS at 95.8% schema conformance (92/96) on 95 curated + 1 real prod session. Don Santiago attested 2026-05-12 evening.
+stopped_at: Phase 38 closed 2026-05-12 evening via Plan 09; ready to resume autonomous v1.7 close (Phases 39 -> 42) when authorized
+last_updated: "2026-05-13T01:30:00Z"
+last_activity: 2026-05-12 Plan 09 PASS attested; Phase 38 closed; Plan 09 spend $10.91 across cycle
 progress:
   total_phases: 22
-  completed_phases: 2
-  total_plans: 23
-  completed_plans: 19
-  percent: 83
+  completed_phases: 3
+  total_plans: 24
+  completed_plans: 21
+  percent: 88
 ---
 
 # Project State
@@ -25,23 +25,20 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 
 ## Current Position
 
-Phase: 38 REOPENED 2026-05-12 -- prod inoc session live-replay surfaced two distinct failures
+Phase: 38 CLOSED (real) 2026-05-12 evening via Plan 09 PASS attestation
 Milestone: v1.7 -- Multimodal Signal to FarmOS Events
-Last activity: 2026-05-12 Phase 38 reopened after prod-session live-replay failures
-Next up: Phase 38 Plan 09 execute -- remediation plan filed 2026-05-12 at .planning/phases/38-extraction-pipeline/38-09-PLAN.md
+Last activity: 2026-05-12 Plan 09 executed end-to-end, PASS attested by Don Santiago
+Next up: Phase 39 Farmer Confirmation Loop -- autonomous v1.7 close gated on user re-authorization (long session; natural break point)
 
-Phase 38 reopen trigger (2026-05-12 evening session):
-- Plan 07 PASS was on 2 curated photo-only fixtures; live prod inoc session returned 0/4
-- Two latent bugs uncovered + FIXED (whisper GPU drift recovered by restart; pipeline image-wire bug at commit a04a6bc)
-- Replay against fixed pipeline: 30 schema-valid drafts from logsheet photos + 12 from audio -- PASS in isolation
-- Plan 09 scope: deep whisper /health, harness-pipeline parity, real-session fixture in ship-gate denominator, species-vocab additions, re-run eval, re-attest
-- Plan 08 (prod-log advisory eval) superseded by Plan 09 -- scope absorbed
+Phase 38 close audit (Plan 09 trail):
+- Plan 09 ran 96-fixture re-eval (95 curated + 1 real prod session) -> PASS at 95.8% schema conformance
+- Bugs fixed in cycle: whisper GPU drift (restart + cache volume), pipeline image-wire (a04a6bc), fake-green whisper /health (deep probe), extractor maxTokens 2048 -> 16384 default, species-vocab gap (winecap->WIN), harness-pipeline parity (loadImageBlocks exported), real-session fixture in ship-gate denominator, whisper hallucination tail (VAD filter)
+- Plan 08 (prod-log advisory eval) superseded by Plan 09
+- Total Plan 09 spend: $10.91 paid Anthropic ($5.65 FAIL run-1 + $0.51 smoke + $4.75 PASS run-2)
+- Paper trail in .planning/phases/38-extraction-pipeline/38-EVAL-REPORT-plan07.md | -plan09-smoke.md | -plan09-run1-FAIL.md | -plan09-run2-PASS.md
+- Prod inoc session corpus at /mnt/mossrock/shared/mushdatadump-prod/2026-05-12_inoc_santi/
 
-Prod inoc session corpus: /mnt/mossrock/shared/mushdatadump-prod/2026-05-12_inoc_santi/ (see MANIFEST.md)
-- Logsheet entries may NOT exactly match audio narration -- deliberate cross-check by Don Santiago
-- Replay surfaced mismatch on 04-25: sheet WIN x3 vs audio coded CAS x3 (species-vocab gap) + count off by 1
-
-Autonomous task #2 (Phase 39 -> 42 v1.7 close): PAUSED until Plan 09 executes + Don Santiago re-attests.
+Autonomous task #2 (Phase 39 -> 42 v1.7 close): READY to resume; awaiting user signal to re-launch (session has been long, user may want a break).
 
 Phase 37 Plan 04 remains PARTIAL — Tasks 1+2 shipped (7b7256c, 7bff438); Task 3 live attestations deferred to operator per 37-RUNBOOK.md.
 
