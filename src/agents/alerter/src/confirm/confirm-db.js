@@ -74,7 +74,7 @@ async function appendEvent(client, draftId, event, payload) {
   }
 }
 
-// Pool-level overload — opens its own client briefly.
+// Pool-level overload -- opens its own client briefly.
 async function appendEventViaPool(pool, draftId, event, payload) {
   try {
     const r = await pool.query(
