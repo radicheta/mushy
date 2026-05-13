@@ -192,6 +192,51 @@ describe('Phase 38: extraction knobs', () => {
   });
 });
 
+describe('Phase 39 confirm-loop knobs', () => {
+  let warnSpy;
+  beforeEach(() => {
+    warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  test('Phase 39 defaults', () => {
+    const cfg = load({ ...BASE_ENV });
+    expect(cfg.draftPendingTimeoutMin).toBe(30);
+    expect(cfg.draftNudgeFraction).toBe(0.8);
+    expect(cfg.draftWatchdogIntervalMs).toBe(60000);
+    expect(cfg.maxEditTurns).toBe(3);
+  });
+
+  test('Phase 39 env overrides', () => {
+    const cfg = load({
+      ...BASE_ENV,
+      DRAFT_PENDING_TIMEOUT_MIN: '45',
+      DRAFT_NUDGE_FRACTION: '0.75',
+      DRAFT_WATCHDOG_INTERVAL_MS: '30000',
+      MAX_EDIT_TURNS: '5',
+    });
+    expect(cfg.draftPendingTimeoutMin).toBe(45);
+    expect(cfg.draftNudgeFraction).toBe(0.75);
+    expect(cfg.draftWatchdogIntervalMs).toBe(30000);
+    expect(cfg.maxEditTurns).toBe(5);
+  });
+
+  test('DRAFT_NUDGE_FRACTION clamps out-of-range to 0.8', () => {
+    expect(load({ ...BASE_ENV, DRAFT_NUDGE_FRACTION: '1.5' }).draftNudgeFraction).toBe(0.8);
+    expect(load({ ...BASE_ENV, DRAFT_NUDGE_FRACTION: '-0.1' }).draftNudgeFraction).toBe(0.8);
+    expect(load({ ...BASE_ENV, DRAFT_NUDGE_FRACTION: '0' }).draftNudgeFraction).toBe(0.8);
+    expect(load({ ...BASE_ENV, DRAFT_NUDGE_FRACTION: '1' }).draftNudgeFraction).toBe(0.8);
+  });
+
+  test('returned object is frozen', () => {
+    'use strict';
+    const cfg = load({ ...BASE_ENV });
+    expect(() => { cfg.maxEditTurns = 99; }).toThrow();
+  });
+});
+
 describe('maskNumber', () => {
   test('Test E: masks middle digits, preserves first 2 and last 4, correct length', () => {
     const result = maskNumber('+15551234567');
