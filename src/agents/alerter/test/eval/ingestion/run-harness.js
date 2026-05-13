@@ -25,13 +25,23 @@ const path = require('path');
 const { createJsonlWriter, openRunMetadataLine } = require('./jsonl-writer');
 const { createMockExtractor } = require('./mock-extractor');
 const { createMockTranscribe } = require('./mock-transcribe');
+const fixturesLoader = require('./fixtures-loader');
 
-// Loader registry. Each plan in the wave wires its loader in. Plan 01 ships
-// stubs so the CLI is end-to-end runnable on day 1.
+// fmtNum: lazy require to avoid pulling alerter deps in CI smoke runs.
+let _fmtNum = null;
+function fmtNum(n) {
+  if (!_fmtNum) {
+    try { _fmtNum = require('../../../src/message').fmtNum; }
+    catch (_) { _fmtNum = (x) => (typeof x === 'number' ? (Math.round(x * 10) / 10).toString().replace(/\.0$/, '') : String(x)); }
+  }
+  return _fmtNum(n);
+}
+
+// Loader registry. Plans 03 / 04 / 05 wire their loaders in.
 const LOADERS = {
-  synthetic: null,    // Plan 03 wires loadSyntheticCorpus
-  'paper-log': null,  // Plan 04 wires loadPaperLogCorpus
-  audio: null,        // Plan 05 wires loadAudioCorpus
+  synthetic: () => fixturesLoader.loadSyntheticCorpus(path.resolve(__dirname, 'fixtures/synthetic')),
+  'paper-log': () => fixturesLoader.loadPaperLogCorpus(),
+  audio: () => fixturesLoader.loadAudioCorpus(),
 };
 
 function parseArgs(argv) {
