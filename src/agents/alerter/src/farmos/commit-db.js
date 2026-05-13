@@ -104,11 +104,14 @@ async function markFailed(pool, draftId, reason) {
 }
 
 async function requeueForRetry(pool, draftId) {
+  // NOTE: committed_at_attempt is PRESERVED across requeue so the watchdog's
+  // pre-lock backoff gate (Plan 05 task 2) can compare clock.now() - prev to
+  // the configured backoff. releaseStaleLocks (the crash-recovery path) is
+  // what NULLs committed_at_attempt back to a clean state.
   try {
     const r = await pool.query(
       `UPDATE signal_draft
-          SET status='confirmed',
-              committed_at_attempt = NULL
+          SET status='confirmed'
         WHERE id=$1 AND status='committing'`,
       [draftId]
     );

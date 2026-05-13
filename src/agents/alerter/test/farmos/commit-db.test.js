@@ -69,13 +69,16 @@ describe('commit-db (Phase 40 D-02/D-07)', () => {
     expect(pool.getDraft('a').commit_failed_reason).toBe('http_422');
   });
 
-  it('requeueForRetry resets to confirmed and nulls committed_at_attempt', async () => {
+  it('requeueForRetry resets to confirmed and PRESERVES committed_at_attempt for backoff gate', async () => {
     const pool = makeFakePool();
-    pool.seedDraft({ id: 'a', status: 'committing', committed_at_attempt: new Date() });
+    const prev = new Date();
+    pool.seedDraft({ id: 'a', status: 'committing', committed_at_attempt: prev });
     const r = await commitDb.requeueForRetry(pool, 'a');
     expect(r.rowCount).toBe(1);
     expect(pool.getDraft('a').status).toBe('confirmed');
-    expect(pool.getDraft('a').committed_at_attempt).toBeNull();
+    // committed_at_attempt is intentionally preserved so the watchdog backoff
+    // gate (Plan 05) can compare clock.now() - prev_attempt to backoff window.
+    expect(pool.getDraft('a').committed_at_attempt).toBe(prev);
   });
 
   it('releaseStaleLocks RETURNS released ids', async () => {
