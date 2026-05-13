@@ -38,3 +38,5 @@ bridge-state/
 src/agents/alerter/test/eval/ingestion/results/
 # Phase 41 fixture test artifacts (placeholder PNGs / symlinks)
 src/agents/alerter/test/eval/ingestion/test-fixtures/
+# Phase 41 generated EVAL reports (per-run unique; canonical PASS gets committed manually)
+.planning/phases/41-ingestion-harness/41-EVAL-REPORT-*.md
