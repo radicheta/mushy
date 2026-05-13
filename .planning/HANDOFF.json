@@ -1,0 +1,52 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-05-13T01:42:00Z",
+  "context": "between-phases",
+  "milestone": "v1.7",
+  "milestone_name": "Multimodal Signal -> FarmOS Events",
+  "last_phase_closed": "38",
+  "next_phase": "39",
+  "next_phase_name": "Farmer Confirmation Loop",
+  "status": "paused",
+  "session_summary": "Phase 38 reopened mid-day after live prod inoc session failed 0/4; root-caused 5+ bugs across whisper service, pipeline image wiring, fake-green healthcheck, extractor maxTokens default, species vocab. All fixed in code (commits 30c409c -> b8847e8). Plan 09 remediation closed Phase 38 properly on a 96-fixture ship-gate at 95.8% schema conformance INCLUDING one real prod session fixture.",
+  "blockers": [],
+  "human_actions_pending": [
+    {
+      "action": "Confirm timing to resume autonomous v1.7 close (Phases 39 -> 42)",
+      "context": "User explicitly chose 'All the way to v1.7 close (39->42)' as autonomous scope earlier in session. Paused after Phase 38 closed; user wanted to break to clear context before continuing.",
+      "blocking": true
+    }
+  ],
+  "decisions": [
+    {"decision": "Phase 38 closed on 95.8% schema conformance (92/96) including real prod session", "rationale": "Above 90% bar; only 1 real schema_invalid + 3 transient API 500s out of 96", "phase": "38"},
+    {"decision": "Plan 08 superseded by Plan 09", "rationale": "Prod-corpus eval scope absorbed into the ship-gate denominator rather than running as separate advisory pass", "phase": "38"},
+    {"decision": "extractor maxTokens default 2048 -> 16384", "rationale": "Multi-event paper-log pages produce 10-25 drafts; 2048 was silently truncating tool_use input to empty {} causing schema_invalid floor", "phase": "38"},
+    {"decision": "whisper /transcribe uses vad_filter=True + condition_on_previous_text=False", "rationale": "Eliminated counting-hallucination tails on long audio; 4x faster (8.7s vs 36.5s on 6min audio)", "phase": "38"},
+    {"decision": "whisper /health does eager startup probe (model load + 1s synthetic transcribe)", "rationale": "Fake-green healthcheck let GPU drift run for 5 days unnoticed; now 503 within seconds of any cuda failure", "phase": "38"},
+    {"decision": "Eval harness routes image loading via pipeline.loadImageBlocks (exported)", "rationale": "Plan 07 PASS was on a code path that did not exist in production; harness now structurally fails if pipeline image wiring breaks again", "phase": "38"},
+    {"decision": "Real prod session fixture mandatory in ship-gate denominator", "rationale": "2 curated photo-only fixtures could not predict live behavior; corpus dir established at /mnt/mossrock/shared/mushdatadump-prod/", "phase": "38"}
+  ],
+  "uncommitted_files": [],
+  "next_action": "User confirms readiness to resume autonomous run. Then: /gsd-autonomous --from 39 (scope: through 42 per earlier choice). Phase 39 is 'Farmer Confirmation Loop' -- new phase, no plans yet; autonomous will run discuss -> plan -> execute.",
+  "context_notes": "Long session 2026-05-12. Started by closing Phase 38 on Plan 07 (curated PASS) then immediately had to reopen when live prod inoc session via Signal returned 0/4. Spent the rest of the session root-causing 5 bugs and shipping Plan 09 remediation. $10.91 total paid Anthropic spend across the cycle. Three new memory rules written (smoke-before-expensive, keep-paper-trail, real-data-ship-gate). 8 commits 30c409c -> b8847e8.",
+  "session_paper_trail": {
+    "corpus_dir": "/mnt/mossrock/shared/mushdatadump-prod/2026-05-12_inoc_santi/",
+    "eval_reports": [
+      ".planning/phases/38-extraction-pipeline/38-EVAL-REPORT.md (= run-2 PASS, current head)",
+      ".planning/phases/38-extraction-pipeline/38-EVAL-REPORT-plan09-run2-PASS.md (same content, stable name)",
+      ".planning/phases/38-extraction-pipeline/38-EVAL-REPORT-plan09-run1-FAIL.md (first attempt, FAIL at 36.5% due to maxTokens)",
+      ".planning/phases/38-extraction-pipeline/38-EVAL-REPORT-plan09-smoke.md (10-fixture validation after maxTokens fix)",
+      ".planning/phases/38-extraction-pipeline/38-EVAL-REPORT-plan07.md (original 2-fixture PASS, later retracted)"
+    ],
+    "commits": [
+      "30c409c phase(38): close on Plan 07 PASS attestation (retracted)",
+      "4fb2541 phase(38): REOPEN -- prod inoc session live-replay failed",
+      "a04a6bc fix(alerter,38-05): load image attachments to base64 before extractor",
+      "d5b853f tool(alerter): scripts/replay-prod-corpus.js for offline validation",
+      "683c642 plan(38-09): remediation plan filed",
+      "2d2e64b plan(38-09): tasks 1-4 -- deep whisper /health, parity, prod fixtures, species vocab",
+      "76df06f plan(38-09 task 5a): extractor maxTokens 2048 -> 16384",
+      "b8847e8 phase(38): RE-CLOSE on Plan 09 PASS attestation"
+    ]
+  }
+}
