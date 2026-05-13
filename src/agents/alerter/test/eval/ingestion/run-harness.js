@@ -221,7 +221,45 @@ async function runCorpus({ corpus, smoke, live, capUsd, noReport, logger = conso
     logger.info(`[harness] corpus=${name} n=${sliced.length} mode=${opts.live ? 'live' : 'mock'} jsonl=${writer.path}`);
   }
 
+  // Plan 06 Task 3: cross-stream consistency runs whenever 2+ corpora produced
+  // fixtures (or --corpus all). Single-corpus runs skip silently.
+  const wiredCorpora = corpora.filter((n) => summary.byCorpus[n] && !summary.byCorpus[n].notWired && summary.byCorpus[n].fixtureCount > 0);
+  if (wiredCorpora.length >= 2) {
+    const { crossStreamConsistency } = require('./cross-stream');
+    const csSummary = crossStreamConsistency(allResults);
+    summary.crossStream = csSummary;
+    try {
+      const csWriter = createJsonlWriter({ corpus: 'cross-stream', baseDir, runId: summary.runId, logger });
+      csWriter.write({ ts: new Date().toISOString(), event: 'cross_stream_summary', aggregate: csSummary.aggregate, totalPairs: csSummary.totalPairs, identicalPairs: csSummary.identicalPairs });
+      for (const d of csSummary.divergences) {
+        csWriter.write({ ts: new Date().toISOString(), event: 'divergence', ...d });
+      }
+      csWriter.close();
+      summary.crossStreamJsonl = csWriter.path;
+    } catch (e) {
+      logger.warn(`[harness] cross-stream JSONL write failed: ${e.message}`);
+    }
+    logger.info(`[harness] cross-stream consistency: ${fmtNum(csSummary.aggregate * 100)}% (${fmtNum(csSummary.identicalPairs)}/${fmtNum(csSummary.totalPairs)} pairs)`);
+  }
+
   summary.allResults = allResults;
+
+  // Plan 07 Task 4: write Markdown report unless --no-report.
+  if (!opts.noReport) {
+    try {
+      const { writeIngestReport } = require('./report');
+      const tsSafe = new Date().toISOString().replace(/[:.]/g, '-');
+      const corpusTag = corpora.length === 1 ? corpora[0] : 'all';
+      const reportPath = path.resolve(__dirname, '..', '..', '..', '..', '..', '..', '.planning', 'phases', '41-ingestion-harness', `41-EVAL-REPORT-${corpusTag}-${tsSafe}.md`);
+      const verdict = writeIngestReport(reportPath, summary, { runId: summary.runId, mode: summary.mode, smoke: opts.smoke });
+      logger.info(`[harness] report: ${reportPath}`);
+      logger.info(`[harness] ## Verdict: [${verdict}]`);
+      summary.reportPath = reportPath;
+      summary.verdict = verdict;
+    } catch (e) {
+      logger.warn(`[harness] report write failed: ${e.message}`);
+    }
+  }
   return summary;
 }
 
