@@ -1,0 +1,56 @@
+{
+  "_provenance": {
+    "source_session": "/mnt/mossrock/shared/mushdatadump-prod/2026-05-12_inoc_santi/",
+    "source_files": [
+      "HOZad9ymvNJTXmRREgcW.m4a",
+      "YkBwglxBTAFiQE5JbRwr.jpg",
+      "XAbzzUidkLR3irhVmjea.jpg",
+      "transcript-HOZad9ymvNJTXmRREgcW.txt"
+    ],
+    "captured_at_local": "2026-05-12 ~18:26",
+    "real_sender": "REDACTED (mapped to synthetic +15550001234 below)",
+    "field_substitutions": [
+      "sender_e164: real f1 number replaced with +15550001234 (project policy)",
+      "source_capture_ids: synthesized cap- ids replace the real capture ULIDs",
+      "id: SHA-256-equivalent test fixture id (synthetic)"
+    ],
+    "operator_note": "Don Santiago, this is a stand-in awaiting_farmer fixture derived from the 2026-05-12 inoc session. Live whisper + extractor failed on the actual session (degraded path); the draft below is a plausible single-event reconstruction of one of the seeding events narrated in the audio (DT bag from source 11824) for use as a ship-gate witness in Phase 39 integration tests. The fixture is a snapshot, NOT a live extraction output.",
+    "memory_pins": [
+      "feedback_real_data_before_ship_gate_pass",
+      "project_phase38_production_logs_available"
+    ]
+  },
+  "id": "prod-draft-awaiting-fixture-2026-05-12-dt",
+  "sender_e164": "+15550001234",
+  "farmos_person": "santi",
+  "source_capture_ids": [
+    "cap-prod-fixture-audio-001",
+    "cap-prod-fixture-sheet-001"
+  ],
+  "status": "awaiting_farmer",
+  "log_type": "seeding",
+  "draft_json": {
+    "type": "seeding",
+    "species": "DT",
+    "block_name": "260512_DT_11",
+    "qty": 1,
+    "event_timestamp": "2026-05-12T21:14:00Z",
+    "source_strain": "118.24",
+    "substrate": "bag"
+  },
+  "per_field_confidence": {
+    "type": 0.99,
+    "species": 0.92,
+    "block_name": 0.88,
+    "qty": 0.95,
+    "event_timestamp": 0.85,
+    "source_strain": 0.80,
+    "substrate": 0.85
+  },
+  "askback_turns": 0,
+  "farmer_facing_preview": "Does this seeding look right?\n\ntype: seeding\nspecies: DT\nblock_name: 260512_DT_11\nqty: 1\nevent_timestamp: 2026-05-12T21:14:00Z\nsource_strain: 118.24\nsubstrate: bag",
+  "needs_review_reason": null,
+  "reply_target_kind": "dm",
+  "group_id": null,
+  "edit_turn_count": 0
+}

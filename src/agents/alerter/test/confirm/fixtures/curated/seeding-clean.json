@@ -1,0 +1,27 @@
+{
+  "id": "curated-seeding-clean-1",
+  "sender_e164": "+15550001234",
+  "farmos_person": "santi",
+  "source_capture_ids": ["cap-curated-001"],
+  "status": "awaiting_farmer",
+  "log_type": "seeding",
+  "draft_json": {
+    "type": "seeding",
+    "species": "SHI",
+    "block_name": "260513_SHI_1",
+    "qty": 7,
+    "event_timestamp": "2026-05-13T12:00:00Z"
+  },
+  "per_field_confidence": {
+    "type": 0.99,
+    "species": 0.95,
+    "block_name": 0.92,
+    "qty": 0.96,
+    "event_timestamp": 0.88
+  },
+  "askback_turns": 0,
+  "farmer_facing_preview": "Does this seeding look right?\n\ntype: seeding\nspecies: SHI\nblock_name: 260513_SHI_1\nqty: 7\nevent_timestamp: 2026-05-13T12:00:00Z",
+  "reply_target_kind": "dm",
+  "group_id": null,
+  "edit_turn_count": 0
+}
