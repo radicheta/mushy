@@ -124,7 +124,29 @@ function load(env = process.env) {
     ),
     draftWatchdogIntervalMs: parseIntEnv(env, 'DRAFT_WATCHDOG_INTERVAL_MS', 60000),
     maxEditTurns: parseIntEnv(env, 'MAX_EDIT_TURNS', 3),
+    // Phase 40 (D-01b, D-07, D-07a): farmOS write path + commit watchdog knobs.
+    // Compose env passthrough lives in docker-compose.override.yml alerter block.
+    farmosUrl:               env.FARMOS_URL      || 'http://10.68.155.50:18080',
+    farmosUsername:          env.FARMOS_USERNAME || '',
+    farmosPassword:          env.FARMOS_PASSWORD || '',
+    commitWatchdogIntervalMs: parseIntEnv(env, 'COMMIT_WATCHDOG_INTERVAL_MS', 30000),
+    commitWatchdogBatchCap:   parseIntEnv(env, 'COMMIT_WATCHDOG_BATCH_CAP', 10),
+    commitRetryMax:           parseIntEnv(env, 'COMMIT_RETRY_MAX', 3),
+    commitRetryBackoffMs:     parseBackoffCsv(env.COMMIT_RETRY_BACKOFF_MS, [1000, 4000, 16000]),
+    commitLockStaleMin:       parseIntEnv(env, 'COMMIT_LOCK_STALE_MIN', 5),
+    farmosIntegration:        (env.FARMOS_INTEGRATION || '0') === '1',
   });
+}
+
+function parseBackoffCsv(raw, def) {
+  if (raw == null || raw === '') return def.slice();
+  const parts = String(raw).split(',').map((s) => parseInt(s.trim(), 10));
+  if (parts.some((n) => Number.isNaN(n) || n < 0)) {
+    // eslint-disable-next-line no-console
+    console.warn(`[config] COMMIT_RETRY_BACKOFF_MS=${raw} malformed; using default`);
+    return def.slice();
+  }
+  return parts;
 }
 
 function clampFraction(parsed, raw) {

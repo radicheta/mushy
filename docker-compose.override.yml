@@ -126,6 +126,17 @@ services:
       - DRAFT_NUDGE_FRACTION=${DRAFT_NUDGE_FRACTION:-0.8}
       - DRAFT_WATCHDOG_INTERVAL_MS=${DRAFT_WATCHDOG_INTERVAL_MS:-60000}
       - MAX_EDIT_TURNS=${MAX_EDIT_TURNS:-3}
+      # Phase 40 (D-01b, D-07, D-07a): farmOS write path + commit watchdog.
+      # Dev FARMOS_URL points at port 18080 (P2 dev stack); prod switch is env-flip per 40-RUNBOOK.
+      - FARMOS_URL=${FARMOS_URL:-http://10.68.155.50:18080}
+      - FARMOS_USERNAME=${FARMOS_USERNAME}
+      - FARMOS_PASSWORD=${FARMOS_PASSWORD}
+      - COMMIT_WATCHDOG_INTERVAL_MS=${COMMIT_WATCHDOG_INTERVAL_MS:-30000}
+      - COMMIT_WATCHDOG_BATCH_CAP=${COMMIT_WATCHDOG_BATCH_CAP:-10}
+      - COMMIT_RETRY_MAX=${COMMIT_RETRY_MAX:-3}
+      - COMMIT_RETRY_BACKOFF_MS=${COMMIT_RETRY_BACKOFF_MS:-1000,4000,16000}
+      - COMMIT_LOCK_STALE_MIN=${COMMIT_LOCK_STALE_MIN:-5}
+      - FARMOS_INTEGRATION=${FARMOS_INTEGRATION:-0}
     volumes:
       - /data/signal-capture:/data/signal-capture
       - ./scripts/signal:/opt/scripts/signal:ro
