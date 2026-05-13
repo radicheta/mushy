@@ -47,12 +47,18 @@ Full JSON: `.planning/phases/36-signal-pre-gate/snapshots/rebuild-attestation-20
 
 ## T+24h Re-Run
 
-DEFERRED. Schedule: 2026-05-14 ~22:34 UTC (≥20h after T0). Will send a
-fresh kickoff to both farmers and capture the same evidence shape as T0.
+**Status: pending, non-blocking.** Cannot fire before **2026-05-14 ~22:34
+UTC** (D-13 mandates ≥20h gap from T0 at 2026-05-13 22:34:23 UTC). No
+calendar reminder scheduled -- we'll pick this up whenever the next
+session runs after that timestamp via `/gsd-progress`. Doesn't gate
+Phase 40, v1.7 milestone close, or any other unblock work.
+
+When it fires: send a fresh kickoff to farmer #1, capture reply ts +
+latency, append T+24h row to this attestation, flip status to complete.
 
 Rationale: T+24h tests background drift (D-13); requires real wall-clock
-gap. Farmer #2 (Vikki) leg also picked up in this window per the plan's
-"T0 partial: farmer1 only" gate-pass clause.
+gap to be meaningful. Farmer #2 (Vikki) leg covered separately by her
+T0 kickoff sent at 2026-05-13 22:42:19 UTC (see kickoff-sends-20260513.json).
 
 ## Verdict (interim)
 
