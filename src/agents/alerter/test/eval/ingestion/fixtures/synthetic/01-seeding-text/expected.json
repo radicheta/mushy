@@ -1,0 +1,14 @@
+{
+  "type": "seeding",
+  "requiredFields": [
+    "block_name",
+    "species",
+    "qty"
+  ],
+  "fields": {
+    "species": "SHI",
+    "block_name": "260513_SHI_4",
+    "qty": 1
+  },
+  "ambiguous": false
+}

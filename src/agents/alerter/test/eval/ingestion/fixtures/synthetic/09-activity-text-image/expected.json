@@ -1,0 +1,10 @@
+{
+  "type": "activity",
+  "requiredFields": [
+    "activity_type"
+  ],
+  "fields": {
+    "activity_type": "sterilize"
+  },
+  "ambiguous": false
+}

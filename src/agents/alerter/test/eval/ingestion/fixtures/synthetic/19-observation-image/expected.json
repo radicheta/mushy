@@ -1,0 +1,8 @@
+{
+  "type": "observation",
+  "requiredFields": [],
+  "fields": {
+    "type": "observation"
+  },
+  "ambiguous": false
+}

@@ -1,0 +1,11 @@
+{
+  "type": "observation",
+  "requiredFields": [
+    "observation_kind"
+  ],
+  "fields": {
+    "observation_kind": "colonizing"
+  },
+  "ambiguous": false,
+  "session_id": "paired-obs-1"
+}

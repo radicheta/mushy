@@ -1,0 +1,12 @@
+{
+  "type": "seeding",
+  "requiredFields": [
+    "block_name"
+  ],
+  "fields": {
+    "species": "SHI",
+    "block_name": "260513_SHI_7"
+  },
+  "ambiguous": false,
+  "session_id": "paired-shi-1"
+}

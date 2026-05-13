@@ -1,0 +1,10 @@
+{
+  "type": "observation",
+  "requiredFields": [
+    "observation_kind"
+  ],
+  "fields": {
+    "observation_kind": "pinning"
+  },
+  "ambiguous": false
+}

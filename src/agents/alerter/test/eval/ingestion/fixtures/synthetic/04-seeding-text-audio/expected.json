@@ -1,0 +1,11 @@
+{
+  "type": "seeding",
+  "requiredFields": [
+    "block_name"
+  ],
+  "fields": {
+    "species": "SHI",
+    "block_name": "260513_SHI_4"
+  },
+  "ambiguous": false
+}
