@@ -29,7 +29,12 @@ async function getSpeciesUuid(client, shortCode) {
   if (cached) return { ok: true, uuid: cached, cached: true };
   const enc = encodeURIComponent(shortCode);
   const r = await client.get(`/api/taxonomy_term/species?filter[name][value]=${enc}`);
-  if (!r.ok) return { ok: false, reason: 'http_' + (r.status || 'network') };
+  if (!r.ok) {
+    // 404 = bundle missing (farmOS not configured for species taxonomy);
+    // distinct from 200+empty (term not found in existing bundle).
+    if (r.status === 404) return { ok: false, reason: 'species_taxonomy_missing' };
+    return { ok: false, reason: 'http_' + (r.status || 'network') };
+  }
   const arr = r.body && r.body.data;
   if (!Array.isArray(arr) || arr.length === 0) {
     return { ok: false, reason: 'species_not_found', shortCode };

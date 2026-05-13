@@ -5,6 +5,7 @@
 // Module-level LRU cache for BATCH-* name resolution (resolveOrCreateAsset).
 
 const qr = require('./qr');
+const fungiTypeCache = require('./fungi-type-cache');
 
 const NAME_CACHE = new Map(); // name -> assetId; capped at 32
 const NAME_CACHE_MAX = 32;
@@ -45,7 +46,17 @@ async function findAssetByName(client, name) {
 }
 
 async function createFungiAsset(client, opts) {
-  const { name, parentIds = [], speciesUuid = null, draftId, qrCodes = [], notes = null } = opts;
+  const { name, parentIds = [], speciesUuid = null, fungiTypeName = null, draftId, qrCodes = [], notes = null } = opts;
+  // fungi_type is REQUIRED on the asset--fungi bundle (taxonomy_term--fungi_type
+  // discriminator). Resolve UUID via cache; clean-fail if missing.
+  let fungiTypeUuid = null;
+  if (fungiTypeName) {
+    const ft = await fungiTypeCache.getFungiTypeUuid(client, fungiTypeName);
+    if (!ft.ok) return { ok: false, reason: ft.reason, fungiTypeName };
+    fungiTypeUuid = ft.uuid;
+  } else {
+    return { ok: false, reason: 'missing_fungi_type_name' };
+  }
   const noteTrailer = (notes ? notes + '\n' : '') + 'mushy:draft:' + draftId;
   const payload = {
     data: {
@@ -57,16 +68,16 @@ async function createFungiAsset(client, opts) {
       },
     },
   };
-  const relationships = {};
+  const relationships = {
+    fungi_type: { data: [{ type: 'taxonomy_term--fungi_type', id: fungiTypeUuid }] },
+  };
   if (parentIds.length > 0) {
     relationships.parent = { data: parentIds.map((id) => ({ type: 'asset--fungi', id })) };
   }
   if (speciesUuid) {
     relationships.species = { data: [{ type: 'taxonomy_term--species', id: speciesUuid }] };
   }
-  if (Object.keys(relationships).length > 0) {
-    payload.data.relationships = relationships;
-  }
+  payload.data.relationships = relationships;
   const present = await client.probeAssetLinkModule();
   if (!present && qrCodes.length > 0) {
     qr.bindQrOnCreate(payload, qrCodes, { fallback: true });
