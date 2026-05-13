@@ -43,7 +43,7 @@ async function commitHarvest(client, draft, ctx) {
   const batchName = dj.harvest_batch_name;
   if (!batchName) return { ok: false, reason: 'missing_harvest_batch_name' };
   const batchRes = await assets.createFungiAsset(client, {
-    name: batchName, parentIds: sourceIds, draftId,
+    name: batchName, parentIds: sourceIds, fungiTypeName: 'batch', draftId,
   });
   if (!batchRes.ok) return { ok: false, reason: batchRes.reason || 'harvest_batch_create_failed', http_status: batchRes.http_status };
   const batchId = batchRes.assetId;
@@ -55,6 +55,7 @@ async function commitHarvest(client, draft, ctx) {
     const bagRes = await assets.createFungiAsset(client, {
       name: bagName,
       parentIds: [batchId],
+      fungiTypeName: 'bag',
       qrCodes: bag.qr_code ? [bag.qr_code] : [],
       draftId,
     });

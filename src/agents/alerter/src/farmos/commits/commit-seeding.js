@@ -19,7 +19,7 @@ async function commitSeeding(client, draft, ctx) {
   // 1. Batch resolve-or-create
   const batchName = dj.batch_name;
   if (!batchName) return { ok: false, reason: 'missing_batch_name' };
-  const batchRes = await assets.resolveOrCreateAsset(client, { name: batchName, draftId });
+  const batchRes = await assets.resolveOrCreateAsset(client, { name: batchName, draftId, fungiTypeName: 'batch' });
   if (!batchRes.ok) return { ok: false, reason: batchRes.reason || 'batch_create_failed', http_status: batchRes.http_status };
   const batchId = batchRes.assetId;
 
@@ -53,6 +53,7 @@ async function commitSeeding(client, draft, ctx) {
       name: blockName,
       parentIds: [batchId],
       speciesUuid: sp.uuid,
+      fungiTypeName: 'block',
       qrCodes: pathAQrs,
       draftId,
     });

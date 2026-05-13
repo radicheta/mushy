@@ -17,6 +17,7 @@ function makeMockClient({
   knownAssetsByName = {},    // name -> assetId for pre-existing assets
   knownAssetsByQr = {},      // qrCode -> assetId for pre-existing bindings
   speciesUuids = {},         // shortCode -> uuid
+  fungiTypeUuids = { batch: 'fungitype-batch-uuid', block: 'fungitype-block-uuid', bag: 'fungitype-bag-uuid' },
 } = {}) {
   const created = { assets: [], logs: [], files: [], links: [] };
   let assetSeq = 1; let logSeq = 1; let fileSeq = 1; let linkSeq = 1;
@@ -60,6 +61,12 @@ function makeMockClient({
       if (m) {
         const code = decodeURIComponent(m[1]);
         if (speciesUuids[code]) return _ok(200, { data: [{ id: speciesUuids[code] }] });
+        return _ok(200, { data: [] });
+      }
+      m = /\/api\/taxonomy_term\/fungi_type\?filter\[name\]\[value\]=([^&]+)/.exec(path);
+      if (m) {
+        const typeName = decodeURIComponent(m[1]);
+        if (fungiTypeUuids[typeName]) return _ok(200, { data: [{ id: fungiTypeUuids[typeName] }] });
         return _ok(200, { data: [] });
       }
       return _ok(200, { data: [] });
