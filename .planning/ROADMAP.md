@@ -132,7 +132,7 @@ Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 202
 - [x] **Phase 39: Farmer Confirmation Loop** — confirm-before-write; idempotent commit; EDIT loop; draft timeout (shipped 2026-05-13; 127 unit + 11 integration PASS; live-farmer UAT deferred to 39-RUNBOOK.md)
 - [x] **Phase 40: FarmOS Write Path** — API client; asset + log creation; QR binding; photo upload; audit log (code-complete 2026-05-13; 92/92 unit PASS; live dev-farmOS integration + prod-fixture SHIP GATE deferred to operator per 40-RUNBOOK.md)
 - [x] **Phase 41: Ingestion Harness** — synthetic corpus; paper-log replay; audio replay; cross-stream consistency (shipped 2026-05-13; 37 PASS + 5 operator-deferred live; mushdatadump-prod hand-labels + audio + paired-sessions in 41-RUNBOOK.md)
-- [ ] **Phase 42: SHI-on-Sawdust Pilot** — full lifecycle E2E (sterilize to inoc to colonize to harvest to archive)
+- [~] **Phase 42: SHI-on-Sawdust Pilot** — SCAFFOLDING SHIPPED 2026-05-13 (3 tools + 23 tests + RUNBOOK + PILOT-LOG + VERIFICATION); actual pilot run calendar-deferred 4-8 weeks per 42-VERIFICATION.md (status: human_needed). Operator drives PILOT-01..06 against real mushroom lifecycle.
 
 </details>
 
@@ -443,7 +443,7 @@ Original justification: align repo netplan with fc1's currently-running farm-4G 
 | 39. Farmer Confirmation Loop | v1.7 | 7/7 | Shipped 2026-05-13 | 127 unit + 11 integration PASS |
 | 40. FarmOS Write Path | v1.7 | 8/8 | Code-complete 2026-05-13 | 92/92 unit PASS; live attestation pending |
 | 41. Ingestion Harness | v1.7 | 7/7 | Shipped 2026-05-13 | 37 PASS + 5 operator-deferred |
-| 42. SHI-on-Sawdust Pilot | v1.7 | 0/TBD | Not started | — |
+| 42. SHI-on-Sawdust Pilot | v1.7 | 3/3 scaffold | Scaffold shipped 2026-05-13 | Pilot run deferred 4-8 wk (calendar) |
 
 ## Backlog (parking lot)
 
