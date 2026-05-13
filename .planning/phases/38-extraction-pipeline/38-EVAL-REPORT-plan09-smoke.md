@@ -1,9 +1,9 @@
 # Phase 38 Plan 07: D-07 Ship-Gate Eval Report
 
-**Generated:** 2026-05-13T00:46:14.997Z
+**Generated:** 2026-05-13T00:03:05.611Z
 **Model:** claude-sonnet-4-6
 **Fixture dir:** `/mnt/mossrock/shared/mushdatadump`
-**Fixture count:** 96
+**Fixture count:** 10
 **Skipped (load errors):** 0
 **Hard API errors:** 0
 **Cost note:** 73 fixtures x ~1 turn x claude-sonnet-4-6 (~$3/MTok input cached, $15/MTok output) with image input. With prompt caching across the system+few-shot, expected spend $1-5 per full run. Re-runnable any time the extractor changes.
@@ -38,28 +38,28 @@ where farmer-curated single-event captures land 1:1 against extracted drafts.
 
 | Dimension | Score | Raw |
 |-----------|-------|-----|
-| Schema conformance | 95.8% | 92 / 96 |
+| Schema conformance | 100% | 10 / 10 |
 | Required-field exact-match | 0% | 0 / 0 |
-| Required-field OR appropriate ask-back | 95.8% | (the D-07 OR-bar denominator) |
-| Appropriate ask-back | 30.2% | (per-fixture) |
+| Required-field OR appropriate ask-back | 100% | (the D-07 OR-bar denominator) |
+| Appropriate ask-back | 40% | (per-fixture) |
 | Harvest set-equality (lineage) | n/a | over 0 harvest fixtures |
-| B5 block_name regex-valid rate | 100% | 92 / 92 drafts |
-| B5 block_name precision (vs GT) | 0% | 0 / 92 extracted [no GT supplied -- vacuous] |
+| B5 block_name regex-valid rate | 100% | 10 / 10 drafts |
+| B5 block_name precision (vs GT) | 0% | 0 / 10 extracted [no GT supplied -- vacuous] |
 | B5 block_name recall (vs GT) | 0% | 0 / 0 expected [no GT supplied -- vacuous] |
 | Brier score (confidence vs correct) | 0 | lower is better |
 | ECE (expected calibration error) | 0 | lower is better |
 
 ## Anthropic Usage (actual)
 
-- Calls with usage telemetry: 93
-- Input tokens (uncached): 23888
-- Output tokens: 266770
-- Cache write tokens: 138306
-- Cache read tokens: 533439
-- **Estimated spend:** $4.7519 USD
+- Calls with usage telemetry: 10
+- Input tokens (uncached): 240
+- Output tokens: 29066
+- Cache write tokens: 15540
+- Cache read tokens: 52310
+- **Estimated spend:** $0.5107 USD
 
 ## Notes
 
-Wall time: 2564.1s. Per-fixture drafts: /mnt/slime-kingdom/opt/mushy/.planning/phases/38-extraction-pipeline/38-EVAL-REPORT-results.jsonl Full results: /mnt/slime-kingdom/opt/mushy/.planning/phases/38-extraction-pipeline/38-EVAL-REPORT-results.json
+Wall time: 243.5s. Per-fixture drafts: /tmp/smoke-eval-results.jsonl Full results: /tmp/smoke-eval-results.json Capped run: EVAL_MAX_FIXTURES=10 (of 96 available).
 
 ## Verdict: [PASS]
