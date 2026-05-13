@@ -125,13 +125,12 @@ function makeFakePool() {
       return { rows: [], rowCount: 1 };
     }
 
-    // requeueForRetry
-    if (/UPDATE signal_draft[\s\S]+status='confirmed'[\s\S]+committed_at_attempt = NULL[\s\S]+WHERE id=\$1 AND status='committing'/i.test(s)) {
+    // requeueForRetry (preserves committed_at_attempt for backoff gate)
+    if (/UPDATE signal_draft[\s\S]+SET status='confirmed'\s+WHERE id=\$1 AND status='committing'/i.test(s)) {
       const id = params[0];
       const r = drafts.get(id);
       if (!r || r.status !== 'committing') return { rows: [], rowCount: 0 };
       r.status = 'confirmed';
-      r.committed_at_attempt = null;
       return { rows: [], rowCount: 1 };
     }
 
