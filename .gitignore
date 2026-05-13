@@ -33,3 +33,8 @@ bridge-state/
 
 # Phase 38 Plan 07 eval driver checkpoint state (base64-image-heavy, runtime only)
 .planning/phases/38-extraction-pipeline/38-EVAL-REPORT.partial.json
+
+# Phase 41 ingestion harness results JSONL (paid-run artifacts, operator-local)
+src/agents/alerter/test/eval/ingestion/results/
+# Phase 41 fixture test artifacts (placeholder PNGs / symlinks)
+src/agents/alerter/test/eval/ingestion/test-fixtures/
