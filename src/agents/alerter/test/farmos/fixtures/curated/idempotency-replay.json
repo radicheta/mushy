@@ -1,0 +1,21 @@
+{
+  "id": "fx-idempotency-replay-001",
+  "sender_e164": "+15550001234",
+  "farmos_person": "santi",
+  "source_capture_ids": ["cap-idem-1"],
+  "status": "confirmed",
+  "log_type": "seeding",
+  "draft_json": {
+    "batch_name": "BATCH-2026-05-13-IDEM",
+    "block_name": "260513_DT_IDEM",
+    "species_code": "DT",
+    "qr_codes": ["QR-FX-IDEM-001"],
+    "timestamp": 1747094400,
+    "notes": "idempotency replay -- this draft id is committed once then re-tickOnce()-ed; second pass MUST be a no-op via farmos_response cache (D-02a/D-08b)"
+  },
+  "per_field_confidence": {},
+  "farmer_facing_preview": "Idempotency replay seeding",
+  "reply_target_kind": "dm",
+  "group_id": null,
+  "_test_note": "After first commit succeeds, harness re-inserts this same id back to status=confirmed for the second pass. Expected: zero farmOS POST + commit_idempotent_noop event."
+}

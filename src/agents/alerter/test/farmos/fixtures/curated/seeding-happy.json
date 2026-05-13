@@ -1,0 +1,22 @@
+{
+  "id": "fx-seeding-happy-001",
+  "sender_e164": "+15550001234",
+  "farmos_person": "santi",
+  "source_capture_ids": ["cap-seed-happy-1"],
+  "status": "confirmed",
+  "log_type": "seeding",
+  "draft_json": {
+    "batch_name": "BATCH-2026-05-13-001",
+    "block_name": "260513_DT_001",
+    "species_code": "DT",
+    "qr_codes": ["QR-FX-SEED-001"],
+    "timestamp": 1747094400,
+    "notes": "test inoc"
+  },
+  "per_field_confidence": {
+    "batch_name": 0.95, "block_name": 0.90, "species_code": 0.99
+  },
+  "farmer_facing_preview": "Inoc BATCH-2026-05-13-001 block 260513_DT_001 DT",
+  "reply_target_kind": "dm",
+  "group_id": null
+}

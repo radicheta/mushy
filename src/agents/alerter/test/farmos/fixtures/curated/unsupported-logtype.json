@@ -1,0 +1,16 @@
+{
+  "id": "fx-unsupported-logtype-001",
+  "sender_e164": "+15550001234",
+  "farmos_person": "santi",
+  "source_capture_ids": ["cap-unsup-1"],
+  "status": "confirmed",
+  "log_type": "garbage",
+  "draft_json": {
+    "timestamp": 1747094400,
+    "notes": "log_type=garbage MUST be rejected by commit-router with reason=unsupported_log_type BEFORE any farmOS write (D-03c defense in depth)"
+  },
+  "per_field_confidence": {},
+  "farmer_facing_preview": "garbage log",
+  "reply_target_kind": "dm",
+  "group_id": null
+}

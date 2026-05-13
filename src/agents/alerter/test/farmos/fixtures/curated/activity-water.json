@@ -1,0 +1,18 @@
+{
+  "id": "fx-activity-water-001",
+  "sender_e164": "+15550001234",
+  "farmos_person": "santi",
+  "source_capture_ids": ["cap-act-water-1"],
+  "status": "confirmed",
+  "log_type": "activity",
+  "draft_json": {
+    "activity_subtype": "water",
+    "qr_codes": ["QR-FX-SEED-001"],
+    "timestamp": 1747180800,
+    "notes": "watered block at 9am"
+  },
+  "per_field_confidence": { "activity_subtype": 0.98 },
+  "farmer_facing_preview": "Water QR-FX-SEED-001",
+  "reply_target_kind": "dm",
+  "group_id": null
+}
