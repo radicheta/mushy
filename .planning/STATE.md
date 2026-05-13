@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.7
-milestone_name: Multimodal Signal → FarmOS Events
-status: Phase 38 CLOSED (real this time) -- Plan 09 PASS at 95.8% schema conformance (92/96) on 95 curated + 1 real prod session. Don Santiago attested 2026-05-12 evening.
-stopped_at: Phase 38 Plan 07 partial (Tasks 1+2 shipped; eval verdict PASS in 38-EVAL-REPORT.md; Task 3 Don Santiago verdict review pending)
-last_updated: "2026-05-13T02:00:16.372Z"
-last_activity: 2026-05-13 -- Phase 39 planning complete
+milestone_name: Multimodal Signal -> FarmOS Events
+status: v1.7 AUDIT gaps_found 2026-05-13 -- Phases 39/40/41 shipped + Phase 42 scaffolded in single autonomous run. complete-milestone GATED on 3 operator blockers (Plan 36-04 live attestation; Phase 40 dev-farmOS ship-gate; Phase 42 SHI pilot 4-8 wk).
+stopped_at: Post-audit; complete-milestone deferred awaiting operator-blocked items per .planning/v1.7-MILESTONE-AUDIT.md
+last_updated: "2026-05-13T03:30:00Z"
+last_activity: 2026-05-13 autonomous v1.7 close -- Phases 39 (127 unit + 11 integration PASS), 40 (92 unit PASS; live-attestation deferred), 41 (37 PASS + 5 operator-deferred), 42 (3 tools + 23 tests + RUNBOOK + PILOT-LOG + VERIFICATION human_needed). Audit verdict gaps_found per v1.6 precedent.
 progress:
   total_phases: 23
-  completed_phases: 2
-  total_plans: 31
-  completed_plans: 19
-  percent: 61
+  completed_phases: 6
+  total_plans: 56
+  completed_plans: 56
+  percent: 95
 ---
 
 # Project State
