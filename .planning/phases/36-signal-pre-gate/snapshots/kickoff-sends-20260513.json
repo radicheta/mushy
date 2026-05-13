@@ -9,6 +9,10 @@
   },
   "farmer2": {
     "alias": "vikki",
-    "status": "deferred to T+24h (currently mid-confirm on a real harvest draft)"
+    "e164": "+<FARMER2>",
+    "send_ts": "2026-05-13T22:42:19Z",
+    "message": "hola Vikki -- when you have a sec, reply ok here to confirm Signal trust is working (Plan 36-04 SC#2). no rush, the harvest nudge from earlier is separate.",
+    "signal_cli_response": {"timestamp": "1778712142715"},
+    "status": "awaiting reply (soft-tone kickoff; she will reply when convenient)"
   }
 }
