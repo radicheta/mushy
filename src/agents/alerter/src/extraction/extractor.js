@@ -1,6 +1,7 @@
 'use strict';
 
 // Phase 38 Plan 03 Task 2: extractor.js -- the heart of the extraction pipeline.
+// Phase 39 D-03: farmerCorrection added to buildInitialUserContent for the EDIT loop.
 //
 // extract({captures, inFlightDraft}):
 //   1. Build content blocks via multimodal.buildContentBlocks. Multimodal fusion
@@ -49,7 +50,7 @@ function buildToolSpec() {
   };
 }
 
-function buildInitialUserContent({ captures, inFlightDraft, corpusContext }) {
+function buildInitialUserContent({ captures, inFlightDraft, corpusContext, farmerCorrection }) {
   // Capture set -> a single user turn with: corpus context, in-flight summary, then per-capture text/transcript/images.
   // Plan 07 bug fix (Rule 1): close the last few-shot tool_use (tu_fewshot_3) with a
   // tool_result block. Anthropic rejects 400 if any tool_use lacks an immediately-following
@@ -70,6 +71,13 @@ function buildInitialUserContent({ captures, inFlightDraft, corpusContext }) {
     type: 'text',
     text: `In-flight draft: ${inFlightDraft ? JSON.stringify(inFlightDraft) : 'none'}`,
   });
+  // Phase 39 D-03: append farmer-correction context only when present and non-empty.
+  if (typeof farmerCorrection === 'string' && farmerCorrection.trim() !== '') {
+    blocks.push({
+      type: 'text',
+      text: `Farmer correction: ${farmerCorrection.trim()}`,
+    });
+  }
   const captureList = Array.isArray(captures) ? captures : [];
   for (const cap of captureList) {
     const sub = buildContentBlocks({
@@ -105,11 +113,11 @@ function createExtractor({
   const toolSpec = buildToolSpec();
 
   return {
-    async extract({ captures, inFlightDraft, corpusContext } = {}) {
+    async extract({ captures, inFlightDraft, corpusContext, farmerCorrection } = {}) {
       try {
         const systemBlocks = CACHEABLE_SYSTEM_BLOCKS;
         const fewShot = cacheableFewShot();
-        const userContent = buildInitialUserContent({ captures, inFlightDraft, corpusContext });
+        const userContent = buildInitialUserContent({ captures, inFlightDraft, corpusContext, farmerCorrection });
         const messages = [...fewShot, { role: 'user', content: userContent }];
 
         const baseReq = {

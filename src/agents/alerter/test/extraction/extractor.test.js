@@ -195,3 +195,58 @@ describe('createExtractor', () => {
     expect(flat).toMatch(/shiitake/);
   });
 });
+
+describe('Phase 39 D-03: farmerCorrection plumbing', () => {
+  const { buildInitialUserContent } = _internal;
+  let extractor;
+  beforeEach(() => {
+    mockCreate.mockReset();
+    extractor = createExtractor({ apiKey: 'sk-test', logger: silentLogger });
+  });
+
+  test('null/undefined/empty/whitespace farmerCorrection produces unchanged blocks (regression vs Phase 38 Plan 09 PASS)', () => {
+    const base = buildInitialUserContent({ captures: [], inFlightDraft: null });
+    const withNull = buildInitialUserContent({ captures: [], inFlightDraft: null, farmerCorrection: null });
+    const withUndef = buildInitialUserContent({ captures: [], inFlightDraft: null, farmerCorrection: undefined });
+    const withEmpty = buildInitialUserContent({ captures: [], inFlightDraft: null, farmerCorrection: '' });
+    const withWs = buildInitialUserContent({ captures: [], inFlightDraft: null, farmerCorrection: '   ' });
+    expect(JSON.stringify(withNull)).toBe(JSON.stringify(base));
+    expect(JSON.stringify(withUndef)).toBe(JSON.stringify(base));
+    expect(JSON.stringify(withEmpty)).toBe(JSON.stringify(base));
+    expect(JSON.stringify(withWs)).toBe(JSON.stringify(base));
+  });
+
+  test('non-empty farmerCorrection prepends exactly one text block after the In-flight draft block', () => {
+    const blocks = buildInitialUserContent({
+      captures: [],
+      inFlightDraft: { type: 'seeding' },
+      farmerCorrection: 'qty was 7 not 5',
+    });
+    const idxInFlight = blocks.findIndex((b) => b.type === 'text' && /In-flight draft/.test(b.text));
+    const idxCorrection = blocks.findIndex((b) => b.type === 'text' && /Farmer correction/.test(b.text));
+    expect(idxInFlight).toBeGreaterThanOrEqual(0);
+    expect(idxCorrection).toBe(idxInFlight + 1);
+    expect(blocks[idxCorrection].text).toBe('Farmer correction: qty was 7 not 5');
+  });
+
+  test('whitespace-only farmerCorrection short-circuits (no new block)', () => {
+    const blocks = buildInitialUserContent({
+      captures: [],
+      inFlightDraft: null,
+      farmerCorrection: '   ',
+    });
+    expect(blocks.some((b) => b.type === 'text' && /Farmer correction/.test(b.text))).toBe(false);
+  });
+
+  test('farmerCorrection reaches buildInitialUserContent when passed via extract()', async () => {
+    mockCreate.mockResolvedValueOnce(toolUseResponse(validInput()));
+    await extractor.extract({
+      captures: [],
+      inFlightDraft: { type: 'seeding' },
+      farmerCorrection: 'change qty to 12',
+    });
+    const args = mockCreate.mock.calls[0][0];
+    const userContent = args.messages[args.messages.length - 1].content;
+    expect(JSON.stringify(userContent)).toMatch(/Farmer correction: change qty to 12/);
+  });
+});
