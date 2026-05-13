@@ -1,0 +1,10 @@
+{
+  "type": "input",
+  "requiredFields": [
+    "input_name"
+  ],
+  "fields": {
+    "input_name": "bran"
+  },
+  "ambiguous": false
+}

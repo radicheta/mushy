@@ -1,0 +1,10 @@
+{
+  "type": "harvest",
+  "requiredFields": [
+    "weight_grams"
+  ],
+  "fields": {
+    "weight_grams": 1200
+  },
+  "ambiguous": false
+}

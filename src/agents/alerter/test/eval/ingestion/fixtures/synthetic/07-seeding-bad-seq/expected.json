@@ -1,0 +1,8 @@
+{
+  "type": "seeding",
+  "requiredFields": [],
+  "fields": {
+    "species": "SHI"
+  },
+  "ambiguous": true
+}
