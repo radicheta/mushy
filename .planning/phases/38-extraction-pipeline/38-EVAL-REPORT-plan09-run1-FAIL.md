@@ -1,6 +1,6 @@
 # Phase 38 Plan 07: D-07 Ship-Gate Eval Report
 
-**Generated:** 2026-05-13T00:46:14.997Z
+**Generated:** 2026-05-12T23:56:44.020Z
 **Model:** claude-sonnet-4-6
 **Fixture dir:** `/mnt/mossrock/shared/mushdatadump`
 **Fixture count:** 96
@@ -38,28 +38,28 @@ where farmer-curated single-event captures land 1:1 against extracted drafts.
 
 | Dimension | Score | Raw |
 |-----------|-------|-----|
-| Schema conformance | 95.8% | 92 / 96 |
+| Schema conformance | 36.5% | 35 / 96 |
 | Required-field exact-match | 0% | 0 / 0 |
-| Required-field OR appropriate ask-back | 95.8% | (the D-07 OR-bar denominator) |
-| Appropriate ask-back | 30.2% | (per-fixture) |
+| Required-field OR appropriate ask-back | 36.5% | (the D-07 OR-bar denominator) |
+| Appropriate ask-back | 8.3% | (per-fixture) |
 | Harvest set-equality (lineage) | n/a | over 0 harvest fixtures |
-| B5 block_name regex-valid rate | 100% | 92 / 92 drafts |
-| B5 block_name precision (vs GT) | 0% | 0 / 92 extracted [no GT supplied -- vacuous] |
+| B5 block_name regex-valid rate | 97.1% | 34 / 35 drafts |
+| B5 block_name precision (vs GT) | 0% | 0 / 34 extracted [no GT supplied -- vacuous] |
 | B5 block_name recall (vs GT) | 0% | 0 / 0 expected [no GT supplied -- vacuous] |
 | Brier score (confidence vs correct) | 0 | lower is better |
 | ECE (expected calibration error) | 0 | lower is better |
 
 ## Anthropic Usage (actual)
 
-- Calls with usage telemetry: 93
-- Input tokens (uncached): 23888
-- Output tokens: 266770
-- Cache write tokens: 138306
-- Cache read tokens: 533439
-- **Estimated spend:** $4.7519 USD
+- Calls with usage telemetry: 95
+- Input tokens (uncached): 15884
+- Output tokens: 294708
+- Cache write tokens: 249249
+- Cache read tokens: 821267
+- **Estimated spend:** $5.6493 USD
 
 ## Notes
 
-Wall time: 2564.1s. Per-fixture drafts: /mnt/slime-kingdom/opt/mushy/.planning/phases/38-extraction-pipeline/38-EVAL-REPORT-results.jsonl Full results: /mnt/slime-kingdom/opt/mushy/.planning/phases/38-extraction-pipeline/38-EVAL-REPORT-results.json
+Wall time: 2682.6s. Per-fixture drafts: /mnt/slime-kingdom/opt/mushy/.planning/phases/38-extraction-pipeline/38-EVAL-REPORT-results.jsonl Full results: /mnt/slime-kingdom/opt/mushy/.planning/phases/38-extraction-pipeline/38-EVAL-REPORT-results.json
 
-## Verdict: [PASS]
+## Verdict: [FAIL]

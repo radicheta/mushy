@@ -254,5 +254,5 @@ describe('mushdatadump eval (D-07 ship-gate)', () => {
     // Soft assertion: harness ran. Hard gate is the verdict line.
     expect(scores.schemaConformance).toBeGreaterThanOrEqual(0);
     expect(results.length).toBeGreaterThan(0);
-  }, 1800000); // 30 min jest timeout (per-call inside is governed by Anthropic SDK)
+  }, 5400000); // 90 min jest timeout (Plan 09 expanded denominator + prod fixtures; 96-fixture runs observed at ~45min)
 });
