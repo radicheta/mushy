@@ -7,7 +7,8 @@
     "start": "node src/index.js",
     "test": "jest",
     "test:watch": "jest --watch",
-    "eval:extraction": "jest --config test/eval/extraction/jest.config.js --runInBand"
+    "eval:extraction": "jest --config test/eval/extraction/jest.config.js --runInBand",
+    "test:eval-ingestion": "jest --config test/eval/ingestion/jest.config.js --runInBand"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
