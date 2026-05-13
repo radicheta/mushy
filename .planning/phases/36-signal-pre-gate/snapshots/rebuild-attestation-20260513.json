@@ -1,0 +1,13 @@
+{
+  "rebuild_at": "2026-05-13T22:32:28Z",
+  "context": "rebuild driven by Phase 40 deploy unblock (alerter image predated Phase 39/40 merges); doubles as Plan 36-04 Task 2 SC#3 evidence",
+  "image_pre": "f4cad852d88c (built 2026-05-12 20:58)",
+  "image_post": "0ab5ca7d42cb (built 2026-05-13 22:25)",
+  "healthcheck_status": "healthy",
+  "trust_check_verdict": "ok",
+  "trust_check_exit": 0,
+  "trust_check_recipients_checked": 3,
+  "pre_fp_match": true,
+  "bot_fingerprint_prefix": "05 d1 a5 89 50 7c ec 3e 1a 47 96 92 7a 4",
+  "notes": "Verdict is 'ok' (NOT 'recovered') -- rebuild did not corrupt trust on bbernhard/signal-cli-rest-api:0.200-dev. Confirms the rebuild-corruption recovery path remains hot but dormant in this environment."
+}

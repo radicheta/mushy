@@ -1,0 +1,14 @@
+{
+  "kickoff_set": "T0",
+  "farmer1": {
+    "alias": "santi",
+    "e164": "+<FARMER1>",
+    "send_ts": "2026-05-13T22:34:23Z",
+    "message": "Phase 36 round-trip check -- reply ok to confirm Signal trust is live (Plan 36-04 SC#1).",
+    "signal_cli_response": {"timestamp":"1778711666557"}
+  },
+  "farmer2": {
+    "alias": "vikki",
+    "status": "deferred to T+24h (currently mid-confirm on a real harvest draft)"
+  }
+}
