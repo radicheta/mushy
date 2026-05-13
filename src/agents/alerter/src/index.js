@@ -29,6 +29,8 @@ const stateMachineMod = require('./extraction/state-machine');
 const previewBuilderMod = require('./extraction/preview-builder');
 const { createExtractionPipeline } = require('./extraction');
 const { createOutboundDispatcher } = require('./extraction/outbound');
+// Phase 39 confirm-loop.
+const confirm = require('./confirm');
 
 /**
  * createAlerter({ env, clock, logger }) -> { dispatch, close, _state }
@@ -69,6 +71,13 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
     logger.info('[boot] signal_draft schema initialized');
   } catch (e) {
     logger.warn(`[boot] signal_draft initDb failed (extraction will degrade): ${e.message}`);
+  }
+  // Phase 39 D-07/D-07a: confirm-loop schema additions + signal_draft_event audit table.
+  try {
+    await confirm.confirmDb.initDb(pool);
+    logger.info('[boot] signal_draft_event + confirm columns initialized');
+  } catch (e) {
+    logger.warn(`[boot] confirm-loop initDb failed (confirm loop will degrade): ${e.message}`);
   }
 
   // Phase 29 plan 29-04 BLOCKER 3 / ALRT-09 — Tier C runtime overrides for
@@ -236,6 +245,31 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
     logger,
   });
 
+  // Phase 39: confirm-loop wiring.
+  const confirmOutbound = confirm.createConfirmOutbound({
+    signalClient,
+    previewBuilderConfirm: confirm.preview,
+    operatorRecipient: config.signalRecipient,
+    logger,
+  });
+  const editHandler = confirm.createEditHandler({
+    pool,
+    extractor,
+    confirmDb: confirm.confirmDb,
+    previewBuilderConfirm: confirm.preview,
+    previewBuilderExtraction: previewBuilderMod,
+    stateMachineExtraction: stateMachineMod,
+    config,
+    logger,
+  });
+  const watchdog = confirm.createWatchdog({
+    pool,
+    confirmDb: confirm.confirmDb,
+    outboundConfirm: confirmOutbound,
+    config,
+    logger,
+  });
+
   const receiveLoop = createReceiveLoop({
     signalClient,
     dispatch: applyEvent,
@@ -243,6 +277,11 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
     capturePipeline,
     logger,
     clock,
+    pool,
+    confirmDb: confirm.confirmDb,
+    confirmParser: confirm.parser,
+    confirmOutbound,
+    editHandler,
   });
 
   // Periodic tick to keep Pi-offline and humidifier-stuck detectors alive during quiet periods
@@ -251,6 +290,8 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
   bridge.start();
   heartbeat.start();
   receiveLoop.start();
+  // Phase 39 D-04d: start watchdog AFTER receive-loop is up (first tick fires immediately).
+  watchdog.start().catch((e) => logger.warn(`[boot] watchdog start failed: ${e.message}`));
 
   return {
     dispatch: applyEvent,
@@ -258,6 +299,7 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
       bridge.close();
       heartbeat.stop();
       receiveLoop.stop();
+      watchdog.stop();
       retentionJob.stop();
       clearInterval(tickTimer);
       pool.end().catch(() => {});

@@ -51,6 +51,13 @@ function createReceiveLoop({
   // alongside BRIDGE_WS_URL). BRIDGE_URL kept as legacy fallback.
   bridgeUrl = process.env.BRIDGE_HTTP_URL || process.env.BRIDGE_URL || 'http://bridge:8080',
   fetchImpl = (typeof fetch !== 'undefined' ? fetch : null),
+  // Phase 39: confirm-loop wiring. Null defaults preserve back-compat for
+  // existing Phase 37/38 tests that don't supply these.
+  pool = null,
+  confirmDb = null,
+  confirmParser = null,
+  confirmOutbound = null,
+  editHandler = null,
 }) {
   let timer = null;
 
@@ -201,6 +208,54 @@ function createReceiveLoop({
               logger.warn(`[receive] reply send failed: ${e.message}`)
             );
             continue;
+          }
+        }
+
+        // Phase 39 confirm-reply branch (between snooze and capture).
+        // Skip when wiring is incomplete (defensive back-compat for legacy tests).
+        if (pool && confirmDb && confirmParser && confirmOutbound && editHandler && text) {
+          let draftRow = null;
+          try {
+            draftRow = await confirmDb.findAwaitingForSender(pool, source);
+          } catch (e) {
+            logger.warn(`[receive] confirm lookup failed: ${e.message}`);
+          }
+          if (draftRow) {
+            const parsed = confirmParser.parseReply(text);
+            if (parsed.kind === 'YES') {
+              const r = await confirmDb.confirmDraft(pool, draftRow.id);
+              if (r.ok && r.rowCount === 1) {
+                await confirmOutbound.dispatch('send_confirm_ack', draftRow);
+              } else if (r.ok && r.rowCount === 0) {
+                await confirmOutbound.dispatch('send_confirm_idempotent_ack', draftRow);
+              } else {
+                logger.warn(`[receive] confirm error: ${r.reason}`);
+              }
+              continue;
+            }
+            if (parsed.kind === 'NO') {
+              const r = await confirmDb.discardDraft(pool, draftRow.id);
+              if (r.ok && r.rowCount === 1) {
+                await confirmOutbound.dispatch('send_discard_ack', draftRow);
+              }
+              continue;
+            }
+            if (parsed.kind === 'EDIT') {
+              const editText = parsed.editText || '';
+              const eh = await editHandler.handleEdit(draftRow, editText);
+              if (eh.ok && eh.sideEffect === 'send_edit_cap_msg') {
+                await confirmDb.expireDraft(pool, draftRow.id, 'edit_cap_exceeded');
+                await confirmOutbound.dispatch('send_edit_cap_msg', draftRow, { maxEditTurns: config.maxEditTurns });
+              } else if (eh.ok && eh.sideEffect === 'send_preview_resend') {
+                await confirmOutbound.dispatch('send_preview_resend', draftRow, { newPreview: eh.newPreview });
+              } else if (eh.ok && eh.sideEffect === 'noop') {
+                logger.info(`[receive] edit noop: ${eh.reason}`);
+              } else {
+                logger.warn(`[receive] edit failed: ${eh && eh.reason}`);
+              }
+              continue;
+            }
+            // parsed.kind === 'NOOP' -- fall through to capture pipeline.
           }
         }
 
