@@ -1,9 +1,14 @@
 'use strict';
 
-// Phase 40 D-03 ship-gate fix (2026-05-13 dev-smoke): fungi_type is a
-// required relationship on asset--fungi (discriminator: batch | block |
-// bag | etc; lives in taxonomy_term--fungi_type). Per-process LRU cache
-// mirroring species-cache shape.
+// Phase 40 (Option A hybrid, re-locked 2026-05-14): fungi_type is a
+// required relationship on asset--fungi carrying the STRAIN CODE
+// (SHI, SH2, KOY, MAI, ...; lives in taxonomy_term--fungi_type). Matches
+// upstream farm_fungi {bundle}_type convention. The structural
+// classifier (block | fruit) lives in fungi_xing instead -- see
+// fungi-xing-cache.js. Per-process LRU cache.
+//
+// Earlier shape (2026-05-13 dev-smoke ship-gate fix) treated fungi_type
+// as the batch/block/bag classifier; superseded by the hybrid lock.
 
 const CACHE = new Map();
 const CACHE_MAX = 16;
