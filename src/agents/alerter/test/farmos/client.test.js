@@ -153,24 +153,4 @@ describe('createFarmosClient (Phase 40 Plan 02)', () => {
     expect(captured.headers['Content-Disposition']).toMatch(/filename="pic.jpg"/);
   });
 
-  it('probeAssetLinkModule caches across two invocations', async () => {
-    const fetchImpl = jest.fn()
-      .mockResolvedValueOnce(authResponse())
-      .mockResolvedValueOnce(mockResponse({ status: 200, body: {} }));
-    const c = makeClient(fetchImpl);
-    const r1 = await c.probeAssetLinkModule();
-    const r2 = await c.probeAssetLinkModule();
-    expect(r1).toBe(true);
-    expect(r2).toBe(true);
-    expect(fetchImpl).toHaveBeenCalledTimes(2); // 1 auth + 1 HEAD only
-  });
-
-  it('probeAssetLinkModule 404 sets present=false', async () => {
-    const fetchImpl = jest.fn()
-      .mockResolvedValueOnce(authResponse())
-      .mockResolvedValueOnce(mockResponse({ status: 404, body: {} }));
-    const c = makeClient(fetchImpl);
-    const r = await c.probeAssetLinkModule();
-    expect(r).toBe(false);
-  });
 });

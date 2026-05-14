@@ -2,73 +2,53 @@
 
 const qr = require('../../src/farmos/qr');
 
-function mockClient({ present = true, getImpl, postImpl } = {}) {
+function mockClient({ getImpl } = {}) {
   return {
-    probeAssetLinkModule: jest.fn(async () => present),
     get: jest.fn(getImpl || (async () => ({ ok: true, status: 200, body: { data: [] } }))),
-    post: jest.fn(postImpl || (async () => ({ ok: true, status: 201, body: { data: { id: 'link-1' } } }))),
   };
 }
 
-describe('qr.js (Phase 40 Plan 03)', () => {
-  it('resolveQr module-present returns assetId from asset_link path', async () => {
+describe('qr.js (Phase 40 prod-cutover, id_tag)', () => {
+  it('resolveQr filters by id_tag.id and returns assetId when found', async () => {
     const client = mockClient({
-      present: true,
-      getImpl: async () => ({ ok: true, status: 200, body: { data: [{
-        type: 'asset_link--farmos_asset_link',
-        attributes: { qr_code: 'Q1' },
-        relationships: { asset: { data: { type: 'asset--fungi', id: 'asset-42' } } },
-      }] } }),
-    });
-    const r = await qr.resolveQr(client, 'Q1');
-    expect(r.found).toBe(true);
-    expect(r.assetId).toBe('asset-42');
-    expect(r.path).toBe('asset_link');
-  });
-
-  it('resolveQr fallback queries fungi filter when module absent', async () => {
-    const client = mockClient({
-      present: false,
       getImpl: async () => ({ ok: true, status: 200, body: { data: [{ id: 'asset-9' }] } }),
     });
     const r = await qr.resolveQr(client, 'QX');
+    expect(r.found).toBe(true);
     expect(r.assetId).toBe('asset-9');
-    expect(r.path).toBe('farm_id_tag');
-    expect(client.get.mock.calls[0][0]).toMatch(/filter\[farm_id_tag\.qr_code\]\[value\]=QX/);
+    expect(r.path).toBe('id_tag');
+    expect(client.get.mock.calls[0][0]).toMatch(/filter\[id_tag\.id\]\[value\]=QX/);
   });
 
-  it('bindQrOnCreate {fallback:true} mutates attributes.farm_id_tag', () => {
-    const p = { data: { type: 'asset--fungi', attributes: { name: 'x' } } };
-    qr.bindQrOnCreate(p, ['Q1', 'Q2'], { fallback: true });
-    expect(p.data.attributes.farm_id_tag).toEqual([{ qr_code: 'Q1' }, { qr_code: 'Q2' }]);
-  });
-
-  it('bindQrOnCreate without fallback leaves payload untouched', () => {
-    const p = { data: { type: 'asset--fungi', attributes: { name: 'x' } } };
-    qr.bindQrOnCreate(p, ['Q1']);
-    expect(p.data.attributes.farm_id_tag).toBeUndefined();
-  });
-
-  it('bindQrPostCreate posts once per qrCode', async () => {
+  it('resolveQr returns found:false when no rows match', async () => {
     const client = mockClient();
-    const r = await qr.bindQrPostCreate(client, 'asset-1', ['Q1', 'Q2', 'Q3']);
-    expect(client.post).toHaveBeenCalledTimes(3);
-    expect(r.bindings.length).toBe(3);
-    expect(r.ok).toBe(true);
+    const r = await qr.resolveQr(client, 'QY');
+    expect(r.found).toBe(false);
+    expect(r.path).toBe('id_tag');
   });
 
-  it('bindQrPostCreate continues past one failed binding', async () => {
-    let n = 0;
+  it('resolveQr surfaces http error', async () => {
     const client = mockClient({
-      postImpl: async () => {
-        n++;
-        if (n === 2) return { ok: false, status: 500, body: {} };
-        return { ok: true, status: 201, body: { data: { id: 'link-' + n } } };
-      },
+      getImpl: async () => ({ ok: false, status: 500, body: {} }),
     });
-    const r = await qr.bindQrPostCreate(client, 'asset-1', ['Q1', 'Q2', 'Q3']);
-    expect(client.post).toHaveBeenCalledTimes(3);
-    expect(r.ok).toBe(false);
-    expect(r.bindings.filter((b) => b.ok).length).toBe(2);
+    const r = await qr.resolveQr(client, 'QZ');
+    expect(r.found).toBe(false);
+    expect(r.error).toBe('http_500');
+    expect(r.path).toBe('id_tag');
+  });
+
+  it('bindQrOnCreate mutates attributes.id_tag with {id, type:qr, location}', () => {
+    const p = { data: { type: 'asset--fungi', attributes: { name: 'x' } } };
+    qr.bindQrOnCreate(p, ['Q1', 'Q2']);
+    expect(p.data.attributes.id_tag).toEqual([
+      { id: 'Q1', type: 'other', location: '' },
+      { id: 'Q2', type: 'other', location: '' },
+    ]);
+  });
+
+  it('bindQrOnCreate with empty list leaves payload untouched', () => {
+    const p = { data: { type: 'asset--fungi', attributes: { name: 'x' } } };
+    qr.bindQrOnCreate(p, []);
+    expect(p.data.attributes.id_tag).toBeUndefined();
   });
 });

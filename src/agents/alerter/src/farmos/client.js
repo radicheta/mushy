@@ -32,7 +32,6 @@ function createFarmosClient({
   }
 
   const _session = { cookie: null, csrf: null, authedAt: null };
-  let _assetLinkPresent = null; // tri-state
 
   async function _authenticate() {
     const ac = new AbortController();
@@ -174,31 +173,12 @@ function createFarmosClient({
   }
   async function head(path, opts) { return _request('HEAD', path, null, opts); }
 
-  async function probeAssetLinkModule() {
-    if (_assetLinkPresent !== null) return _assetLinkPresent;
-    const r = await head('/api/asset_link/farmos_asset_link');
-    // 404 means module absent; any other status (200, 403, 500, even error) means probe failed,
-    // treat as absent so we fall back safely. Per RESEARCH 13: network flap -> absent.
-    if (r && r.status === 404) {
-      _assetLinkPresent = false;
-      logger.info && logger.info('[farmos] asset_link module: absent, using farm_id_tag fallback');
-    } else if (r && r.status != null) {
-      _assetLinkPresent = true;
-      logger.info && logger.info('[farmos] asset_link module: present');
-    } else {
-      _assetLinkPresent = false;
-      logger.info && logger.info('[farmos] asset_link module: probe failed, using farm_id_tag fallback');
-    }
-    return _assetLinkPresent;
-  }
-
   return {
     get,
     post,
     patch,
     postBinary,
     head,
-    probeAssetLinkModule,
     _session, // test introspection
   };
 }

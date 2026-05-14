@@ -7,7 +7,7 @@ const fungiXingCache = require('../../src/farmos/fungi-xing-cache');
 // Default `get` stub: returns a stub UUID for any fungi_type/fungi_xing
 // lookup so the createFungiAsset path proceeds. Tests that need a
 // different behavior pass getImpl explicitly.
-function mockClient({ present = false, getImpl, postImpl } = {}) {
+function mockClient({ getImpl, postImpl } = {}) {
   const defaultGet = async (path) => {
     if (/\/api\/taxonomy_term\/fungi_type/.test(path)) {
       return { ok: true, status: 200, body: { data: [{ id: 'fungitype-stub-uuid' }] } };
@@ -18,7 +18,6 @@ function mockClient({ present = false, getImpl, postImpl } = {}) {
     return { ok: true, status: 200, body: { data: [] } };
   };
   return {
-    probeAssetLinkModule: jest.fn(async () => present),
     get: jest.fn(getImpl || defaultGet),
     post: jest.fn(postImpl || (async () => ({ ok: true, status: 201, body: { data: { id: 'new-asset' } } }))),
   };
@@ -77,40 +76,23 @@ describe('assets.js (Phase 40 Option A hybrid)', () => {
     expect(client.post).not.toHaveBeenCalled();
   });
 
-  it('fallback path (module-absent): farm_id_tag embedded in payload', async () => {
-    const client = mockClient({ present: false });
+  it('QR codes embed in payload as id_tag {id, type:qr, location}', async () => {
+    const client = mockClient();
     await assets.createFungiAsset(client, {
       name: '260513_DT_001',
       fungiTypeName: 'DT',
       fungiXingName: 'block',
-      qrCodes: ['Q1'],
+      qrCodes: ['Q1', 'Q2'],
       draftId: 'd2',
     });
     const sent = client.post.mock.calls[0][1];
     expect(sent.data.relationships.fungi_type.data[0].id).toBe('fungitype-stub-uuid');
     expect(sent.data.relationships.fungi_xing.data[0].id).toBe('fungixing-stub-uuid');
-    expect(sent.data.attributes.farm_id_tag).toEqual([{ qr_code: 'Q1' }]);
-  });
-
-  it('module-present path triggers bindQrPostCreate (second POST)', async () => {
-    let postCalls = 0;
-    const client = mockClient({
-      present: true,
-      postImpl: async () => {
-        postCalls++;
-        return { ok: true, status: 201, body: { data: { id: postCalls === 1 ? 'asset-x' : 'link-' + postCalls } } };
-      },
-    });
-    const r = await assets.createFungiAsset(client, {
-      name: '260513_DT_002',
-      fungiTypeName: 'DT',
-      fungiXingName: 'block',
-      qrCodes: ['QA'],
-      draftId: 'd3',
-    });
-    expect(r.ok).toBe(true);
-    expect(client.post).toHaveBeenCalledTimes(2); // asset create + asset_link bind
-    expect(client.post.mock.calls[1][0]).toMatch(/asset_link\/farmos_asset_link/);
+    expect(sent.data.attributes.id_tag).toEqual([
+      { id: 'Q1', type: 'other', location: '' },
+      { id: 'Q2', type: 'other', location: '' },
+    ]);
+    expect(client.post).toHaveBeenCalledTimes(1); // no second asset_link POST
   });
 
   it('multi-parent payload (harvest bag with N source blocks)', async () => {
