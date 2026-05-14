@@ -1,22 +1,32 @@
 #!/usr/bin/env node
 'use strict';
 
-// Phase 40 Backlog B -- seed dev-farmOS taxonomy terms so commit-seeding /
-// commit-harvest can resolve fungi_type / species / substrate_type lookups.
+// Phase 40 Backlog B -- seed dev-farmOS taxonomy terms.
+//
+// 2026-05-14: rewritten against the Option A hybrid schema agreed with the
+// farmOS side. See:
+//   /mnt/slime-kingdom/opt/mushy/.planning/notes/2026-05-14-reply-to-farmos-option-A.md
+//   /mnt/slime-kingdom/shared/farmos/.planning/notes/2026-05-14-reply-to-mushy-fungi-schema.md
+//
+// Vocab shape (Option A):
+//   fungi_type    -- strain codes (matches upstream farm_fungi {bundle}_type
+//                    convention: animal_type=breed, plant_type=cultivar,
+//                    fungi_type=strain). 14 active Mossrock strains.
+//   fungi_xing    -- NEW vocab; structural classifier on fungi bundle.
+//                    2 terms: 'block', 'fruit'. No 'batch' -- pre-inoc
+//                    substrate isn't a fungi asset (lives in material bundle
+//                    or pasteurization log).
+//   substrate_type -- vocab content unchanged. Field moves from fungi bundle
+//                    to material bundle (config change on farmOS side; this
+//                    script only seeds vocab terms).
+//
+// 'species' vocab is intentionally NOT seeded -- it was a strawman that did
+// not survive deliberation.
 //
 // Idempotent: GETs first, POSTs only missing terms. Safe to re-run.
 //
-// Source-of-truth for vocab:
-//   fungi_type    -- alerter passes 'batch' | 'block' | 'bag' (assets.js callers)
-//   species       -- 10 strain codes from
-//                    /mnt/slime-kingdom/shared/farmos/.planning/notes/
-//                    2026-05-09-fungi-schema-strawman.md L134
-//   substrate_type -- substrate vocab from same strawman L139-146
-//
-// Vocabulary (taxonomy bundle) creation is NOT possible via JSON:API in farmOS
-// -- vocabularies are Drupal config entities, not content entities. If a 404
-// comes back on the bundle probe, the script reports it and exits non-zero so
-// operator can `drush` / UI-create the missing vocabulary, then re-run.
+// Vocabulary creation is NOT possible via JSON:API (Drupal config entity).
+// 404 on bundle probe => operator must drush / UI-create the vocab first.
 //
 // Usage:
 //   FARMOS_URL=http://10.68.155.50:18080 \
@@ -25,12 +35,13 @@
 
 const { createFarmosClient } = require('../src/agents/alerter/src/farmos/client');
 
-const FUNGI_TYPE_TERMS = ['batch', 'block', 'bag'];
-
-const SPECIES_TERMS = [
-  'SHI', 'KOY', 'MAI', 'MALI', 'KOS', 'DT', 'CAS', 'CAZ', 'WIN', 'ALM',
-  '(unassigned)',
+// 14 active Mossrock strain codes (confirmed by Don Santiago 2026-05-14).
+const FUNGI_TYPE_TERMS = [
+  'SHI', 'SH2', 'KOY', 'MAI', 'MALI', 'KOS', 'DT',
+  'CAS', 'CAZ', 'WIN', 'ALM', 'MOR', 'BP', 'LIMA',
 ];
+
+const FUNGI_XING_TERMS = ['block', 'fruit'];
 
 const SUBSTRATE_TYPE_TERMS = [
   'agar_mea',
@@ -46,7 +57,7 @@ const SUBSTRATE_TYPE_TERMS = [
 
 const VOCABS = [
   { vocab: 'fungi_type', terms: FUNGI_TYPE_TERMS },
-  { vocab: 'species', terms: SPECIES_TERMS },
+  { vocab: 'fungi_xing', terms: FUNGI_XING_TERMS },
   { vocab: 'substrate_type', terms: SUBSTRATE_TYPE_TERMS },
 ];
 
