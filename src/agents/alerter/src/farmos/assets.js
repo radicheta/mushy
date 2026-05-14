@@ -1,11 +1,17 @@
 'use strict';
 
-// Phase 40 D-03 / D-03a / D-03b: fungi asset creation primitives (B1..B4).
-// Single createFungiAsset shape; lazy QR-bind dispatch via probeAssetLinkModule.
-// Module-level LRU cache for BATCH-* name resolution (resolveOrCreateAsset).
+// Phase 40 fungi asset creation primitive. Option A hybrid shape
+// (2026-05-14): asset--fungi requires fungi_type (strain code term, e.g.
+// SHI/SH2/...) AND fungi_xing (structural classifier: block | fruit).
+// Pre-inoc substrates are NOT fungi assets -- they live in the material
+// bundle or as pasteurization logs. See
+// .planning/notes/2026-05-14-reply-from-farmos-fungi-schema.md.
+//
+// Module-level LRU cache for asset name -> id resolution.
 
 const qr = require('./qr');
 const fungiTypeCache = require('./fungi-type-cache');
+const fungiXingCache = require('./fungi-xing-cache');
 
 const NAME_CACHE = new Map(); // name -> assetId; capped at 32
 const NAME_CACHE_MAX = 32;
@@ -13,7 +19,6 @@ const NAME_CACHE_MAX = 32;
 function _cacheGet(name) {
   if (!NAME_CACHE.has(name)) return undefined;
   const v = NAME_CACHE.get(name);
-  // touch (LRU)
   NAME_CACHE.delete(name);
   NAME_CACHE.set(name, v);
   return v;
@@ -46,17 +51,21 @@ async function findAssetByName(client, name) {
 }
 
 async function createFungiAsset(client, opts) {
-  const { name, parentIds = [], speciesUuid = null, fungiTypeName = null, draftId, qrCodes = [], notes = null } = opts;
-  // fungi_type is REQUIRED on the asset--fungi bundle (taxonomy_term--fungi_type
-  // discriminator). Resolve UUID via cache; clean-fail if missing.
-  let fungiTypeUuid = null;
-  if (fungiTypeName) {
-    const ft = await fungiTypeCache.getFungiTypeUuid(client, fungiTypeName);
-    if (!ft.ok) return { ok: false, reason: ft.reason, fungiTypeName };
-    fungiTypeUuid = ft.uuid;
-  } else {
-    return { ok: false, reason: 'missing_fungi_type_name' };
-  }
+  const {
+    name,
+    parentIds = [],
+    fungiTypeName = null,
+    fungiXingName = null,
+    draftId,
+    qrCodes = [],
+    notes = null,
+  } = opts;
+  if (!fungiTypeName) return { ok: false, reason: 'missing_fungi_type_name' };
+  if (!fungiXingName) return { ok: false, reason: 'missing_fungi_xing_name' };
+  const ft = await fungiTypeCache.getFungiTypeUuid(client, fungiTypeName);
+  if (!ft.ok) return { ok: false, reason: ft.reason, fungiTypeName };
+  const fx = await fungiXingCache.getFungiXingUuid(client, fungiXingName);
+  if (!fx.ok) return { ok: false, reason: fx.reason, fungiXingName };
   const noteTrailer = (notes ? notes + '\n' : '') + 'mushy:draft:' + draftId;
   const payload = {
     data: {
@@ -69,13 +78,11 @@ async function createFungiAsset(client, opts) {
     },
   };
   const relationships = {
-    fungi_type: { data: [{ type: 'taxonomy_term--fungi_type', id: fungiTypeUuid }] },
+    fungi_type: { data: [{ type: 'taxonomy_term--fungi_type', id: ft.uuid }] },
+    fungi_xing: { data: [{ type: 'taxonomy_term--fungi_xing', id: fx.uuid }] },
   };
   if (parentIds.length > 0) {
     relationships.parent = { data: parentIds.map((id) => ({ type: 'asset--fungi', id })) };
-  }
-  if (speciesUuid) {
-    relationships.species = { data: [{ type: 'taxonomy_term--species', id: speciesUuid }] };
   }
   payload.data.relationships = relationships;
   const present = await client.probeAssetLinkModule();

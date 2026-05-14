@@ -9,7 +9,6 @@ module.exports = {
   files: require('./files'),
   assets: require('./assets'),
   logs: require('./logs'),
-  species: require('./species-cache'),
   commitRouter: require('./commits/commit-router'),
   createAuditLogger: require('./audit-logger').createAuditLogger,
   createCommitWatchdog: require('./commit-watchdog').createCommitWatchdog,

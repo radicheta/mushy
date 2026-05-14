@@ -1,13 +1,40 @@
 'use strict';
 
-// Phase 40 B7.5 harvest (D-03b): resolve N source-block QRs, create 1 harvest
-// batch + M bag assets each QR-bound, post harvest log referencing all.
-// Missing source block aborts BEFORE any farmOS write. Bag QR collision is
-// terminal (qr_already_bound_for_bag); bags are new units, never reused.
+// Phase 40 B7.5 harvest (D-03b). Option A hybrid shape (2026-05-14):
+//   * Bag assets ARE fungi assets: fungi_type=<strain>, fungi_xing='fruit',
+//     parent=source blocks (C4 lineage).
+//   * NO harvest_batch fungi asset under the new schema -- 'batch' is not
+//     a valid fungi_xing value, and the harvest log itself bundles the
+//     bags + source blocks together. harvest_batch_name (if present) is
+//     preserved in the log notes for human-readable lineage.
+//   * Missing source block aborts BEFORE any farmOS write. Bag QR
+//     collision is terminal.
+//
+// Strain resolution: drafts don't carry an explicit strain field;
+// extract from harvest_batch_name (HBATCH-...-{STRAIN}-...) or fall back
+// to draft.strain / draft.species_code. Document missing-strain as a
+// terminal failure -- caller must include it.
+//
+// Cross-ref: .planning/notes/2026-05-14-reply-from-farmos-fungi-schema.md
 
 const assets = require('../assets');
 const logs = require('../logs');
 const qrMod = require('../qr');
+
+// HBATCH-2026-05-13-DT-001 -> 'DT'.  Matches B5 strain codes (2-4 chars).
+const HBATCH_STRAIN_RE = /-([A-Z]{2,4})-[0-9]+$/;
+
+function resolveStrain(dj) {
+  if (dj.strain) return dj.strain;
+  if (dj.fungi_type) return dj.fungi_type;
+  if (dj.species_code) return dj.species_code;
+  if (dj.species) return dj.species;
+  if (dj.harvest_batch_name) {
+    const m = HBATCH_STRAIN_RE.exec(dj.harvest_batch_name);
+    if (m) return m[1];
+  }
+  return null;
+}
 
 async function commitHarvest(client, draft, ctx) {
   const dj = draft.draft_json || {};
@@ -39,45 +66,46 @@ async function commitHarvest(client, draft, ctx) {
     }
   }
 
-  // 2. Create harvest batch.
-  const batchName = dj.harvest_batch_name;
-  if (!batchName) return { ok: false, reason: 'missing_harvest_batch_name' };
-  const batchRes = await assets.createFungiAsset(client, {
-    name: batchName, parentIds: sourceIds, fungiTypeName: 'batch', draftId,
-  });
-  if (!batchRes.ok) return { ok: false, reason: batchRes.reason || 'harvest_batch_create_failed', http_status: batchRes.http_status };
-  const batchId = batchRes.assetId;
+  // 2. Strain required for bag fungi_type.
+  const strain = resolveStrain(dj);
+  if (!strain) return { ok: false, reason: 'missing_strain' };
 
-  // 3. Create bag assets.
+  // 3. Create bag assets (parents = source blocks).
+  const batchName = dj.harvest_batch_name; // labelling only; not an asset.
   const bagIds = [];
   for (const bag of bags) {
-    const bagName = bag.name || `${batchName}-bag-${bagIds.length + 1}`;
+    const bagName = bag.name || `${batchName || 'harvest'}-bag-${bagIds.length + 1}`;
     const bagRes = await assets.createFungiAsset(client, {
       name: bagName,
-      parentIds: [batchId],
-      fungiTypeName: 'bag',
+      parentIds: sourceIds,
+      fungiTypeName: strain,
+      fungiXingName: 'fruit',
       qrCodes: bag.qr_code ? [bag.qr_code] : [],
       draftId,
     });
-    if (!bagRes.ok) return { ok: false, reason: bagRes.reason || 'bag_create_failed', http_status: bagRes.http_status, asset_ids: [batchId, ...bagIds] };
+    if (!bagRes.ok) return { ok: false, reason: bagRes.reason || 'bag_create_failed', http_status: bagRes.http_status, asset_ids: [...bagIds] };
     bagIds.push(bagRes.assetId);
   }
 
-  // 4. Harvest log: order = source blocks, batch, bags.
-  const assetIds = [...sourceIds, batchId, ...bagIds];
+  // 4. Harvest log: order = source blocks, bags.
+  const assetIds = [...sourceIds, ...bagIds];
   const weightLines = bags
     .map((b, i) => `bag${i + 1}: ${b.weight_grams != null ? b.weight_grams + 'g' : 'n/a'}`)
     .join('\n');
-  const notes = (dj.notes ? dj.notes + '\n' : '') + (weightLines ? 'Weights:\n' + weightLines : '');
+  const noteParts = [];
+  if (dj.notes) noteParts.push(dj.notes);
+  if (batchName) noteParts.push('harvest_batch: ' + batchName);
+  if (weightLines) noteParts.push('Weights:\n' + weightLines);
+  const notes = noteParts.join('\n');
   const name = `harvest ${new Date(timestamp * 1000).toISOString().slice(0, 10)}`;
   const logRes = await logs.createLog(client, 'harvest', {
     name, timestamp, assetIds, notes, draftId,
   });
-  if (!logRes.ok) return { ok: false, reason: logRes.reason, http_status: logRes.http_status, asset_ids: [batchId, ...bagIds] };
+  if (!logRes.ok) return { ok: false, reason: logRes.reason, http_status: logRes.http_status, asset_ids: [...bagIds] };
 
   return {
     ok: true,
-    asset_ids: [batchId, ...bagIds],
+    asset_ids: [...bagIds],
     log_ids: [logRes.logId],
     file_ids: [],
     http_status: logRes.http_status,

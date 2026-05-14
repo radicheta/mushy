@@ -6,7 +6,8 @@
 //   - get(/api/asset/fungi?filter[name][value]=...) -> name -> assetId lookup
 //   - get(/api/asset_link/farmos_asset_link?filter[qr_code]=...) -> qr -> assetId
 //   - get(/api/asset/fungi?filter[farm_id_tag.qr_code]...) -> qr -> assetId
-//   - get(/api/taxonomy_term/species?filter[name][value]=...) -> code -> uuid
+//   - get(/api/taxonomy_term/fungi_type?filter[name][value]=...) -> strain -> uuid
+//   - get(/api/taxonomy_term/fungi_xing?filter[name][value]=...) -> xing -> uuid
 //   - post(/api/asset/fungi)        -> assigns a unique id, records name
 //   - post(/api/asset_link/farmos_asset_link) -> success
 //   - post(/api/log/<type>)         -> assigns a unique log id
@@ -16,8 +17,12 @@ function makeMockClient({
   present = false,
   knownAssetsByName = {},    // name -> assetId for pre-existing assets
   knownAssetsByQr = {},      // qrCode -> assetId for pre-existing bindings
-  speciesUuids = {},         // shortCode -> uuid
-  fungiTypeUuids = { batch: 'fungitype-batch-uuid', block: 'fungitype-block-uuid', bag: 'fungitype-bag-uuid' },
+  fungiTypeUuids = {
+    SHI: 'ft-shi', SH2: 'ft-sh2', KOY: 'ft-koy', MAI: 'ft-mai', MALI: 'ft-mali',
+    KOS: 'ft-kos', DT: 'ft-dt', CAS: 'ft-cas', CAZ: 'ft-caz', WIN: 'ft-win',
+    ALM: 'ft-alm', MOR: 'ft-mor', BP: 'ft-bp', LIMA: 'ft-lima',
+  },
+  fungiXingUuids = { block: 'fx-block', fruit: 'fx-fruit' },
 } = {}) {
   const created = { assets: [], logs: [], files: [], links: [] };
   let assetSeq = 1; let logSeq = 1; let fileSeq = 1; let linkSeq = 1;
@@ -57,16 +62,16 @@ function makeMockClient({
         if (knownAssetsByQr[qr]) return _ok(200, { data: [{ id: knownAssetsByQr[qr] }] });
         return _ok(200, { data: [] });
       }
-      m = /\/api\/taxonomy_term\/species\?filter\[name\]\[value\]=([^&]+)/.exec(path);
-      if (m) {
-        const code = decodeURIComponent(m[1]);
-        if (speciesUuids[code]) return _ok(200, { data: [{ id: speciesUuids[code] }] });
-        return _ok(200, { data: [] });
-      }
       m = /\/api\/taxonomy_term\/fungi_type\?filter\[name\]\[value\]=([^&]+)/.exec(path);
       if (m) {
         const typeName = decodeURIComponent(m[1]);
         if (fungiTypeUuids[typeName]) return _ok(200, { data: [{ id: fungiTypeUuids[typeName] }] });
+        return _ok(200, { data: [] });
+      }
+      m = /\/api\/taxonomy_term\/fungi_xing\?filter\[name\]\[value\]=([^&]+)/.exec(path);
+      if (m) {
+        const xingName = decodeURIComponent(m[1]);
+        if (fungiXingUuids[xingName]) return _ok(200, { data: [{ id: fungiXingUuids[xingName] }] });
         return _ok(200, { data: [] });
       }
       return _ok(200, { data: [] });
