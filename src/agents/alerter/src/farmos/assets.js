@@ -85,9 +85,8 @@ async function createFungiAsset(client, opts) {
     relationships.parent = { data: parentIds.map((id) => ({ type: 'asset--fungi', id })) };
   }
   payload.data.relationships = relationships;
-  const present = await client.probeAssetLinkModule();
-  if (!present && qrCodes.length > 0) {
-    qr.bindQrOnCreate(payload, qrCodes, { fallback: true });
+  if (qrCodes.length > 0) {
+    qr.bindQrOnCreate(payload, qrCodes);
   }
   const r = await client.post('/api/asset/fungi', payload);
   if (!r.ok) {
@@ -98,12 +97,7 @@ async function createFungiAsset(client, opts) {
     return { ok: false, reason: 'no_asset_id_in_response' };
   }
   _cacheSet(name, assetId);
-  let qrBindings = [];
-  if (present && qrCodes.length > 0) {
-    const br = await qr.bindQrPostCreate(client, assetId, qrCodes);
-    qrBindings = br.bindings;
-  }
-  return { ok: true, assetId, qrBindings, http_status: r.status };
+  return { ok: true, assetId, qrBindings: [], http_status: r.status };
 }
 
 async function resolveOrCreateAsset(client, opts) {
