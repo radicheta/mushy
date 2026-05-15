@@ -1,52 +1,72 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-13T01:42:00Z",
-  "context": "between-phases",
+  "timestamp": "2026-05-16T00:05:00Z",
+  "context": "between-sessions; findings-discussion handoff",
   "milestone": "v1.7",
   "milestone_name": "Multimodal Signal -> FarmOS Events",
-  "last_phase_closed": "38",
-  "next_phase": "39",
-  "next_phase_name": "Farmer Confirmation Loop",
-  "status": "paused",
-  "session_summary": "Phase 38 reopened mid-day after live prod inoc session failed 0/4; root-caused 5+ bugs across whisper service, pipeline image wiring, fake-green healthcheck, extractor maxTokens default, species vocab. All fixed in code (commits 30c409c -> b8847e8). Plan 09 remediation closed Phase 38 properly on a 96-fixture ship-gate at 95.8% schema conformance INCLUDING one real prod session fixture.",
+  "last_phase_closed": "40 (happy-path UAT closed via bridge 2026-05-15); 36 Plan 04 SC#1 PASS T+24h",
+  "next_phase": "none-pending; v1.7 milestone close gated only on Phase 42 calendar",
+  "status": "ready-for-discussion",
+  "session_summary": "2026-05-15 evening session: re-audited v1.7 reflecting Phase 40 prod cutover, closed Plan 36-04 T+24h SC#1 PASS for Santi (12m46s latency), shipped Phase 37 prompt-fixes (em-dash + OBJ-char + dashboardUrl, 626/626 GREEN), closed Phase 40 happy-path UAT via lion's mane bridge (created LIMA block 260415_LIMA_1, manually reshaped draft_json, watchdog retry HTTP 201 1.5s). 8 findings collected; 1 fixed (em-dash live-validated by Santi UX-feedback clean reply at 23:50), 7 parked for discussion. Two overnight research agents kicked off for findings 2/4/5 prep.",
   "blockers": [],
   "human_actions_pending": [
     {
-      "action": "Confirm timing to resume autonomous v1.7 close (Phases 39 -> 42)",
-      "context": "User explicitly chose 'All the way to v1.7 close (39->42)' as autonomous scope earlier in session. Paused after Phase 38 closed; user wanted to break to clear context before continuing.",
-      "blocking": true
+      "action": "Open .planning/notes/2026-05-16-findings-discussion-prep.md as the next-session lead",
+      "context": "Companion docs ordered there; everything else is reference",
+      "blocking": false
+    },
+    {
+      "action": "After discussion: kick off Phase 42 SHI sterilize batch (calendar-bound 4-8wk; long pole)",
+      "context": "Independent of findings discussion; should run in parallel",
+      "blocking": false
+    },
+    {
+      "action": "Opportunistic: Vikki SC#2 retroactive close for Plan 36-04",
+      "context": "Send fresh kickoff to Vikki in a quiet window; current attestation accepted as PASS-with-SC2-carryover per plan resume-signal escape hatch",
+      "blocking": false
     }
   ],
-  "decisions": [
-    {"decision": "Phase 38 closed on 95.8% schema conformance (92/96) including real prod session", "rationale": "Above 90% bar; only 1 real schema_invalid + 3 transient API 500s out of 96", "phase": "38"},
-    {"decision": "Plan 08 superseded by Plan 09", "rationale": "Prod-corpus eval scope absorbed into the ship-gate denominator rather than running as separate advisory pass", "phase": "38"},
-    {"decision": "extractor maxTokens default 2048 -> 16384", "rationale": "Multi-event paper-log pages produce 10-25 drafts; 2048 was silently truncating tool_use input to empty {} causing schema_invalid floor", "phase": "38"},
-    {"decision": "whisper /transcribe uses vad_filter=True + condition_on_previous_text=False", "rationale": "Eliminated counting-hallucination tails on long audio; 4x faster (8.7s vs 36.5s on 6min audio)", "phase": "38"},
-    {"decision": "whisper /health does eager startup probe (model load + 1s synthetic transcribe)", "rationale": "Fake-green healthcheck let GPU drift run for 5 days unnoticed; now 503 within seconds of any cuda failure", "phase": "38"},
-    {"decision": "Eval harness routes image loading via pipeline.loadImageBlocks (exported)", "rationale": "Plan 07 PASS was on a code path that did not exist in production; harness now structurally fails if pipeline image wiring breaks again", "phase": "38"},
-    {"decision": "Real prod session fixture mandatory in ship-gate denominator", "rationale": "2 curated photo-only fixtures could not predict live behavior; corpus dir established at /mnt/mossrock/shared/mushdatadump-prod/", "phase": "38"}
+  "background_research_running": [
+    {
+      "agent": "Agent A",
+      "scope": "Phase 38 <-> Phase 40 schema audit per log_type (finding 4 prep)",
+      "output_path": ".planning/notes/2026-05-16-schema-audit.md",
+      "status": "running at session close"
+    },
+    {
+      "agent": "Agent B",
+      "scope": "farmOS no-target patterns research + strain coverage gap audit (findings 2 + 5 prep)",
+      "output_path": ".planning/notes/2026-05-16-farmos-no-target-and-strain-coverage.md",
+      "status": "running at session close"
+    }
   ],
-  "uncommitted_files": [],
-  "next_action": "User confirms readiness to resume autonomous run. Then: /gsd-autonomous --from 39 (scope: through 42 per earlier choice). Phase 39 is 'Farmer Confirmation Loop' -- new phase, no plans yet; autonomous will run discuss -> plan -> execute.",
-  "context_notes": "Long session 2026-05-12. Started by closing Phase 38 on Plan 07 (curated PASS) then immediately had to reopen when live prod inoc session via Signal returned 0/4. Spent the rest of the session root-causing 5 bugs and shipping Plan 09 remediation. $10.91 total paid Anthropic spend across the cycle. Three new memory rules written (smoke-before-expensive, keep-paper-trail, real-data-ship-gate). 8 commits 30c409c -> b8847e8.",
-  "session_paper_trail": {
-    "corpus_dir": "/mnt/mossrock/shared/mushdatadump-prod/2026-05-12_inoc_santi/",
-    "eval_reports": [
-      ".planning/phases/38-extraction-pipeline/38-EVAL-REPORT.md (= run-2 PASS, current head)",
-      ".planning/phases/38-extraction-pipeline/38-EVAL-REPORT-plan09-run2-PASS.md (same content, stable name)",
-      ".planning/phases/38-extraction-pipeline/38-EVAL-REPORT-plan09-run1-FAIL.md (first attempt, FAIL at 36.5% due to maxTokens)",
-      ".planning/phases/38-extraction-pipeline/38-EVAL-REPORT-plan09-smoke.md (10-fixture validation after maxTokens fix)",
-      ".planning/phases/38-extraction-pipeline/38-EVAL-REPORT-plan07.md (original 2-fixture PASS, later retracted)"
-    ],
-    "commits": [
-      "30c409c phase(38): close on Plan 07 PASS attestation (retracted)",
-      "4fb2541 phase(38): REOPEN -- prod inoc session live-replay failed",
-      "a04a6bc fix(alerter,38-05): load image attachments to base64 before extractor",
-      "d5b853f tool(alerter): scripts/replay-prod-corpus.js for offline validation",
-      "683c642 plan(38-09): remediation plan filed",
-      "2d2e64b plan(38-09): tasks 1-4 -- deep whisper /health, parity, prod fixtures, species vocab",
-      "76df06f plan(38-09 task 5a): extractor maxTokens 2048 -> 16384",
-      "b8847e8 phase(38): RE-CLOSE on Plan 09 PASS attestation"
-    ]
-  }
+  "session_commits_chronological": [
+    "61f698b docs(v1.7): land Phases 38-42 LEARNINGS + rollup + 2026-05-13 notes",
+    "55c5dee audit(v1.7): re-audit reflects Phase 40 prod cutover (2026-05-14)",
+    "3f32581 phase(36-04): T+24h SC#1 PASS + Vikki/Rambo unscripted-run findings",
+    "3c7c723 fix(alerter,37): em-dash sanitize + iOS OBJ-char command strip + dashboardUrl drift",
+    "9f85969 docs(37): mark deferred-items resolved + file LLM outbound-amnesia finding",
+    "a1705ac uat(40): Phase 40 happy-path UAT closed via bridged lion's mane commit"
+  ],
+  "findings_8": [
+    {"id": "1a", "severity": "low", "surface": "Phase 37 LLM convo", "summary": "Conflates random words with block names (Vikki/Rambo)"},
+    {"id": "1b", "severity": "medium", "surface": "Phase 37 LLM convo", "summary": "No memory of own outbound (Santi T+24h reply)", "fix_sketches_filed": ["a-ring-buffer", "b-DB-table", "c-hybrid"]},
+    {"id": "1c", "severity": "RESOLVED", "surface": "Phase 37 LLM convo", "summary": "Recurrent em-dash leak", "resolved_in": "3c7c723", "live_validation": "Santi 23:50 UX-feedback reply -- zero em-dashes, plain prose"},
+    {"id": "1d", "severity": "medium", "surface": "Phase 38 preview-builder", "summary": "Jargon ('asset_ref') in farmer-facing askback", "live_evidence_2x": ["Vikki Rambo 22:59 implicit", "Santi 23:31 explicit: 'speak in farmer to me'"]},
+    {"id": "2", "severity": "medium", "surface": "Phase 40 commit-router", "summary": "No fallback for unregistered observation/activity targets", "fix_options_filed": "A/B/C/D"},
+    {"id": "3", "severity": "HIGH-NORTH-STAR", "surface": "Phase 40 commit-watchdog", "summary": "commit_failed silent -- farmer YES, system dropped, no reply", "live_evidence_2x": ["Vikki Rambo 23:17:15", "Santi lion-mane 23:33:45"], "recommended_priority": "cheapest urgent fix on the list"},
+    {"id": "4", "severity": "medium", "surface": "Phase 38 <-> Phase 40", "summary": "Schema mismatch for activity log_type", "live_evidence": "Lion-mane bridge required reshape", "research_pending": "Agent A"},
+    {"id": "5", "severity": "medium", "surface": "Phase 40 + paper-log backfill", "summary": "Strain blocks missing in prod-farmOS (LIMA/MAI/CAS/etc absent)", "research_pending": "Agent B"},
+    {"id": "6", "severity": "low", "surface": "Phase 40 ack template", "summary": "farmOS asset/log refs not clickable", "source": "Santi 23:50 UX feedback"},
+    {"id": "7", "severity": "low-medium", "surface": "Phase 38 capture-pipeline", "summary": "Extractor runs on every capture incl. chit-chat -> phantom drafts", "live_evidence": "Santi 23:50 chit-chat created draft 6934760c"}
+  ],
+  "live_artifacts_referenced": {
+    "vikki_rambo_draft": "b8a1e586673b0e4f98495e614c93c26c27f010da876e139013d3c799d0f1eb9d (commit_failed, NOT bridged -- live evidence preserved)",
+    "santi_lion_mane_draft": "1fb28e709118807ed301b4c3b45f5042f194eabb9ab0000f288e9163fec93733 (committed via bridge)",
+    "santi_phantom_draft": "6934760c3787dc46bd61a753c3e15e1f510886e81b0bed8724335bee67358cb6 (awaiting_farmer; finding #7 evidence)",
+    "lima_block_created_by_bridge": "260415_LIMA_1 uuid e0be0952-e77b-4316-8be6-28abdc62b134 on prod-farmOS",
+    "lion_mane_activity_log": "relocate 2026-05-13 uuid 92632908-e88c-4480-a04a-cbac4ffce999 on prod-farmOS"
+  },
+  "next_action": "Read .planning/notes/2026-05-16-findings-discussion-prep.md. Verify the two overnight research notes landed in the working tree. Then discuss findings in the priority order recommended in the prep doc.",
+  "do_not_close_milestone_yet": "v1.7 complete-milestone is still gated on Phase 42 calendar. Findings discussion + fixes can land in a v1.7.0.1 hotfix milestone or be folded into v1.8 scope -- decision point in the discussion."
 }
