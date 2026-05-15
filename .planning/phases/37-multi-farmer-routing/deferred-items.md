@@ -5,19 +5,26 @@
 - Originally introduced by commit 3bc11cb (heartbeat deferral on empty bridge summary).
 - **Resolved post-Plan-03:** test now dispatches `heartbeat_tick` directly with a populated summary, matching the test's actual intent (validate cap=0 doesn't suppress heartbeat sends). Suite back to 268/269 with only the dashboardUrl drift remaining.
 
-### test/config.test.js Test A — dashboardUrl drift
-- **Status:** pre-existing (carried from Plan 37-01)
-- **Root cause:** `config.js:87` default `http://100.96.10.66:8080/` no longer matches the test assertion `http://elder-plops-ts:8081/farmer`.
-- **Fix:** One-line update — either fix the default or update the test. Bundle with next alerter PR.
+### ~~test/config.test.js Test A -- dashboardUrl drift~~ -- RESOLVED 2026-05-15 (commit 3c7c723)
+- ~~Status: pre-existing (carried from Plan 37-01)~~
+- **Resolved:** `config.js:93` default updated to `http://elder-plops-ts:8081/farmer` (tailscale hostname + bridge port + /farmer path). 626/626 GREEN.
 
-### Mention OBJ-char (￼) breaks command-keyword dispatch (Attestation D live finding)
-- **Status:** new, surfaced live 2026-05-11 during Phase 37 Attestation D.
-- **Symptom:** f1 sent `@bot mute` to the Mush Farm group. Capture row stored text as `￼ mute` (U+FFFC + space + "mute"). The Plan 03 `@<token><space>` prefix-strip didn't strip the OBJ char, so the command-keyword regex didn't match `mute`, and the message routed to the LLM session instead of the snooze/mute handler.
-- **Fix:** Extend the strip regex in `src/agents/alerter/src/receive-loop.js` (or wherever Plan 03 added it) to also strip `￼\s*` from the head of the message before passing to the snooze/experiment parsers. Add a fixture-based test case (the `group-mention-and-command.json` fixture has been carrying the OBJ-char form since 37-01 — currently asserted to dispatch the mute handler, but apparently doesn't).
-- **Note:** D-09 dedupe still PASSED (one reply, one capture row) — only the dispatch routing missed.
+### ~~Mention OBJ-char (￼) breaks command-keyword dispatch~~ -- RESOLVED 2026-05-15 (commit 3c7c723)
+- ~~Status: new, surfaced live 2026-05-11 during Phase 37 Attestation D~~
+- **Resolved:** detector regex in `collectGroupTriggers` (receive-loop.js:19) extended to tolerate `￼` (with optional whitespace) before the @mention. commandText strip extended to remove leading `￼` form. New fixture `test/fixtures/envelopes/group-mention-ios-obj.json` + two new tests (detector + end-to-end snooze dispatch) green. The 2026-05-11 false-routing-to-LLM class is closed.
 
-### LLM reply contains em-dashes (memory `feedback_no_em_dashes_in_artifacts.md` violation)
-- **Status:** new, surfaced live 2026-05-11 during Phase 37 Attestation D.
-- **Symptom:** LLM session reply read: "Got it — no active farm session to tag right now. Are you trying to mute notifications from me specifically, or silence chamber alerts?" The em-dash is exactly the LLM tell the user called out earlier in the session.
-- **Fix:** Update the LLM system prompt (likely in `src/agents/alerter/src/capture-pipeline.js` or wherever the Anthropic call is constructed) to instruct: "Do not use em-dashes. Avoid LLM-tell vocabulary (delve, comprehensive, leverage). Plain prose only — your replies appear in a farmer-facing Signal channel."
-- **Reference:** `feedback_no_em_dashes_in_artifacts.md` documents the operator preference.
+### ~~LLM reply contains em-dashes~~ -- RESOLVED 2026-05-15 (commit 3c7c723)
+- ~~Status: new, surfaced live 2026-05-11 during Phase 37 Attestation D~~
+- ~~A second live em-dash leak observed 2026-05-15 during Plan 36-04 T+24h round-trip (recurrent, not one-time)~~
+- **Resolved:** `llm-client.js` SYSTEM_PROMPT now explicitly forbids em-dashes (U+2014) and LLM-tell vocabulary; defense-in-depth `sanitizeReply()` strips em-dashes from the SDK response before return (mirrors `src/extraction/preview-builder.js` pattern). Two new tests: prompt-pin assertion + output-sanitize assertion. Reference: `feedback_no_em_dashes_in_artifacts.md`.
+
+### NEW 2026-05-15: LLM has no memory of its own outbound messages
+- **Status:** new, surfaced live 2026-05-15 during Plan 36-04 T+24h reply.
+- **Symptom:** Bot sent T+24h kickoff at 23:15:34Z ("reply ok to confirm Signal trust is still good"). Santi's "Ok" capture at 23:28:20Z routed to LLM (no pending draft to absorb). LLM replied "Is this message confirming a specific session ?? inoculation, harvest, or chamber check ?? so I can log it correctly?" -- did not realize it had asked the question 12m46s earlier.
+- **Why:** `fmtHistory()` in `llm-client.js` feeds only inbound `signal_capture` rows. The bot's own outbound `signal.send()` calls are not persisted anywhere accessible to the next composition.
+- **Fix candidates:**
+  - **(a) Ring buffer** of last N bot-sent messages per recipient, scoped per loop instance (lost on restart; cheap).
+  - **(b) Persist outbound** to a new `signal_outbound` table (durable across restarts; minor schema change).
+  - **(c) Hybrid**: ring buffer for hot path + DB write for audit/replay.
+- **Filing:** NOT in this PR. Don Santiago wants to discuss scope. Recommend (c) but defer to discussion.
+- **Reference:** `.planning/notes/2026-05-15-rambo-th-window-unscripted-run.md` finding 1b; mirrors the "post-confirm silence" UX class seen in Phase 40 commit_failed.
