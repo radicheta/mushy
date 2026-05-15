@@ -1,11 +1,24 @@
 ---
 phase: 40-farmos-write-path
-status: PENDING_LIVE_ATTESTATION
-verified_at: 2026-05-13
-verifier: gsd-execute-phase (autonomous)
+status: passed
+verified_at: 2026-05-15
+verifier: gsd-audit-milestone (re-audit; original verify 2026-05-13 by gsd-execute-phase)
 unit_pass_count: 92
 unit_skip_count: 8
-integration_status: deferred-to-operator
+integration_status: live-attested-on-prod
+live_attestation:
+  - artifact: 40-PROD-SMOKE-20260514.md
+    date: 2026-05-14
+    target: prod-farmOS http://10.68.155.50:8082
+    verdict: PASS
+    tests:
+      - {name: seeding, http: 201, latency_ms: 850, asset_uuid: cf31fb9a-97e2-445d-a93c-3275678fa104}
+      - {name: harvest, http: 201, latency_ms: 1497, bags: 2, parent_lineage: C4}
+  - artifact: notes/2026-05-14-prod-cutover-complete.md
+    note: real 2026-04-25 inoc drafts also committed via one-shot (commit 4a16ee6)
+status_history:
+  - {date: 2026-05-13, status: PENDING_LIVE_ATTESTATION, reason: dev-farmOS taxonomy seeding blocker}
+  - {date: 2026-05-14, status: passed, reason: prod cutover smoke PASS (seeding+harvest), commit edb416c}
 ---
 
 # Phase 40 Verification
