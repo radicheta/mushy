@@ -12,6 +12,7 @@ const groupMentionEnv = require('./fixtures/envelopes/group-mention.json')[0];
 const groupCommandEnv = require('./fixtures/envelopes/group-command.json')[0];
 const groupReplyToBotEnv = require('./fixtures/envelopes/group-reply-to-bot.json')[0];
 const groupMentionAndCommandEnv = require('./fixtures/envelopes/group-mention-and-command.json')[0];
+const groupMentionIosObjEnv = require('./fixtures/envelopes/group-mention-ios-obj.json')[0];
 const groupUnknownSenderEnv = require('./fixtures/envelopes/group-unknown-sender.json')[0];
 
 const silentLogger = { info: () => {}, warn: () => {}, error: () => {} };
@@ -395,6 +396,15 @@ describe('createReceiveLoop', () => {
       expect(out.size).toBe(2);
     });
 
+    // 2026-05-15 fix: Signal iOS renders @mentions as U+FFFC object-replacement char.
+    // The command-keyword detector regex must tolerate the OBJ-char prefix or commands
+    // route to the LLM instead of the mute/snooze handler (Attestation D live finding 2026-05-11).
+    test('group-mention-iOS (OBJ-char) → Set has both mention and command', () => {
+      const out = collectGroupTriggers(groupMentionIosObjEnv, BOT_PHONE);
+      expect(out.has('mention')).toBe(true);
+      expect(out.has('command')).toBe(true);
+    });
+
     test('wrong botPhone → no false positives on mention fixture', () => {
       const out = collectGroupTriggers(groupMentionEnv, '+9999999999');
       expect(out.has('mention')).toBe(false);
@@ -518,6 +528,30 @@ describe('createReceiveLoop', () => {
       // command branch hard-stops (continue) — capture not called for group-command
       // because existing snooze branch ends with `continue`. Capture is NOT called here.
       // That preserves D-09 single-reply.
+      expect(captureCalls).toHaveLength(0);
+    });
+
+    test('group-mention-iOS (OBJ-char): mute dispatches snooze (2026-05-15 fix)', async () => {
+      const dispatched = [];
+      const captureCalls = [];
+      const { client, sends } = makeClient([groupMentionIosObjEnv]);
+      const capturePipeline = { handle: async (env, ctx) => { captureCalls.push({ env, ctx }); } };
+      loop = createReceiveLoop({
+        signalClient: client,
+        dispatch: (e) => dispatched.push(e),
+        config: groupConfig,
+        capturePipeline,
+        logger: silentLogger,
+        clock: () => 1000,
+      });
+      loop.start();
+      await new Promise((r) => setTimeout(r, 200));
+      loop.stop();
+
+      // U+FFFC + space + mute must route through commandText strip to snooze parser.
+      expect(dispatched).toHaveLength(1);
+      expect(dispatched[0].type).toBe('snooze');
+      expect(sends).toHaveLength(1);
       expect(captureCalls).toHaveLength(0);
     });
 

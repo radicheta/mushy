@@ -149,6 +149,27 @@ describe('createLlmClient', () => {
     warnSpy.mockRestore();
   });
 
+  // 2026-05-15 fix: live em-dash leak observed twice (Phase 37 deferred-items.md
+  // 2026-05-11 + Plan 36-04 T+24h reply 2026-05-15). Defense in depth: sanitize
+  // output even though the system prompt also pins it.
+  test('(2026-05-15 style-pin) em-dash in SDK response is stripped before return', async () => {
+    mockCreate.mockResolvedValueOnce({
+      content: [{ type: 'text', text: 'Is this confirming a session — inoculation, harvest, or chamber check — so I can log it?' }],
+    });
+    const result = await client.compose({
+      currentMessage: baseMessage(),
+      history: [],
+      sensorSnapshot: null,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.text).not.toMatch(/—/);
+    expect(result.text).toMatch(/Is this confirming a session inoculation, harvest, or chamber check so I can log it\?/);
+  });
+
+  test('(2026-05-15 style-pin) system prompt explicitly forbids em-dashes', () => {
+    expect(_internal.SYSTEM_PROMPT).toMatch(/em-dash/i);
+  });
+
   test('(buildUserBlock) deterministic shape via _internal export', () => {
     const block = _internal.buildUserBlock({
       currentMessage: baseMessage({ text: 'hello', transcript: 'audio body' }),

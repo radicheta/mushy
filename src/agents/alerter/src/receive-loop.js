@@ -13,10 +13,12 @@ function collectGroupTriggers(env, botPhone) {
   const dm = env?.envelope?.dataMessage || env?.dataMessage || {};
   const text = dm.message || '';
   if ((dm.mentions || []).some((m) => m && m.number === botPhone)) out.add('mention');
-  // Command keyword surface aligns with actual handlers in snooze.js (no 'status' —
+  // Command keyword surface aligns with actual handlers in snooze.js (no 'status'
   // unwired; PATTERNS.md listed it as planner conjecture). Accepts optional
   // `@mention<space>` prefix so '@bot mute' is recognized as a command in groups.
-  if (/^\s*(?:@\S+\s+)?(mute|snooze|quiet)\b/i.test(text)
+  // Also tolerates U+FFFC (Signal iOS mention-attachment marker) before the @mention
+  // or in place of it, after Attestation D live finding 2026-05-11.
+  if (/^\s*￼?\s*(?:@\S+\s+)?(mute|snooze|quiet)\b/i.test(text)
       || /^\/(force-|cancel-)/i.test(text)) out.add('command');
   const q = dm.quote || {};
   if ((q.author || q.authorNumber) === botPhone) out.add('quote');
@@ -162,11 +164,13 @@ function createReceiveLoop({
         // help reply and double-firing alongside the capture branch's reply.
         const commandBranchAllowed = !isGroup || triggers.has('command');
 
-        // Phase 37 — in group context, strip an optional leading '@mention ' prefix
+        // Phase 37 -- in group context, strip an optional leading '@mention ' prefix
         // so '@bot mute' is parsed as 'mute' by the existing snooze/experiment parsers.
+        // Also strip U+FFFC (Signal iOS mention-attachment marker), which Signal iOS
+        // inserts in place of the rendered @mention. Captured live 2026-05-11.
         // DM text passes through unchanged.
         const commandText = (isGroup && text)
-          ? text.replace(/^\s*@\S+\s+/, '')
+          ? text.replace(/^\s*￼?\s*@\S+\s+/, '').replace(/^\s*￼\s*/, '')
           : text;
 
         // PHASE 31 D-15 — experiment command (must precede snooze so /force-*
