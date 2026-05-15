@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.7
 milestone_name: Multimodal Signal -> FarmOS Events
-status: v1.7 AUDIT gaps_found 2026-05-13 -- Phases 39/40/41 shipped + Phase 42 scaffolded in single autonomous run. complete-milestone GATED on 3 operator blockers (Plan 36-04 live attestation; Phase 40 dev-farmOS ship-gate; Phase 42 SHI pilot 4-8 wk).
-stopped_at: Post-audit; complete-milestone deferred awaiting operator-blocked items per .planning/v1.7-MILESTONE-AUDIT.md
-last_updated: "2026-05-13T03:30:00Z"
-last_activity: 2026-05-13 autonomous v1.7 close -- Phases 39 (127 unit + 11 integration PASS), 40 (92 unit PASS; live-attestation deferred), 41 (37 PASS + 5 operator-deferred), 42 (3 tools + 23 tests + RUNBOOK + PILOT-LOG + VERIFICATION human_needed). Audit verdict gaps_found per v1.6 precedent.
+status: v1.7 AUDIT gaps_found (re-audited 2026-05-15) -- Phase 40 closed live via prod cutover 2026-05-14 + happy-path UAT via lion's mane bridge 2026-05-15. complete-milestone GATED only on Phase 42 SHI pilot calendar (4-8wk). 8 live findings collected pending Don Santiago discussion.
+stopped_at: 2026-05-15 evening -- breadcrumbs filed, 2 overnight research agents kicked off, ready to open next session with .planning/notes/2026-05-16-findings-discussion-prep.md
+last_updated: "2026-05-16T00:00:00Z"
+last_activity: 2026-05-15 evening -- Plan 36-04 T+24h SC#1 PASS for Santi, Phase 37 prompt-fix (em-dash + OBJ-char + dashboardUrl) shipped 626/626 GREEN, Phase 40 happy-path UAT closed via lion's mane bridge (commit_success HTTP 201 1.5s on prod-farmOS). Re-audited v1.7. 8 findings filed (1 fixed, 7 parked for discussion).
 progress:
   total_phases: 23
   completed_phases: 6
@@ -25,10 +25,15 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 
 ## Current Position
 
-Phase: 38 CLOSED (real) 2026-05-12 evening via Plan 09 PASS attestation
-Milestone: v1.7 -- Multimodal Signal to FarmOS Events
-Last activity: 2026-05-13 -- Phase 39 planning complete
-Next up: Phase 39 Farmer Confirmation Loop -- autonomous v1.7 close gated on user re-authorization (long session; natural break point)
+Phase: All v1.7 code phases (36-41) effectively passed; 42 calendar-bound.
+Milestone: v1.7 -- Multimodal Signal to FarmOS Events. Re-audited 2026-05-15 (gaps_found, but only Phase 42 calendar remains as a hard gate).
+Last activity: 2026-05-15 evening -- session_summary in next-session opener doc.
+
+**Next session opener**: `.planning/notes/2026-05-16-findings-discussion-prep.md` — covers the 8 findings collected during 2026-05-14 prod cutover + 2026-05-15 unscripted run + Plan 36-04 T+24h. Read companion notes in the order specified there.
+
+**Overnight research kicked off as background agents** (results expected by morning):
+- `.planning/notes/2026-05-16-schema-audit.md` (Agent A: Phase 38<->Phase 40 schema diff per log_type)
+- `.planning/notes/2026-05-16-farmos-no-target-and-strain-coverage.md` (Agent B: farmOS no-target patterns + active-strain coverage gap)
 
 Phase 38 close audit (Plan 09 trail):
 
