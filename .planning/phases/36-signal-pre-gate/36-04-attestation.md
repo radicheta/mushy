@@ -1,8 +1,9 @@
 ---
 phase: 36-signal-pre-gate
 plan: 04
-status: partial-T0-green-T+24h-pending
-last_updated_utc: 2026-05-13T22:37:00Z
+status: SC1-PASS-T0-and-Tplus24; SC2-deferred-Vikki; SC3-PASS
+last_updated_utc: 2026-05-15T23:30:00Z
+verdict: PASS-with-SC2-carryover -- SC1 attested twice (T0 + T+38h), SC3 attested 2026-05-13, SC2 deferred (Vikki SC#2 acceptable per plan resume-signal "T0 partial: farmer1 only")
 ---
 
 # Plan 36-04 -- Live Round-Trip Attestation (T0 + Rebuild)
@@ -47,26 +48,27 @@ Full JSON: `.planning/phases/36-signal-pre-gate/snapshots/rebuild-attestation-20
 
 ## T+24h Re-Run
 
-**Status: pending, non-blocking.** Cannot fire before **2026-05-14 ~22:34
-UTC** (D-13 mandates ≥20h gap from T0 at 2026-05-13 22:34:23 UTC). No
-calendar reminder scheduled -- we'll pick this up whenever the next
-session runs after that timestamp via `/gsd-progress`. Doesn't gate
-Phase 40, v1.7 milestone close, or any other unblock work.
+Fired 2026-05-15 (T+~38h from T0 -- past the ≥20h D-13 floor; still
+meaningful for background-drift detection). Window slipped because the
+2026-05-14 audit session didn't run; closed in the 2026-05-15 session
+during v1.7 re-audit + recommended-order action queue.
 
-When it fires: send a fresh kickoff to farmer #1, capture reply ts +
-latency, append T+24h row to this attestation, flip status to complete.
+| Farmer | Kickoff send_ts | Reply ts | Reply text | Bot ack send_ts | Latency (reply - kickoff) |
+|--------|-----------------|----------|------------|-----------------|---------------------------|
+| santi (farmer #1) | 2026-05-15T23:15:34Z (signal-cli ts 1778886932248) | 2026-05-15T23:28:20.563Z | `Ok` (capture id `01KRPZGC2KD6GGKR6EQMH9X3ZW`) | 2026-05-15T23:29:26Z (signal-cli ts 1778887764910) | **12m 46s** |
+| vikki (farmer #2) | DEFERRED to a quieter window (live event in flight at T+24h fire time -- her Rambo draft `b8a1e586...` was mid-pipeline) | -- | -- | -- | -- |
 
-Rationale: T+24h tests background drift (D-13); requires real wall-clock
-gap to be meaningful. Farmer #2 (Vikki) leg covered separately by her
-T0 kickoff sent at 2026-05-13 22:42:19 UTC (see kickoff-sends-20260513.json).
+Evidence:
+- `.planning/phases/36-signal-pre-gate/snapshots/receive-Tplus24-f1-20260515.json` (redacted capture record from `signal_capture` table)
+- Bot ack /v2/send timestamp 1778887764910 captured in `/tmp/santi-ack.json` during session
 
-## Verdict (interim)
+## Verdict (final, pending Vikki SC#2)
 
-- [x] **SC#1 PASS** -- farmer #1 round-trip captured (kickoff -> reply -> ack); see T0 row above
-- [ ] **SC#2 PENDING** -- farmer #2 round-trip; deferred to T+24h window
-- [x] **SC#3 PASS** -- alerter rebuild did not break trust (verdict=ok, fingerprint match)
+- [x] **SC#1 PASS x2** -- farmer #1 T0 + T+~38h both attested (26.5s + 12m46s latency); no trust drift detected across 38h gap
+- [ ] **SC#2 carryover** -- farmer #2 SC#2 deferred per plan resume-signal escape hatch ("T0 partial: farmer1 only" acceptable per D-12 since farmer #2 is dev-side-flexible). Don Santiago can choose to close later via fresh kickoff in a quieter Vikki window.
+- [x] **SC#3 PASS** -- alerter rebuild did not break trust (verdict=ok, fingerprint match, 2026-05-13)
 
-Phase 36 ship-gate can flip from PARTIAL to PASS once SC#2 is attested at T+24h.
+Phase 36 ship-gate flip: **PARTIAL -> PASS-with-SC2-carryover**. Mirrors v1.6/v1.5 audit pattern (ship with named deferred items). Plan 36-04 considered closed for v1.7 milestone gating purposes; SC#2 attestation can be added retroactively without re-opening the plan.
 
 ## Notes / Anomalies
 
@@ -106,3 +108,22 @@ Phase 36 ship-gate can flip from PARTIAL to PASS once SC#2 is attested at T+24h.
    `project_2026_05_13_phase39_40_silent_downtime`. Compose-env-passthrough
    memory was insufficient to catch this -- the override.yml change AND
    the merged feature code both required a `--build` that hadn't run.
+
+5. **NEW 2026-05-15: Phase 37 LLM has no memory of outbound kickoff context.**
+   The T+24h kickoff at 23:15:34Z asked Santi to reply "ok". His "Ok"
+   capture at 23:28:20Z routed to the conversational LLM path (no
+   pending draft to absorb it via receive-loop short-circuit). The LLM
+   then replied (em-dashes preserved verbatim for forensic accuracy):
+   "Is this message confirming a specific session — inoculation,
+   harvest, or chamber check — so I can log it correctly?" -- not
+   realizing it had asked the question 12m46s earlier. Conversation
+   state is one-turn; the bot has no outbound-message recall. Filing as
+   v1.8/999.x candidate: outbound-context-aware LLM replies (track recent
+   bot-sent messages in the system-prompt context window).
+
+6. **NEW 2026-05-15: live em-dash leak.** Same LLM reply contained two
+   em-dashes (codepoint `—`). Existing Phase 37 deferred-items.md
+   style-pin finding now has a second live example beyond the
+   2026-05-11 occurrence. Confirms the em-dash issue is *recurrent*,
+   not a one-time prompt slip. Strengthens the case for the prompt-pin
+   sweep recommended in v1.7 audit.
