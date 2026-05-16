@@ -98,7 +98,7 @@ describe('extractor -> normalize -> commit chain (Phase 43 Plan 05)', () => {
     const extractorDraft = {
       type: 'seeding',
       species: 'SHI',
-      block_name: '260516_DT_1',
+      block_name: '260516_SHI_1',
       qty: 1000,
       event_timestamp: '2026-05-16T10:00:00Z',
       confidence: { species: 0.95, block_name: 0.95, qty: 0.95, event_timestamp: 0.9 },
@@ -115,7 +115,7 @@ describe('extractor -> normalize -> commit chain (Phase 43 Plan 05)', () => {
     const draftJson = extractResult.draft;
     expect(draftJson.type).toBe('seeding');
     expect(draftJson.species).toBe('SHI');
-    expect(draftJson.block_name).toBe('260516_DT_1');
+    expect(draftJson.block_name).toBe('260516_SHI_1');
     expect(draftJson.qty).toBe(1000);
     expect(typeof draftJson.event_timestamp).toBe('string');
 
@@ -137,7 +137,7 @@ describe('extractor -> normalize -> commit chain (Phase 43 Plan 05)', () => {
     expect(result.ok).toBe(true);
     expect(client._created.assets.length).toBe(1);
     expect(client._created.logs.length).toBe(1);
-    expect(client._created.assets[0].name).toBe('260516_DT_1');
+    expect(client._created.assets[0].name).toBe('260516_SHI_1');
   });
 
   // -------------------------------------------------------------------------
@@ -292,7 +292,7 @@ describe('extractor -> normalize -> commit chain (Phase 43 Plan 05)', () => {
     expect(client._created.logs.length).toBe(1);
     // notes is {value, format} per logs.js:30
     const logNotes = client._created.logs[0].payload.data.attributes.notes.value;
-    expect(logNotes).toContain('recipe_lot: RB-2026-05');
+    expect(logNotes).toMatch(/^recipe_lot: RB-2026-05/);
   });
 
   // -------------------------------------------------------------------------
