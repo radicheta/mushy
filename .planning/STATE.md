@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.7
 milestone_name: Multimodal Signal -> FarmOS Events
 status: v1.7 AUDIT gaps_found (re-audited 2026-05-15) -- Phase 40 closed live via prod cutover 2026-05-14 + happy-path UAT via lion's mane bridge 2026-05-15. complete-milestone GATED only on Phase 42 SHI pilot calendar (4-8wk). 8 live findings collected pending Don Santiago discussion.
-stopped_at: 2026-05-15 evening -- breadcrumbs filed, 2 overnight research agents kicked off, ready to open next session with .planning/notes/2026-05-16-findings-discussion-prep.md
-last_updated: "2026-05-16T00:00:00Z"
-last_activity: 2026-05-15 evening -- Plan 36-04 T+24h SC#1 PASS for Santi, Phase 37 prompt-fix (em-dash + OBJ-char + dashboardUrl) shipped 626/626 GREEN, Phase 40 happy-path UAT closed via lion's mane bridge (commit_success HTTP 201 1.5s on prod-farmOS). Re-audited v1.7. 8 findings filed (1 fixed, 7 parked for discussion).
+stopped_at: Phase 43 context gathered
+last_updated: "2026-05-16T19:14:07.159Z"
+last_activity: 2026-05-15 evening -- session_summary in next-session opener doc.
 progress:
   total_phases: 23
-  completed_phases: 6
-  total_plans: 56
-  completed_plans: 56
-  percent: 95
+  completed_phases: 2
+  total_plans: 48
+  completed_plans: 15
+  percent: 31
 ---
 
 # Project State
@@ -32,6 +32,7 @@ Last activity: 2026-05-15 evening -- session_summary in next-session opener doc.
 **Next session opener**: `.planning/notes/2026-05-16-findings-discussion-prep.md` — covers the 8 findings collected during 2026-05-14 prod cutover + 2026-05-15 unscripted run + Plan 36-04 T+24h. Read companion notes in the order specified there.
 
 **Overnight research kicked off as background agents** (results expected by morning):
+
 - `.planning/notes/2026-05-16-schema-audit.md` (Agent A: Phase 38<->Phase 40 schema diff per log_type)
 - `.planning/notes/2026-05-16-farmos-no-target-and-strain-coverage.md` (Agent B: farmOS no-target patterns + active-strain coverage gap)
 
@@ -222,8 +223,8 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 ## Session Continuity
 
-Last session: 2026-05-12T04:30:00Z
-Stopped at: Phase 38 Plan 07 partial (Tasks 1+2 shipped; eval verdict PASS in 38-EVAL-REPORT.md; Task 3 Don Santiago verdict review pending)
+Last session: 2026-05-16T19:14:07.151Z
+Stopped at: Phase 43 context gathered
 Next up: Don Santiago verdict review on .planning/phases/38-extraction-pipeline/38-EVAL-REPORT.md (human-action gate); on attest move to /gsd-execute-phase 38 plan 08 or close phase
 
 v1.7 phase order (hard sequencing):
