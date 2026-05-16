@@ -284,6 +284,43 @@ describe('normalize -- idempotency (SCHEMA-03)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Idempotency on extractor-shape: normalizing twice produces same result as once (CR-01)
+// ---------------------------------------------------------------------------
+describe('normalize -- idempotency on extractor-shape (CR-01)', () => {
+  it('input: normalize twice on extractor-shape produces same result as normalize once', () => {
+    const draft = makeDraft('input', { recipe_lot: 'RB', asset_ref: 'Q1', timestamp: 1000 });
+    const pass1 = normalize(draft);
+    const pass2 = normalize(pass1);
+    expect(pass2.draft_json.notes).toEqual(pass1.draft_json.notes);
+    expect(pass2.draft_json.recipe_lot).toBeUndefined();
+  });
+
+  it('observation: normalize twice on extractor-shape produces same result as normalize once', () => {
+    const draft = makeDraft('observation', { state: 'pinning', asset_ref: 'Q1', timestamp: 1000 });
+    const pass1 = normalize(draft);
+    const pass2 = normalize(pass1);
+    expect(pass2.draft_json.notes).toEqual(pass1.draft_json.notes);
+    expect(pass2.draft_json.state).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Array non-aliasing: arrays in result must not share reference with input (WR-01)
+// ---------------------------------------------------------------------------
+describe('normalize -- array non-aliasing (WR-01)', () => {
+  it('pushing to result.draft_json.qr_codes does NOT mutate input draft_json.qr_codes', () => {
+    const draft = makeDraft('activity', {
+      qr_codes: ['Q1'],
+      activity_subtype: 'water',
+      timestamp: 1000,
+    });
+    const result = normalize(draft);
+    result.draft_json.qr_codes.push('Q2');
+    expect(draft.draft_json.qr_codes).toEqual(['Q1']);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Non-mutation: normalize must NOT mutate input draft or draft_json
 // ---------------------------------------------------------------------------
 describe('normalize -- non-mutation', () => {
