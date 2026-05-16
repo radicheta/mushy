@@ -5,6 +5,7 @@
 // validates). Uniform result envelope.
 
 const { LOG_TYPES, UnsupportedLogTypeError } = require('../logs');
+const { normalize } = require('./normalize');
 const commitSeeding = require('./commit-seeding');
 const commitActivity = require('./commit-activity');
 const commitInput = require('./commit-input');
@@ -34,7 +35,9 @@ async function commit(client, draft, ctx) {
   }
   const fn = DISPATCH[logType];
   try {
-    const r = await fn(client, draft, ctx);
+    // Phase 43 D-02: normalize extractor-shape -> commit-shape before dispatch.
+    // Original signal_draft.draft_json is NOT mutated; normalized copy is local only.
+    const r = await fn(client, normalize(draft), ctx);
     return {
       ok: !!r.ok,
       asset_ids: r.asset_ids || [],
