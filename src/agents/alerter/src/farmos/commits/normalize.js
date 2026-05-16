@@ -23,8 +23,15 @@
 
 function normalize(draft) {
   const dj = draft.draft_json || {};
-  // Shallow copy -- no mutation of input.
+  // Shallow copy with array cloning -- no mutation of input (D-01).
+  // Arrays are cloned individually so downstream consumers cannot mutate the
+  // original draft_json by pushing to a returned array field.
   const out = Object.assign({}, dj);
+  if (Array.isArray(out.qr_codes)) out.qr_codes = out.qr_codes.slice();
+  if (Array.isArray(out.source_block_refs)) out.source_block_refs = out.source_block_refs.slice();
+  if (Array.isArray(out.source_qr_codes)) out.source_qr_codes = out.source_qr_codes.slice();
+  if (Array.isArray(out.bags)) out.bags = out.bags.slice();
+  if (Array.isArray(out.input_ingredients)) out.input_ingredients = out.input_ingredients.slice();
 
   // ------------------------------------------------------------------
   // Common transforms (all log_types)
@@ -92,20 +99,23 @@ function normalize(draft) {
       //   Ingredients:
       //   - oat 1kg
       //   ...
-      // Guard: skip if recipe_lot field absent (idempotency for commit-shape which
-      // has no recipe_lot field -- the field is consumed and removed from the
-      // extractor-shape, so the guard naturally fires on pass-through).
+      // Guard: skip if recipe_lot field absent (idempotency).
+      // recipe_lot is deleted from out after use so it does not survive into
+      // commit-shape -- a second normalize() call on the same output is a no-op.
       if (typeof out.recipe_lot === 'string') {
         out.notes = 'recipe_lot: ' + out.recipe_lot + (out.notes ? '\n' + out.notes : '');
+        delete out.recipe_lot;
       }
       break;
 
     case 'observation':
       // state appended to notes as "state: <value>" (audit §3 sketch).
-      // Guard: skip if state field absent (idempotency for commit-shape which has
-      // no state field after normalization).
+      // Guard: skip if state field absent (idempotency).
+      // state is deleted from out after use so it does not survive into
+      // commit-shape -- a second normalize() call on the same output is a no-op.
       if (typeof out.state === 'string' && out.state !== '') {
         out.notes = out.notes ? (out.notes + '\nstate: ' + out.state) : ('state: ' + out.state);
+        delete out.state;
       }
       break;
 
