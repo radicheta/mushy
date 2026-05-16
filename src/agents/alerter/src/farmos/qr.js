@@ -19,6 +19,19 @@
 // this constant -- no other code change needed.
 const ID_TAG_TYPE = 'other';
 
+// D-06: id_tag-first, name-on-miss fallback.
+// Flow: try filter[id_tag.id][value]=<qrCode> (existing path). If ok:true but
+// data:[] (empty -- no asset matches the id_tag), retry against
+// filter[name][value]=<qrCode>. The returned `path` field indicates which
+// lookup matched ('id_tag' or 'name').
+//
+// D-08: Name collisions are a farmer-side discipline risk, not a structural
+// concern for v1.7. If two fungi assets share a name, the first JSON:API
+// result wins (same first-result-wins behavior as id_tag). No programmatic
+// dedup in Phase 43.
+//
+// Transport failures (http_* on the id_tag call) are NOT a "miss" -- return
+// immediately without falling back to the name lookup.
 async function resolveQr(client, qrCode) {
   try {
     const enc = encodeURIComponent(qrCode);
@@ -28,7 +41,14 @@ async function resolveQr(client, qrCode) {
     if (Array.isArray(arr) && arr.length > 0) {
       return { found: true, assetId: arr[0].id, path: 'id_tag' };
     }
-    return { found: false, path: 'id_tag' };
+    // id_tag lookup returned empty -- fall back to name lookup (D-06).
+    const r2 = await client.get(`/api/asset/fungi?filter[name][value]=${enc}`);
+    if (!r2.ok) return { found: false, error: 'http_' + (r2.status || 'network'), path: 'name' };
+    const arr2 = r2.body && r2.body.data;
+    if (Array.isArray(arr2) && arr2.length > 0) {
+      return { found: true, assetId: arr2[0].id, path: 'name' };
+    }
+    return { found: false, path: 'name' };
   } catch (e) {
     return { found: false, error: e.message };
   }
