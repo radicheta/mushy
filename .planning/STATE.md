@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.7
-milestone_name: Multimodal Signal -> FarmOS Events
-status: v1.7 AUDIT gaps_found (re-audited 2026-05-15) -- Phase 40 closed live via prod cutover 2026-05-14 + happy-path UAT via lion's mane bridge 2026-05-15. complete-milestone GATED only on Phase 42 SHI pilot calendar (4-8wk). 8 live findings collected pending Don Santiago discussion.
+milestone_name: Multimodal Signal → FarmOS Events
+status: Phase 43 complete
 stopped_at: Phase 43 context gathered
-last_updated: "2026-05-16T19:14:07.159Z"
-last_activity: 2026-05-15 evening -- session_summary in next-session opener doc.
+last_updated: "2026-05-16T20:32:32.718Z"
+last_activity: 2026-05-16 -- Phase 43 marked complete
 progress:
-  total_phases: 23
-  completed_phases: 2
+  total_phases: 16
+  completed_phases: 3
   total_plans: 48
-  completed_plans: 15
-  percent: 31
+  completed_plans: 21
+  percent: 19
 ---
 
 # Project State
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 
 ## Current Position
 
-Phase: All v1.7 code phases (36-41) effectively passed; 42 calendar-bound.
+Phase: 43 — COMPLETE
 Milestone: v1.7 -- Multimodal Signal to FarmOS Events. Re-audited 2026-05-15 (gaps_found, but only Phase 42 calendar remains as a hard gate).
-Last activity: 2026-05-15 evening -- session_summary in next-session opener doc.
+Last activity: 2026-05-16 -- Phase 43 marked complete
 
 **Next session opener**: `.planning/notes/2026-05-16-findings-discussion-prep.md` — covers the 8 findings collected during 2026-05-14 prod cutover + 2026-05-15 unscripted run + Plan 36-04 T+24h. Read companion notes in the order specified there.
 

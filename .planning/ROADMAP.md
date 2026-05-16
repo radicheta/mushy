@@ -133,7 +133,7 @@ Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 202
 - [x] **Phase 40: FarmOS Write Path** — API client; asset + log creation; QR binding; photo upload; audit log (code-complete 2026-05-13; 92/92 unit PASS; live dev-farmOS integration + prod-fixture SHIP GATE deferred to operator per 40-RUNBOOK.md)
 - [x] **Phase 41: Ingestion Harness** — synthetic corpus; paper-log replay; audio replay; cross-stream consistency (shipped 2026-05-13; 37 PASS + 5 operator-deferred live; mushdatadump-prod hand-labels + audio + paired-sessions in 41-RUNBOOK.md)
 - [~] **Phase 42: SHI-on-Sawdust Pilot** — SCAFFOLDING SHIPPED 2026-05-13 (3 tools + 23 tests + RUNBOOK + PILOT-LOG + VERIFICATION); actual pilot run calendar-deferred 4-8 weeks per 42-VERIFICATION.md (status: human_needed). Operator drives PILOT-01..06 against real mushroom lifecycle.
-- [ ] **Phase 43: Phase 38↔40 Schema Normalizer + Chain Integration Tests** — router-side normalizer (Option A) + 5-log_type extractor→commit chain tests (Option C) per `.planning/notes/2026-05-16-schema-audit.md`. Filed 2026-05-16 as carryover from 2026-05-15 lion's-mane `commit_failed` regression. Ungated by farmer-facing acks per locked decision 2026-05-17.
+- [x] **Phase 43: Phase 38↔40 Schema Normalizer + Chain Integration Tests** — router-side normalizer (Option A) + 5-log_type extractor→commit chain tests (Option C) per `.planning/notes/2026-05-16-schema-audit.md`. Filed 2026-05-16 as carryover from 2026-05-15 lion's-mane `commit_failed` regression. Ungated by farmer-facing acks per locked decision 2026-05-17. SHIPPED 2026-05-16 — 700 tests green; Test 2 is the named regression guard; SCHEMA-04 attested.
 
 </details>
 
@@ -629,14 +629,14 @@ milestone. Promote with `/gsd:review-backlog` when ready.
   3. input `recipe_lot` vs `input_ingredients` -- extend commit-input to read recipe_lot, or just append to notes?
   4. harvest `qty_g` (single number) vs `bags` (multi-bag w/ QR+weight) -- extractor schema extension or farmer UX change? (audit calls this out of scope for same-week-fix; file as v1.8 candidate)
 **Reference:** `.planning/notes/2026-05-16-schema-audit.md` (full audit; verdict: 4 of 5 log_types wire-incompatible end-to-end; recommends A + C bundled, ~1d combined)
-**Plans:** 6 plans
+**Plans:** 6 plans (all shipped 2026-05-16)
 Plans:
-- [ ] 43-01-PLAN.md -- normalize.js + unit tests (incl. SCHEMA-03 idempotency)
-- [ ] 43-02-PLAN.md -- qr.js name-on-miss fallback (D-06)
-- [ ] 43-03-PLAN.md -- wire normalize() into commit-router.js (D-02, 1-line)
-- [ ] 43-04-PLAN.md -- locate + document 2026-05-15 lion's-mane transcript (D-16)
-- [ ] 43-05-PLAN.md -- 5 chain integration tests under test/farmos/integration/
-- [ ] 43-06-PLAN.md -- SCHEMA-04 default-run attestation
+- [x] 43-01-PLAN.md -- normalize.js + unit tests (incl. SCHEMA-03 idempotency)
+- [x] 43-02-PLAN.md -- qr.js name-on-miss fallback (D-06)
+- [x] 43-03-PLAN.md -- wire normalize() into commit-router.js (D-02, 1-line)
+- [x] 43-04-PLAN.md -- locate + document 2026-05-15 lion's-mane transcript (D-16)
+- [x] 43-05-PLAN.md -- 5 chain integration tests under test/farmos/integration/
+- [x] 43-06-PLAN.md -- SCHEMA-04 default-run attestation
 
 ---
 *Roadmap created 2026-03-28. v1.4 shipped 2026-05-01. v1.5 shipped 2026-05-09.*
