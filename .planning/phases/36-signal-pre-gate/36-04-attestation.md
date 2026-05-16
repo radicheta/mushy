@@ -1,9 +1,9 @@
 ---
 phase: 36-signal-pre-gate
 plan: 04
-status: SC1-PASS-T0-and-Tplus24; SC2-deferred-Vikki; SC3-PASS
-last_updated_utc: 2026-05-15T23:30:00Z
-verdict: PASS-with-SC2-carryover -- SC1 attested twice (T0 + T+38h), SC3 attested 2026-05-13, SC2 deferred (Vikki SC#2 acceptable per plan resume-signal "T0 partial: farmer1 only")
+status: SC1-PASS-T0-and-Tplus24; SC2-PASS-organic; SC3-PASS
+last_updated_utc: 2026-05-16T00:00:00Z
+verdict: PASS -- SC1 attested twice (T0 + T+38h), SC2 satisfied organically by 2026-05-15 Rambo round-trip (Vikki bidirectional Signal trust proven on a real unscripted event), SC3 attested 2026-05-13
 ---
 
 # Plan 36-04 -- Live Round-Trip Attestation (T0 + Rebuild)
@@ -62,13 +62,34 @@ Evidence:
 - `.planning/phases/36-signal-pre-gate/snapshots/receive-Tplus24-f1-20260515.json` (redacted capture record from `signal_capture` table)
 - Bot ack /v2/send timestamp 1778887764910 captured in `/tmp/santi-ack.json` during session
 
-## Verdict (final, pending Vikki SC#2)
+## SC#2 Organic Attestation (closed 2026-05-16)
+
+Vikki's 2026-05-15 Rambo unscripted run (see memory
+`project_2026_05_15_vikki_rambo_unscripted_run`) provides stronger SC#2
+evidence than a scripted ping: a real unprompted event exercised the
+full bidirectional Signal channel, twice, end-to-end.
+
+| Step | Direction | Timestamp (UTC) | Evidence |
+|------|-----------|-----------------|----------|
+| Image in (Rambo smashes TH window) | Vikki -> bot | 2026-05-15 22:52:21 | `signal_capture` id `01KRPXEFFGJEBX53BFKMNRTT04` |
+| Extract + nudge reply | bot -> Vikki | ~22:52-22:59 | implied by farmer's edit at next row |
+| "edit ..." reply | Vikki -> bot | 2026-05-15 22:59:24 | `signal_draft_event` draft `b8a1e586`, seq=1 event=`edit` |
+| Revised draft reply | bot -> Vikki | ~22:59-23:15 | implied by farmer's "yes" at next row |
+| "yes" confirm | Vikki -> bot | 2026-05-15 23:15:50 | `signal_draft_event` seq=2 event=`yes`; `signal_draft.confirmed_at` set |
+
+Both halves of the trust round-trip are proven by the farmer-side
+behaviors (edit, yes) that can only happen if the bot's replies were
+delivered AND read. The downstream `commit_failed` at 23:17:15 is a
+farmOS-layer issue (observation_requires_target) tracked separately in
+v1.8 scope -- it does NOT affect Signal trust attestation.
+
+## Verdict (final)
 
 - [x] **SC#1 PASS x2** -- farmer #1 T0 + T+~38h both attested (26.5s + 12m46s latency); no trust drift detected across 38h gap
-- [ ] **SC#2 carryover** -- farmer #2 SC#2 deferred per plan resume-signal escape hatch ("T0 partial: farmer1 only" acceptable per D-12 since farmer #2 is dev-side-flexible). Don Santiago can choose to close later via fresh kickoff in a quieter Vikki window.
+- [x] **SC#2 PASS (organic)** -- farmer #2 (Vikki) bidirectional Signal trust proven via 2026-05-15 Rambo round-trip (image in -> nudge -> edit -> revised draft -> yes confirm). Stronger evidence than a scripted ack: real unprompted event, two full bidirectional exchanges.
 - [x] **SC#3 PASS** -- alerter rebuild did not break trust (verdict=ok, fingerprint match, 2026-05-13)
 
-Phase 36 ship-gate flip: **PARTIAL -> PASS-with-SC2-carryover**. Mirrors v1.6/v1.5 audit pattern (ship with named deferred items). Plan 36-04 considered closed for v1.7 milestone gating purposes; SC#2 attestation can be added retroactively without re-opening the plan.
+Phase 36 ship-gate: **PASS**. All three success criteria attested; no carryover.
 
 ## Notes / Anomalies
 
