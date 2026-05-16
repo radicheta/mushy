@@ -11,7 +11,7 @@
 - ✅ **v1.5.0.1 Resilience hotfix from 2026-05-02 incident** — Phases 27.1 + 27.2 (shipped 2026-05-07 via wg0 architectural detour; 27.3 + 27.4 MOOTED). See `.planning/milestones/v1.5.0.1-ROADMAP.md`.
 - ✅ **v1.5 Analog Humidity Control & Condensation/Evaporation Forcing** — Phases 27–31 (shipped 2026-05-09; ALRT-10 calendar-deferred). See `.planning/milestones/v1.5-ROADMAP.md`.
 - ✅ **v1.6 VPS Hub + Outage/Recovery Stack** — Phases 32–35 + 999.43.1 (shipped 2026-05-10/11; scaffolding deferred). See `.planning/milestones/v1.6-ROADMAP.md`.
-- 🚧 **v1.7 Multimodal Signal → FarmOS Events** — Phases 36–42 (in progress)
+- 🚧 **v1.7 Multimodal Signal → FarmOS Events** — Phases 36–43 (in progress; Phase 43 carryover added 2026-05-16 for schema-normalizer fix)
 
 ## Phases
 
@@ -124,7 +124,7 @@ Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 202
 </details>
 
 <details>
-<summary>🚧 v1.7 Multimodal Signal → FarmOS Events (Phases 36-42) — IN PROGRESS</summary>
+<summary>🚧 v1.7 Multimodal Signal → FarmOS Events (Phases 36-43) — IN PROGRESS</summary>
 
 - [ ] **Phase 36: Signal Pre-gate** — signal-cli primary re-registration; receive unblock; identity-trust verified
 - [x] **Phase 37: Multi-farmer Routing** — DM routing to sender; group-thread participation; farmOS person lookup
@@ -133,6 +133,7 @@ Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 202
 - [x] **Phase 40: FarmOS Write Path** — API client; asset + log creation; QR binding; photo upload; audit log (code-complete 2026-05-13; 92/92 unit PASS; live dev-farmOS integration + prod-fixture SHIP GATE deferred to operator per 40-RUNBOOK.md)
 - [x] **Phase 41: Ingestion Harness** — synthetic corpus; paper-log replay; audio replay; cross-stream consistency (shipped 2026-05-13; 37 PASS + 5 operator-deferred live; mushdatadump-prod hand-labels + audio + paired-sessions in 41-RUNBOOK.md)
 - [~] **Phase 42: SHI-on-Sawdust Pilot** — SCAFFOLDING SHIPPED 2026-05-13 (3 tools + 23 tests + RUNBOOK + PILOT-LOG + VERIFICATION); actual pilot run calendar-deferred 4-8 weeks per 42-VERIFICATION.md (status: human_needed). Operator drives PILOT-01..06 against real mushroom lifecycle.
+- [ ] **Phase 43: Phase 38↔40 Schema Normalizer + Chain Integration Tests** — router-side normalizer (Option A) + 5-log_type extractor→commit chain tests (Option C) per `.planning/notes/2026-05-16-schema-audit.md`. Filed 2026-05-16 as carryover from 2026-05-15 lion's-mane `commit_failed` regression. Ungated by farmer-facing acks per locked decision 2026-05-17.
 
 </details>
 
@@ -616,6 +617,26 @@ milestone. Promote with `/gsd:review-backlog` when ready.
   - **Composes with:** `feedback_run_verifications_yourself` (related anti-pattern: skipping awkward verifications that surface real issues), 999.37 (deferred-validation audit — this is the test-debt sibling of validation-debt). **Filed 2026-05-11 during backlog-sweep session.**
 
 - **Phase 999.52: Phase 35 Tier A missing signal-cli account state — extend bundle to include `mushy_signal-cli-data` volume** — Surfaced 2026-05-11 during Phase 36 Plan 36-01 pre-flight (`.planning/phases/36-signal-pre-gate/36-01-preflight-snapshot.md`). Phase 35 Tier A backup script (`scripts/backup-tierA/mushy-tierA-backup.sh`) bundles `.env` files + fc1 runtime overrides + VPS heartbeat secrets — it does NOT include the signal-cli docker volume. Loss of `mushy_signal-cli-data` would force full re-registration + re-link of all farmer trust (a multi-hour painful reconstruction — exactly the class Phase 35 is supposed to prevent). The Phase 36 local tarball at `/mnt/slime-kingdom/mushy-backups/signal-cli-data-YYYYMMDD.tar.gz` is the ONLY rollback path until this lands. **Scope:** (a) add a stage step that tarballs the `mushy_signal-cli-data` docker volume into `$WORK/payload/elder-plops/signal-cli-data.tar` (or .tar.gz to save bytes — the volume is ~99M today, well within Tier A "small irreplaceable" budget if compressed); (b) decide whether to bundle every night or only on-change (a simple `docker volume inspect` mtime check is fine); (c) verify the encrypted bundle decrypts + restores the volume in a smoke test on the operator side. **Acceptance:** next nightly Tier A bundle on the VPS contains `payload/elder-plops/signal-cli-data.tar(.gz)`; manual decrypt + extract reproduces a functional volume in a test docker container. **Touches:** `scripts/backup-tierA/mushy-tierA-backup.sh` only (no compose changes needed). **Composes with:** 999.45 (Tier B + borg offsite — same family of "what irreplaceable state are we still missing"). **Filed 2026-05-11 during Phase 36 Plan 36-01 pre-flight.**
+
+### Phase 43: Phase 38<->40 Schema Normalizer + Chain Integration Tests
+
+**Goal:** Eliminate the extractor<->commit shape mismatch that caused the 2026-05-15 lion's-mane `commit_failed` regression. Insert a router-side normalizer (Option A from `.planning/notes/2026-05-16-schema-audit.md`) that translates extractor-shape (`asset_ref`/`event_timestamp`/`name`/`source_block_refs`/`qty_g`/`recipe_lot`) to commit-shape (`qr_codes`/`timestamp`/`activity_subtype`/`source_qr_codes`/`bags`/`notes`) per log_type. Add extractor->commit chain integration tests (Option C) covering all 5 log_types, with Test 2 (activity-relocate via lion's-mane transcript) as the named 2026-05-15 regression guard. Ungated by farmer-facing acks per locked decision 2026-05-17 (`project_2026_05_17_findings_discussion_decisions.md`).
+**Requirements:** SCHEMA-01 (every log_type round-trips extractor->normalizer->commit without terminal field-shape failure), SCHEMA-02 (a real extractor draft for activity-relocate commits end-to-end against mock farmOS), SCHEMA-03 (normalize.js is idempotent: commit-shape input passes through unchanged), SCHEMA-04 (5 chain tests live under `test/farmos/integration/` and run by default, no `FARMOS_INTEGRATION=1` gate)
+**Depends on:** Phase 40 (the commit handlers being normalized) and Phase 38 (the extractor-shape contract)
+**Open design questions for discuss-phase** (from `.planning/notes/2026-05-16-schema-audit.md` section 3.A):
+  1. harvest `source_block_refs` (block names) vs `source_qr_codes` -- extend `qr.resolveQr` to handle block names, or add parallel resolve-by-name path?
+  2. seeding `batch_name` (sterilization) vs `parent_batch_name` (lineage) -- keep distinct, fold, or defer until pasteurization log lands?
+  3. input `recipe_lot` vs `input_ingredients` -- extend commit-input to read recipe_lot, or just append to notes?
+  4. harvest `qty_g` (single number) vs `bags` (multi-bag w/ QR+weight) -- extractor schema extension or farmer UX change? (audit calls this out of scope for same-week-fix; file as v1.8 candidate)
+**Reference:** `.planning/notes/2026-05-16-schema-audit.md` (full audit; verdict: 4 of 5 log_types wire-incompatible end-to-end; recommends A + C bundled, ~1d combined)
+**Plans:** 6 plans
+Plans:
+- [ ] 43-01-PLAN.md -- normalize.js + unit tests (incl. SCHEMA-03 idempotency)
+- [ ] 43-02-PLAN.md -- qr.js name-on-miss fallback (D-06)
+- [ ] 43-03-PLAN.md -- wire normalize() into commit-router.js (D-02, 1-line)
+- [ ] 43-04-PLAN.md -- locate + document 2026-05-15 lion's-mane transcript (D-16)
+- [ ] 43-05-PLAN.md -- 5 chain integration tests under test/farmos/integration/
+- [ ] 43-06-PLAN.md -- SCHEMA-04 default-run attestation
 
 ---
 *Roadmap created 2026-03-28. v1.4 shipped 2026-05-01. v1.5 shipped 2026-05-09.*
