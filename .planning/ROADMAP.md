@@ -126,7 +126,7 @@ Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 202
 <details>
 <summary>🚧 v1.7 Multimodal Signal → FarmOS Events (Phases 36-43) — IN PROGRESS</summary>
 
-- [ ] **Phase 36: Signal Pre-gate** — signal-cli primary re-registration; receive unblock; identity-trust verified
+- [x] **Phase 36: Signal Pre-gate** — signal-cli primary re-registration; receive unblock; identity-trust verified (shipped 2026-05-13; SC#1 attested twice T0+T+38h; SC#2 closed 2026-05-16 via 2026-05-15 Vikki Rambo organic round-trip; SC#3 rebuild-trust PASS)
 - [x] **Phase 37: Multi-farmer Routing** — DM routing to sender; group-thread participation; farmOS person lookup
 - [x] **Phase 38: Extraction Pipeline** — schema-aware LLM extraction; multimodal fusion; confidence loop; lineage (reopened then re-closed 2026-05-12 via Plan 09: 95.8% schema conformance on 96-fixture eval including real prod inoc session)
 - [x] **Phase 39: Farmer Confirmation Loop** — confirm-before-write; idempotent commit; EDIT loop; draft timeout (shipped 2026-05-13; 127 unit + 11 integration PASS; live-farmer UAT deferred to 39-RUNBOOK.md)
