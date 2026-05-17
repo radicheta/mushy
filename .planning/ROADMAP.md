@@ -11,7 +11,8 @@
 - ✅ **v1.5.0.1 Resilience hotfix from 2026-05-02 incident** — Phases 27.1 + 27.2 (shipped 2026-05-07 via wg0 architectural detour; 27.3 + 27.4 MOOTED). See `.planning/milestones/v1.5.0.1-ROADMAP.md`.
 - ✅ **v1.5 Analog Humidity Control & Condensation/Evaporation Forcing** — Phases 27–31 (shipped 2026-05-09; ALRT-10 calendar-deferred). See `.planning/milestones/v1.5-ROADMAP.md`.
 - ✅ **v1.6 VPS Hub + Outage/Recovery Stack** — Phases 32–35 + 999.43.1 (shipped 2026-05-10/11; scaffolding deferred). See `.planning/milestones/v1.6-ROADMAP.md`.
-- 🚧 **v1.7 Multimodal Signal → FarmOS Events** — Phases 36–43 (in progress; Phase 43 carryover added 2026-05-16 for schema-normalizer fix)
+- 🚧 **v1.7 Multimodal Signal → FarmOS Events** — Phases 36–43 (effectively shipped 2026-05-16; Phase 42 calendar-deferred — biological lifecycle)
+- 🚧 **v1.8 Event-gate + Durable `signal_outbound` (tenant-aware)** — Phases 44–45 (locked 2026-05-17; OSS-Foray Option α — every PR ships tenant_id-aware from day one)
 
 ## Phases
 
@@ -137,6 +138,16 @@ Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 202
 
 </details>
 
+<details>
+<summary>🚧 v1.8 Event-gate + Durable signal_outbound (tenant-aware) (Phases 44-45) — IN PROGRESS</summary>
+
+Locked 2026-05-17 per `.planning/notes/2026-05-17-oss-foray-decision.md` and prior `[[project_2026_05_17_findings_discussion_decisions]]` memory. Bundles findings 7 (phantom drafts from chit-chat / is-this-an-event gate) + 1b (LLM outbound amnesia / durable signal_outbound) + 3 (NORTH-STAR commit_failed silent-reply ack). First milestone under OSS-Foray Option α — every new schema ships with `tenant_id` from day one so the v2.0 Foray Apache-2.0 extraction is a clean carve, not a 9-months-of-ALTERs ops event.
+
+- [ ] **Phase 44: Event-gate + durable `signal_outbound` (tenant-aware)** — rules-only event gate at `capture.js:147` + new `signal_outbound(tenant_id, intent, ...)` table + Phase 37 prompt consumes `lastBotOutbound`; ship-gate is 100-capture hand-classification smoke from prod corpus (Plan-01); per-tenant config tree begins under `tenants/mossrock/`. References `.planning/notes/2026-05-17-is-this-an-event-gate.md` + `.planning/notes/2026-05-17-llm-outbound-amnesia.md`.
+- [ ] **Phase 45: NORTH-STAR commit_failed ack + replay outstanding silent-failure drafts** — every terminal state post-farmer-YES must produce a farmer-facing reply (success + failure paths). Implements `[[feedback_no_silent_failure_after_farmer_confirm]]`. Live-fire UAT: replay drafts `b8a1e586` (Vikki Rambo) + `1fb28e70` (Santi LIMA) through the fixed path. References `.planning/notes/2026-05-17-northstar-commit-failed-reply.md`.
+
+</details>
+
 ### Phase 36: Signal Pre-gate
 
 **Goal:** Unblock all Signal-driven downstream phases by re-registering the bot account as primary (deviceId=1) and verifying round-trip Signal receive + reply from at least two farmers.
@@ -146,11 +157,11 @@ Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 202
   1. Operator can send a Signal message to the bot and receive a reply in the same DM thread
   2. A second farmer sends a test message and receives a reply routed to their number (not farmer #1)
   3. Alerter container rebuild does not break identity trust (signal-cli /v1/identities check passes after rebuild)
-**Plans:** 4 plans
-- [ ] 36-01-PLAN.md — Pre-flight snapshot + identity capture + Phase 35 coverage verdict + restore recipe
-- [ ] 36-02-PLAN.md — 36-RUNBOOK.md authored + live primary re-registration + kickoff message to farmers (interactive)
-- [ ] 36-03-PLAN.md — post-rebuild-trust-check.sh script + bats tests + alerter compose healthcheck wire-up
-- [ ] 36-04-PLAN.md — T0 round-trip + alerter rebuild attestation + T+24h re-run + final SC#1/2/3 attestation log
+**Plans:** 4 plans (all shipped 2026-05-13; SC#2 closed 2026-05-16 organically via 2026-05-15 Vikki Rambo round-trip)
+- [x] 36-01-PLAN.md — Pre-flight snapshot + identity capture + Phase 35 coverage verdict + restore recipe
+- [x] 36-02-PLAN.md — 36-RUNBOOK.md authored + live primary re-registration + kickoff message to farmers (interactive)
+- [x] 36-03-PLAN.md — post-rebuild-trust-check.sh script + bats tests + alerter compose healthcheck wire-up
+- [x] 36-04-PLAN.md — T0 round-trip + alerter rebuild attestation + T+24h re-run + final SC#1/2/3 attestation log
 
 ### Phase 37: Multi-farmer Routing
 
@@ -178,16 +189,7 @@ Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 202
   3. When a required field is ambiguous, bot sends a targeted Signal reply asking for it; draft completes after farmer responds
   4. A lineage cue ("from blocks 3, 4, and 5") extracts a multi-parent harvest batch ref per C4
   5. No off-schema fields appear in any extracted draft; all log types are native per C5
-**Plans:** 7/8 plans executed
-Plans:
-- [x] 38-01-PLAN.md — Wave 0 zod schemas (B7 log types + discriminated union + Anthropic input_schema)
-- [x] 38-02-PLAN.md — Wave 0 signal_draft table + CRUD module (extraction-db.js)
-- [x] 38-03-PLAN.md — Wave 1 extractor + multimodal fusion + tool-use retry
-- [x] 38-04-PLAN.md — Wave 1 state machine + ask-back trigger + 3-turn cap + preview builder
-- [x] 38-05-PLAN.md — Wave 2 pipeline orchestration + capture.js hook
-- [x] 38-06-PLAN.md — Wave 2 outbound dispatcher (ask-back + needs-review ping)
-- [x] 38-07-PLAN.md — Wave 3 mushdatadump eval harness (D-07 ship-gate) [partial: Tasks 1+2 shipped, verdict PASS in 38-EVAL-REPORT.md; Task 3 Don Santiago verdict review pending]
-- [ ] 38-08-PLAN.md — Wave 3 production-log advisory smoke (deferred path)
+**Plans:** 9 plans, shipped. 38-01..06 (Waves 0-2), 38-07 (eval harness PASS in 38-EVAL-REPORT.md), 38-08 prod-log advisory superseded by 38-09 re-eval (Plan 09 ran 96-fixture re-eval -> PASS at 95.8% schema conformance 2026-05-12). See `.planning/phases/38-extraction-pipeline/`.
 
 ### Phase 39: Farmer Confirmation Loop
 
@@ -200,16 +202,7 @@ Plans:
   3. NO discards the draft; bot confirms discard; original transcript remains in the Phase 25 capture store for audit
   4. EDIT with correction text produces a revised draft; EDIT is accepted at least 3 times before the bot escalates
   5. A draft with no response for 30 min gets one ping, then auto-discards with a note; it never auto-commits
-**Plans:** 8 plans
-Plans:
-- [x] 38-01-PLAN.md — Wave 0 zod schemas (B7 log types + discriminated union + Anthropic input_schema)
-- [x] 38-02-PLAN.md — Wave 0 signal_draft table + CRUD module (extraction-db.js)
-- [x] 38-03-PLAN.md — Wave 1 extractor + multimodal fusion + tool-use retry
-- [x] 38-04-PLAN.md — Wave 1 state machine + ask-back trigger + 3-turn cap + preview builder
-- [x] 38-05-PLAN.md — Wave 2 pipeline orchestration + capture.js hook
-- [x] 38-06-PLAN.md — Wave 2 outbound dispatcher (ask-back + needs-review ping)
-- [ ] 38-07-PLAN.md — Wave 3 mushdatadump eval harness (D-07 ship-gate)
-- [ ] 38-08-PLAN.md — Wave 3 production-log advisory smoke (deferred path)
+**Plans:** 7 plans, all shipped 2026-05-13 (39-01..07). 127 unit + 11 integration PASS. Live-farmer UAT deferred per 39-RUNBOOK.md. See `.planning/phases/39-farmer-confirmation-loop/`.
 
 ### Phase 40: FarmOS Write Path
 
@@ -222,16 +215,7 @@ Plans:
   3. A photo from the originating Signal message appears as a file attachment on the observation or harvest log in farmOS
   4. A QR code in a farmer message resolves to an existing block asset and appends a log to it rather than creating a new asset
   5. Operator can query one endpoint or log stream and see every farmOS write from the last 24h with draft UUID, farmer ID, and farmOS response
-**Plans:** 8 plans
-Plans:
-- [x] 38-01-PLAN.md — Wave 0 zod schemas (B7 log types + discriminated union + Anthropic input_schema)
-- [x] 38-02-PLAN.md — Wave 0 signal_draft table + CRUD module (extraction-db.js)
-- [x] 38-03-PLAN.md — Wave 1 extractor + multimodal fusion + tool-use retry
-- [x] 38-04-PLAN.md — Wave 1 state machine + ask-back trigger + 3-turn cap + preview builder
-- [ ] 38-05-PLAN.md — Wave 2 pipeline orchestration + capture.js hook
-- [x] 38-06-PLAN.md — Wave 2 outbound dispatcher (ask-back + needs-review ping)
-- [ ] 38-07-PLAN.md — Wave 3 mushdatadump eval harness (D-07 ship-gate)
-- [ ] 38-08-PLAN.md — Wave 3 production-log advisory smoke (deferred path)
+**Plans:** 8 plans, all shipped 2026-05-13 (40-01..08). 92/92 unit PASS; live dev-farmOS integration + prod-fixture SHIP GATE deferred to operator per 40-RUNBOOK.md. See `.planning/phases/40-farmos-write-path/`.
 **Composes-with:** 999.2 (this phase is its closure)
 
 ### Phase 41: Ingestion Harness
@@ -244,16 +228,7 @@ Plans:
   2. At least one batch of paper inoc log photos flows through the pipeline; a hand-labeled comparison report is produced showing per-field accuracy
   3. At least one set of existing audio recordings flows through Whisper plus extraction; comparison report produced
   4. The same underlying inoc session represented as both a paper-log photo and an audio recording produces identical seeding log content
-**Plans:** 8 plans
-Plans:
-- [x] 38-01-PLAN.md — Wave 0 zod schemas (B7 log types + discriminated union + Anthropic input_schema)
-- [x] 38-02-PLAN.md — Wave 0 signal_draft table + CRUD module (extraction-db.js)
-- [x] 38-03-PLAN.md — Wave 1 extractor + multimodal fusion + tool-use retry
-- [ ] 38-04-PLAN.md — Wave 1 state machine + ask-back trigger + 3-turn cap + preview builder
-- [ ] 38-05-PLAN.md — Wave 2 pipeline orchestration + capture.js hook
-- [x] 38-06-PLAN.md — Wave 2 outbound dispatcher (ask-back + needs-review ping)
-- [ ] 38-07-PLAN.md — Wave 3 mushdatadump eval harness (D-07 ship-gate)
-- [ ] 38-08-PLAN.md — Wave 3 production-log advisory smoke (deferred path)
+**Plans:** 7 plans, all shipped 2026-05-13 (41-01..07). 37 PASS + 5 operator-deferred live. mushdatadump-prod hand-labels + audio + paired-sessions in 41-RUNBOOK.md. See `.planning/phases/41-ingestion-harness/`.
 
 ### Phase 42: SHI-on-Sawdust Pilot
 
@@ -267,16 +242,7 @@ Plans:
   4. Harvest batch and at least one bag asset exist in farmOS after a harvest Signal message; bag asset is QR-bound
   5. Archive_spent activity log written on the block; lineage walk bag to harvest batch to block to sterilization batch returns clean with no broken refs
   6. Operator reconstructs the full lifecycle from farmOS logs alone without referring to Signal history
-**Plans:** 8 plans
-Plans:
-- [x] 38-01-PLAN.md — Wave 0 zod schemas (B7 log types + discriminated union + Anthropic input_schema)
-- [x] 38-02-PLAN.md — Wave 0 signal_draft table + CRUD module (extraction-db.js)
-- [ ] 38-03-PLAN.md — Wave 1 extractor + multimodal fusion + tool-use retry
-- [ ] 38-04-PLAN.md — Wave 1 state machine + ask-back trigger + 3-turn cap + preview builder
-- [ ] 38-05-PLAN.md — Wave 2 pipeline orchestration + capture.js hook
-- [x] 38-06-PLAN.md — Wave 2 outbound dispatcher (ask-back + needs-review ping)
-- [ ] 38-07-PLAN.md — Wave 3 mushdatadump eval harness (D-07 ship-gate)
-- [ ] 38-08-PLAN.md — Wave 3 production-log advisory smoke (deferred path)
+**Plans:** 3 plans scaffolded 2026-05-13 (42-01..03 + RUNBOOK + PILOT-LOG + VERIFICATION). Status: human_needed — actual pilot run calendar-deferred 4-8 weeks against real mushroom lifecycle. See `.planning/phases/42-shi-pilot/42-VERIFICATION.md`.
 
 ## Progress
 
@@ -638,5 +604,33 @@ Plans:
 - [x] 43-05-PLAN.md -- 5 chain integration tests under test/farmos/integration/
 - [x] 43-06-PLAN.md -- SCHEMA-04 default-run attestation
 
+### Phase 44: Event-gate + Durable `signal_outbound` (tenant-aware)
+
+**Goal:** Stop burning paid Sonnet on chit-chat and stop the alerter from being amnesiac about its own outbound messages. Insert a rules-only event-gate at `capture.js:147` (fast-path POSITIVE: image/audio/strain-code/block-name/long-text; fast-path NEGATIVE: short ack within 30m of `attestation_kickoff`; gray-zone falls through to extractor for v1, escalates to Haiku 4.5 pre-classifier only if Plan-03 audit shows >30% residual phantom rate). Persist every `signalClient.send` to a new `signal_outbound(tenant_id, intent, ...)` table so Phase 37's conversational LLM can see what the bot already said. First milestone under OSS-Foray Option α: the new table ships with `tenant_id text NOT NULL` indexed from day one; Mossrock-specific config (farmer phone map, strain codes) starts migrating into `tenants/mossrock/`.
+**Depends on:** Phase 43 (schema normalizer in place — gate must not regress chain tests)
+**Requirements (proposed; lock at discuss-phase):** GATE-01 (zero farmer-facing preview pings on hand-labeled chit-chat in 100-capture smoke), GATE-02 (>=95% event recall on same smoke), OUTBOUND-01 (every `signalClient.send` writes one row to `signal_outbound` with intent tag — 14 call sites enumerated, see `.planning/notes/2026-05-17-signal-outbound-schema-audit.md`), OUTBOUND-02 (Phase 37 `fmtHistory` reads `signal_outbound` and surfaces `lastBotOutbound` to the LLM prompt — closes finding 1b), TENANT-01 (`signal_outbound.tenant_id` indexed; `tenants/mossrock/` directory exists with at least one config key moved in)
+**Open design questions for discuss-phase:**
+  1. Rules-only first vs. Haiku 4.5 pre-classifier from day one? (Note 2026-05-17 recommends rules-first, audit one week, add Haiku only if residual phantom rate justifies the paid surface — `feedback_smoke_before_expensive_batch`.)
+  2. Should the gate ALSO gate the Phase 37 LLM-convo `compose` call at `capture.js:168`? (Out of scope for finding 7 proper; cheap to bundle.)
+  3. Tenant-id retrofit for existing tables (`signal_capture`, `signal_draft`) — defer to v2.0 extraction or do it now? (Default: defer per OSS-Foray decision; new tables only in v1.8.)
+  4. What's in `tenants/mossrock/` for v1.8? SIGNAL_FARMER_MAP at minimum; SHI/SH2/KOY/MAI/MALI/KOS/DT/CAS/CAZ/WIN/ALM/MOR/BP/LIMA strain vocab; Anthropic key + farmOS endpoint pointer? Decide at discuss-phase.
+**Ship-gate (per `feedback_real_data_before_ship_gate_pass`):** 100-capture hand-classification smoke from prod (Plan-01) drawn from live Timescale `signal_capture` rows on elder-plops (frozen `/mnt/mossrock/shared/mushdatadump-prod/` corpus is only 3 rows; see `.planning/notes/2026-05-17-prod-corpus-survey.md`). Stratified per 2026-05-17 distribution: 36 hard-event / 28 confirm / 8 phantom-ack / 8 UX-meta / 12 soft-obs / 8 greetings.
+**References:**
+- `.planning/notes/2026-05-17-is-this-an-event-gate.md` (finding 7 design)
+- `.planning/notes/2026-05-17-llm-outbound-amnesia.md` (finding 1b design)
+- `.planning/notes/2026-05-17-oss-foray-decision.md` (Option α tenant constraint)
+- `.planning/notes/2026-05-17-signal-outbound-schema-audit.md` (current-state map)
+- `.planning/notes/2026-05-17-prod-corpus-survey.md` (Plan-01 sourcing)
+- `.planning/notes/2026-05-17-tenant-id-retrofit-map.md` (tenant boundary inventory)
+- SEED-010 (Foray extraction trigger)
+
+### Phase 45: NORTH-STAR commit_failed ack + replay outstanding silent-failure drafts
+
+**Goal:** Close the NORTH-STAR violation that surfaced 2026-05-15 (Vikki Rambo `commit_failed` on `observation_requires_target` went unreplied; farmer said YES and got silence). Every terminal state in the confirm/commit state machine MUST produce a farmer-facing reply — success AND failure paths. Then live-fire replay the two outstanding silent-failure drafts as UAT.
+**Depends on:** Phase 44 (signal_outbound table is the natural place to log the ack send; not strictly required but bundles naturally — confirm at discuss-phase)
+**Requirements (proposed; lock at discuss-phase):** ACK-01 (no terminal state in the confirm/commit machine is silent post-YES — enumerated and tested), ACK-02 (replay of draft `b8a1e586` Vikki Rambo through the fixed path produces an English-default farmer-facing reply on the failure path — Vikki is English-first per `[[farmer-language-stacks]]`), ACK-03 (replay of draft `1fb28e70` Santi LIMA likewise), ACK-04 (idempotency: a retried commit does not double-send the ack)
+**Reference:** `.planning/notes/2026-05-17-northstar-commit-failed-reply.md` + `.planning/notes/2026-05-17-northstar-ack-sketch.md` (impl-sketch produced by overnight research) + memory `[[feedback_no_silent_failure_after_farmer_confirm]]`
+**Plans:** TBD at plan-phase
+
 ---
-*Roadmap created 2026-03-28. v1.4 shipped 2026-05-01. v1.5 shipped 2026-05-09.*
+*Roadmap created 2026-03-28. v1.4 shipped 2026-05-01. v1.5 shipped 2026-05-09. v1.6 shipped 2026-05-11. v1.7 effectively shipped 2026-05-16 (Phase 42 calendar-deferred). v1.8 scaffolded 2026-05-17.*

@@ -1,15 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.7
-milestone_name: Multimodal Signal → FarmOS Events
-status: v1.7 effectively shipped; Phase 42 calendar-deferred (biological lifecycle); v1.8 scope locked
-stopped_at: cleanup sweep after Phase 36 close
-last_updated: "2026-05-16T00:30:00Z"
-last_activity: 2026-05-16 -- Phase 36 SC#2 closed via organic 2026-05-15 Vikki Rambo round-trip; ROADMAP flipped
+milestone: v1.8
+milestone_name: Event-gate + Durable signal_outbound (tenant-aware)
+status: v1.8 scaffolded in ROADMAP; 4 research notes prepped; ready for discuss-phase on Phase 44
+stopped_at: v1.8 scaffold + ROADMAP stale-plan cleanup (2026-05-17)
+last_updated: "2026-05-17T00:00:00Z"
+last_activity: 2026-05-17 -- Phase 44 + 45 added to ROADMAP; 4 overnight research agents landed notes (signal_outbound schema, prod corpus, tenant retrofit, NORTH-STAR ack sketch); Phase 36 plan checkboxes + Phase 39/40/41/42 stale 38-XX copy-paste lists cleaned
 progress:
   v1.7_phases_complete: 7  # 36, 37, 38, 39, 40, 41, 43 -- Phase 42 scaffolded + calendar-deferred
   v1.7_status: shipped-with-Phase-42-calendar-carry
-  next_milestone: v1.8 (event-gate + signal_outbound bundle; locked 2026-05-17)
+  v1.8_phases_planned: 2  # 44 event-gate+signal_outbound, 45 NORTH-STAR ack
+  v1.8_status: scaffolded; awaiting /gsd-discuss-phase 44
+  next_milestone: v1.8 (event-gate + signal_outbound bundle; tenant-aware per OSS-Foray Option α)
 ---
 
 # Project State
