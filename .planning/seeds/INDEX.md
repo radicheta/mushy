@@ -17,6 +17,7 @@ roadmap; promote via `/gsd:plant-seed` workflow when a trigger fires.
 | SEED-007 | Power-bank UPS for fc1 Pi (gap short blackouts)    | Next infra/hardening milestone OR another unscheduled-reboot incident   | Small         |
 | SEED-008 | VPN name resolution — split-horizon `*.mushy.mossrock.space` (delegate from HostGator → VPS auth DNS + dnsmasq + LE wildcard cert) | v1.7 milestone planning OR any peer-renumbering or 7th+ peer onboarding | Medium        |
 | SEED-009 | VPN tunnel should be fallback, not primary — shortest-path routing for on-site farmers (LAN direct when same subnet, hub only when remote) | Any phase touching WG routing, farmer-device onboarding, MC latency complaints, or VPS bandwidth-cost concerns | Medium        |
+| SEED-010 | Foray — OSS extraction of Signal-multimodal-farmOS layer (Apache 2.0)   | v1.9 (Harvest Loop Closure) shipped AND tenant_id constraint held through one milestone cycle | Large         |
 
 ## Files
 
@@ -26,6 +27,7 @@ roadmap; promote via `/gsd:plant-seed` workflow when a trigger fires.
 - [SEED-004-pinning-cycle-and-vpd-mode-schema.md](SEED-004-pinning-cycle-and-vpd-mode-schema.md)
 - [SEED-005-chamber-water-mass-observer.md](SEED-005-chamber-water-mass-observer.md)
 - [SEED-006-farmer-freeform-stream-to-farmos.md](SEED-006-farmer-freeform-stream-to-farmos.md)
+- [SEED-010-foray-oss-extraction.md](SEED-010-foray-oss-extraction.md)
 - [SEED-007-fc1-power-bank-ups.md](SEED-007-fc1-power-bank-ups.md)
 - [SEED-008-vpn-name-resolution.md](SEED-008-vpn-name-resolution.md)
 - [SEED-009-vpn-shortest-path-routing.md](SEED-009-vpn-shortest-path-routing.md)
