@@ -121,7 +121,10 @@ describe('makeStartHandler', () => {
         expect(res._body.started_at_iso).toBe('2026-05-08T18:00:00Z');
         expect(res._body.reverts_at_iso).toBe('2026-05-08T18:15:00Z');
         expect(res._body.prior_mode).toBe('fruiting');
-        expect(node._calls[0].srvName).toBe('/fc_controller/start_experiment');
+        // 2026-05-09 workaround at control_experiment.js:92-94: namespaced
+        // /fc_controller/start_experiment hangs at service-discovery; bridge
+        // uses un-namespaced /start_experiment. Test mirrors live behavior.
+        expect(node._calls[0].srvName).toBe('/start_experiment');
     });
 
     test('default duration_minutes=15 when omitted', async () => {
@@ -211,7 +214,8 @@ describe('makeCancelHandler', () => {
         expect(res._status).toBe(200);
         expect(res._body.ok).toBe(true);
         expect(res._body.ended_at_iso).toBe('2026-05-08T18:05:00Z');
-        expect(node._calls[0].srvName).toBe('/fc_controller/cancel_experiment');
+        // see start_experiment note above: bridge uses un-namespaced path
+        expect(node._calls[0].srvName).toBe('/cancel_experiment');
     });
 
     test('no_experiment_active → 400', async () => {
