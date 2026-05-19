@@ -76,7 +76,9 @@ function createLlmClient({ apiKey, logger = console, model = 'claude-sonnet-4-6'
         });
         const text = sanitizeReply(msg.content?.[0]?.text || '');
         if (!text) return { ok: false, reason: 'empty response' };
-        return { ok: true, text };
+        // Backlog 999.53: pass through msg.usage + msg.model so the caller can
+        // persist token counts on signal_capture for $/day cost visibility.
+        return { ok: true, text, usage: msg.usage || null, model: msg.model || model };
       } catch (e) {
         logger.warn(`[llm] degraded: ${e.message}`);
         return { ok: false, reason: e.message };

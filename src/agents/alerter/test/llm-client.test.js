@@ -34,16 +34,45 @@ describe('createLlmClient', () => {
     client = createLlmClient({ apiKey: 'sk-test-key', logger: silentLogger });
   });
 
-  test('(R5) success — SDK returns text → compose() returns { ok: true, text }', async () => {
+  test('(R5) success: SDK returns text -> compose() returns { ok, text, usage, model }', async () => {
     mockCreate.mockResolvedValueOnce({
       content: [{ type: 'text', text: 'logged inoc-2026-04-27' }],
+      usage: {
+        input_tokens: 1200,
+        output_tokens: 42,
+        cache_creation_input_tokens: 100,
+        cache_read_input_tokens: 800,
+      },
+      model: 'claude-sonnet-4-6',
     });
     const result = await client.compose({
       currentMessage: baseMessage(),
       history: [],
       sensorSnapshot: { sensors: { humidity: 90, temperature: 22, co2: 600 } },
     });
-    expect(result).toEqual({ ok: true, text: 'logged inoc-2026-04-27' });
+    expect(result.ok).toBe(true);
+    expect(result.text).toBe('logged inoc-2026-04-27');
+    expect(result.usage).toEqual({
+      input_tokens: 1200,
+      output_tokens: 42,
+      cache_creation_input_tokens: 100,
+      cache_read_input_tokens: 800,
+    });
+    expect(result.model).toBe('claude-sonnet-4-6');
+  });
+
+  test('(999.53) success with SDK omitting usage/model: usage=null, model falls back to configured', async () => {
+    mockCreate.mockResolvedValueOnce({
+      content: [{ type: 'text', text: 'ok' }],
+    });
+    const result = await client.compose({
+      currentMessage: baseMessage(),
+      history: [],
+      sensorSnapshot: null,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.usage).toBeNull();
+    expect(result.model).toBe('claude-sonnet-4-6');
   });
 
   test('(R6) SDK throws → compose() returns { ok: false, reason } without throwing', async () => {
