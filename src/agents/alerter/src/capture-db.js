@@ -32,6 +32,31 @@ async function initDb(pool) {
   await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS group_id text`);
   await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS farmos_person text`);
   await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS reply_target_kind text`);
+  // Backlog 999.53: persist Anthropic token usage for $/day cost visibility.
+  // Pricing for sonnet-4-6 per MTok: input=$3, output=$15, cache_creation=$3.75, cache_read=$0.30.
+  await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS input_tokens int`);
+  await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS output_tokens int`);
+  await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS cache_creation_input_tokens int`);
+  await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS cache_read_input_tokens int`);
+  await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS model text`);
+  await pool.query(`
+    CREATE OR REPLACE VIEW v_llm_cost_daily AS
+    SELECT
+      date_trunc('day', captured_at) AS day,
+      count(*) AS n_calls,
+      sum(input_tokens) AS input_tokens,
+      sum(output_tokens) AS output_tokens,
+      sum(cache_creation_input_tokens) AS cache_creation_input_tokens,
+      sum(cache_read_input_tokens) AS cache_read_input_tokens,
+      (coalesce(sum(input_tokens), 0) * 3
+        + coalesce(sum(output_tokens), 0) * 15
+        + coalesce(sum(cache_creation_input_tokens), 0) * 3.75
+        + coalesce(sum(cache_read_input_tokens), 0) * 0.30) / 1000000.0 AS approx_usd
+    FROM signal_capture
+    WHERE input_tokens IS NOT NULL
+    GROUP BY day
+    ORDER BY day DESC
+  `);
 }
 
 async function insertCapture(pool, row) {

@@ -9,9 +9,10 @@ describe('capture-db', () => {
     pool = { query: jest.fn().mockResolvedValue({ rows: [], rowCount: 0 }) };
   });
 
-  test('initDb issues CREATE TABLE + 2 CREATE INDEX + 3 ALTER TABLE ADD COLUMN IF NOT EXISTS (no create_hypertable)', async () => {
+  test('initDb issues CREATE TABLE + 2 CREATE INDEX + 8 ALTER TABLE ADD COLUMN IF NOT EXISTS + 1 CREATE VIEW (no create_hypertable)', async () => {
     await initDb(pool);
-    expect(pool.query).toHaveBeenCalledTimes(6);
+    // 1 CREATE TABLE + 2 CREATE INDEX + 3 Phase 37 ALTERs + 5 backlog-999.53 ALTERs + 1 CREATE VIEW = 12
+    expect(pool.query).toHaveBeenCalledTimes(12);
     const sql0 = pool.query.mock.calls[0][0];
     expect(sql0).toMatch(/CREATE TABLE IF NOT EXISTS signal_capture/);
     const sql1 = pool.query.mock.calls[1][0];
@@ -23,18 +24,31 @@ describe('capture-db', () => {
     expect(allSql).toMatch(/ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS group_id text/);
     expect(allSql).toMatch(/ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS farmos_person text/);
     expect(allSql).toMatch(/ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS reply_target_kind text/);
+    // Backlog 999.53: 5 token/model cols + per-day cost view.
+    expect(allSql).toMatch(/ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS input_tokens int/);
+    expect(allSql).toMatch(/ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS output_tokens int/);
+    expect(allSql).toMatch(/ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS cache_creation_input_tokens int/);
+    expect(allSql).toMatch(/ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS cache_read_input_tokens int/);
+    expect(allSql).toMatch(/ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS model text/);
+    expect(allSql).toMatch(/CREATE OR REPLACE VIEW v_llm_cost_daily/);
     // Must NOT call create_hypertable (regular table per RESEARCH Open Q #1)
     expect(allSql).not.toMatch(/create_hypertable/);
   });
 
-  test('initDb is idempotent — second invocation also issues 6 queries with same shape', async () => {
+  test('initDb is idempotent: second invocation also issues 12 queries with same shape', async () => {
     await initDb(pool);
     await initDb(pool);
-    expect(pool.query).toHaveBeenCalledTimes(12);
-    const secondAllSql = pool.query.mock.calls.slice(6).map((c) => c[0]).join('\n');
+    expect(pool.query).toHaveBeenCalledTimes(24);
+    const secondAllSql = pool.query.mock.calls.slice(12).map((c) => c[0]).join('\n');
     expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS group_id text/);
     expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS farmos_person text/);
     expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS reply_target_kind text/);
+    expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS input_tokens int/);
+    expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS output_tokens int/);
+    expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS cache_creation_input_tokens int/);
+    expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS cache_read_input_tokens int/);
+    expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS model text/);
+    expect(secondAllSql).toMatch(/CREATE OR REPLACE VIEW v_llm_cost_daily/);
   });
 
   test('insertCapture calls pool.query once with 13 parameterized placeholders; row.id first, three new fields last', async () => {
