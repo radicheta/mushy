@@ -161,6 +161,9 @@ function createCapturePipeline({
     // Step 4: LLM compose — gather context + call
     let replyText;
     let llmOk = false;
+    // Backlog 999.53: carry token usage + model from compose result into Step 7 UPDATE.
+    let llmUsage = null;
+    let llmModel = null;
     try {
       const sinceMs = capturedAtMs - 24 * 3600 * 1000;
       const history = await captureHistory.selectRecentBySender(source, sinceMs).catch(() => []);
@@ -173,6 +176,8 @@ function createCapturePipeline({
       if (r.ok) {
         replyText = r.text;
         llmOk = true;
+        llmUsage = r.usage || null;
+        llmModel = r.model || null;
       }
     } catch (e) {
       logger.warn(`[capture] llm error: ${e.message}`);
@@ -193,12 +198,31 @@ function createCapturePipeline({
         .catch((e) => logger.warn(`[capture] reply send failed: ${e.message}`));
     }
 
-    // Step 7: update row with llm fields (best-effort)
+    // Step 7: update row with llm fields (best-effort).
+    // Backlog 999.53: also stamp token usage + model so v_llm_cost_daily can
+    // surface $/day spend. Missing usage fields bind null (no throw).
     if (llmOk) {
       try {
         await pool.query(
-          `UPDATE signal_capture SET llm_reply = $1, degraded = $2 WHERE id = $3`,
-          [replyText, degraded, id]
+          `UPDATE signal_capture
+             SET llm_reply = $1,
+                 degraded = $2,
+                 input_tokens = $3,
+                 output_tokens = $4,
+                 cache_creation_input_tokens = $5,
+                 cache_read_input_tokens = $6,
+                 model = $7
+           WHERE id = $8`,
+          [
+            replyText,
+            degraded,
+            llmUsage?.input_tokens ?? null,
+            llmUsage?.output_tokens ?? null,
+            llmUsage?.cache_creation_input_tokens ?? null,
+            llmUsage?.cache_read_input_tokens ?? null,
+            llmModel,
+            id,
+          ]
         );
       } catch (e) {
         logger.warn(`[capture] llm-reply update failed: ${e.message}`);

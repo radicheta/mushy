@@ -233,4 +233,92 @@ describe('createCapturePipeline', () => {
       expect(params[11]).toBe('(unassigned)');
     });
   });
+
+  // ============================================================
+  // Backlog 999.53 -- token usage persistence in Step 7 UPDATE
+  // ============================================================
+
+  describe('999.53 -- token usage persistence', () => {
+    test('happy path: Step 7 UPDATE binds 8 params (llm_reply, degraded, 4 token cols, model, id)', async () => {
+      llmClient.compose.mockResolvedValueOnce({
+        ok: true,
+        text: 'logged inoc-2026-05-18',
+        usage: {
+          input_tokens: 100,
+          output_tokens: 50,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+        model: 'claude-sonnet-4-6',
+      });
+      await pipeline.handle(textEnvelope);
+      // Find the UPDATE call (Step 7) -- INSERT is call 0.
+      const updateCall = pool.query.mock.calls.find(
+        (c) => /UPDATE signal_capture\s+SET llm_reply/.test(c[0])
+      );
+      expect(updateCall).toBeDefined();
+      const [sql, params] = updateCall;
+      expect(sql).toMatch(/input_tokens/);
+      expect(sql).toMatch(/output_tokens/);
+      expect(sql).toMatch(/cache_creation_input_tokens/);
+      expect(sql).toMatch(/cache_read_input_tokens/);
+      expect(sql).toMatch(/model/);
+      expect(params).toHaveLength(8);
+      expect(params[0]).toBe('logged inoc-2026-05-18'); // llm_reply
+      expect(params[1]).toBe(false);                     // degraded
+      expect(params[2]).toBe(100);                       // input_tokens
+      expect(params[3]).toBe(50);                        // output_tokens
+      expect(params[4]).toBe(0);                         // cache_creation_input_tokens
+      expect(params[5]).toBe(0);                         // cache_read_input_tokens
+      expect(params[6]).toBe('claude-sonnet-4-6');       // model
+      expect(typeof params[7]).toBe('string');           // id (ulid)
+    });
+
+    test('usage missing entirely: UPDATE still fires, token params bind as null without throwing', async () => {
+      llmClient.compose.mockResolvedValueOnce({
+        ok: true,
+        text: 'ok',
+        usage: null,
+        model: 'claude-sonnet-4-6',
+      });
+      await expect(pipeline.handle(textEnvelope)).resolves.not.toThrow();
+      const updateCall = pool.query.mock.calls.find(
+        (c) => /UPDATE signal_capture\s+SET llm_reply/.test(c[0])
+      );
+      expect(updateCall).toBeDefined();
+      const [, params] = updateCall;
+      expect(params[2]).toBeNull();
+      expect(params[3]).toBeNull();
+      expect(params[4]).toBeNull();
+      expect(params[5]).toBeNull();
+      expect(params[6]).toBe('claude-sonnet-4-6');
+    });
+
+    test('partial usage (only input/output_tokens): missing cache cols bind null', async () => {
+      llmClient.compose.mockResolvedValueOnce({
+        ok: true,
+        text: 'ok',
+        usage: { input_tokens: 200, output_tokens: 75 },
+        model: 'claude-sonnet-4-6',
+      });
+      await pipeline.handle(textEnvelope);
+      const updateCall = pool.query.mock.calls.find(
+        (c) => /UPDATE signal_capture\s+SET llm_reply/.test(c[0])
+      );
+      const [, params] = updateCall;
+      expect(params[2]).toBe(200);
+      expect(params[3]).toBe(75);
+      expect(params[4]).toBeNull();
+      expect(params[5]).toBeNull();
+    });
+
+    test('degraded LLM (compose ok:false): no Step 7 UPDATE invoked (preserves existing behavior)', async () => {
+      llmClient.compose.mockResolvedValueOnce({ ok: false, reason: 'rate limit' });
+      await pipeline.handle(textEnvelope);
+      const updateCall = pool.query.mock.calls.find(
+        (c) => /UPDATE signal_capture\s+SET llm_reply/.test(c[0])
+      );
+      expect(updateCall).toBeUndefined();
+    });
+  });
 });
