@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Milestone: v1.7 -- Multimodal Signal to FarmOS Events. **Effectively shipped.** Phases 36-43 all complete; only Phase 42 (SHI-on-Sawdust pilot) remains as a calendar-bound human-driven run (3-4wk colonize). Re-audited 2026-05-15.
-Last activity: 2026-05-19 -- Completed quick task 260518-tbi (999.53: persist Anthropic token usage in signal_capture); 3 commits, 702 jest GREEN.
+Last activity: 2026-05-19 -- Completed quick tasks 260518-tbi (999.53: persist Anthropic token usage in signal_capture; 702 jest GREEN) + 260518-tcj (999.51 partial: bridge srvName test fix; bridge suite 234/236).
 
 **Next milestone (v1.8) is scoped + locked** per 2026-05-17 findings discussion:
 1. Phase 1: Event-gate + durable `signal_outbound` table (bundles findings 7 + 1b; ~4-5d). Plan-01 task is the 100-capture hand-classification smoke from `mushdatadump-prod` (per [[smoke-before-expensive-batch]]).
@@ -193,6 +193,7 @@ Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (for
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260518-tbi | 999.53: persist Anthropic token usage in signal_capture for cost visibility | 2026-05-19 | a3ec164 | [260518-tbi-999-53-persist-anthropic-token-usage-in-](./quick/260518-tbi-999-53-persist-anthropic-token-usage-in-/) |
+| 260518-tcj | 999.51 (partial): align bridge control_experiment test srvName with live un-namespaced paths | 2026-05-19 | f1a4331 | [260518-tcj-999-51-mechanical-bridge-srvname-fix](./quick/260518-tcj-999-51-mechanical-bridge-srvname-fix/) |
 
 ## Deferred Items
 
