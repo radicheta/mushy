@@ -213,6 +213,35 @@ function createExtractionPipeline({
         return { ok: false, reason };
       }
 
+      // 999.53: stamp token usage on the originating signal_capture row.
+      // Best-effort; failure logged + swallowed so the extraction pipeline never
+      // degrades on a usage-only write hiccup. Skipped on ok:false (above) and
+      // on usage:null to avoid all-null writes.
+      if (extractResult.usage) {
+        const u = extractResult.usage;
+        try {
+          await pool.query(
+            `UPDATE signal_capture
+               SET input_tokens = $1,
+                   output_tokens = $2,
+                   cache_creation_input_tokens = $3,
+                   cache_read_input_tokens = $4,
+                   model = $5
+             WHERE id = $6`,
+            [
+              u.input_tokens ?? null,
+              u.output_tokens ?? null,
+              u.cache_creation_input_tokens ?? null,
+              u.cache_read_input_tokens ?? null,
+              'claude-sonnet-4-6',
+              captureId,
+            ],
+          );
+        } catch (e) {
+          logger.warn && logger.warn(`[extraction] usage stamp failed: ${e.message}`);
+        }
+      }
+
       // Plan 08: extractor now returns drafts[] (multi-event per page for paper-log scans).
       // drafts.length === 1: legacy single-draft path (conversational, ask-back enabled).
       // drafts.length  >  1: batch mode -- force start_new, persist N rows, no per-draft
