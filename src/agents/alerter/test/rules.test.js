@@ -68,6 +68,84 @@ describe('isPiOffline', () => {
       config: cfg,
     })).toBe(false);
   });
+
+  // Phase 46 — D-03 third OR-trigger: stale fc1LastMsgTs.
+  describe('Phase 46 — fc1LastMsgTs third OR-trigger (D-03)', () => {
+    test('stale fc1LastMsgTs fires even though WS+ROS connected', () => {
+      // 6 min ago > piOfflineMin=5 min. ws+ros say healthy but fc1 publisher silent.
+      expect(isPiOffline({
+        wsConnected: true,
+        rosConnected: true,
+        nowMs: NOW,
+        wsLastConnectedMs: NOW - 1000,
+        rosDisconnectedSinceMs: null,
+        fc1LastMsgTs: NOW - 6 * 60000,
+        config: cfg,
+      })).toBe(true);
+    });
+
+    test('fresh fc1LastMsgTs and WS+ROS connected: false', () => {
+      expect(isPiOffline({
+        wsConnected: true,
+        rosConnected: true,
+        nowMs: NOW,
+        wsLastConnectedMs: NOW - 1000,
+        rosDisconnectedSinceMs: null,
+        fc1LastMsgTs: NOW - 30000, // 30s ago — fresh
+        config: cfg,
+      })).toBe(false);
+    });
+
+    test('undefined fc1LastMsgTs (old bridge / pre-46 caller) does not trigger', () => {
+      // graceful degradation per CONTEXT.md code_context.Integration Points.
+      expect(isPiOffline({
+        wsConnected: true,
+        rosConnected: true,
+        nowMs: NOW,
+        wsLastConnectedMs: NOW - 1000,
+        rosDisconnectedSinceMs: null,
+        // fc1LastMsgTs intentionally omitted (undefined)
+        config: cfg,
+      })).toBe(false);
+    });
+
+    test('null fc1LastMsgTs (bridge present but no fc1 data yet) does not trigger', () => {
+      expect(isPiOffline({
+        wsConnected: true,
+        rosConnected: true,
+        nowMs: NOW,
+        wsLastConnectedMs: NOW - 1000,
+        rosDisconnectedSinceMs: null,
+        fc1LastMsgTs: null,
+        config: cfg,
+      })).toBe(false);
+    });
+
+    test('existing wsConnected trigger RETAINED alongside new trigger (D-03)', () => {
+      // ws disconnected past threshold, fc1LastMsgTs fresh -- ws path still fires.
+      expect(isPiOffline({
+        wsConnected: false,
+        rosConnected: true,
+        nowMs: NOW,
+        wsLastConnectedMs: NOW - 6 * 60000,
+        rosDisconnectedSinceMs: null,
+        fc1LastMsgTs: NOW - 30000,
+        config: cfg,
+      })).toBe(true);
+    });
+
+    test('existing rosConnected trigger RETAINED alongside new trigger (D-03)', () => {
+      expect(isPiOffline({
+        wsConnected: true,
+        rosConnected: false,
+        nowMs: NOW,
+        wsLastConnectedMs: NOW - 1000,
+        rosDisconnectedSinceMs: NOW - 6 * 60000,
+        fc1LastMsgTs: NOW - 30000,
+        config: cfg,
+      })).toBe(true);
+    });
+  });
 });
 
 describe('isHumidifierStuck', () => {

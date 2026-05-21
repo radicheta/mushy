@@ -47,6 +47,10 @@ function initialState(nowMs = Date.now()) {
     wsLastConnectedMs: nowMs,
     rosConnected: false,
     rosDisconnectedSinceMs: null,
+    // Phase 46: bridge-aggregated fc1 publisher liveness. null until first
+    // /health poll or until bridge starts emitting the fc1 block (old bridge
+    // omits this field -- consumed defensively as null per graceful degradation).
+    fc1LastMsgTs: null,
     humidifierLastMsgTs: null,
     humidifierOnSinceMs: null,
     rhAtOn: null,
@@ -261,15 +265,16 @@ function transition(prev, event, now, config) {
       // pre-existing test behavior and pre-29 production semantics.
       const effective = hasModeContext(next) ? resolveEffectiveConfig(next, config, now) : config;
 
-      // RH alert (suppressed during warm-up)
-      if (!next.warmingUp) {
+      // RH alert (suppressed during warm-up; Phase 46 D-07: also suppressed
+      // while chamber-dark is FIRING — chamber-level alert subsumes per-sensor).
+      if (!next.warmingUp && next.perType.pi.state !== STATES.FIRING) {
         const oobNow = isRhOob(event.value, effective);
         const rhFields = { value: event.value, firstOobMs: next.perType.rh.firstOobAt };
         const r = driveAlertType(next.perType.rh, 'rh', oobNow, rhFields, now, effective);
         next.perType.rh = r.next;
         actions.push(...r.actions);
 
-        // Humidifier stuck check (also suppressed during warm-up)
+        // Humidifier stuck check (also suppressed during warm-up and chamber-dark)
         if (next.humidifierOnSinceMs != null) {
           const stuck = isHumidifierStuck({
             humidifierOnSinceMs: next.humidifierOnSinceMs,
@@ -373,7 +378,11 @@ function transition(prev, event, now, config) {
       // 999.42: per-sensor enable flags allow muting a permanently-disconnected
       // sensor's watchdog (e.g. SHT30 since 2026-04-11) without blanket env
       // band-aids that also mask real SCD41 outages.
-      if (now - next.bootedAtMs >= 60000) {
+      // Phase 46 D-07: per-sensor freshness watchdogs suppressed while
+      // chamber-dark FIRING. Note: sht30LastSeenMs/scd41LastSeenMs above are
+      // still refreshed unconditionally so when pi clears, evaluation resumes
+      // with accurate liveness state.
+      if (now - next.bootedAtMs >= 60000 && next.perType.pi.state !== STATES.FIRING) {
         const sensorCfg = { ...config, oobN: 1, oobWindowMin: 0 };
         // 2026-05-12 flap-floor: a single Pi-side `xxx_fresh==='false'` event
         // previously fired the watchdog immediately, then a `'true'` 1-2s later
@@ -423,7 +432,8 @@ function transition(prev, event, now, config) {
       const sensorEnabled = (sensor === 'sht30')
         ? (config.sht30Enabled !== false)
         : (config.scd41Enabled !== false);
-      if (sensorEnabled && now - next.bootedAtMs >= 60000) {
+      // Phase 46 D-07: per-sensor evaluation suppressed while pi FIRING.
+      if (sensorEnabled && now - next.bootedAtMs >= 60000 && next.perType.pi.state !== STATES.FIRING) {
         const sensorCfg = { ...config, oobN: 1, oobWindowMin: 0 };
         const lastMs = (sensor === 'sht30') ? next.sht30LastSeenMs : next.scd41LastSeenMs;
         const stale = isSensorSilent({ lastSeenMs: lastMs, nowMs: now, config });
@@ -473,7 +483,7 @@ function transition(prev, event, now, config) {
     }
 
     case 'pi_liveness': {
-      const { wsConnected, rosConnected, humidifierLastMsgTs } = event;
+      const { wsConnected, rosConnected, humidifierLastMsgTs, fc1LastMsgTs } = event;
 
       // Update connectivity state
       if (wsConnected !== next.wsConnected) {
@@ -493,6 +503,12 @@ function transition(prev, event, now, config) {
       if (humidifierLastMsgTs != null) {
         next.humidifierLastMsgTs = humidifierLastMsgTs;
       }
+      // Phase 46: store the bridge-aggregated fc1 publisher freshness so the
+      // tick re-evaluation also sees it. `undefined` (pre-46 events) leaves
+      // the prior value (initially null); explicit `null` overwrites.
+      if (fc1LastMsgTs !== undefined) {
+        next.fc1LastMsgTs = fc1LastMsgTs;
+      }
 
       // Startup grace: skip Pi-offline evaluation for first 60s
       if (now - next.bootedAtMs < 60000) break;
@@ -504,6 +520,7 @@ function transition(prev, event, now, config) {
         nowMs: now,
         wsLastConnectedMs: next.wsLastConnectedMs,
         rosDisconnectedSinceMs: next.rosDisconnectedSinceMs,
+        fc1LastMsgTs: next.fc1LastMsgTs,
         config: effective,
       });
 
@@ -530,7 +547,8 @@ function transition(prev, event, now, config) {
       next.humidifierCycleLog = next.humidifierCycleLog.filter(ts => now - ts <= 86400000);
       next.humidifierCyclesLast24h = next.humidifierCycleLog.length;
 
-      // Re-evaluate Pi offline (Phase 29 plan 29-04 — effective config + lastKnown)
+      // Re-evaluate Pi offline (Phase 29 plan 29-04 — effective config + lastKnown;
+      // Phase 46 — also pass fc1LastMsgTs so chamber-dark trigger fires on tick).
       if (now - next.bootedAtMs >= 60000) {
         const effective = hasModeContext(next) ? resolveEffectiveConfig(next, config, now) : config;
         const offline = isPiOffline({
@@ -539,6 +557,7 @@ function transition(prev, event, now, config) {
           nowMs: now,
           wsLastConnectedMs: next.wsLastConnectedMs,
           rosDisconnectedSinceMs: next.rosDisconnectedSinceMs,
+          fc1LastMsgTs: next.fc1LastMsgTs,
           config: effective,
         });
         const lastKnown = (next.currentRh != null && next.currentTemp != null && next.lastRhMsgTs != null)
@@ -555,8 +574,10 @@ function transition(prev, event, now, config) {
         actions.push(...r.actions);
       }
 
-      // Re-evaluate humidifier stuck (Phase 29 plan 29-04 — effective.humidifierStuckMin)
-      if (!next.warmingUp && next.humidifierOnSinceMs != null && next.currentRh != null) {
+      // Re-evaluate humidifier stuck (Phase 29 plan 29-04 — effective.humidifierStuckMin;
+      // Phase 46 D-07 — suppressed while pi FIRING).
+      if (!next.warmingUp && next.humidifierOnSinceMs != null && next.currentRh != null
+          && next.perType.pi.state !== STATES.FIRING) {
         const effective = hasModeContext(next) ? resolveEffectiveConfig(next, config, now) : config;
         const stuck = isHumidifierStuck({
           humidifierOnSinceMs: next.humidifierOnSinceMs,
@@ -575,7 +596,9 @@ function transition(prev, event, now, config) {
       // Required because during prolonged silence no sensor_health/
       // sensor_freshness events arrive — without periodic tick re-evaluation,
       // the FIRING transition would never happen.
-      if (now - next.bootedAtMs >= 60000) {
+      // Phase 46 D-07: suppress while pi FIRING (chamber-dark subsumes
+      // per-sensor noise; resumes naturally on next tick once pi clears).
+      if (now - next.bootedAtMs >= 60000 && next.perType.pi.state !== STATES.FIRING) {
         const sensorCfg = { ...config, oobN: 1, oobWindowMin: 0 };
         for (const sensor of ['sht30', 'scd41']) {
           // 999.42 gap fix: honor per-sensor enable flag here too. Without this,

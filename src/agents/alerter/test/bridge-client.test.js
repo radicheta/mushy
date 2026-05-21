@@ -256,4 +256,86 @@ describe('bridge-client.js', () => {
       expect(disconnectEvent).toBeDefined();
     });
   });
+
+  describe('Phase 46 — fc1LastMsgTs forwarding (D-02 consumer)', () => {
+    it('pollHealth forwards fc1LastMsgTs from /health.fc1.last_msg_ts', async () => {
+      const livenessEvents = [];
+      const wss = await makeWssServer();
+      const health = await makeHealthServer({
+        status: 'ok', db: true,
+        ros: { connected: true },
+        camera: { lastFrame: 1, last_frame_age_sec: 1, clients: 0, subscribed: false },
+        humidifier: { last_msg_ts: 1713456002000 },
+        fc1: { last_msg_ts: 1713456003500, last_msg_age_sec: 2 },
+      });
+      const c = createBridgeClient({
+        wsUrl: wss.url,
+        healthUrl: health.url,
+        onMessage: () => {},
+        onLiveness: (l) => livenessEvents.push(l),
+      });
+      c.start();
+      await new Promise((resolve) => { wss.wss.once('connection', resolve); });
+      await new Promise((r) => setTimeout(r, 100));
+      c.close();
+      await wss.close();
+      await health.close();
+
+      const wsOpenEvent = livenessEvents.find((e) => e.wsConnected === true);
+      expect(wsOpenEvent).toBeDefined();
+      expect(wsOpenEvent.fc1LastMsgTs).toBe(1713456003500);
+    });
+
+    it('pollHealth forwards fc1LastMsgTs: null when /health has no fc1 block (old bridge)', async () => {
+      const livenessEvents = [];
+      // healthInfo (default) has NO fc1 key.
+      client = createBridgeClient({
+        wsUrl: wssInfo.url,
+        healthUrl: healthInfo.url,
+        onMessage: () => {},
+        onLiveness: (l) => livenessEvents.push(l),
+      });
+      client.start();
+      await new Promise((resolve) => { wssInfo.wss.once('connection', resolve); });
+      await new Promise((r) => setTimeout(r, 100));
+
+      const wsOpenEvent = livenessEvents.find((e) => e.wsConnected === true);
+      expect(wsOpenEvent).toBeDefined();
+      expect(wsOpenEvent.fc1LastMsgTs).toBeNull();
+    });
+
+    it('ws_close forwards cached lastHealth.fc1.last_msg_ts', async () => {
+      const livenessEvents = [];
+      const wss = await makeWssServer();
+      const health = await makeHealthServer({
+        status: 'ok', db: true,
+        ros: { connected: true },
+        humidifier: { last_msg_ts: 1713456002000 },
+        fc1: { last_msg_ts: 1713456003500, last_msg_age_sec: 2 },
+      });
+      const c = createBridgeClient({
+        wsUrl: wss.url,
+        healthUrl: health.url,
+        onMessage: () => {},
+        onLiveness: (l) => livenessEvents.push(l),
+        minBackoffMs: 10000,
+      });
+      c.start();
+
+      const connectedWs = await new Promise((resolve) => {
+        wss.wss.once('connection', (ws) => resolve(ws));
+      });
+      await new Promise((r) => setTimeout(r, 100));
+      connectedWs.close();
+      await new Promise((r) => setTimeout(r, 100));
+
+      const closeEvent = livenessEvents.find((e) => e.wsConnected === false);
+      expect(closeEvent).toBeDefined();
+      expect(closeEvent.fc1LastMsgTs).toBe(1713456003500);
+
+      c.close();
+      await wss.close();
+      await health.close();
+    });
+  });
 });
