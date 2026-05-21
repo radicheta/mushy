@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Event-gate + Durable signal_outbound (tenant-aware)
 status: v1.8 scaffolded in ROADMAP; 4 research notes prepped; ready for discuss-phase on Phase 44
-last_updated: "2026-05-21T02:40:53.932Z"
-last_activity: 2026-05-21 -- Phase 46 execution started
+last_updated: "2026-05-21T13:15:00.000Z"
+last_activity: 2026-05-21 -- Phase 46 wave 2 (plan 03) deployed; chamber-dark live on prod; induced-outage attestation deferred to operator window
 progress:
   total_phases: 25
   completed_phases: 3
@@ -24,10 +24,17 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 
 ## Current Position
 
-Phase: 46 (chamber-dark-detector-real-fc1-liveness-signal-farmer-readab) — EXECUTING
-Plan: 1 of 3
+Phase: 46 (chamber-dark-detector-real-fc1-liveness-signal-farmer-readab) — wave 2 deployed; phase substantively complete; induced-outage farmer attestation deferred to operator window
+Plan: 3 of 3 (46-01, 46-02, 46-03 all shipped to prod)
 Milestone: v1.7 -- Multimodal Signal to FarmOS Events. **Effectively shipped.** Phases 36-43 all complete; only Phase 42 (SHI-on-Sawdust pilot) remains as a calendar-bound human-driven run (3-4wk colonize). Re-audited 2026-05-15.
-Last activity: 2026-05-21 -- Phase 46 execution started
+Last activity: 2026-05-21 -- Phase 46 plan 03 deployed bridge+alerter atomically; /health.fc1 schema live; chamber-dark trigger now live in prod
+
+**Phase 46 close-out:**
+- 46-01 shipped 2026-05-21 (bridge fc1LastMsgTs aggregator; 241/241 tests)
+- 46-02 shipped 2026-05-21 (alerter chamber-dark wiring; 720/728 tests)
+- 46-03 deployed 2026-05-21 (atomic rebuild + /health.fc1 schema verified live)
+- Task 2 of 46-03 (induced fc-core outage attestation with farmer) DEFERRED per plan DEFERRAL PATH — auto-mode executor cannot perform fc1 remote-action pre-flight; fc1 in post-outage settling period (`[[project_2026_05_20_fc_buffer_real_outage_validation]]`)
+- Operator-window protocol documented in 46-03-SMOKE.md "Suggested operator-window protocol"
 
 **Next milestone (v1.8) is scoped + locked** per 2026-05-17 findings discussion:
 
