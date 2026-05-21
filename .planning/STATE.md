@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Event-gate + Durable signal_outbound (tenant-aware)
 status: v1.8 scaffolded in ROADMAP; 4 research notes prepped; ready for discuss-phase on Phase 44
-last_updated: "2026-05-21T02:39:56.677Z"
-last_activity: 2026-05-21 -- Phase 46 planning complete
+last_updated: "2026-05-21T02:40:53.932Z"
+last_activity: 2026-05-21 -- Phase 46 execution started
 progress:
   total_phases: 25
   completed_phases: 3
@@ -20,12 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** v1.6 outage + recovery stack — all shipped; milestone scaffolding still deferred.
+**Current focus:** Phase 46 — chamber-dark-detector-real-fc1-liveness-signal-farmer-readab
 
 ## Current Position
 
+Phase: 46 (chamber-dark-detector-real-fc1-liveness-signal-farmer-readab) — EXECUTING
+Plan: 1 of 3
 Milestone: v1.7 -- Multimodal Signal to FarmOS Events. **Effectively shipped.** Phases 36-43 all complete; only Phase 42 (SHI-on-Sawdust pilot) remains as a calendar-bound human-driven run (3-4wk colonize). Re-audited 2026-05-15.
-Last activity: 2026-05-21 -- Phase 46 planning complete
+Last activity: 2026-05-21 -- Phase 46 execution started
 
 **Next milestone (v1.8) is scoped + locked** per 2026-05-17 findings discussion:
 
