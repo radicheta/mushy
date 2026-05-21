@@ -14,6 +14,7 @@ function createBridgeClient({
   let ws = null;
   let backoffMs = minBackoffMs;
   let reconnectTimer = null;
+  let healthTimer = null;
   let closed = false;
   let lastHealth = null;
 
@@ -47,6 +48,12 @@ function createBridgeClient({
       logger.info('[bridge-client] ws_open');
       backoffMs = minBackoffMs;
       await pollHealth();
+      // Phase 46 — keep state.fc1LastMsgTs warm. ws messages from the bridge
+      // never carry fc1.last_msg_ts (it's a /health aggregate), so without a
+      // periodic poll the alerter would snapshot it once at ws_open and stale
+      // out. 10s cadence matches the chamber-dark trigger granularity.
+      if (healthTimer) clearInterval(healthTimer);
+      healthTimer = setInterval(pollHealth, 10000);
     });
 
     ws.on('message', (data) => {
@@ -59,6 +66,7 @@ function createBridgeClient({
 
     ws.on('close', () => {
       logger.warn(`[bridge-client] ws_close; backoff=${backoffMs}ms`);
+      if (healthTimer) { clearInterval(healthTimer); healthTimer = null; }
       onLiveness({
         wsConnected: false,
         rosConnected: !!(lastHealth && lastHealth.ros && lastHealth.ros.connected),
@@ -83,6 +91,7 @@ function createBridgeClient({
     close() {
       closed = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (healthTimer) { clearInterval(healthTimer); healthTimer = null; }
       if (ws) ws.terminate();
     },
     isConnected() { return !!(ws && ws.readyState === WebSocket.OPEN); },

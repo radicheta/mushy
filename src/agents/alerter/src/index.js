@@ -224,8 +224,15 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
         applyEvent({ type: 'globals_update', globals: msg.alerter_globals });
       }
     },
-    onLiveness({ wsConnected, rosConnected, humidifierLastMsgTs }) {
-      applyEvent({ type: 'pi_liveness', wsConnected, rosConnected, humidifierLastMsgTs });
+    onLiveness({ wsConnected, rosConnected, humidifierLastMsgTs, fc1LastMsgTs }) {
+      // Phase 46 D-02 — forward bridge-aggregated fc1 publisher freshness so
+      // state.js's third OR-trigger (chamber-dark) can fire. Live-fire
+      // attestation 2026-05-21 showed this wiring was missing: pi-alert never
+      // reached FIRING during a real induced fc-core stop, so D-07 per-sensor
+      // suppression never engaged. Both module-level unit tests passed
+      // (bridge-client forwards it; state.js consumes it), but the index.js
+      // glue dropped the field on destructure.
+      applyEvent({ type: 'pi_liveness', wsConnected, rosConnected, humidifierLastMsgTs, fc1LastMsgTs });
     },
     logger,
   });
