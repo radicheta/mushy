@@ -245,9 +245,72 @@ See `46-03-SMOKE.md` "Live-fire Attestation Round 2" for the full timestamped se
 | `fix(46-03): D-09 hard 3-min threshold for fc1LastMsgTs chamber-dark branch` | `86d4340` |
 | (this SUMMARY + SMOKE.md update) | _next_ |
 
+### Round 2 RETRACTION (2026-05-21 ~19:25Z)
+
+The acceptance ledger above is WRONG. After Don Santiago asked for the
+exact wording of the message he received and couldn't find anything
+matching "FC-1 offline / chamber uncontrolled", I re-examined the
+18:06:56Z 91-char send and discovered it was the **sht30 boot-watchdog**
+firing at boot+5min (`ALERT_SENSOR_OFFLINE_MIN=5` + alerter rebuild at
+18:01:30Z reset `sht30LastSeenMs`), NOT the chamber-dark pi alert.
+
+The 91-char message that actually went out:
+
+```
+[PROBLEM · CRITICAL] FC-1 · Primary Humidity Sensor offline
+Open: http://100.96.10.66:8080/
+```
+
+**Root cause of misattribution (D-10):** `driveAlertType` uses generic
+`oobN=5` + `oobWindowMin=8min` for ALL alert types including pi
+(state.js:94-148). The D-09 hard 3-min threshold only changes when
+`firstOobAt` is first recorded; PENDING→FIRING still requires the 8-min
+window to elapse AND oobCount ≥ 5. Earliest possible pi FIRING is
+therefore T0 + ~11min, not T0 + ~3min. Round 2's outage was 4m27s — too
+short for pi to ever reach FIRING.
+
+Sensor-type alerts (sht30/scd41) override with
+`sensorCfg = { ...config, oobN: 1, oobWindowMin: 0 }` (state.js:353,386,
+437,602) and fire immediately. The timing coincidence (sht30 watchdog
+boot+5min ≈ T0+~4min) made me misread the sht30 send as the
+chamber-dark trigger.
+
+### What's actually attested by Round 2
+
+| Criterion | Result |
+|---|---|
+| D-09 code fix (3-min hard threshold in `rules.js:isPiOffline`) | YES — code + tests + commit `86d4340` |
+| 3 regression tests added in `rules.test.js` | YES — all 31 rules tests green |
+| Round 2 induced outage produced a chamber-dark pi alert | NO — pi never reached FIRING (4m27s < ~11min required) |
+| ONE D-05 chamber-level Signal message during silence | NO — only sht30 boot-watchdog send |
+| ZERO per-sensor sends during pi-FIRING (D-07) | NOT APPLICABLE — no pi-FIRING window |
+
+### D-10 finding (new): pi branch needs deterministic gating
+
+The `oobN=5` + `oobWindowMin=8min` gate is inherited from RH-alert
+semantics and is appropriate for noisy continuous measurements. It does
+NOT apply to a binary data-flow signal like chamber-dark — the 3-min
+hard threshold in `rules.js:isPiOffline` IS already the flap protection.
+
+Suggested fix: in `driveAlertType` (or by passing a pi-specific config),
+use `oobN=1` + `oobWindowMin=0` for the pi alert type, mirroring how
+sensor alerts already work. This makes pi FIRING happen ~3min after T0
+(the D-09 threshold + one alerter eval cycle), matching Phase 46 design
+intent.
+
+Alternative: lower `ALERT_OOB_WINDOW_MIN=8` globally — but that affects
+RH alerts too and would re-introduce the historical RH flap pathology.
+
 ### Phase 46 status
 
-**SHIP-GATE RELEASABLE.** All four CD-01..CD-04 attested under live induced
-outage with prod config. Farmer paste-back of the Signal message body is
-non-blocking — body verified by `message.test.js` and emitted live; ask
-when convenient.
+**SHIP-GATE STILL HELD.** Code is correct under unit tests (734 green,
+including 3 new D-09 regression tests). CD-02 + CD-03 remain unattested
+under live induced outage. Resolution options:
+
+1. Add D-10 fix (pi alert uses `oobN=1` + `oobWindowMin=0`) and re-attest
+   with a short ~5min induced outage.
+2. Reduce `ALERT_OOB_WINDOW_MIN` temporarily for a smoke run, then restore.
+3. Run a single ≥12-min induced outage with current prod config to
+   attest the path as-is, then file D-10 as backlog.
+
+Awaiting Don Santiago's call.

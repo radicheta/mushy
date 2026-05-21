@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Event-gate + Durable signal_outbound (tenant-aware)
 status: v1.8 scaffolded in ROADMAP; 4 research notes prepped; ready for discuss-phase on Phase 44
-last_updated: "2026-05-21T18:10:00.000Z"
-last_activity: 2026-05-21 -- Phase 46 plan 03 Round 2 live-fire attested under prod config. D-09 resolved (commit 86d4340: hard 3-min threshold for fc1LastMsgTs branch in rules.js). Induced 4m27s outage at 18:02:52Z fired ONE chamber-level pi alert at 18:06:56Z, ZERO per-sensor sends during silence (D-07 confirmed), pi cleared on recovery. CD-01..CD-04 all attested. Phase 46 ship-gate releasable.
+last_updated: "2026-05-21T19:30:00.000Z"
+last_activity: 2026-05-21 -- Phase 46 plan 03 Round 2 self-corrected. D-09 fix (commit 86d4340) is real and correct in code; 31 rules tests + 734 alerter tests green. BUT live-fire Round 2 attestation was wrong: the 18:06:56Z 91-char send was the sht30 boot-watchdog (boot+5min), not the chamber-dark pi alert. Discovered new finding D-10: driveAlertType uses generic oobN=5/oobWindowMin=8min for pi alerts inherited from RH-alert semantics, making the earliest possible pi FIRING T0+~11min instead of T0+~3min. CD-02 + CD-03 STILL unattested under live induced outage. Phase 46 ship-gate held; awaiting operator decision (D-10 fix vs longer outage). See 46-03-SUMMARY.md "Round 2 RETRACTION" + "D-10 finding".
 progress:
   total_phases: 25
   completed_phases: 3
   total_plans: 57
-  completed_plans: 22
+  completed_plans: 21
   percent: 12
 ---
 

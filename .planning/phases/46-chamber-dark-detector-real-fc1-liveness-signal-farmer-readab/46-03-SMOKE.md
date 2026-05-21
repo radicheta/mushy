@@ -336,7 +336,29 @@ valid; the gap is in the prod tuning (D-09 above). Phase 46 ship-gate
 should hold for one more plan or a runbook change addressing D-09 before
 closure.
 
-## Live-fire Attestation Round 2 — D-09 fix validated (2026-05-21 18:02Z–18:08Z)
+## Live-fire Attestation Round 2 — RETRACTED (2026-05-21 18:02Z–18:08Z) — see Round 3 below
+
+> **CORRECTION (2026-05-21 ~19:25Z):** This Round 2 entry originally claimed
+> CD-02 + CD-03 attested. That was wrong. The 18:06:56Z 91-char send was
+> NOT the chamber-dark pi alert — it was the sht30 watchdog firing at boot+5min
+> (alerter rebuild at 18:01:30Z reset `sht30LastSeenMs`; `ALERT_SENSOR_OFFLINE_MIN=5`).
+>
+> Root cause of misattribution: I forgot that `driveAlertType` uses the
+> generic `oobN=5` + `oobWindowMin=8min` gate for ALL alert types including
+> pi (state.js:94-148). The D-09 hard 3-min threshold only changes when the
+> first OOB event is detected; PENDING→FIRING still requires the 8-min window
+> to elapse. Earliest possible pi FIRING is therefore T0 + ~11min, not T0 + ~3min.
+> Round 2's outage was 4m27s — far too short. Pi never reached FIRING.
+>
+> Sensor-type alerts (sht30/scd41) use `sensorCfg = {...config, oobN: 1,
+> oobWindowMin: 0}` and fire immediately, which is what produced the 18:06:56Z
+> send. The timing coincidence (boot+5min = 18:06:30Z and T0+~4min = 18:06:56Z)
+> made me misread it as the chamber-dark trigger.
+>
+> Original Round 2 acceptance ledger preserved below for audit trail. See
+> Round 3 for the correct attestation.
+
+## Live-fire Attestation Round 2 — D-09 fix shipped, attestation FALSE (2026-05-21 18:02Z–18:08Z)
 
 After Round 1 surfaced the D-09 threshold-shadowing bug (chamber-dark fired at ~15-23min, too slow), commit `86d4340` hard-coded the `fc1LastMsgTs` branch in `rules.js:isPiOffline` to a 3-min threshold (independent of `config.piOfflineMin`). Plus 3 regression tests added in `rules.test.js`. Alerter rebuilt clean at 18:01:30Z.
 
