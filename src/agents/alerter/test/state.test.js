@@ -1059,3 +1059,209 @@ describe('Phase 29 mode + freshness', () => {
     expect(s.perType.pi.state).toBe(STATES.FIRING);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 46 — chamber-dark detector: fc1LastMsgTs trigger + per-sensor suppression
+// ---------------------------------------------------------------------------
+
+describe('Phase 46 — fc1LastMsgTs drives perType.pi to FIRING (CD-02 / D-03)', () => {
+  test('pi_liveness with stale fc1LastMsgTs drives perType.pi to FIRING despite ws+ros connected', () => {
+    // oobN=1 so first triggering event fires; piOfflineMin=5
+    const cfg = makeConfig({ oobN: 1, oobWindowMin: 0, piOfflineMin: 5 });
+    let s = initialState(T0);
+    // Past startup grace; ws+ros both connected (so existing triggers do NOT fire)
+    const tNow = T0 + 90_000; // 90s after boot
+    const r = transition(s, {
+      type: 'pi_liveness',
+      wsConnected: true,
+      rosConnected: true,
+      humidifierLastMsgTs: tNow - 1000,
+      fc1LastMsgTs: tNow - 6 * 60000, // 6 min stale > 5 min threshold
+    }, tNow, cfg);
+    expect(r.next.perType.pi.state).toBe(STATES.FIRING);
+    const sends = r.actions.filter(a => a.kind === 'send' && a.alertType === 'pi');
+    expect(sends).toHaveLength(1);
+  });
+
+  test('pi_liveness with fresh fc1LastMsgTs does NOT fire when ws+ros connected', () => {
+    const cfg = makeConfig({ oobN: 1, oobWindowMin: 0, piOfflineMin: 5 });
+    let s = initialState(T0);
+    const tNow = T0 + 90_000;
+    const r = transition(s, {
+      type: 'pi_liveness',
+      wsConnected: true,
+      rosConnected: true,
+      humidifierLastMsgTs: tNow - 1000,
+      fc1LastMsgTs: tNow - 30_000, // 30s fresh
+    }, tNow, cfg);
+    expect(r.next.perType.pi.state).not.toBe(STATES.FIRING);
+  });
+
+  test('when fc1LastMsgTs becomes fresh again, perType.pi clears (recovery)', () => {
+    const cfg = makeConfig({ oobN: 1, oobWindowMin: 0, piOfflineMin: 5 });
+    let s = initialState(T0);
+    const tStale = T0 + 90_000;
+    let r = transition(s, {
+      type: 'pi_liveness',
+      wsConnected: true,
+      rosConnected: true,
+      humidifierLastMsgTs: tStale - 1000,
+      fc1LastMsgTs: tStale - 6 * 60000,
+    }, tStale, cfg);
+    s = r.next;
+    expect(s.perType.pi.state).toBe(STATES.FIRING);
+    // Fresh data arrives.
+    const tFresh = tStale + 60_000;
+    r = transition(s, {
+      type: 'pi_liveness',
+      wsConnected: true,
+      rosConnected: true,
+      humidifierLastMsgTs: tFresh - 100,
+      fc1LastMsgTs: tFresh - 100,
+    }, tFresh, cfg);
+    s = r.next;
+    expect(s.perType.pi.state).toBe(STATES.OK);
+  });
+});
+
+describe('Phase 46 — per-sensor suppression while pi FIRING (D-07)', () => {
+  // Helper: drive perType.pi to FIRING via stale fc1LastMsgTs path.
+  function reachPiFiring(cfg) {
+    let s = initialState(T0);
+    const tNow = T0 + 90_000;
+    const r = transition(s, {
+      type: 'pi_liveness',
+      wsConnected: true,
+      rosConnected: true,
+      humidifierLastMsgTs: tNow - 1000,
+      fc1LastMsgTs: tNow - 10 * 60000,
+    }, tNow, cfg);
+    return { state: r.next, tNow };
+  }
+
+  test('scd41 sensor_health stale does NOT emit scd41 send while perType.pi is FIRING', () => {
+    const cfg = makeConfig({ oobN: 1, oobWindowMin: 0, piOfflineMin: 5, sensorFlapMinSec: 0 });
+    const { state: piFiring, tNow } = reachPiFiring(cfg);
+    expect(piFiring.perType.pi.state).toBe(STATES.FIRING);
+    // Send a sensor_health with scd41 stale -- should be suppressed.
+    const r = transition(piFiring,
+      { type: 'sensor_health', level: 0, message: 'ok',
+        values: { sht30_fresh: 'true', scd41_fresh: 'false' } },
+      tNow + 1000, cfg);
+    const scd41Sends = r.actions.filter(a => a.kind === 'send' && a.alertType === 'scd41');
+    expect(scd41Sends).toHaveLength(0);
+  });
+
+  test('RH OOB does NOT emit rh send while perType.pi is FIRING', () => {
+    const cfg = makeConfig({ oobN: 1, oobWindowMin: 0, piOfflineMin: 5 });
+    const { state: piFiring, tNow } = reachPiFiring(cfg);
+    expect(piFiring.perType.pi.state).toBe(STATES.FIRING);
+    const r = transition(piFiring, { type: 'humidity', value: 50 }, tNow + 1000, cfg);
+    const rhSends = r.actions.filter(a => a.kind === 'send' && a.alertType === 'rh');
+    expect(rhSends).toHaveLength(0);
+  });
+
+  test('humidifier-stuck does NOT emit humidifier send while perType.pi is FIRING', () => {
+    const cfg = makeConfig({ oobN: 1, oobWindowMin: 0, piOfflineMin: 5, humidifierStuckMin: 0 });
+    let s = initialState(T0);
+    // Turn humidifier on
+    let r = transition(s, { type: 'humidifier', value: 1 }, T0 + 1000, cfg);
+    s = r.next;
+    // Establish humidity baseline
+    r = transition(s, { type: 'humidity', value: 80 }, T0 + 2000, cfg);
+    s = r.next;
+    // Drive pi to FIRING.
+    const tStale = T0 + 90_000;
+    r = transition(s, {
+      type: 'pi_liveness',
+      wsConnected: true,
+      rosConnected: true,
+      humidifierLastMsgTs: tStale - 1000,
+      fc1LastMsgTs: tStale - 10 * 60000,
+    }, tStale, cfg);
+    s = r.next;
+    expect(s.perType.pi.state).toBe(STATES.FIRING);
+    // Now a humidity event that would normally trigger humidifier-stuck (no RH rise).
+    r = transition(s, { type: 'humidity', value: 80.5 }, tStale + 60_000, cfg);
+    const humSends = r.actions.filter(a => a.kind === 'send' && a.alertType === 'humidifier');
+    expect(humSends).toHaveLength(0);
+  });
+
+  test('sht30 sensor_health stale does NOT emit sht30 send while perType.pi is FIRING', () => {
+    const cfg = makeConfig({ oobN: 1, oobWindowMin: 0, piOfflineMin: 5, sensorFlapMinSec: 0, sht30Enabled: true });
+    const { state: piFiring, tNow } = reachPiFiring(cfg);
+    expect(piFiring.perType.pi.state).toBe(STATES.FIRING);
+    const r = transition(piFiring,
+      { type: 'sensor_health', level: 0, message: 'ok',
+        values: { sht30_fresh: 'false', scd41_fresh: 'true' } },
+      tNow + 1000, cfg);
+    const sht30Sends = r.actions.filter(a => a.kind === 'send' && a.alertType === 'sht30');
+    expect(sht30Sends).toHaveLength(0);
+  });
+
+  test('D-08: per-sensor scd41 FIRING does NOT prevent pi from evaluating (one-directional)', () => {
+    // Pre-condition: scd41 FIRING from a previous tick.
+    const cfg = makeConfig({ oobN: 1, oobWindowMin: 0, piOfflineMin: 5, sensorFlapMinSec: 0 });
+    let s = initialState(T0);
+    const t1 = T0 + 90_000;
+    // Drive scd41 to FIRING via Pi flag false (sensorFlapMinSec=0).
+    let r = transition(s,
+      { type: 'sensor_health', level: 0, message: 'ok',
+        values: { sht30_fresh: 'true', scd41_fresh: 'true' } },
+      t1, cfg);
+    s = r.next;
+    r = transition(s,
+      { type: 'sensor_health', level: 0, message: 'ok',
+        values: { sht30_fresh: 'true', scd41_fresh: 'false' } },
+      t1 + 1000, cfg);
+    s = r.next;
+    expect(s.perType.scd41.state).toBe(STATES.FIRING);
+    expect(s.perType.pi.state).not.toBe(STATES.FIRING);
+    // Now a pi_liveness with stale fc1LastMsgTs should STILL drive pi to FIRING.
+    const t2 = t1 + 10_000;
+    r = transition(s, {
+      type: 'pi_liveness',
+      wsConnected: true,
+      rosConnected: true,
+      humidifierLastMsgTs: t2 - 100,
+      fc1LastMsgTs: t2 - 10 * 60000,
+    }, t2, cfg);
+    expect(r.next.perType.pi.state).toBe(STATES.FIRING);
+    const piSends = r.actions.filter(a => a.kind === 'send' && a.alertType === 'pi');
+    expect(piSends).toHaveLength(1);
+  });
+
+  test('after pi clears, per-sensor evaluation resumes on next tick', () => {
+    const cfg = makeConfig({ oobN: 1, oobWindowMin: 0, piOfflineMin: 5, sensorFlapMinSec: 0 });
+    let s = initialState(T0);
+    const tStale = T0 + 90_000;
+    // pi FIRING
+    let r = transition(s, {
+      type: 'pi_liveness',
+      wsConnected: true,
+      rosConnected: true,
+      humidifierLastMsgTs: tStale - 100,
+      fc1LastMsgTs: tStale - 10 * 60000,
+    }, tStale, cfg);
+    s = r.next;
+    expect(s.perType.pi.state).toBe(STATES.FIRING);
+    // Fresh fc1LastMsgTs → pi clears
+    const tFresh = tStale + 60_000;
+    r = transition(s, {
+      type: 'pi_liveness',
+      wsConnected: true,
+      rosConnected: true,
+      humidifierLastMsgTs: tFresh - 100,
+      fc1LastMsgTs: tFresh - 100,
+    }, tFresh, cfg);
+    s = r.next;
+    expect(s.perType.pi.state).toBe(STATES.OK);
+    // Now scd41 stale should emit.
+    r = transition(s,
+      { type: 'sensor_health', level: 0, message: 'ok',
+        values: { sht30_fresh: 'true', scd41_fresh: 'false' } },
+      tFresh + 1000, cfg);
+    const scd41Sends = r.actions.filter(a => a.kind === 'send' && a.alertType === 'scd41');
+    expect(scd41Sends).toHaveLength(1);
+  });
+});
