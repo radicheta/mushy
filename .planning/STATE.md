@@ -3,15 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Event-gate + Durable signal_outbound (tenant-aware)
 status: v1.8 scaffolded in ROADMAP; 4 research notes prepped; ready for discuss-phase on Phase 44
-stopped_at: v1.8 scaffold + ROADMAP stale-plan cleanup (2026-05-17)
-last_updated: "2026-05-17T00:00:00Z"
-last_activity: 2026-05-17 -- Phase 44 + 45 added to ROADMAP; 4 overnight research agents landed notes (signal_outbound schema, prod corpus, tenant retrofit, NORTH-STAR ack sketch); Phase 36 plan checkboxes + Phase 39/40/41/42 stale 38-XX copy-paste lists cleaned
+last_updated: "2026-05-21T02:39:56.677Z"
+last_activity: 2026-05-21 -- Phase 46 planning complete
 progress:
-  v1.7_phases_complete: 7  # 36, 37, 38, 39, 40, 41, 43 -- Phase 42 scaffolded + calendar-deferred
-  v1.7_status: shipped-with-Phase-42-calendar-carry
-  v1.8_phases_planned: 2  # 44 event-gate+signal_outbound, 45 NORTH-STAR ack
-  v1.8_status: scaffolded; awaiting /gsd-discuss-phase 44
-  next_milestone: v1.8 (event-gate + signal_outbound bundle; tenant-aware per OSS-Foray Option α)
+  total_phases: 25
+  completed_phases: 3
+  total_plans: 57
+  completed_plans: 21
+  percent: 12
 ---
 
 # Project State
@@ -26,9 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Current Position
 
 Milestone: v1.7 -- Multimodal Signal to FarmOS Events. **Effectively shipped.** Phases 36-43 all complete; only Phase 42 (SHI-on-Sawdust pilot) remains as a calendar-bound human-driven run (3-4wk colonize). Re-audited 2026-05-15.
-Last activity: 2026-05-19 -- Completed quick tasks 260518-tbi (999.53: persist Anthropic token usage in signal_capture; 702 jest GREEN) + 260518-tcj (999.51 partial: bridge srvName test fix; bridge suite 234/236).
+Last activity: 2026-05-21 -- Phase 46 planning complete
 
 **Next milestone (v1.8) is scoped + locked** per 2026-05-17 findings discussion:
+
 1. Phase 1: Event-gate + durable `signal_outbound` table (bundles findings 7 + 1b; ~4-5d). Plan-01 task is the 100-capture hand-classification smoke from `mushdatadump-prod` (per [[smoke-before-expensive-batch]]).
 2. Phase 2+: NORTH-STAR commit_failed silent-reply ack fix (finding 3); replay outstanding silent-failure drafts `b8a1e586` (Vikki Rambo) + `1fb28e70` (Santi LIMA) as live-fire UAT.
 
@@ -237,6 +237,7 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 Last session: 2026-05-16 cleanup sweep -- Phase 36 SC#2 closure + Phase 43 doc landing + STATE refresh
 Next up: kick off v1.8 Phase 1 (event-gate + signal_outbound). Plan-01 = 100-capture hand-classification smoke from mushdatadump-prod, BEFORE spec-locking the gate. Reference notes:
+
   - .planning/notes/2026-05-17-is-this-an-event-gate.md (event-gate design)
   - .planning/notes/2026-05-17-llm-outbound-amnesia.md (signal_outbound table shape)
   - [[project_2026_05_17_findings_discussion_decisions]] (scope lock)

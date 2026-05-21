@@ -175,6 +175,11 @@ Locked 2026-05-17 per `.planning/notes/2026-05-17-oss-foray-decision.md` and pri
 - Cooldown semantics: does chamber-dark have its own cooldown distinct from the per-sensor cooldowns, or share the existing `ALERT_PI_OFFLINE_MIN`?
 - Should the per-sensor alerts be suppressed when chamber-dark is firing (avoid spamming the farmer with co2/sht30/rh-OOB while pi is dark), or kept for diagnostic detail?
 
+**Plans:** 3 plans
+- [ ] 46-01-PLAN.md — Bridge fc1LastMsgTs aggregator + /health.fc1 schema + bridge tests (CD-01, partial CD-04)
+- [ ] 46-02-PLAN.md — Alerter consumes fc1LastMsgTs; isPiOffline third OR-trigger; chamber-level pi message; per-sensor suppression; alerter tests (CD-02, CD-03, partial CD-04)
+- [ ] 46-03-PLAN.md — Atomic rebuild (docker-compose up -d --build bridge alerter) + induced-outage smoke attestation (closes CD-01..CD-04)
+
 ### Phase 36: Signal Pre-gate
 
 **Goal:** Unblock all Signal-driven downstream phases by re-registering the bot account as primary (deviceId=1) and verifying round-trip Signal receive + reply from at least two farmers.
