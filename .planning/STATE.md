@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Event-gate + Durable signal_outbound (tenant-aware)
 status: v1.8 scaffolded in ROADMAP; 4 research notes prepped; ready for discuss-phase on Phase 44
-last_updated: "2026-05-21T23:50:00.000Z"
-last_activity: 2026-05-21 -- Phase 46 SHIPPED + closed in ROADMAP. Farmer paste-back of 148-char chamber-dark message body verified verbatim (no em-dashes, rounded RH, @ HH:MM UTC pending TZ backlog). sht30 watchdog band-aid restored in .env (ALERT_SENSOR_OFFLINE_MIN: 5 -> 1440); alerter rebuilt; no more hourly false-positive nudges. Ready for next move: Phase 44 (v1.8 first phase) or sht30 structural fix.
+last_updated: "2026-05-21T23:50:39.448Z"
+last_activity: 2026-05-21 -- Phase 46 closed (ROADMAP marked); sht30 noise band-aid restored in .env (was accidentally reset 2026-05-20 to 5; back to 1440). Phase 46 close-out + sht30 fix committed.
 progress:
-  total_phases: 25
+  total_phases: 26
   completed_phases: 4
   total_plans: 57
-  completed_plans: 22
-  percent: 16
+  completed_plans: 24
+  percent: 15
 ---
 
 # Project State
@@ -30,6 +30,7 @@ Milestone: v1.7 -- Multimodal Signal to FarmOS Events. **Effectively shipped.** 
 Last activity: 2026-05-21 -- Phase 46 closed (ROADMAP marked); sht30 noise band-aid restored in .env (was accidentally reset 2026-05-20 to 5; back to 1440). Phase 46 close-out + sht30 fix committed.
 
 **Phase 46 close-out (final):**
+
 - 46-01 shipped 2026-05-21 (bridge fc1LastMsgTs aggregator; 241/241 tests)
 - 46-02 shipped 2026-05-21 (alerter chamber-dark wiring; 720/728 tests)
 - 46-03 shipped 2026-05-21 with 3-round live-fire:
@@ -38,11 +39,13 @@ Last activity: 2026-05-21 -- Phase 46 closed (ROADMAP marked); sht30 noise band-
   - Round 3 (23:11Z–23:28Z): D-10 fix shipped (`5f90cc7`, piCfg override). 148-char chamber-dark message at T0+3min32s; ZERO per-sensor sends in silence window; 85-char recovery message on fc1 republish. Farmer paste-back of message body verified verbatim 2026-05-21 ~23:30Z. CD-01..CD-04 all ATTESTED. **Ship-gate RELEASED.**
 
 **Backlog from Phase 46 (do not block ship):**
+
 - `.planning/todos/pending/2026-05-21-alerter-tz-montevideo-and-local-time-rendering.md` — TZ Toronto→Montevideo + hhmm() local-time rendering (currently `@ HH:MM` in chamber-dark message is UTC)
 - `[[project_alerter_watchdog_quiet_topic_bug]]` — sht30 structural fix (band-aid restored 2026-05-21 to 1440min)
 - Captured memories: `[[project-phase46-d09-globals-shadow-env]]`, `[[feedback-unit-tests-dont-catch-wiring]]`, `[[feedback-verify-signal-send-attribution]]`, `[[project-alerter-tz-toronto-legacy]]`
 - Operator-window protocol superseded by live-fire log in 46-03-SMOKE.md
   "Live-fire Attestation" section.
+
 - Don Santiago was the farmer for this smoke (`+59892893012` per
   `[[project_farmer_phone_map]]`); responded "Great" to a sht30 noise alert
   at 16:41:42Z; no out-of-band farmer-paste needed.
@@ -211,6 +214,7 @@ Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (for
   `piOfflineMin`, (b) introduce a separate `fc1_dark_min` global, or
   (c) treat env-var as a hard floor that globals cannot exceed. Decision
   required before CD-02/CD-03 fully close. See 46-03-SMOKE.md "D-09 finding".
+
 - **Phase 25 R1 unproven:** signal-cli receive returns HTTP 400 today (linked-secondary device limitation); without R1, none of the capture channel's downstream value is reachable. Requires SIM-bearing 4G router for primary re-registration spike.
 - Phase 17: Signal primary-account registration on 4G router SIM is a manual pre-phase step (~1-2h); cannot begin coding until complete
 - Phase 19: FarmOS admin actions (FC-1 asset, farmos_agent permissions) depend on farm team availability — document proxy-around path at phase start if admin access is delayed
@@ -263,7 +267,7 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 ## Session Continuity
 
-Last session: 2026-05-16 cleanup sweep -- Phase 36 SC#2 closure + Phase 43 doc landing + STATE refresh
+Last session: 2026-05-21T23:50:39.438Z
 Next up: kick off v1.8 Phase 1 (event-gate + signal_outbound). Plan-01 = 100-capture hand-classification smoke from mushdatadump-prod, BEFORE spec-locking the gate. Reference notes:
 
   - .planning/notes/2026-05-17-is-this-an-event-gate.md (event-gate design)
