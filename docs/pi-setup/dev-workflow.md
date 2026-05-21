@@ -92,7 +92,7 @@ Requires matching ROS domain — set before running any `ros2` commands:
 
 ```bash
 export ROS_DOMAIN_ID=69
-export ROS_LOCALHOST_ONLY=0
+export ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
 ros2 topic list
 ros2 topic echo fc/humidity
 ros2 topic echo fc/temperature

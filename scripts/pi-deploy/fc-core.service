@@ -9,7 +9,7 @@ StartLimitBurst=5
 Type=simple
 User=ubuntu
 Environment="ROS_DOMAIN_ID=69"
-Environment="ROS_LOCALHOST_ONLY=0"
+Environment="ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET"
 Environment="RMW_IMPLEMENTATION=rmw_cyclonedds_cpp"
 Environment="CYCLONEDDS_URI=file:///etc/cyclonedds.xml"
 Environment="HOME=/home/ubuntu"

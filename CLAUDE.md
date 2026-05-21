@@ -29,7 +29,7 @@ source setup.sh
 
 Key environment variables:
 - `ROS_DOMAIN_ID=69` - Network isolation for multi-robot systems
-- `ROS_LOCALHOST_ONLY=0` - Allows external ROS connections
+- `ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET` - Allows external ROS connections (Jazzy successor to deprecated `ROS_LOCALHOST_ONLY=0`)
 
 ## Development Commands
 

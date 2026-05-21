@@ -13,7 +13,7 @@ services:
       - timescale
     environment:
       - ROS_DOMAIN_ID=69
-      - ROS_LOCALHOST_ONLY=0
+      - ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET  # 999.50: Jazzy replacement for deprecated ROS_LOCALHOST_ONLY=0
       # Set FAKE_SENSORS=1 to publish simulated data (testing without Pi)
       - FAKE_SENSORS=${FAKE_SENSORS:-0}
       - TIMESCALE_HOST=localhost

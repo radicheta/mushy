@@ -19,4 +19,4 @@ source ~/mushroom_farm_ws/install/setup.sh
 
 # On all devices, add to ~/.bashrc
 export ROS_DOMAIN_ID=69  # Choose any number between 0-101, use same on all devices
-export ROS_LOCALHOST_ONLY=0  # Allow external connections
+export ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET  # 999.50: Jazzy replacement for deprecated ROS_LOCALHOST_ONLY=0
