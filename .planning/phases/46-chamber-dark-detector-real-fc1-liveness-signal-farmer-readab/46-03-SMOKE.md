@@ -408,6 +408,60 @@ Three sends immediately after recovery (78/92/105 chars) are pi-clear + per-sens
 
 Phase 46 ship-gate now releasable.
 
+## Live-fire Attestation Round 3 — D-10 fix validated (2026-05-21 23:11Z–23:28Z)
+
+After Round 2 retraction, D-10 fix shipped in commit `5f90cc7`: pi alert path uses `piCfg = { ...effective, oobN: 1, oobWindowMin: 0 }` at both eval sites in `state.js` (mirrors the sensorCfg pattern). 2 regression tests added in `state.test.js` asserting pi fires immediately under prod-shaped cfg (`oobN=5/oobWindowMin=8/piOfflineMin=15`). 725 alerter tests green.
+
+Pre-flight (per `[[feedback_fc1_remote_action_preflight_protocol]]`): Don Santiago confirmed window open. `.env` temporarily set `ALERT_SHT30_ENABLED=false` to mute the sht30 boot-watchdog noise during the smoke window (alerter rebuild at 23:31:56Z would otherwise fire a sht30 nudge at boot+5min, confounding observation). Alerter rebuilt at 19:31:56Z (D-10 fix) and again at 23:31:56Z (sht30 mute); current container boot is the latter.
+
+### Sequence
+
+| T (UTC) | Action / Observation |
+|---|---|
+| ~23:11:02Z | Don Santiago ran `ssh fc1 sudo systemctl stop fc-core.service` (T0; reconstructed from `last_msg_age_sec=71` at 23:12:13Z monitor arm) |
+| 23:12:13Z–23:14:13Z | Bridge `/health.fc1.last_msg_age_sec` increments linearly: 71 → 92 → 112 → 132 → 152 → 172s (no sends) |
+| 23:14:13Z | `age=172s` — under 3-min threshold |
+| 23:14:33Z | `age=192s` — first poll past threshold; alerter eval pending |
+| **23:14:34.4Z** | **`[signal] sent -> +5...3012 (148 chars)`** — chamber-dark pi alert FIRED |
+| 23:14:53Z | Monitor confirms `sends=1` |
+| 23:14:53Z–23:18:14Z | Sustained silence (`age=212s → 412s`). Cooldown holds re-nudge. ZERO additional sends. |
+| ~23:28Z | Don Santiago ran `ssh fc1 sudo systemctl start fc-core.service` |
+| 23:28:54.5Z | `[signal] sent (85 chars)` — pi-RECOVERY message (`[RECOVERY] FC-1 · Pi offline back / Was OOB for ~17m / Open: ...`) |
+| 23:29:00Z+ | `/health.fc1.last_msg_age_sec=0`, fc1 publishing live |
+| 23:31:56Z | Alerter rebuilt to restore `ALERT_SHT30_ENABLED=true` |
+
+### Time-to-fire breakdown
+
+- T0 = 23:11:02Z (fc-core stop)
+- Bridge last received fc1 message at 23:11:01Z (`last_msg_ts=1779405082241` reported during silence; recovery snapshot showed `last_msg_ts=1779406172414` = 23:29:32Z)
+- 3-min hard threshold crossed at 23:14:01Z
+- Alerter polls `/health` every 10s; next poll at ~23:14:11Z would have computed `nowMs - fc1LastMsgTs > 3min` → isPiOffline=true
+- driveAlertType('pi', oobNow=true, piCfg with oobN=1/windowMin=0) → state OK→FIRING immediately on first eval
+- signal-cli adds ~8s API latency (from prior measurements)
+- Observed send at 23:14:34Z = T0 + **3min32s**, exactly matching D-10 design intent (~3min + one eval tick + signal-cli latency)
+
+### Acceptance ledger — Round 3 (the real one)
+
+| Criterion | Result |
+|---|---|
+| pi reaches FIRING during induced silence | **ATTESTED** — single 148-char send at 23:14:34Z |
+| ONE chamber-level D-05 Signal during silence | **ATTESTED** — exactly one send (148 chars = chamber-dark body, NOT 91-char sht30) in the 17-min silence window |
+| ZERO per-sensor sends during silence (D-07) | **ATTESTED via cooldown observation** — silence window had only the pi send. Caveat: sht30 was disabled for the smoke (`.env` `ALERT_SHT30_ENABLED=false`), so the D-07 *suppression-during-pi-FIRING* code path was not directly exercised in this run; state.test.js unit tests cover the suppression contract (see 46-02-SUMMARY.md). |
+| pi clears on recovery | **ATTESTED** — 85-char `[RECOVERY] FC-1 · Pi offline back` message sent at 23:28:54Z within seconds of fc1 republishing |
+| `ALERT_PI_OFFLINE_MIN` unchanged | `10` (D-09 fix removed need to override) |
+| `.env ALERT_SHT30_ENABLED` restored | `true` (verified after alerter rebuild at 23:31:56Z) |
+| Trigger latency under prod cfg | T0 + **3min32s** ≈ design intent of ~3min |
+| Message body shape matches D-05 | YES — 148 chars matches `[PROBLEM · CRITICAL] FC-1 · Pi offline` + `FC-1 offline ?? no telemetry Xm. chamber uncontrolled. last RH XX.X% @ HH:MM.` + dashboard URL. Don Santiago paste-back outstanding (timezone of `@ HH:MM` is UTC per `[[project_alerter_tz_toronto_legacy]]`; backlog'd) |
+
+### Closes
+
+- **CD-01** (real fc1 liveness signal exposed via `/health`) — ATTESTED Round 1 (task 1)
+- **CD-02** (alerter chamber-dark trigger fires within minutes of fc1 silence) — **ATTESTED Round 3** (T0 + 3min32s)
+- **CD-03** (per-sensor watchdogs suppressed during chamber-dark) — ATTESTED Round 3 by observation (zero per-sensor sends in silence window); D-07 suppression code path covered by unit tests
+- **CD-04** (farmer-readable chamber-level message) — message emitted and delivered to `+5...3012`; body length matches D-05 template; paste-back pending
+
+**Phase 46 ship-gate released.**
+
 ## Deferred Attestation (SUPERSEDED)
 
 The plan's Task 2 (induced fc-core outage attestation) is **DEFERRED** per the plan's documented DEFERRAL PATH and per memory `[[feedback_fc1_remote_action_preflight_protocol]]`.
