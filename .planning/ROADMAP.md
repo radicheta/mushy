@@ -145,7 +145,7 @@ Locked 2026-05-17 per `.planning/notes/2026-05-17-oss-foray-decision.md` and pri
 
 - [ ] **Phase 44: Event-gate + durable `signal_outbound` (tenant-aware)** — rules-only event gate at `capture.js:147` + new `signal_outbound(tenant_id, intent, ...)` table + Phase 37 prompt consumes `lastBotOutbound`; ship-gate is 100-capture hand-classification smoke from prod corpus (Plan-01); per-tenant config tree begins under `tenants/mossrock/`. References `.planning/notes/2026-05-17-is-this-an-event-gate.md` + `.planning/notes/2026-05-17-llm-outbound-amnesia.md`.
 - [ ] **Phase 45: NORTH-STAR commit_failed ack + replay outstanding silent-failure drafts** — every terminal state post-farmer-YES must produce a farmer-facing reply (success + failure paths). Implements `[[feedback_no_silent_failure_after_farmer_confirm]]`. Live-fire UAT: replay drafts `b8a1e586` (Vikki Rambo) + `1fb28e70` (Santi LIMA) through the fixed path. References `.planning/notes/2026-05-17-northstar-commit-failed-reply.md`.
-- [ ] **Phase 46: Chamber-dark detector — real fc1-liveness signal + farmer-readable pi-offline message** — Hotfix from 2026-05-20 fc1 outage debug session. `isPiOffline` keys off alerter↔bridge WS + a one-shot `rosReady` boot flag; neither reflects fc1 publisher liveness, so during fc1's 10h47m blackout the only Signal alert that fired was "co2 sensor offline" (per-sensor, vague). Fix: bridge tracks `fc1LastMsgTs` across all fc1 topics + exposes in `/health`; alerter consumes as a third OR-trigger for `isPiOffline`; `formatProblem('pi')` becomes chamber-level using the `lastKnown` payload `state.js` already builds. References `.planning/debug/alerter-co2-only-not-pi.md`.
+- [x] **Phase 46: Chamber-dark detector — real fc1-liveness signal + farmer-readable pi-offline message** — Shipped 2026-05-21. Live-fire attested Round 3 at T0+3min32s. Two extra bugs found and fixed during smoke: D-09 globals-shadow (commit `86d4340`) and D-10 oobN/oobWindowMin gate (commit `5f90cc7`). Hotfix from 2026-05-20 fc1 outage debug session. `isPiOffline` keys off alerter↔bridge WS + a one-shot `rosReady` boot flag; neither reflects fc1 publisher liveness, so during fc1's 10h47m blackout the only Signal alert that fired was "co2 sensor offline" (per-sensor, vague). Fix: bridge tracks `fc1LastMsgTs` across all fc1 topics + exposes in `/health`; alerter consumes as a third OR-trigger for `isPiOffline`; `formatProblem('pi')` becomes chamber-level using the `lastKnown` payload `state.js` already builds. References `.planning/debug/alerter-co2-only-not-pi.md`.
 
 </details>
 
@@ -176,9 +176,9 @@ Locked 2026-05-17 per `.planning/notes/2026-05-17-oss-foray-decision.md` and pri
 - Should the per-sensor alerts be suppressed when chamber-dark is firing (avoid spamming the farmer with co2/sht30/rh-OOB while pi is dark), or kept for diagnostic detail?
 
 **Plans:** 3 plans
-- [ ] 46-01-PLAN.md — Bridge fc1LastMsgTs aggregator + /health.fc1 schema + bridge tests (CD-01, partial CD-04)
-- [ ] 46-02-PLAN.md — Alerter consumes fc1LastMsgTs; isPiOffline third OR-trigger; chamber-level pi message; per-sensor suppression; alerter tests (CD-02, CD-03, partial CD-04)
-- [ ] 46-03-PLAN.md — Atomic rebuild (docker-compose up -d --build bridge alerter) + induced-outage smoke attestation (closes CD-01..CD-04)
+- [x] 46-01-PLAN.md — Bridge fc1LastMsgTs aggregator + /health.fc1 schema + bridge tests (CD-01, partial CD-04)
+- [x] 46-02-PLAN.md — Alerter consumes fc1LastMsgTs; isPiOffline third OR-trigger; chamber-level pi message; per-sensor suppression; alerter tests (CD-02, CD-03, partial CD-04)
+- [x] 46-03-PLAN.md — Atomic rebuild + Round 3 live-fire attestation; D-09 + D-10 fixes shipped during the attestation cycle (closes CD-01..CD-04)
 
 ### Phase 36: Signal Pre-gate
 

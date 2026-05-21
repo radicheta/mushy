@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Event-gate + Durable signal_outbound (tenant-aware)
 status: v1.8 scaffolded in ROADMAP; 4 research notes prepped; ready for discuss-phase on Phase 44
-last_updated: "2026-05-21T23:35:00.000Z"
-last_activity: 2026-05-21 -- Phase 46 plan 03 Round 3 LIVE-FIRE ATTESTED. D-10 fix shipped (commit 5f90cc7): pi alert path bypasses oobN/oobWindowMin gate via piCfg={oobN:1,oobWindowMin:0} mirroring sensorCfg. Induced outage T0=23:11:02Z fired ONE 148-char chamber-dark pi alert at 23:14:34Z = T0+3min32s; ZERO per-sensor sends in silence window; 85-char pi-recovery message at 23:28:54Z. CD-01..CD-04 all ATTESTED. Phase 46 ship-gate RELEASED. Two confirmed-fixed bugs (D-09 hard threshold + D-10 gate bypass) + two backlog items (TZ Toronto->Montevideo, sht30 watchdog).
+last_updated: "2026-05-21T23:50:00.000Z"
+last_activity: 2026-05-21 -- Phase 46 SHIPPED + closed in ROADMAP. Farmer paste-back of 148-char chamber-dark message body verified verbatim (no em-dashes, rounded RH, @ HH:MM UTC pending TZ backlog). sht30 watchdog band-aid restored in .env (ALERT_SENSOR_OFFLINE_MIN: 5 -> 1440); alerter rebuilt; no more hourly false-positive nudges. Ready for next move: Phase 44 (v1.8 first phase) or sht30 structural fix.
 progress:
   total_phases: 25
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 57
   completed_plans: 22
-  percent: 12
+  percent: 16
 ---
 
 # Project State
@@ -20,32 +20,27 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 46 — chamber-dark-detector-real-fc1-liveness-signal-farmer-readab
+**Current focus:** Phase 46 SHIPPED 2026-05-21. Next up: choose between Phase 44 (v1.8 first phase) and the sht30 watchdog structural fix.
 
 ## Current Position
 
-Phase: 46 (chamber-dark-detector-real-fc1-liveness-signal-farmer-readab) — wave 2 deployed + live-fire attested; wiring bug fixed; **verification gate HELD pending D-09 globals resolution** before CD-02/CD-03 fully close
-Plan: 3 of 3 (46-01, 46-02, 46-03 all shipped to prod; live-fire patch 206f202)
+Phase: 46 — **SHIPPED 2026-05-21.** Live-fire attested Round 3 at T0+3min32s. Two extra bugs found and fixed in-flight: D-09 globals-shadow (`86d4340`) + D-10 oobN/oobWindowMin gate (`5f90cc7`). Two backlog items left as todos.
+Plan: 3 of 3 complete (46-01, 46-02, 46-03)
 Milestone: v1.7 -- Multimodal Signal to FarmOS Events. **Effectively shipped.** Phases 36-43 all complete; only Phase 42 (SHI-on-Sawdust pilot) remains as a calendar-bound human-driven run (3-4wk colonize). Re-audited 2026-05-15.
-Last activity: 2026-05-21 -- Phase 46 plan 03 live-fire: wiring bug fixed (fc1LastMsgTs dropped on destructure); D-09 finding (~23min TTF with prod globals) needs human decision before phase fully verifies
+Last activity: 2026-05-21 -- Phase 46 closed (ROADMAP marked); sht30 noise band-aid restored in .env (was accidentally reset 2026-05-20 to 5; back to 1440). Phase 46 close-out + sht30 fix committed.
 
-**Phase 46 close-out:**
+**Phase 46 close-out (final):**
 - 46-01 shipped 2026-05-21 (bridge fc1LastMsgTs aggregator; 241/241 tests)
 - 46-02 shipped 2026-05-21 (alerter chamber-dark wiring; 720/728 tests)
-- 46-03 deployed 2026-05-21 (atomic rebuild + /health.fc1 schema verified live)
-- 46-03 live-fire 2026-05-21 16:27Z-16:54Z (two induced outages; commit `206f202`):
-  - **Bug 1 (FIXED):** `index.js:227` destructured onLiveness payload without
-    `fc1LastMsgTs`; state.fc1LastMsgTs stayed null forever -> third OR-trigger
-    never fired -> D-07 never engaged. Both module unit tests missed it.
-  - **Bug 2 (FIXED):** `bridge-client.js` pollHealth ran only once on ws_open;
-    added 10s setInterval so state.fc1LastMsgTs stays fresh.
-  - **D-09 finding (HUMAN DECISION REQUIRED):** fc_controller publishes
-    `pi_offline_min: 15` via TRANSIENT_LOCAL alerter_globals; bridge replays
-    it to alerter on reconnect, stomping env. With prod globals
-    `piOfflineMin=15 + oobN=5 + oobWindowMin=8`, chamber-dark TTF is ~23min.
-    Options: hard-code <3min for fc1LastMsgTs branch in rules.js, or
-    introduce `fc1_dark_min` global, or env-as-floor. Tracked in
-    46-03-SUMMARY.md "D-09 finding".
+- 46-03 shipped 2026-05-21 with 3-round live-fire:
+  - Round 1 (16:27Z–16:54Z): exposed wiring bug (`index.js:227` destructure-drop); fixed in `206f202`. Surfaced D-09 (globals shadow env).
+  - Round 2 (18:02Z–18:08Z): D-09 fix shipped (`86d4340`, hard 3-min threshold for fc1LastMsgTs branch). Attestation initially declared PASS but RETRACTED (`52c1d50`) — the 91-char send was sht30 boot-watchdog, not chamber-dark pi. Surfaced D-10 (oobN/oobWindowMin gate blocks fast pi FIRING).
+  - Round 3 (23:11Z–23:28Z): D-10 fix shipped (`5f90cc7`, piCfg override). 148-char chamber-dark message at T0+3min32s; ZERO per-sensor sends in silence window; 85-char recovery message on fc1 republish. Farmer paste-back of message body verified verbatim 2026-05-21 ~23:30Z. CD-01..CD-04 all ATTESTED. **Ship-gate RELEASED.**
+
+**Backlog from Phase 46 (do not block ship):**
+- `.planning/todos/pending/2026-05-21-alerter-tz-montevideo-and-local-time-rendering.md` — TZ Toronto→Montevideo + hhmm() local-time rendering (currently `@ HH:MM` in chamber-dark message is UTC)
+- `[[project_alerter_watchdog_quiet_topic_bug]]` — sht30 structural fix (band-aid restored 2026-05-21 to 1440min)
+- Captured memories: `[[project-phase46-d09-globals-shadow-env]]`, `[[feedback-unit-tests-dont-catch-wiring]]`, `[[feedback-verify-signal-send-attribution]]`, `[[project-alerter-tz-toronto-legacy]]`
 - Operator-window protocol superseded by live-fire log in 46-03-SMOKE.md
   "Live-fire Attestation" section.
 - Don Santiago was the farmer for this smoke (`+59892893012` per
