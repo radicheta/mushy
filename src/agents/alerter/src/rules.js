@@ -24,13 +24,23 @@ function isSensorError(sensorHealth) {
 
 /**
  * isPiOffline({ wsConnected, rosConnected, nowMs, wsLastConnectedMs,
- *               rosDisconnectedSinceMs, config }) -> boolean
+ *               rosDisconnectedSinceMs, fc1LastMsgTs, config }) -> boolean
  *
- * Fires if:
+ * Fires if any of:
  * - WS has been disconnected for > piOfflineMin minutes, OR
- * - ROS has been disconnected for > piOfflineMin minutes
+ * - ROS has been disconnected for > piOfflineMin minutes, OR
+ * - fc1LastMsgTs is stale by > piOfflineMin minutes (Phase 46 D-03).
+ *
+ * The fc1LastMsgTs trigger is the actual "chamber dark" signal: fc1 publisher
+ * silence inferred from data flow across every subscribed topic. The existing
+ * ws/ros triggers are RETAINED (D-03) because they catch real failure modes
+ * (alerter<->bridge partition, bridge container ROS init failure) that the
+ * data-flow signal alone would not surface.
+ *
+ * fc1LastMsgTs `undefined` (old caller / pre-46) or `null` (old bridge with
+ * no fc1 block in /health) skips the new branch -- graceful degradation.
  */
-function isPiOffline({ wsConnected, rosConnected, nowMs, wsLastConnectedMs, rosDisconnectedSinceMs, config }) {
+function isPiOffline({ wsConnected, rosConnected, nowMs, wsLastConnectedMs, rosDisconnectedSinceMs, fc1LastMsgTs, config }) {
   const thresholdMs = config.piOfflineMin * 60000;
 
   if (!wsConnected && wsLastConnectedMs != null) {
@@ -39,6 +49,12 @@ function isPiOffline({ wsConnected, rosConnected, nowMs, wsLastConnectedMs, rosD
 
   if (rosConnected === false && rosDisconnectedSinceMs != null) {
     if (nowMs - rosDisconnectedSinceMs > thresholdMs) return true;
+  }
+
+  // Phase 46 D-03: third OR-trigger. `!= null` handles both undefined (old
+  // caller) and null (old bridge) identically: no trigger, no false positive.
+  if (fc1LastMsgTs != null) {
+    if (nowMs - fc1LastMsgTs > thresholdMs) return true;
   }
 
   return false;
