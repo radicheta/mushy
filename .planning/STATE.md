@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Event-gate + Durable signal_outbound (tenant-aware)
 status: v1.8 scaffolded in ROADMAP; 4 research notes prepped; ready for discuss-phase on Phase 44
-last_updated: "2026-05-21T17:00:00.000Z"
-last_activity: 2026-05-21 -- Phase 46 plan 03 live-fire attestation: wiring bug fixed (fc1LastMsgTs dropped on destructure in index.js); D-09 globals issue surfaced (pi_offline_min=15 from fc_config replays via TRANSIENT_LOCAL, blocks <2min chamber-dark TTF); phase verification gate held pending D-09 resolution
+last_updated: "2026-05-21T18:10:00.000Z"
+last_activity: 2026-05-21 -- Phase 46 plan 03 Round 2 live-fire attested under prod config. D-09 resolved (commit 86d4340: hard 3-min threshold for fc1LastMsgTs branch in rules.js). Induced 4m27s outage at 18:02:52Z fired ONE chamber-level pi alert at 18:06:56Z, ZERO per-sensor sends during silence (D-07 confirmed), pi cleared on recovery. CD-01..CD-04 all attested. Phase 46 ship-gate releasable.
 progress:
   total_phases: 25
   completed_phases: 3
   total_plans: 57
-  completed_plans: 21
+  completed_plans: 22
   percent: 12
 ---
 
