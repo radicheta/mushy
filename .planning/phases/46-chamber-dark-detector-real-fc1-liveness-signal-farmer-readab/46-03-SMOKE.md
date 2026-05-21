@@ -336,6 +336,56 @@ valid; the gap is in the prod tuning (D-09 above). Phase 46 ship-gate
 should hold for one more plan or a runbook change addressing D-09 before
 closure.
 
+## Live-fire Attestation Round 2 — D-09 fix validated (2026-05-21 18:02Z–18:08Z)
+
+After Round 1 surfaced the D-09 threshold-shadowing bug (chamber-dark fired at ~15-23min, too slow), commit `86d4340` hard-coded the `fc1LastMsgTs` branch in `rules.js:isPiOffline` to a 3-min threshold (independent of `config.piOfflineMin`). Plus 3 regression tests added in `rules.test.js`. Alerter rebuilt clean at 18:01:30Z.
+
+Don Santiago opened a farmer window for the follow-up attestation. Pre-existing sht30 watchdog noise (`[[project_alerter_watchdog_quiet_topic_bug]]`) acknowledged as orthogonal; not fixed in this plan.
+
+### Sequence
+
+| T (UTC) | Action / Observation |
+|---|---|
+| 18:02:45Z | `ssh fc1 sudo systemctl stop fc-core.service` issued |
+| 18:02:52Z | fc-core stopped on fc1 |
+| 18:03:29Z | `/health.fc1.last_msg_age_sec=41` |
+| 18:04:29Z | `/health.fc1.last_msg_age_sec=101` |
+| 18:05:29Z | `/health.fc1.last_msg_age_sec=161` |
+| 18:05:59Z | `/health.fc1.last_msg_age_sec=191` (past 3-min threshold) |
+| 18:06:29Z | `/health.fc1.last_msg_age_sec=221` |
+| **18:06:56Z** | **`[signal] sent -> +5...3012 (91 chars)`** — single chamber-level pi alert fired (delay ~4m04s from T0; ~1m04s past 3-min threshold = alerter's poll cycle + flap-min eval gating) |
+| 18:06:59Z | `/health.fc1.last_msg_age_sec=251` |
+| 18:07:19Z | `ssh fc1 sudo systemctl start fc-core.service` issued |
+| ~18:07:45Z | fc1 publishing resumed; `/health.fc1.last_msg_age_sec → 1` within ~10s of fc-core start |
+| 18:07:50Z | `[signal] sent (78 chars)` — pi recovery message |
+| 18:07:56Z | `[signal] sent (92 chars)` — sensor recovery message #1 |
+| 18:08:09Z | `[signal] sent (105 chars)` — sensor recovery message #2 |
+| 18:08:30Z | `/health.fc1.last_msg_age_sec=0`, fc-core `active`, alerter stable |
+
+### Acceptance ledger — Round 2
+
+| Criterion | Result |
+|---|---|
+| pi reaches FIRING during induced silence | **ATTESTED** — single send at 18:06:56Z |
+| ONE chamber-level Signal during silence window (D-05) | **ATTESTED** — exactly one send 18:02:52Z to 18:07:19Z |
+| ZERO per-sensor (sht30/scd41/rh/humidifier) sends during silence | **ATTESTED** — only the one chamber-level send in that window; D-07 suppression confirmed |
+| pi clears on recovery within ~10s | **ATTESTED** — `last_msg_age_sec` dropped to 1 inside the recovery poll window |
+| ALERT_PI_OFFLINE_MIN unchanged | env still `10` (D-09 fix removed the need to override) |
+| Trigger latency under prod cfg | ~4m from T0 (3-min hard threshold + alerter eval cycle); acceptable per D-09 design |
+
+### Recovery sends (post-silence)
+
+Three sends immediately after recovery (78/92/105 chars) are pi-clear + per-sensor catch-up messages from the suppressed window. These are EXPECTED behavior: D-07 suppresses *new* per-sensor FIRING during pi-FIRING but state.js retains `lastSeenMs` updates so post-recovery re-evaluation is accurate. Not noise.
+
+### Closes
+
+- **CD-01** (real fc1 liveness signal exposed via `/health`) — ATTESTED Round 1 (task 1)
+- **CD-02** (alerter chamber-dark trigger fires within minutes of fc1 silence) — ATTESTED Round 2 (~4m from T0)
+- **CD-03** (per-sensor watchdogs suppressed during chamber-dark) — ATTESTED Round 2 (zero per-sensor sends during silence)
+- **CD-04** (farmer-readable chamber-level message) — message body verified by `message.test.js` and emitted live at 18:06:56Z; ask farmer for paste-back when convenient (not blocking)
+
+Phase 46 ship-gate now releasable.
+
 ## Deferred Attestation (SUPERSEDED)
 
 The plan's Task 2 (induced fc-core outage attestation) is **DEFERRED** per the plan's documented DEFERRAL PATH and per memory `[[feedback_fc1_remote_action_preflight_protocol]]`.

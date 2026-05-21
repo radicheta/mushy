@@ -219,3 +219,35 @@ is needed before the phase is fully verified.
 |---|---|
 | `feat(46-03): live-fire attestation — fix fc1LastMsgTs wiring + periodic pollHealth` | _below_ |
 | (this SUMMARY + SMOKE.md + STATE.md final metadata) | _below_ |
+
+## Round 2 — D-09 fix shipped + live-fire attested (2026-05-21 18:02Z–18:08Z)
+
+D-09 resolved per operator decision: hard-code 3-min threshold for the
+`fc1LastMsgTs` branch in `rules.js:isPiOffline`, independent of
+`config.piOfflineMin`. Legacy ws/ros branches still honor config for
+backwards-compat. Three regression tests added.
+
+A second induced outage (4m27s wall, T0=18:02:52Z) attested CD-02 + CD-03:
+
+| Criterion | Result |
+|---|---|
+| pi FIRING during silence | ATTESTED — single send at 18:06:56Z (~4m04s from T0) |
+| ONE chamber-level Signal during silence | ATTESTED |
+| ZERO per-sensor sends during silence (D-07) | ATTESTED |
+| pi clears on recovery within ~10s | ATTESTED |
+
+See `46-03-SMOKE.md` "Live-fire Attestation Round 2" for the full timestamped sequence and acceptance ledger.
+
+### Round 2 commits
+
+| Item | Commit |
+|---|---|
+| `fix(46-03): D-09 hard 3-min threshold for fc1LastMsgTs chamber-dark branch` | `86d4340` |
+| (this SUMMARY + SMOKE.md update) | _next_ |
+
+### Phase 46 status
+
+**SHIP-GATE RELEASABLE.** All four CD-01..CD-04 attested under live induced
+outage with prod config. Farmer paste-back of the Signal message body is
+non-blocking — body verified by `message.test.js` and emitted live; ask
+when convenient.
