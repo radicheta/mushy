@@ -133,18 +133,21 @@ describe('Phase 46 — chamber-level pi message (D-05 / D-06)', () => {
     expect(body).not.toMatch(/—/);
   });
 
-  test('Test 4: pi alert rounds RH per fmtNum (94.05 -> "94.1", 94.0 -> "94")', () => {
+  test('Test 4: pi alert rounds RH per fmtNum (94.15 -> "94.2", 94.0 -> "94")', () => {
+    // Note: 94.05 rounds to "94.0" in JS due to float repr (94.05 -> 94.0499...).
+    // 94.15 is unambiguous: toFixed(1) -> "94.2". 94.0 -> "94" via the strip-.0
+    // path in fmtNum. Both cases exercise the rounding pipeline.
     const bodyA = formatProblem({
       alertType: 'pi',
       severity: 'CRITICAL',
       fields: {
         lastSeenMs: OUTAGE_TS,
-        lastKnown: { rh: 94.05, temp: 24.1, humidifier: 'OFF', tsMs: OUTAGE_TS },
+        lastKnown: { rh: 94.15, temp: 24.1, humidifier: 'OFF', tsMs: OUTAGE_TS },
       },
       config,
       nowMs: OUTAGE_TS + 10 * 60000,
     });
-    expect(bodyA).toContain('94.1');
+    expect(bodyA).toContain('94.2');
     const bodyB = formatProblem({
       alertType: 'pi',
       severity: 'CRITICAL',

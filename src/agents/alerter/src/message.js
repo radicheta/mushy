@@ -45,6 +45,12 @@ function fmtRelative(pastMs, nowMs) {
   return `${diffMin}m ago`;
 }
 
+// Phase 46 D-05: render a UTC timestamp as zero-padded HH:MM for the
+// chamber-dark message ("last RH XX% @ HH:MM").
+function hhmm(tsMs) {
+  return new Date(tsMs).toISOString().slice(11, 16);
+}
+
 /**
  * formatProblem({alertType, severity, fields, config, nowMs}) -> string
  *
@@ -67,17 +73,19 @@ function formatProblem({ alertType, severity, fields, config, nowMs }) {
       body += `First OOB: ${fmtRelative(firstOobMs, nowMs)}\n`;
     }
   } else if (alertType === 'pi') {
+    // Phase 46 D-05 / D-06: chamber-level message. The old per-sensor framing
+    // ("Pi offline / Last seen: 12m ago / Last sample: RH ...") was structurally
+    // misleading during a real chamber-dark event -- the farmer needs to know
+    // "FC-1 is dark, chamber uncontrolled" up front.
     const { lastSeenMs, lastKnown } = fields;
-    if (lastSeenMs != null) {
-      body += `Last seen: ${fmtRelative(lastSeenMs, nowMs)}\n`;
-    }
-    if (lastKnown) {
-      // Phase 29 / 999.39 — situational context for offline alarms.
-      // Schema: { rh: number, temp: number, humidifier: 'ON'|'OFF', tsMs: number|null }
-      body += `Last sample: RH ${fmtNum(lastKnown.rh)}% · T ${fmtNum(lastKnown.temp)}°C · humidifier ${lastKnown.humidifier}\n`;
-      if (lastKnown.tsMs != null) {
-        body += `(captured ${fmtRelative(lastKnown.tsMs, nowMs)})\n`;
-      }
+    const ageMin = lastKnown && lastKnown.tsMs != null
+      ? Math.round((nowMs - lastKnown.tsMs) / 60000)
+      : (lastSeenMs != null ? Math.round((nowMs - lastSeenMs) / 60000) : null);
+    const ageStr = ageMin != null ? `${ageMin}m` : '?';
+    if (lastKnown != null) {
+      body += `FC-1 offline ?? no telemetry ${ageStr}. chamber uncontrolled. last RH ${fmtNum(lastKnown.rh)}% @ ${hhmm(lastKnown.tsMs)}.\n`;
+    } else {
+      body += `FC-1 offline ?? no telemetry ${ageStr}. chamber uncontrolled. no recent samples.\n`;
     }
   } else if (alertType === 'sht30' || alertType === 'scd41') {
     // Hidden 2026-04-25 pending backlog 999.18: lastSeenMs is bootstrapped from
