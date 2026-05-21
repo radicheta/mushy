@@ -9,17 +9,22 @@ const config = {
 };
 
 describe('formatProblem', () => {
-  test('Test A: Pi offline CRITICAL message contains required elements', () => {
+  test('Test A: Pi offline CRITICAL message contains chamber-level phrasing and dashboard URL (Phase 46 D-05)', () => {
+    // Phase 46 rewrote the pi message from "Pi offline" per-sensor framing to a
+    // chamber-level "FC-1 offline ?? ... chamber uncontrolled" message.
+    const tsMs = Date.parse('2026-05-20T13:04:00Z');
     const body = formatProblem({
       alertType: 'pi',
       severity: 'CRITICAL',
-      fields: { lastSeenMs: 1 },
+      fields: {
+        lastSeenMs: tsMs,
+        lastKnown: { rh: 94.0, temp: 24.1, humidifier: 'OFF', tsMs },
+      },
       config,
-      nowMs: 10,
+      nowMs: tsMs + 10 * 60000,
     });
-    expect(body).toContain('[PROBLEM · CRITICAL]');
-    expect(body).toContain('FC-1');
-    expect(body).toContain('Pi offline');
+    expect(body).toContain('FC-1 offline');
+    expect(body).toContain('chamber uncontrolled');
     expect(body).toContain(config.dashboardUrl);
   });
 
@@ -76,61 +81,82 @@ describe('formatHeartbeat', () => {
   });
 });
 
-describe('Phase 29 — pi alert last-known summary (999.39)', () => {
-  test('Test 1: pi alert with lastKnown emits a "Last sample:" line', () => {
+describe('Phase 46 — chamber-level pi message (D-05 / D-06)', () => {
+  // Use a deterministic fixed UTC timestamp so HH:MM rendering is stable.
+  // 2026-05-20T13:04:00Z is the actual outage start from the debug session.
+  const OUTAGE_TS = Date.parse('2026-05-20T13:04:00Z');
+
+  test('Test 1: pi alert with lastKnown contains FC-1 offline + chamber uncontrolled + last RH + HH:MM', () => {
     const body = formatProblem({
       alertType: 'pi',
       severity: 'CRITICAL',
       fields: {
-        lastSeenMs: 1700000000000,
-        lastKnown: { rh: 87.2, temp: 21.4, humidifier: 'ON', tsMs: 1699999000000 },
+        lastSeenMs: OUTAGE_TS,
+        lastKnown: { rh: 94.0, temp: 24.1, humidifier: 'OFF', tsMs: OUTAGE_TS },
       },
       config,
-      nowMs: 1700000500000,
+      nowMs: OUTAGE_TS + 10 * 60000,
     });
-    expect(body).toContain('Last seen:');
-    expect(body).toContain('Last sample: RH 87.2% · T 21.4°C · humidifier ON');
+    expect(body).toContain('FC-1 offline');
+    expect(body).toContain('chamber uncontrolled');
+    expect(body).toContain('last RH 94%');
+    expect(body).toContain('13:04'); // HH:MM from OUTAGE_TS, UTC
   });
 
-  test('Test 2: pi alert without lastKnown omits "Last sample:" line', () => {
-    const body = formatProblem({
-      alertType: 'pi',
-      severity: 'CRITICAL',
-      fields: { lastSeenMs: 1700000000000 },
-      config,
-      nowMs: 1700000500000,
-    });
-    expect(body).toContain('Last seen:');
-    expect(body).not.toContain('Last sample:');
-  });
-
-  test('Test 3: lastKnown.humidifier OFF appears in the body', () => {
+  test('Test 2: pi alert without lastKnown contains "no recent samples" and does not crash (D-06)', () => {
     const body = formatProblem({
       alertType: 'pi',
       severity: 'CRITICAL',
       fields: {
-        lastSeenMs: 1700000000000,
-        lastKnown: { rh: 90.0, temp: 22.0, humidifier: 'OFF', tsMs: 1699999000000 },
+        lastSeenMs: OUTAGE_TS,
+        lastKnown: null,
       },
       config,
-      nowMs: 1700000500000,
+      nowMs: OUTAGE_TS + 10 * 60000,
     });
-    expect(body).toContain('humidifier OFF');
+    expect(body).toContain('FC-1 offline');
+    expect(body).toContain('chamber uncontrolled');
+    expect(body).toContain('no recent samples');
   });
 
-  test('Test 4: lastKnown with lastSeenMs=null omits Last seen but includes Last sample', () => {
+  test('Test 3: pi alert message contains NO em-dash (U+2014)', () => {
     const body = formatProblem({
       alertType: 'pi',
       severity: 'CRITICAL',
       fields: {
-        lastSeenMs: null,
-        lastKnown: { rh: 87.2, temp: 21.4, humidifier: 'ON', tsMs: 1699999000000 },
+        lastSeenMs: OUTAGE_TS,
+        lastKnown: { rh: 94.0, temp: 24.1, humidifier: 'OFF', tsMs: OUTAGE_TS },
       },
       config,
-      nowMs: 1700000500000,
+      nowMs: OUTAGE_TS + 10 * 60000,
     });
-    expect(body).not.toContain('Last seen:');
-    expect(body).toContain('Last sample:');
+    expect(body).not.toMatch(/—/);
+  });
+
+  test('Test 4: pi alert rounds RH per fmtNum (94.05 -> "94.1", 94.0 -> "94")', () => {
+    const bodyA = formatProblem({
+      alertType: 'pi',
+      severity: 'CRITICAL',
+      fields: {
+        lastSeenMs: OUTAGE_TS,
+        lastKnown: { rh: 94.05, temp: 24.1, humidifier: 'OFF', tsMs: OUTAGE_TS },
+      },
+      config,
+      nowMs: OUTAGE_TS + 10 * 60000,
+    });
+    expect(bodyA).toContain('94.1');
+    const bodyB = formatProblem({
+      alertType: 'pi',
+      severity: 'CRITICAL',
+      fields: {
+        lastSeenMs: OUTAGE_TS,
+        lastKnown: { rh: 94.0, temp: 24.1, humidifier: 'OFF', tsMs: OUTAGE_TS },
+      },
+      config,
+      nowMs: OUTAGE_TS + 10 * 60000,
+    });
+    expect(bodyB).toContain('last RH 94%');
+    expect(bodyB).not.toContain('94.0%');
   });
 
   test('Test 5: dashboardUrl appears exactly once when lastKnown is provided', () => {
