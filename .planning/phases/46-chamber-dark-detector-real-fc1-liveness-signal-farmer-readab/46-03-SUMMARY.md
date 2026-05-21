@@ -314,3 +314,46 @@ under live induced outage. Resolution options:
    attest the path as-is, then file D-10 as backlog.
 
 Awaiting Don Santiago's call.
+
+## Round 3 — D-10 fix shipped + live-fire attested (2026-05-21 23:11Z–23:28Z)
+
+D-10 resolved per operator decision: pi alert path bypasses the generic
+`oobN=5` + `oobWindowMin=8min` gate by wrapping `effective` with
+`piCfg = { ...effective, oobN: 1, oobWindowMin: 0 }` at both eval sites
+in `state.js`. Mirrors the existing sensorCfg pattern. 2 regression tests
+added (725 alerter tests green).
+
+A third induced outage (T0=23:11:02Z, recovery=~23:28:30Z, total ~17min)
+attested CD-02 + CD-03 + recovery:
+
+| Criterion | Result |
+|---|---|
+| pi FIRING during silence | ATTESTED — single 148-char chamber-dark send at T0 + **3min32s** |
+| ONE chamber-level Signal during silence (D-05) | ATTESTED |
+| ZERO per-sensor sends during silence | ATTESTED via observation (caveat: sht30 was muted via `.env` for the smoke; D-07 suppression code covered by unit tests) |
+| pi clears on recovery | ATTESTED — 85-char `[RECOVERY] FC-1 · Pi offline back / Was OOB for ~17m / ...` sent at 23:28:54Z |
+| Trigger latency matches design intent (~3min) | ATTESTED |
+
+See `46-03-SMOKE.md` "Live-fire Attestation Round 3" for full timestamped sequence + acceptance ledger + char-count forensics.
+
+### Round 3 commits
+
+| Item | Commit |
+|---|---|
+| `fix(46-03): D-10 bypass oobN/oobWindowMin gate for pi alerts` | `5f90cc7` |
+| `docs(46-03): Round 3 attestation + final ship-gate release` | _next_ |
+
+### Phase 46 final status
+
+**SHIP-GATE RELEASED.** All four CD-01..CD-04 attested under live induced
+outage with prod cfg. Two confirmed-discovered, confirmed-fixed bugs:
+- D-09: `pi_offline_min=15` global shadowed env; fix = hard 3-min threshold for fc1LastMsgTs branch (commit `86d4340`)
+- D-10: `oobN=5/oobWindowMin=8min` gate inherited from RH-alert semantics blocked fast pi FIRING; fix = piCfg override (commit `5f90cc7`)
+
+Backlogged (does not block ship):
+- `.planning/todos/pending/2026-05-21-alerter-tz-montevideo-and-local-time-rendering.md` — TZ + `hhmm()` UTC rendering
+- `[[project_alerter_watchdog_quiet_topic_bug]]` — sht30 noise (orthogonal to Phase 46)
+
+Don Santiago paste-back of the 148-char chamber-dark message body is
+non-blocking; timezone in `@ HH:MM` is currently UTC pending the TZ backlog
+item.
