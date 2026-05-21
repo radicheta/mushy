@@ -15,6 +15,7 @@ const buffer_replay = require('./buffer_replay');
 const control_param = require('./control_param');
 const control_persist = require('./control_persist');
 const control_experiment = require('./control_experiment');
+const { markFc1Active, getFc1LastMsgTs, getFc1LastMsgAgeSec } = require('./fc1_liveness');
 
 // Fail fast if database password is not configured
 if (!process.env.TIMESCALE_PASSWORD) {
@@ -325,6 +326,17 @@ app.get('/health', async (req, res) => {
         },
         humidifier: {
             last_msg_ts: humidifierLastMsgTs
+        },
+        // Phase 46 Plan 01 (CD-01 / CD-04): expose fc1LastMsgTs -- the
+        // aggregate liveness signal computed by the fc1_liveness module
+        // across the 9 subscribed fc1 data/state topics. Alerter (plan
+        // 46-02) consumes last_msg_age_sec as a third OR-trigger for
+        // isPiOffline. Per CONTEXT.md D-01, fc1LastMsgTs lives in the
+        // shared helper (markFc1Active) instead of inline module state;
+        // semantics are identical to a top-level `let fc1LastMsgTs`.
+        fc1: {
+            last_msg_ts: getFc1LastMsgTs(),
+            last_msg_age_sec: getFc1LastMsgAgeSec()
         },
         snapshots: { last_24h: snapshotsLast24h, oldest_at: oldestSnapshotAt },
         snapshots_last_24h: snapshotsLast24h,
@@ -769,6 +781,7 @@ rclnodejs.init().then(async () => {
             const tsNs = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec;
             const ts = tsMs || Date.now();
             latestTelemetry.humidity = { value, timestamp: ts };
+            markFc1Active(Date.now());
             broadcast({ humidity: value, timestamp: ts });
             await insertTelemetry('fc.humidity', value, tsMs, tsNs);
         }
@@ -785,6 +798,7 @@ rclnodejs.init().then(async () => {
             const tsNs = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec;
             const ts = tsMs || Date.now();
             latestTelemetry.temperature = { value, timestamp: ts };
+            markFc1Active(Date.now());
             broadcast({ temperature: value, timestamp: ts });
             await insertTelemetry('fc.temperature', value, tsMs, tsNs);
         }
@@ -804,6 +818,7 @@ rclnodejs.init().then(async () => {
             const tsNs = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec;
             const ts = tsMs || Date.now();
             latestTelemetry.temperature_2 = { value, timestamp: ts };
+            markFc1Active(Date.now());
             broadcast({ temperature_2: value, timestamp: ts });
             await insertTelemetry('fc.temperature_2', value, tsMs, tsNs);
         }
@@ -818,6 +833,7 @@ rclnodejs.init().then(async () => {
             const tsNs = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec;
             const ts = tsMs || Date.now();
             latestTelemetry.humidity_2 = { value, timestamp: ts };
+            markFc1Active(Date.now());
             broadcast({ humidity_2: value, timestamp: ts });
             await insertTelemetry('fc.humidity_2', value, tsMs, tsNs);
         }
@@ -832,6 +848,7 @@ rclnodejs.init().then(async () => {
             const ts = Date.now();
             const tsNs = ts * 1_000_000;
             latestTelemetry.co2 = { value, timestamp: ts };
+            markFc1Active(Date.now());
             broadcast({ co2: value, timestamp: ts });
             await insertTelemetry('fc.co2', value, ts, tsNs);
         }
@@ -861,6 +878,7 @@ rclnodejs.init().then(async () => {
             humidifierLastMsgTs = ts;
             const value = msg.data ? 1 : 0;
             latestTelemetry.humidifier = { value, timestamp: ts };
+            markFc1Active(Date.now());
             broadcast({ humidifier: value, timestamp: ts });
             await insertTelemetry('fc.humidifier', value, ts, tsNs);
         }
@@ -879,6 +897,7 @@ rclnodejs.init().then(async () => {
             const ts = Date.now();
             const tsNs = ts * 1_000_000;
             latestTelemetry.humidifier_duty = { value, timestamp: ts };
+            markFc1Active(Date.now());
             broadcast({ humidifier_duty: value, timestamp: ts });
             await insertTelemetry('fc.humidifier_duty', value, ts, tsNs);
         }
@@ -915,6 +934,7 @@ rclnodejs.init().then(async () => {
             const ts = Date.now();
             const tsNs = ts * 1_000_000;
             latestTelemetry.pid_output = { value, timestamp: ts };
+            markFc1Active(Date.now());
             broadcast({ pid_output: value, timestamp: ts });
             await insertTelemetry('fc.pid_output', value, ts, tsNs);
         }
@@ -940,6 +960,7 @@ rclnodejs.init().then(async () => {
                 timestamp: Date.now()
             };
             lastSensorHealthBroadcast = payload;
+            markFc1Active(Date.now());
             broadcast(payload);
         }
     );
