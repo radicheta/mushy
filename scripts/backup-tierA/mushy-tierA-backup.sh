@@ -50,6 +50,21 @@ for src in /mnt/slime-kingdom/opt/mushy/.env /mnt/slime-kingdom/shared/farmos/.e
   fi
 done
 
+# 999.52: signal-cli docker volume — losing this forces full re-registration
+# + re-link of all farmer Signal trust (multi-hour reconstruction). Bundled
+# via a transient alpine container so we don't need sudo to read the volume's
+# _data directory.
+if docker volume inspect mushy_signal-cli-data >/dev/null 2>&1; then
+  docker run --rm \
+    -v mushy_signal-cli-data:/data:ro \
+    -v "$WORK/payload/elder-plops":/out \
+    alpine:3 sh -c 'tar -czf /out/signal-cli-data.tar.gz -C /data .' \
+    || fail "tar mushy_signal-cli-data"
+  log "  staged docker volume mushy_signal-cli-data ($(stat -c%s "$WORK/payload/elder-plops/signal-cli-data.tar.gz") bytes)"
+else
+  log "  skip: mushy_signal-cli-data volume not present"
+fi
+
 # fc1 — runtime_overrides.yaml + heartbeat unit drift (not in pi-deploy yet)
 ssh -o BatchMode=yes -o ConnectTimeout=10 fc1 'cat /var/lib/fc-core/runtime_overrides.yaml' \
   > "$WORK/payload/fc1/runtime_overrides.yaml" 2>/dev/null || fail "pull fc1 runtime_overrides.yaml"
