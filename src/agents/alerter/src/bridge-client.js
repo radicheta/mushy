@@ -27,11 +27,14 @@ function createBridgeClient({
         wsConnected: true,
         rosConnected: !!(h.ros && h.ros.connected),
         humidifierLastMsgTs: h.humidifier ? h.humidifier.last_msg_ts : null,
+        // Phase 46 D-02 consumer: forward bridge-aggregated fc1 liveness.
+        // null when /health has no fc1 block (old bridge -- graceful degradation).
+        fc1LastMsgTs: h.fc1 ? h.fc1.last_msg_ts : null,
         nowMs: Date.now(),
       });
     } catch (e) {
       logger.warn(`[bridge-client] /health poll failed: ${e.message}`);
-      onLiveness({ wsConnected: true, rosConnected: false, humidifierLastMsgTs: null, nowMs: Date.now() });
+      onLiveness({ wsConnected: true, rosConnected: false, humidifierLastMsgTs: null, fc1LastMsgTs: null, nowMs: Date.now() });
     }
   }
 
@@ -60,6 +63,8 @@ function createBridgeClient({
         wsConnected: false,
         rosConnected: !!(lastHealth && lastHealth.ros && lastHealth.ros.connected),
         humidifierLastMsgTs: lastHealth && lastHealth.humidifier ? lastHealth.humidifier.last_msg_ts : null,
+        // Phase 46: mirror pollHealth's fc1LastMsgTs from cached health snapshot.
+        fc1LastMsgTs: lastHealth && lastHealth.fc1 ? lastHealth.fc1.last_msg_ts : null,
         nowMs: Date.now(),
       });
       if (closed) return;
