@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Event-gate + Durable signal_outbound (tenant-aware)
 status: v1.8 scaffolded in ROADMAP; 4 research notes prepped; ready for discuss-phase on Phase 44
-last_updated: "2026-05-21T13:15:00.000Z"
-last_activity: 2026-05-21 -- Phase 46 wave 2 (plan 03) deployed; chamber-dark live on prod; induced-outage attestation deferred to operator window
+last_updated: "2026-05-21T17:00:00.000Z"
+last_activity: 2026-05-21 -- Phase 46 plan 03 live-fire attestation: wiring bug fixed (fc1LastMsgTs dropped on destructure in index.js); D-09 globals issue surfaced (pi_offline_min=15 from fc_config replays via TRANSIENT_LOCAL, blocks <2min chamber-dark TTF); phase verification gate held pending D-09 resolution
 progress:
   total_phases: 25
   completed_phases: 3
@@ -24,17 +24,33 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 
 ## Current Position
 
-Phase: 46 (chamber-dark-detector-real-fc1-liveness-signal-farmer-readab) — wave 2 deployed; phase substantively complete; induced-outage farmer attestation deferred to operator window
-Plan: 3 of 3 (46-01, 46-02, 46-03 all shipped to prod)
+Phase: 46 (chamber-dark-detector-real-fc1-liveness-signal-farmer-readab) — wave 2 deployed + live-fire attested; wiring bug fixed; **verification gate HELD pending D-09 globals resolution** before CD-02/CD-03 fully close
+Plan: 3 of 3 (46-01, 46-02, 46-03 all shipped to prod; live-fire patch 206f202)
 Milestone: v1.7 -- Multimodal Signal to FarmOS Events. **Effectively shipped.** Phases 36-43 all complete; only Phase 42 (SHI-on-Sawdust pilot) remains as a calendar-bound human-driven run (3-4wk colonize). Re-audited 2026-05-15.
-Last activity: 2026-05-21 -- Phase 46 plan 03 deployed bridge+alerter atomically; /health.fc1 schema live; chamber-dark trigger now live in prod
+Last activity: 2026-05-21 -- Phase 46 plan 03 live-fire: wiring bug fixed (fc1LastMsgTs dropped on destructure); D-09 finding (~23min TTF with prod globals) needs human decision before phase fully verifies
 
 **Phase 46 close-out:**
 - 46-01 shipped 2026-05-21 (bridge fc1LastMsgTs aggregator; 241/241 tests)
 - 46-02 shipped 2026-05-21 (alerter chamber-dark wiring; 720/728 tests)
 - 46-03 deployed 2026-05-21 (atomic rebuild + /health.fc1 schema verified live)
-- Task 2 of 46-03 (induced fc-core outage attestation with farmer) DEFERRED per plan DEFERRAL PATH — auto-mode executor cannot perform fc1 remote-action pre-flight; fc1 in post-outage settling period (`[[project_2026_05_20_fc_buffer_real_outage_validation]]`)
-- Operator-window protocol documented in 46-03-SMOKE.md "Suggested operator-window protocol"
+- 46-03 live-fire 2026-05-21 16:27Z-16:54Z (two induced outages; commit `206f202`):
+  - **Bug 1 (FIXED):** `index.js:227` destructured onLiveness payload without
+    `fc1LastMsgTs`; state.fc1LastMsgTs stayed null forever -> third OR-trigger
+    never fired -> D-07 never engaged. Both module unit tests missed it.
+  - **Bug 2 (FIXED):** `bridge-client.js` pollHealth ran only once on ws_open;
+    added 10s setInterval so state.fc1LastMsgTs stays fresh.
+  - **D-09 finding (HUMAN DECISION REQUIRED):** fc_controller publishes
+    `pi_offline_min: 15` via TRANSIENT_LOCAL alerter_globals; bridge replays
+    it to alerter on reconnect, stomping env. With prod globals
+    `piOfflineMin=15 + oobN=5 + oobWindowMin=8`, chamber-dark TTF is ~23min.
+    Options: hard-code <3min for fc1LastMsgTs branch in rules.js, or
+    introduce `fc1_dark_min` global, or env-as-floor. Tracked in
+    46-03-SUMMARY.md "D-09 finding".
+- Operator-window protocol superseded by live-fire log in 46-03-SMOKE.md
+  "Live-fire Attestation" section.
+- Don Santiago was the farmer for this smoke (`+59892893012` per
+  `[[project_farmer_phone_map]]`); responded "Great" to a sht30 noise alert
+  at 16:41:42Z; no out-of-band farmer-paste needed.
 
 **Next milestone (v1.8) is scoped + locked** per 2026-05-17 findings discussion:
 
@@ -192,6 +208,14 @@ Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (for
 
 ### Blockers/Concerns
 
+- **Phase 46 D-09 (HUMAN DECISION):** runtime globals `pi_offline_min=15` from
+  `src/chambers/fc-core/config/fc_config.yaml:137` (TRANSIENT_LOCAL replayed
+  by bridge to alerter) makes chamber-dark TTF ~23min minimum, structurally
+  too slow for the deterministic data-flow trigger. Need either: (a) hard-code
+  <3min in `rules.js:isPiOffline` fc1LastMsgTs branch independent of
+  `piOfflineMin`, (b) introduce a separate `fc1_dark_min` global, or
+  (c) treat env-var as a hard floor that globals cannot exceed. Decision
+  required before CD-02/CD-03 fully close. See 46-03-SMOKE.md "D-09 finding".
 - **Phase 25 R1 unproven:** signal-cli receive returns HTTP 400 today (linked-secondary device limitation); without R1, none of the capture channel's downstream value is reachable. Requires SIM-bearing 4G router for primary re-registration spike.
 - Phase 17: Signal primary-account registration on 4G router SIM is a manual pre-phase step (~1-2h); cannot begin coding until complete
 - Phase 19: FarmOS admin actions (FC-1 asset, farmos_agent permissions) depend on farm team availability — document proxy-around path at phase start if admin access is delayed

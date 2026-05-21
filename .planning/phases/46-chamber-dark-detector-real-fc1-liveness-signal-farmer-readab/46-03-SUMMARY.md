@@ -2,7 +2,7 @@
 phase: 46-chamber-dark-detector
 plan: 03
 subsystem: deploy
-tags: [deploy, atomic-rebuild, health-schema, fc1-liveness, chamber-dark, deferred-attestation]
+tags: [deploy, atomic-rebuild, health-schema, fc1-liveness, chamber-dark, live-fire-attestation, wiring-bug-fix, D-09-globals-finding]
 requires: [46-01, 46-02]
 provides:
   - prod-deployed-bridge-with-fc1-liveness
@@ -118,3 +118,104 @@ N/A — plan 03 is a deploy + observe plan (`type: execute`), not TDD. Plans 46-
 - `46-01-SUMMARY.md` — bridge fc1 liveness aggregator (commits `e8b1467`, `0919f83`)
 - `46-02-SUMMARY.md` — alerter chamber-dark wiring (commits `1e78cf1`, `aeee31a`)
 - `46-CONTEXT.md` — phase scope, decisions D-01..D-08
+
+## Live-fire Path Completed (2026-05-21 16:27Z–16:54Z) — APPENDED
+
+Don Santiago opened an operator window 2026-05-21 ~16:25Z. The deferred path
+above was superseded by two consecutive induced fc-core outages. Findings:
+
+### Bug found and fixed (Rule 1)
+
+`src/agents/alerter/src/index.js:227` destructured the `onLiveness` callback
+payload as `{ wsConnected, rosConnected, humidifierLastMsgTs }`, **silently
+dropping `fc1LastMsgTs`** before forwarding to `applyEvent`. State's
+`fc1LastMsgTs` stayed `null` for the entire container lifetime; the third
+OR-trigger (D-03 chamber-dark) never fired. Both module-level unit tests
+in plans 46-01 (bridge) and 46-02 (alerter state) passed — the bug was in
+the glue between them, an unattested seam.
+
+Fixes shipped in this commit:
+1. `index.js:227-235` — added `fc1LastMsgTs` to destructure + applyEvent
+   payload. Comment explains why both module tests passed but the wire
+   was broken.
+2. `bridge-client.js` — added `setInterval(pollHealth, 10000)` on ws_open
+   (cleaned on ws_close/close) so `state.fc1LastMsgTs` stays fresh.
+   Previously pollHealth fired only once on ws_open, snapshotting the
+   value and never refreshing it.
+
+Verified live via diag instrumentation (removed before commit):
+`[diag-46] pi_liveness ws=true ros=true fc1Ts=1779381426879 fc1AgeSec=416`
+— the field now reaches state.
+
+All 720/728 alerter unit tests still pass after the fix (8 pre-existing skips).
+
+### D-09 finding (Rule 4 — deferred for human decision)
+
+After the wiring fix, the chamber-dark trigger still did not reach FIRING
+within the operator window. Root cause: **the runtime globals layer
+(`pi_offline_min: 15` published by fc_controller from `fc_config.yaml`,
+TRANSIENT_LOCAL replayed by bridge on alerter reconnect) trumps the env
+var**. With prod globals (`piOfflineMin=15` + `oobN=5` + `oobWindowMin=8`),
+the total time from fc1-dark to pi FIRING is `15 + max(50s, 8min) ≈ 23min`.
+That's structurally too slow for a chamber-dark trigger whose data-flow
+channel has no flap to absorb (unlike ws/ros which `pi_offline_min=15` was
+tuned for per `fc_config.yaml:137`).
+
+Suggested resolutions (operator decides):
+- Hard-code a separate, faster threshold for the fc1LastMsgTs branch in
+  `rules.js:isPiOffline` (e.g., 2–3min independent of `piOfflineMin`); or
+- Introduce a distinct `fc1_dark_min` global with its own ROS publisher; or
+- Treat the env-var as a hard floor that globals cannot exceed.
+
+The 2026-05-07 lesson (`[[project_2026_05_07_fc1_reboot_unrecoverable]]`,
+11h offline before farmer noticed) is the primary motivation for not
+shipping a 23-min detector.
+
+### What's attested vs. not
+
+| Item | Attested? |
+|---|---|
+| Wiring (`fc1LastMsgTs` reaches state) | YES (diag log) |
+| Trigger (chamber-dark third OR-branch fires when threshold crossed) | YES (16:52:10Z PENDING transition with `offline=true`) |
+| pi clears on fc1 recovery | YES (16:53:00Z OK transition via 10s pollHealth refresh) |
+| ONE D-05 chamber-level Signal message during silence | NO (pi never reached FIRING; root cause = D-09) |
+| ZERO per-sensor sends during pi-FIRING (D-07) | NO (no pi-FIRING window ever existed in this smoke) |
+| `ALERT_PI_OFFLINE_MIN` restored to prod default | YES (10) |
+
+### Outage windows
+
+| Outage | T0 | T_recover | Duration |
+|---|---|---|---|
+| A (revealed bug) | 16:27:34Z | 16:33:17Z | 6m11s |
+| B (revealed D-09)| 16:37:02Z | 16:52:33Z | 15m31s |
+| Total uncontrolled exposure | | | 21m42s |
+
+### Phase 46 ship-gate
+
+CD-01 and CD-04 close. CD-02 and CD-03 partially close (the dormant code
+path now ships in prod, and the wiring bug is fixed) but **full live-fire
+attestation of the chamber-dark Signal message + D-07 suppression is
+gated on the D-09 globals resolution**. A follow-up plan or runbook change
+is needed before the phase is fully verified.
+
+### Follow-ups
+
+1. **Regression test for the index.js wiring** — current unit tests in
+   `bridge-client.test.js` and `state.test.js` don't catch the
+   destructure-drop bug. An end-to-end test (mock bridge `/health` returning
+   stale fc1, full alerter wiring up through state, assert `pi.state`
+   advances) would have caught it. Tracked but not added in this plan
+   (Karpathy guideline #2: don't add tests beyond what was asked) — flag
+   for the next plan touching this code.
+2. **D-09 resolution** — operator decision required on how to tune the
+   chamber-dark threshold. See section above.
+3. **sht30 watchdog noise** — orthogonal to Phase 46. Memory
+   `[[project_alerter_watchdog_quiet_topic_bug]]` and
+   `[[feedback_alerter_needs_meta_watchdog]]` already track this.
+
+### Live-fire commits
+
+| Item | Commit |
+|---|---|
+| `feat(46-03): live-fire attestation — fix fc1LastMsgTs wiring + periodic pollHealth` | _below_ |
+| (this SUMMARY + SMOKE.md + STATE.md final metadata) | _below_ |
