@@ -1,5 +1,9 @@
 'use strict';
 
+// Phase 46 D-09: chamber-dark threshold is hard-coded, not config-driven.
+// See isPiOffline below for the rationale.
+const FC1_DARK_THRESHOLD_MS = 3 * 60000;
+
 /**
  * isRhOob(humidity, effective) -> boolean
  * True when abs(humidity - rhTarget) > rhBand.
@@ -51,10 +55,14 @@ function isPiOffline({ wsConnected, rosConnected, nowMs, wsLastConnectedMs, rosD
     if (nowMs - rosDisconnectedSinceMs > thresholdMs) return true;
   }
 
-  // Phase 46 D-03: third OR-trigger. `!= null` handles both undefined (old
-  // caller) and null (old bridge) identically: no trigger, no false positive.
+  // Phase 46 D-03 + D-09: third OR-trigger. `!= null` handles both undefined
+  // (old caller) and null (old bridge) identically: no trigger, no false
+  // positive. The threshold is hard-coded at 3 minutes (not config.piOfflineMin)
+  // because chamber-dark must fire fast — the legacy piOfflineMin=15 from
+  // fc_config.yaml was sized for the Pi-ping liveness branch and is too slow
+  // for the data-flow signal. Surfaced by the 2026-05-21 46-03 live-fire smoke.
   if (fc1LastMsgTs != null) {
-    if (nowMs - fc1LastMsgTs > thresholdMs) return true;
+    if (nowMs - fc1LastMsgTs > FC1_DARK_THRESHOLD_MS) return true;
   }
 
   return false;

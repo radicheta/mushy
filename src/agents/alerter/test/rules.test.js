@@ -146,6 +146,51 @@ describe('isPiOffline', () => {
       })).toBe(true);
     });
   });
+
+  // Phase 46 D-09: fc1LastMsgTs branch uses a hard 3-min threshold, NOT
+  // config.piOfflineMin. Surfaced by the 2026-05-21 46-03 live-fire smoke
+  // where fc_config.yaml's pi_offline_min=15 global made chamber-dark fire
+  // at ~15-23min instead of <5min. The ws+ros branches still honor config.
+  describe('Phase 46 — D-09 hard 3-min threshold for fc1LastMsgTs branch', () => {
+    const prodCfg = { piOfflineMin: 15 }; // matches fc_config.yaml global
+
+    test('fc1LastMsgTs stale 4min fires even though config piOfflineMin=15', () => {
+      expect(isPiOffline({
+        wsConnected: true,
+        rosConnected: true,
+        nowMs: NOW,
+        wsLastConnectedMs: NOW - 1000,
+        rosDisconnectedSinceMs: null,
+        fc1LastMsgTs: NOW - 4 * 60000,
+        config: prodCfg,
+      })).toBe(true);
+    });
+
+    test('fc1LastMsgTs stale 2min does NOT fire (under 3-min hard threshold)', () => {
+      expect(isPiOffline({
+        wsConnected: true,
+        rosConnected: true,
+        nowMs: NOW,
+        wsLastConnectedMs: NOW - 1000,
+        rosDisconnectedSinceMs: null,
+        fc1LastMsgTs: NOW - 2 * 60000,
+        config: prodCfg,
+      })).toBe(false);
+    });
+
+    test('ws-disconnect branch still honors config.piOfflineMin (15min) — disconnected 10min does NOT fire', () => {
+      // Confirms D-09 only changes the fc1LastMsgTs branch; legacy ws branch unchanged.
+      expect(isPiOffline({
+        wsConnected: false,
+        rosConnected: true,
+        nowMs: NOW,
+        wsLastConnectedMs: NOW - 10 * 60000,
+        rosDisconnectedSinceMs: null,
+        fc1LastMsgTs: NOW - 30000,
+        config: prodCfg,
+      })).toBe(false);
+    });
+  });
 });
 
 describe('isHumidifierStuck', () => {
