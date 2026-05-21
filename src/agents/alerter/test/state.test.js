@@ -1083,6 +1083,52 @@ describe('Phase 46 — fc1LastMsgTs drives perType.pi to FIRING (CD-02 / D-03)',
     expect(sends).toHaveLength(1);
   });
 
+  // Phase 46 D-10 regression: pi alert MUST fire immediately on stale
+  // fc1LastMsgTs even under prod-shaped cfg with oobN=5 + oobWindowMin=8.
+  // The 3-min hard threshold in rules.js:isPiOffline is the flap protection;
+  // the generic 5-event/8-min gate (inherited from RH-alert semantics) must
+  // be bypassed for the pi branch. Surfaced by the 2026-05-21 Round 2
+  // live-fire smoke where a 4m27s outage failed to produce a pi FIRING
+  // because the gate would have required T0 + ~11min.
+  test('D-10: pi fires immediately on stale fc1LastMsgTs under prod cfg (oobN=5, oobWindowMin=8)', () => {
+    const cfg = makeConfig({ oobN: 5, oobWindowMin: 8, piOfflineMin: 15 });
+    let s = initialState(T0);
+    const tNow = T0 + 90_000;
+    const r = transition(s, {
+      type: 'pi_liveness',
+      wsConnected: true,
+      rosConnected: true,
+      humidifierLastMsgTs: tNow - 1000,
+      fc1LastMsgTs: tNow - 4 * 60000, // 4 min stale > 3 min D-09 threshold
+    }, tNow, cfg);
+    expect(r.next.perType.pi.state).toBe(STATES.FIRING);
+    const sends = r.actions.filter(a => a.kind === 'send' && a.alertType === 'pi');
+    expect(sends).toHaveLength(1);
+  });
+
+  test('D-10: tick re-eval also fires immediately under prod cfg', () => {
+    // Mirrors the runtime path where pollHealth updates fc1LastMsgTs and a
+    // subsequent tick re-evaluates pi.
+    const cfg = makeConfig({ oobN: 5, oobWindowMin: 8, piOfflineMin: 15 });
+    let s = initialState(T0);
+    // Seed stale fc1LastMsgTs via pi_liveness first.
+    const tSeed = T0 + 90_000;
+    let r = transition(s, {
+      type: 'pi_liveness',
+      wsConnected: true,
+      rosConnected: true,
+      humidifierLastMsgTs: tSeed - 1000,
+      fc1LastMsgTs: tSeed - 4 * 60000,
+    }, tSeed, cfg);
+    s = r.next;
+    // FIRING already from the pi_liveness above.
+    expect(s.perType.pi.state).toBe(STATES.FIRING);
+    // Now a tick should not re-fire (cooldown holds) but state should remain FIRING.
+    const tTick = tSeed + 30_000;
+    r = transition(s, { type: 'tick' }, tTick, cfg);
+    expect(r.next.perType.pi.state).toBe(STATES.FIRING);
+  });
+
   test('pi_liveness with fresh fc1LastMsgTs does NOT fire when ws+ros connected', () => {
     const cfg = makeConfig({ oobN: 1, oobWindowMin: 0, piOfflineMin: 5 });
     let s = initialState(T0);

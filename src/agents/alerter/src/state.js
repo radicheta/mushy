@@ -536,7 +536,15 @@ function transition(prev, event, now, config) {
           }
         : null;
       const piFields = { lastSeenMs: next.wsLastConnectedMs, lastKnown };
-      const r = driveAlertType(next.perType.pi, 'pi', offline, piFields, now, effective);
+      // Phase 46 D-10: pi is a binary data-flow signal, not a noisy continuous
+      // measurement. The 3-min hard threshold in rules.js:isPiOffline IS the
+      // flap protection; the generic oobN=5/oobWindowMin=8min gate (inherited
+      // from RH-alert semantics) would push FIRING to T0 + ~11min, defeating
+      // the Phase 46 design intent. Mirror the sensorCfg pattern at lines 353/
+      // 386/437/602: drop both gates for the pi branch so FIRING happens on
+      // first stale detection (~3min after fc1 silence + one alerter eval tick).
+      const piCfg = { ...effective, oobN: 1, oobWindowMin: 0 };
+      const r = driveAlertType(next.perType.pi, 'pi', offline, piFields, now, piCfg);
       next.perType.pi = r.next;
       actions.push(...r.actions);
       break;
