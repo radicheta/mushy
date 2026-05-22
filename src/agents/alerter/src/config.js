@@ -1,5 +1,9 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
+const YAML = require('yaml');
+
 function mustEnv(env, key) {
   const v = env[key];
   if (!v) throw new Error(`[config] Required env var ${key} is missing`);
@@ -36,6 +40,59 @@ function parseFarmerMap(raw) {
   return m;
 }
 
+// Phase 44 D-11: layered tenant-config loader. Reads tenants/<tenantId>/<filename>
+// relative to repo root. Returns {} on missing dir, missing file, malformed YAML
+// (graceful degradation per threat T-44-06-04). Path-traversal sanity check
+// (T-44-06-02): resolved path MUST stay under the tenants/ base; otherwise {}.
+const TENANTS_BASE = path.resolve(__dirname, '..', '..', '..', '..', 'tenants');
+
+function loadTenantFile(tenantId, filename) {
+  const p = path.resolve(TENANTS_BASE, tenantId, filename);
+  // Boundary-safe containment check: not glob-prefix (would allow siblings like
+  // tenants-evil/...). Either equals base (impossible — file required) or starts
+  // with base + path separator.
+  if (p !== TENANTS_BASE && !p.startsWith(TENANTS_BASE + path.sep)) return {};
+  if (!fs.existsSync(p)) return {};
+  try {
+    const parsed = YAML.parse(fs.readFileSync(p, 'utf8'));
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn(`[config] ${p} parse failed: ${e.message}`);
+    return {};
+  }
+}
+
+// Phase 44 D-11: layered get — tenant file → env → default.
+function pick(tenantConfig, env, key, def) {
+  if (tenantConfig[key] !== undefined && tenantConfig[key] !== null) return tenantConfig[key];
+  if (env[key] !== undefined) return env[key];
+  return def;
+}
+
+// Normalise SIGNAL_FARMER_MAP from either source-shape: a tenant-YAML object
+// (preferred — D-11) or the legacy "+phone:slug,..." string (env fallback).
+function resolveFarmerMap(tenantConfig, env) {
+  const fromTenant = tenantConfig.SIGNAL_FARMER_MAP;
+  if (fromTenant && typeof fromTenant === 'object' && !Array.isArray(fromTenant)) {
+    const m = new Map();
+    for (const [phone, slug] of Object.entries(fromTenant)) {
+      if (phone && slug) m.set(String(phone), String(slug));
+    }
+    return m;
+  }
+  return parseFarmerMap(env.SIGNAL_FARMER_MAP || '');
+}
+
+// Normalise FARMOS_INTEGRATION across shapes: YAML boolean true/false, legacy
+// env string '1'/'0', or absent (default false).
+function resolveFarmosIntegration(tenantConfig, env) {
+  if (tenantConfig.FARMOS_INTEGRATION !== undefined && tenantConfig.FARMOS_INTEGRATION !== null) {
+    return tenantConfig.FARMOS_INTEGRATION === true || tenantConfig.FARMOS_INTEGRATION === 'true' || tenantConfig.FARMOS_INTEGRATION === '1';
+  }
+  return (env.FARMOS_INTEGRATION || '0') === '1';
+}
+
 // Phase 29 (D-03 / D-05) tier classification:
 //   Tier A (mode-driven, BOOTSTRAP-ONLY): rhTarget, rhBand
 //   Tier B (per-mode override, BOOTSTRAP-ONLY): oobN, oobWindowMin, cooldownMin,
@@ -47,19 +104,46 @@ function parseFarmerMap(raw) {
 // Tier A/B/C values returned here are FALLBACKS used only during D-03 state-3
 // cold-start grace; runtime decisions consume `resolveEffectiveConfig(state, env, now)`
 // from state.js (Phase 29 plan 04).
+//
+// Phase 44 D-11: added layered tenant-file loader in front of env. SECRETS
+// (anthropicApiKey, farmosPassword, signalSender) MUST resolve via mustEnv()
+// only — never from tenant YAML (W9 policy). NON-SECRETS resolve via
+// pick(tenantConfig, env, key, default).
 function load(env = process.env) {
+  const tenantId = env.TENANT_ID || 'mossrock';
+  const tenantConfig = {
+    ...loadTenantFile(tenantId, 'config.yaml'),
+    ...loadTenantFile(tenantId, 'strains.yaml'),
+  };
+
   return Object.freeze({
+    // Phase 44 D-11: tenant identity (consumed by signal.js Plan-02 for
+    // signal_outbound.tenant_id writes).
+    tenantId,
+    // Phase 44 D-11: strain vocab (Foray α — extractor regex + Haiku gate
+    // classifier read from here). Default [] keeps legacy synthetic-env tests
+    // sane when TENANT_ID=__none__.
+    strains: pick(tenantConfig, env, 'STRAIN_CODES', []),
+    // Phase 44 D-06: convo-silence behavior. silent | negative_only | off.
+    eventGateConvoMode: pick(tenantConfig, env, 'EVENT_GATE_CONVO_MODE', 'silent'),
+
     bridgeWsUrl:         env.BRIDGE_WS_URL      || 'ws://host.docker.internal:8081',
     bridgeHealthUrl:     env.BRIDGE_HEALTH_URL  || 'http://host.docker.internal:8081/health',
     signalApiUrl:        env.SIGNAL_API_URL     || 'http://signal-cli:8080',
+    // W9: secret — env-only via mustEnv. Never sourced from tenant YAML.
     signalSender:        mustEnv(env, 'SIGNAL_SENDER'),
-    signalRecipient:     mustEnv(env, 'SIGNAL_RECIPIENT'),
+    signalRecipient:     pick(tenantConfig, env, 'SIGNAL_RECIPIENT', undefined) || mustEnv(env, 'SIGNAL_RECIPIENT'),
     signalAdditionalSenders: (env.SIGNAL_ADDITIONAL_SENDERS || '')
                               .split(',').map((s) => s.trim()).filter(Boolean),
     // Phase 37 D-16 — bare base64; signal.js prepends 'group.' at send time.
-    signalGroupId:       env.SIGNAL_GROUP_ID || null,
+    // Tenant YAML may set "" (empty string) — treat as null for back-compat.
+    signalGroupId:       (() => {
+      const v = pick(tenantConfig, env, 'SIGNAL_GROUP_ID', null);
+      return v === '' || v === undefined ? null : v;
+    })(),
     // Phase 37 D-11 — boot-time static map; reload requires alerter restart.
-    signalFarmerMap:     parseFarmerMap(env.SIGNAL_FARMER_MAP || ''),
+    // Phase 44 D-11 — prefer tenant YAML object shape; fall back to env string.
+    signalFarmerMap:     resolveFarmerMap(tenantConfig, env),
     rhTarget:            parseFloatEnv(env, 'ALERT_RH_TARGET', 90),
     rhBand:              parseFloatEnv(env, 'ALERT_RH_BAND', 3),
     oobN:                parseIntEnv(env, 'ALERT_OOB_N', 5),
@@ -98,6 +182,7 @@ function load(env = process.env) {
     timescaleUser:        env.TIMESCALE_USER     || 'postgres',
     timescalePassword:    mustEnv(env, 'TIMESCALE_PASSWORD'),
     whisperUrl:           env.WHISPER_URL        || 'http://host.docker.internal:8090',
+    // W9: secret — env-only via mustEnv. Never sourced from tenant YAML.
     anthropicApiKey:      mustEnv(env, 'ANTHROPIC_API_KEY'),
     captureBaseDir:       env.CAPTURE_BASE_PATH  || '/data/signal-capture',
     bridgeHttpUrl:        env.BRIDGE_HTTP_URL    || 'http://host.docker.internal:8081',
@@ -126,15 +211,17 @@ function load(env = process.env) {
     maxEditTurns: parseIntEnv(env, 'MAX_EDIT_TURNS', 3),
     // Phase 40 (D-01b, D-07, D-07a): farmOS write path + commit watchdog knobs.
     // Compose env passthrough lives in docker-compose.override.yml alerter block.
-    farmosUrl:               env.FARMOS_URL      || 'http://10.68.155.50:18080',
-    farmosUsername:          env.FARMOS_USERNAME || '',
+    farmosUrl:               pick(tenantConfig, env, 'FARMOS_URL', 'http://10.68.155.50:18080'),
+    farmosUsername:          pick(tenantConfig, env, 'FARMOS_USERNAME', ''),
+    // W9: secret — env-only. Default '' preserves back-compat for tests not
+    // setting FARMOS_PASSWORD; production paths gate on farmosIntegration.
     farmosPassword:          env.FARMOS_PASSWORD || '',
     commitWatchdogIntervalMs: parseIntEnv(env, 'COMMIT_WATCHDOG_INTERVAL_MS', 30000),
     commitWatchdogBatchCap:   parseIntEnv(env, 'COMMIT_WATCHDOG_BATCH_CAP', 10),
     commitRetryMax:           parseIntEnv(env, 'COMMIT_RETRY_MAX', 3),
     commitRetryBackoffMs:     parseBackoffCsv(env.COMMIT_RETRY_BACKOFF_MS, [1000, 4000, 16000]),
     commitLockStaleMin:       parseIntEnv(env, 'COMMIT_LOCK_STALE_MIN', 5),
-    farmosIntegration:        (env.FARMOS_INTEGRATION || '0') === '1',
+    farmosIntegration:        resolveFarmosIntegration(tenantConfig, env),
   });
 }
 
@@ -173,4 +260,4 @@ function maskNumber(n) {
   return n.slice(0, 2) + 'X'.repeat(n.length - 6) + n.slice(-4);
 }
 
-module.exports = { load, maskNumber };
+module.exports = { load, maskNumber, loadTenantFile, pick };
