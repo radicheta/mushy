@@ -210,4 +210,44 @@ describe('createLlmClient', () => {
     expect(block).toMatch(/transcript: 'audio body'/);
     expect(block).toMatch(/attachments: 0/);
   });
+
+  // Phase 44 Plan-05 Task 5.2 (D-19): buildUserBlock surfaces lastBotOutbound as
+  // distinct prompt field. Default args keep back-compat with pre-Phase-44 callers.
+  test('(D-19) buildUserBlock renders lastBotOutbound section with body when provided', () => {
+    const block = _internal.buildUserBlock({
+      currentMessage: baseMessage(),
+      history: [],
+      outboundHistory: [],
+      lastBotOutbound: {
+        sent_at: new Date('2026-05-20T10:30:00Z'),
+        body: 'previous bot reply',
+        intent: 'convo_reply',
+      },
+      sensorSnapshot: null,
+    });
+    expect(block).toMatch(/## Last thing you said to the farmer/);
+    expect(block).toMatch(/previous bot reply/);
+  });
+
+  test('(D-19) buildUserBlock renders "(none)" in lastBotOutbound section when null', () => {
+    const block = _internal.buildUserBlock({
+      currentMessage: baseMessage(),
+      history: [],
+      outboundHistory: [],
+      lastBotOutbound: null,
+      sensorSnapshot: null,
+    });
+    expect(block).toMatch(/## Last thing you said to the farmer/);
+  });
+
+  test('(back-compat) buildUserBlock without outboundHistory/lastBotOutbound args still works', () => {
+    // Pre-Phase-44 call shape — must not throw, must still render.
+    const block = _internal.buildUserBlock({
+      currentMessage: baseMessage(),
+      history: [],
+      sensorSnapshot: null,
+    });
+    expect(block).toMatch(/## Current message/);
+    expect(block).toMatch(/## Recent history/);
+  });
 });
