@@ -1,0 +1,19 @@
+# Mossrock active strain codes — Phase 44 D-11
+# Source-of-truth: [[mossrock_active_strain_codes]] memory.
+# Order preserved from memory entry; extractor regex + Haiku classifier read from here.
+
+STRAIN_CODES:
+  - SHI
+  - SH2
+  - KOY
+  - MAI
+  - MALI
+  - KOS
+  - DT
+  - CAS
+  - CAZ
+  - WIN
+  - ALM
+  - MOR
+  - BP
+  - LIMA
