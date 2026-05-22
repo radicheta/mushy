@@ -17,6 +17,7 @@ const { createBridgeClient } = require('./bridge-client');
 const { createHeartbeatScheduler } = require('./heartbeat');
 const { createReceiveLoop } = require('./receive-loop');
 const captureDb = require('./capture-db');
+const outboundDb = require('./outbound-db');
 const extractionDb = require('./extraction/extraction-db');
 const { createTranscribeClient } = require('./transcribe-client');
 const { createLlmClient } = require('./llm-client');
@@ -66,6 +67,16 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
   } catch (e) {
     logger.warn(`[boot] signal_capture initDb failed (capture pipeline will degrade): ${e.message}`);
   }
+  // Phase 44 Plan-02 D-12/D-14: signal_outbound durable persistence schema.
+  // Mirrors captureDb best-effort pattern — if Postgres is unreachable at boot
+  // the alerter still starts and the send-path persistence hook fails open
+  // (D-03) per insertOutbound's {ok, reason} contract.
+  try {
+    await outboundDb.initDb(pool);
+    logger.info('[boot] signal_outbound schema initialized');
+  } catch (e) {
+    logger.warn(`[boot] signal_outbound initDb failed (outbound persistence will degrade): ${e.message}`);
+  }
   // Phase 38 Plan 02: signal_draft schema (extraction pipeline persistence).
   // Best-effort, mirrors captureDb pattern. Extraction will degrade if DB unreachable.
   try {
@@ -106,6 +117,13 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
     maxSendsPerHour: config.maxSendsPerHour,
     getMaxSendsPerHour: () => stateLib.resolveEffectiveConfig(state, config, clock()).maxSendsPerHour,
     logger,
+    // Phase 44 Plan-02 D-14: single persistence hook deps. Without these the
+    // wrapper is a no-op (back-compat for tests). With them, every successful
+    // send writes one signal_outbound row (intent='unknown' until Plan-03 wires
+    // the 14 callsites).
+    outboundDb,
+    pool,
+    tenantId: config.tenantId,
   });
   logger.info(`[boot] signal defaultTarget = ${config.signalGroupId
     ? `group:${config.signalGroupId.slice(0, 8)}…`
