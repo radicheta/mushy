@@ -50,7 +50,7 @@ describe('createOutboundDispatcher', () => {
     const call = signalClient.send.mock.calls[0];
     // signal.js send signature: send(body, { to })
     expect(call[0]).toBe(row.farmer_facing_preview);
-    expect(call[1]).toEqual({ to: '+59898018597' });
+    expect(call[1]).toMatchObject({ to: '+59898018597', intent: 'extraction_preview' });
   });
 
   test('send_ask_back group -> signalClient.send target = { groupId }', async () => {
@@ -63,7 +63,7 @@ describe('createOutboundDispatcher', () => {
     const r = await d.dispatch('send_ask_back', row);
     expect(r.ok).toBe(true);
     const call = signalClient.send.mock.calls[0];
-    expect(call[1]).toEqual({ to: { groupId: 'internalIdAbc' } });
+    expect(call[1]).toMatchObject({ to: { groupId: 'internalIdAbc' }, intent: 'extraction_preview' });
   });
 
   test('send_ask_back strips em-dash from farmer_facing_preview', async () => {
@@ -92,7 +92,7 @@ describe('createOutboundDispatcher', () => {
     expect(r.ok).toBe(true);
     expect(signalClient.send).toHaveBeenCalledTimes(1);
     const call = signalClient.send.mock.calls[0];
-    expect(call[1]).toEqual({ to: '+59892893012' });
+    expect(call[1]).toMatchObject({ to: '+59892893012', intent: 'extraction_preview' });
   });
 
   test('send_needs_review_ping text addresses Don Santiago, not "operator"', async () => {

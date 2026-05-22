@@ -194,7 +194,12 @@ function createCapturePipeline({
     // skip send entirely when receive-loop signals suppressReply (silent group
     // listener, or command branch already handled the reply).
     if (!suppressReply) {
-      await signalClient.send(replyText, { to: replyTarget })
+      await signalClient.send(replyText, {
+        to: replyTarget,
+        intent: 'convo_reply',
+        relatedCaptureId: id,
+        sourceModule: 'capture.js',
+      })
         .catch((e) => logger.warn(`[capture] reply send failed: ${e.message}`));
     }
 

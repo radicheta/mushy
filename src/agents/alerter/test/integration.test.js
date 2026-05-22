@@ -296,6 +296,56 @@ describe('alerter integration', () => {
     expect(signalServer.sent[0].message).toMatch(/\[HEARTBEAT\]/);
   });
 
+  // Phase 44 Plan-03 acceptance: every wired send path passes a D-13 intent so
+  // signal_outbound never sees the back-compat 'unknown' shim. Spies on the
+  // outboundDb insert and asserts the rh_problem flow (which exercises the
+  // index.js send sites) produces no 'unknown' rows.
+  test('phase44_plan03_no_unknown_intent_on_rh_flow', async () => {
+    const outboundDb = require('../src/outbound-db');
+    const spy = jest.spyOn(outboundDb, 'insertOutbound').mockResolvedValue({ ok: true });
+
+    try {
+      bridge = await makeTestBridge();
+      signalServer = await fakeSignalServer.start();
+
+      const startMs = Date.now();
+      const clock = () => startMs;
+
+      alerter = await createAlerter({
+        env: makeEnv({
+          BRIDGE_WS_URL: bridge.wsUrl,
+          BRIDGE_HEALTH_URL: bridge.healthUrl,
+          SIGNAL_API_URL: signalServer.url,
+        }),
+        clock,
+        logger: silentLogger,
+      });
+
+      await waitFor(() => bridge.wss.clients.size > 0, { timeoutMs: 2000 });
+
+      bridge.send(fixtures.sensorHealthOk);
+      await new Promise((r) => setTimeout(r, 50));
+      bridge.send(fixtures.humidityOob);
+      bridge.send(fixtures.humidityOob);
+      bridge.send(fixtures.humidityOob);
+
+      await waitFor(() => signalServer.sent.length >= 1, { timeoutMs: 2000 });
+      // Insert may run after fake-signal returns; brief settle.
+      await new Promise((r) => setTimeout(r, 50));
+
+      // Every insertOutbound call must carry a D-13 intent — never 'unknown'.
+      expect(spy).toHaveBeenCalled();
+      for (const call of spy.mock.calls) {
+        const row = call[1];
+        expect(row).toBeDefined();
+        expect(row.intent).toBeDefined();
+        expect(row.intent).not.toBe('unknown');
+      }
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   test('unhandled_rejection_exits_cleanly', async () => {
     bridge = await makeTestBridge();
     signalServer = await fakeSignalServer.start();

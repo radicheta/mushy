@@ -29,7 +29,7 @@ describe('confirm outbound dispatcher (Phase 39 D-06 / D-06a)', () => {
     const draftRow = { id: 'abcdef1234', sender_e164: '+15550001234', reply_target_kind: 'group', group_id: 'gX' };
     await d.dispatch('send_confirm_ack', draftRow);
     expect(signal.send).toHaveBeenCalledTimes(1);
-    expect(signal.send.mock.calls[0][1]).toEqual({ to: '+15550001234' });
+    expect(signal.send.mock.calls[0][1]).toMatchObject({ to: '+15550001234', intent: 'confirm_prompt' });
   });
 
   it('send_confirm_idempotent_ack body contains "Already locked in"', async () => {
@@ -74,7 +74,7 @@ describe('confirm outbound dispatcher (Phase 39 D-06 / D-06a)', () => {
     const d = createConfirmOutbound({ signalClient: signal, previewBuilderConfirm, operatorRecipient: '+x', logger: silentLogger() });
     const draftRow = { id: 'a', sender_e164: '+15550001234', reply_target_kind: 'group', group_id: 'gZ' };
     await d.dispatch('send_preview_resend', draftRow, { newPreview: 'NEW PREVIEW' });
-    expect(signal.send.mock.calls[0][1]).toEqual({ to: { groupId: 'gZ' } });
+    expect(signal.send.mock.calls[0][1]).toMatchObject({ to: { groupId: 'gZ' }, intent: 'confirm_prompt' });
     expect(signal.send.mock.calls[0][0]).toBe('NEW PREVIEW');
   });
 
