@@ -2,7 +2,7 @@
 
 const { maskNumber } = require('./config');
 
-function createSignalClient({ apiUrl, sender, recipient, defaultTarget, maxSendsPerHour, getMaxSendsPerHour, logger = console, timeoutMs = 10000 }) {
+function createSignalClient({ apiUrl, sender, recipient, defaultTarget, maxSendsPerHour, getMaxSendsPerHour, logger = console, timeoutMs = 10000, outboundDb = null, pool = null, tenantId = 'mossrock' }) {
   // Phase 37 D-01: single choke-point send. defaultTarget can be a string phone
   // OR { groupId } object; falls back to legacy `recipient` if absent (back-compat).
   const effectiveDefault = defaultTarget !== undefined ? defaultTarget : recipient;
@@ -55,7 +55,13 @@ function createSignalClient({ apiUrl, sender, recipient, defaultTarget, maxSends
     return maxSendsPerHour;
   }
 
-  async function send(body, { bypassCap = false, to } = {}) {
+  // Phase 44 Plan-02 D-14: single persistence hook. Wrapper opts-bag extends
+  // pre-Phase-44 {bypassCap, to} with {intent, relatedCaptureId, relatedDraftId,
+  // sourceModule}. Callers without intent get a warn-and-default-to-'unknown'
+  // shim (RESEARCH Pitfall 3) during the Plan-02→Plan-03 rollout window.
+  // Group sends encode recipient as `group:<id>` prefix in recipient_e164
+  // (operator decision 2026-05-21 per 44-group-send-encoding-decision.md — path b).
+  async function send(body, { bypassCap = false, to, intent, relatedCaptureId, relatedDraftId, sourceModule } = {}) {
     const now = Date.now();
     pruneHistory(now);
     const cap = currentCap();
@@ -106,6 +112,48 @@ function createSignalClient({ apiUrl, sender, recipient, defaultTarget, maxSends
         ? maskNumber(target)
         : `group:${String(target.groupId).slice(0, 8)}…`;
       logger.info(`[signal] sent -> ${label} (${body.length} chars)`);
+
+      // Phase 44 Plan-02 D-14: durable signal_outbound persistence (single hook).
+      // Fail-open per D-03 — outbound insert failures NEVER affect send's return
+      // value. outboundDb is optional for back-compat with tests/callers that
+      // pre-date Plan-02 wiring; once index.js passes outboundDb everywhere,
+      // every successful send writes exactly one row.
+      if (outboundDb && pool) {
+        let effectiveIntent = intent;
+        if (!effectiveIntent) {
+          logger.warn(`[signal] send() missing intent — defaulting to 'unknown' (Plan-03 wires the 14 callsites)`);
+          effectiveIntent = 'unknown';
+        }
+        // Recipient encoding (operator decision path b — prefix):
+        // 1:1 sends → `recipient_e164 = '+15551234567'`
+        // group sends → `recipient_e164 = 'group:<id-b64>'` using the resolved
+        //   id-b64 (matches what signal-cli accepts + receive-loop log format).
+        const recipientCol = isStringTarget
+          ? target
+          : `group:${resolvedGroupId || target.groupId}`;
+        try {
+          const result = await outboundDb.insertOutbound(pool, {
+            tenant_id: tenantId,
+            sent_at: new Date(now),
+            recipient_e164: recipientCol,
+            intent: effectiveIntent,
+            body,
+            attachments: null,
+            source_module: sourceModule || null,
+            source_line: null,
+            related_capture_id: relatedCaptureId ?? null,
+            related_draft_id: relatedDraftId ?? null,
+          });
+          if (result && result.ok === false) {
+            logger.warn(`[signal] outbound persist failed (fail-open): ${result.reason}`);
+          }
+        } catch (e) {
+          // Defense in depth — insertOutbound is documented never-throw, but
+          // a thrown exception here MUST NOT propagate (D-03 fail-open).
+          logger.warn(`[signal] outbound persist threw (fail-open): ${e.message}`);
+        }
+      }
+
       return { ok: true, timestamp: json.timestamp || now };
     } finally {
       clearTimeout(timer);
