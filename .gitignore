@@ -40,3 +40,7 @@ src/agents/alerter/test/eval/ingestion/results/
 src/agents/alerter/test/eval/ingestion/test-fixtures/
 # Phase 41 generated EVAL reports (per-run unique; canonical PASS gets committed manually)
 .planning/phases/41-ingestion-harness/41-EVAL-REPORT-*.md
+
+# Phase 44: tenant secrets (per D-11) — explicit override of *.env for auditability
+tenants/*/secrets.env
+tenants/*/.env
