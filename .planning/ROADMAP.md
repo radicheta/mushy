@@ -13,6 +13,7 @@
 - ✅ **v1.6 VPS Hub + Outage/Recovery Stack** — Phases 32–35 + 999.43.1 (shipped 2026-05-10/11; scaffolding deferred). See `.planning/milestones/v1.6-ROADMAP.md`.
 - 🚧 **v1.7 Multimodal Signal → FarmOS Events** — Phases 36–43 (effectively shipped 2026-05-16; Phase 42 calendar-deferred — biological lifecycle)
 - 🚧 **v1.8 Event-gate + Durable `signal_outbound` (tenant-aware)** — Phases 44–45 (locked 2026-05-17; OSS-Foray Option α — every PR ships tenant_id-aware from day one)
+- 📋 **v1.9 Inoc-Session Correctness** — Phases 47–49 (scaffolded 2026-05-22; phase planning deferred until v1.8 ships). Ship gate: 2026-05-22 paper-log session reprocessed end-to-end.
 
 ## Phases
 
@@ -148,6 +149,90 @@ Locked 2026-05-17 per `.planning/notes/2026-05-17-oss-foray-decision.md` and pri
 - [x] **Phase 46: Chamber-dark detector — real fc1-liveness signal + farmer-readable pi-offline message** — Shipped 2026-05-21. Live-fire attested Round 3 at T0+3min32s. Two extra bugs found and fixed during smoke: D-09 globals-shadow (commit `86d4340`) and D-10 oobN/oobWindowMin gate (commit `5f90cc7`). Hotfix from 2026-05-20 fc1 outage debug session. `isPiOffline` keys off alerter↔bridge WS + a one-shot `rosReady` boot flag; neither reflects fc1 publisher liveness, so during fc1's 10h47m blackout the only Signal alert that fired was "co2 sensor offline" (per-sensor, vague). Fix: bridge tracks `fc1LastMsgTs` across all fc1 topics + exposes in `/health`; alerter consumes as a third OR-trigger for `isPiOffline`; `formatProblem('pi')` becomes chamber-level using the `lastKnown` payload `state.js` already builds. References `.planning/debug/alerter-co2-only-not-pi.md`.
 
 </details>
+
+<details>
+<summary>📋 v1.9 Inoc-Session Correctness (Phases 47-49) — SCAFFOLDED 2026-05-22; planning deferred until v1.8 ships</summary>
+
+Driver: 2026-05-22 paper-log session exposed that Phase 38's eval set lacked the canonical multi-parent inoc shape (N children from M>1 parents in one session — *the* common shape per `[[project_inoc_shape_multi_parent_batch]]`). 10 of 11 bags fell on the floor. This milestone fixes the structural gap and adds real-session eval coverage. Ship gate: the May 22 audio+photo reprocessed end-to-end → 11 correctly-named seeding logs + 1 session asset in farmOS dev, lineage walks clean.
+
+Honors locked schema (B5 SEQ per-session per 2026-05-22 clarification in farmos repo `8daea5b`, B7 native log types only, C4 multi-parent via log refs, C5 native-only). Operates under [[feedback_hard_rules_relaxed_when_farmer_is_santi]] — Phase 45 NORTH-STAR ack remains in v1.8 scope.
+
+- [ ] **Phase 47: Multi-source extraction fusion + groups-shape inoc draft** — extraction prompt + draft schema emit `{type: "seeding", event_date, groups: [{parent, species, qty, child_block_names[]}]}`; multi-source fusion (audio+image+text → one draft with per-field provenance); B5 SEQ from paper-log photo as primary source; conflict flagging in confirm UX. Implements INOC-01..03.
+- [ ] **Phase 48: Session entity + per-bag commit fan-out + session-shaped confirm preview** — anonymous `fungi` session asset as secondary parent on each child block; N per-block `seeding` logs from one groups-shape draft; idempotent on duplicate YES; confirm preview is compact group-by-parent table. Implements INOC-04..06.
+- [ ] **Phase 49: Real-session eval corpus + May 22 ship-gate reprocess** — ≥3 real inoc sessions added to CI eval set from `/mnt/mossrock/shared/mushdatadump-prod/`; 2026-05-22 session is the named regression guard; CI fails if any named session regresses; May 22 captured-but-failed drafts (`e3a564d0…` + `6edaaba7…`) marked discarded and the audio+photo reprocessed through the new pipeline to farmOS dev as the ship gate. Implements INOC-07.
+
+</details>
+
+### Phase 47: Multi-source extraction fusion + groups-shape inoc draft
+
+**Goal:** A multimodal inoc capture (audio + photo of paper log + optional text) produces ONE draft in the groups shape (`{type: "seeding", event_date, groups: [{parent, species, qty, child_block_names[]}]}`) where each field carries provenance metadata (which source(s) contributed) and cross-source conflicts surface in the confirm UX rather than being silently picked.
+
+**Depends on:** v1.8 (Phases 44+45) ships first. Composes with Phase 38's existing extractor scaffolding — extends, doesn't replace.
+
+**Requirements:** INOC-01, INOC-02, INOC-03
+
+**Success criteria (what must be TRUE):**
+1. Replay the 2026-05-22 audio+photo turn through the new extractor → emits exactly one draft with 5 groups (3 SHI singles + 4 KOY-118-12 + 4 KOY-425-4), 11 children total, child names `260522_SHI_1..3` + `260522_KOY_4..11` (per-session SEQ from paper-log photo, not per-strain auto-generated).
+2. Each field in the draft carries provenance — `parent` fields tagged with `source: audio`, `child_block_names` with `source: paper_log_photo`, with confidence per source.
+3. A synthetic conflict fixture (audio says "118-23", photo says "118-25") flags the disagreement in the confirm preview with both values, never silently picks one.
+4. A single-parent inoc session (legacy shape) still extracts cleanly into the groups shape (one group with qty=N).
+
+**Touches:** `src/agents/alerter/src/extraction/prompts/system.js`, draft schema (likely a new groups-shape variant), `signal_draft.per_field_confidence` extended with source tracking, possibly `signal_capture` schema for cross-turn bundle tracking.
+
+**Constraints:**
+- Locked-schema-only output (no off-schema fields per C5).
+- No auto-generated SEQ when paper-log photo absent — ask-back preferred over guessing per [[project_extraction_holistic_multi_source_fusion]].
+- Honors B5 session-wide SEQ disambiguation ([[project_b5_seq_is_per_session_not_per_strain]]).
+
+**Plans:** TBD during plan-phase. Likely 4-6 plans.
+
+### Phase 48: Session entity + per-bag commit fan-out + session-shaped confirm preview
+
+**Goal:** A confirmed groups-shape draft commits to farmOS as N per-block `seeding` logs (one per child, each with its specific parent ref per B7) PLUS one anonymous `fungi` session asset that serves as secondary parent on every child block in the session. Confirm preview is session-shaped (compact group-by-parent table) so the farmer can cross-check against paper notebook and shelf in seconds.
+
+**Depends on:** Phase 47 (groups-shape draft must exist before commit can fan it out).
+
+**Requirements:** INOC-04, INOC-05, INOC-06
+
+**Success criteria (what must be TRUE):**
+1. A confirmed May-22-shape draft writes 11 `seeding` logs + 1 anonymous session asset to farmOS dev. Each child block's primary parent = its specific source block (audio-extracted); each child also references the session asset as a secondary parent.
+2. Duplicate YES on the same draft produces no double-write (idempotency via draft UUID).
+3. Lineage walk from any child block returns its specific parent AND the session asset cleanly; query "show me the May 22 inoc session" returns all 11 children.
+4. Confirm preview renders compactly — 5-line group table (parent → qty → children), not a flat 11-row list. SEQ numbers visible per-bag for paper-comparison.
+5. Single-parent legacy inoc still commits cleanly (one group → N children all sharing one parent → still gets a session asset for shape consistency).
+
+**Touches:** `src/agents/alerter/src/farmos/`, `src/agents/alerter/src/confirm/`, the write path audited in Phase 40, possibly `signal_draft.farmer_facing_preview` rendering.
+
+**Constraints:**
+- Native log types only per C5 (`seeding` only; no custom session-log bundle).
+- C4 lineage-via-log-refs preserved — session asset is a secondary `parent` ref on the child block, not a custom field.
+- Composes with [[feedback_hard_rules_relaxed_when_farmer_is_santi]] — Phase 45 ack remains v1.8 scope.
+
+**Plans:** TBD during plan-phase. Likely 4-5 plans.
+
+### Phase 49: Real-session eval corpus + May 22 ship-gate reprocess
+
+**Goal:** ≥3 real inoc sessions added to the CI eval corpus from `/mnt/mossrock/shared/mushdatadump-prod/` paper logs + paired audio when available; the 2026-05-22 session is the named regression guard; CI fails on any named-session regression. As the live ship-gate, the May 22 captured-but-failed drafts are marked discarded and the original audio+photo is reprocessed through the new pipeline to farmOS dev.
+
+**Depends on:** Phase 47 (extraction), Phase 48 (commit). Cannot precede them.
+
+**Requirements:** INOC-07
+
+**Success criteria (what must be TRUE):**
+1. CI eval suite includes ≥3 real inoc sessions with hand-labeled expected outputs (groups, child names, parents).
+2. The 2026-05-22 session in the corpus emits 11 correctly-named blocks + correct parents + session asset; lineage walk returns clean.
+3. The two failed May-22 drafts in production timescale (`e3a564d063d4…` and `6edaaba7deb0…`) are marked `discarded` with reason "superseded by Phase 49 reprocess".
+4. The May 22 audio+photo reprocessed through the new pipeline lands all 11 logs + session asset in farmOS dev. Operator can query farmOS dev and reconstruct the session entirely from logs without referring to Signal.
+5. CI eval pass-rate target: 100% on named-regression sessions; ≥90% schema conformance on the broader corpus.
+
+**Touches:** `src/agents/alerter/test/` (eval corpus), `.planning/phases/49-*/`, maintenance scripts to mark stale drafts discarded.
+
+**Constraints:**
+- Honors [[feedback_real_data_before_ship_gate_pass]] — curated fixtures necessary, never sufficient. Real sessions are the ship gate.
+- Honors [[feedback_smoke_before_expensive_batch]] — May 22 (1 session) before the full corpus.
+- farmOS *dev* (not prod) is the write target. v1.9 doesn't auto-backfill prod farmOS with historical paper-log sessions.
+
+**Plans:** TBD during plan-phase. Likely 3-4 plans.
 
 ### Phase 46: Chamber-dark detector — real fc1-liveness signal + farmer-readable pi-offline message
 

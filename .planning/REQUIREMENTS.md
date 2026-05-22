@@ -123,3 +123,55 @@
 | PILOT-04 | Phase 42 | Pending |
 | PILOT-05 | Phase 42 | Pending |
 | PILOT-06 | Phase 42 | Pending |
+
+---
+
+# Milestone v1.9 Requirements — Inoc-Session Correctness (scaffolded 2026-05-22, planning deferred until v1.8 ships)
+
+**Milestone goal:** The canonical multi-parent inoc session works end-to-end — capture → extract → confirm → commit → surface — with the 2026-05-22 paper-log session as the live ship gate.
+
+**Driver:** May 22 exposed that Phase 38's eval set lacked the canonical multi-parent inoc shape. 10 of 11 bags fell on the floor. This milestone fixes the structural gap and adds the missing real-session eval coverage.
+
+**Schema source-of-truth:**
+- `/mnt/slime-kingdom/shared/farmos/.planning/notes/2026-05-11-session-chat.md` (B5/B7/C4/C5 lock)
+- `/mnt/slime-kingdom/shared/farmos/.planning/notes/2026-05-22-b5-seq-clarification.md` (SEQ per-session disambiguation)
+
+**Honors:** [[project_inoc_shape_multi_parent_batch]], [[project_extraction_holistic_multi_source_fusion]], [[project_session_is_production_shape_per_bag_is_storage]], [[project_b5_seq_is_per_session_not_per_strain]], [[feedback_real_data_before_ship_gate_pass]].
+
+## Active Requirements
+
+### INOC — Inoc-session extraction and commit
+
+- [ ] **INOC-01**: Extraction emits the groups shape (`{type: "seeding", event_date, groups: [{parent, species, qty, child_block_names[]}]}`) for any inoc capture, regardless of whether the session is single-parent or multi-parent, single-species or mixed-species. Locked-schema-only output (no off-schema fields per C5).
+- [ ] **INOC-02**: Multi-source fusion — when a turn bundles audio+image+text, all sources are read holistically into one draft. Per-field provenance tracked in `signal_draft.per_field_confidence` (which source(s) contributed). Cross-source agreement is silent; disagreement surfaces in the confirm UX with both values, never silently picked.
+- [ ] **INOC-03**: B5 block-name minting uses session-wide SEQ (1..N across all strains), sourced primarily from paper-log photo OCR/vision when present. Format `{YYMMDD}_{SPECIES3}_{SESSION_SEQ}` per the 2026-05-22 clarification. No auto-generated SEQ when paper-log photo unavailable — ask-back is preferred over guessing.
+- [ ] **INOC-04**: Session entity modeled as an anonymous `fungi` asset (no QR, no individuated name), serving as a secondary `parent` ref on every child block of the same inoc session. Reconstructable by query — "show me May 22 session" returns the asset + its children.
+- [ ] **INOC-05**: Commit fan-out — a confirmed groups-shape draft writes N per-block `seeding` logs (each child's primary asset = the child block, source ref = its specific parent block) plus 1 session asset. Idempotent on duplicate YES (no double-write).
+- [ ] **INOC-06**: Confirm preview is session-shaped (compact group-by-parent table, not flat list of 11 records). Farmer can scan the preview against paper notebook / shelf in seconds. SEQ numbers visible per-bag.
+- [ ] **INOC-07**: Real-session eval corpus ≥3 inoc sessions added to CI eval set, drawn from `/mnt/mossrock/shared/mushdatadump-prod/` paper logs + paired audio when available. 2026-05-22 session is the named regression guard. CI fails if any of the named sessions regresses.
+
+## Future Requirements (deferred to v1.10+)
+
+- Harvest-session shape (same structural concern, different log type)
+- Multi-session-per-day SEQ disambiguation (defer until it happens; flagged in B5 clarification note)
+- Auto-generated SEQ fallback when paper-log photo absent (current behavior: ask-back; future: confidence-tiered emit)
+- Session "label print + scan" QR-bind flow (locked v1.0 path; multimodal-only is the v1.6+ commitment)
+
+## Out of Scope (explicit exclusions)
+
+- **Phase 45 NORTH-STAR commit_failed ack.** That's v1.8; here the [[feedback_hard_rules_relaxed_when_farmer_is_santi]] posture holds. When v1.9 ships to other farmers, re-tighten.
+- **Phase 42 SHI-on-sawdust full lifecycle pilot.** Still calendar-deferred. v1.9 is about inoc-session correctness, not full lifecycle.
+- **Backfilling pre-v1.9 inoc sessions into farmOS.** May 22 IS backfilled as the ship gate, but other historical sessions stay paper-only unless explicitly opted in.
+- **Schema changes.** v1.9 ships against the 2026-05-11 lock + 2026-05-22 clarification. Any further schema drift goes through zoy-side first.
+
+## Traceability
+
+| REQ-ID | Phase | Status |
+|---|---|---|
+| INOC-01 | Phase 47 | Scaffolded |
+| INOC-02 | Phase 47 | Scaffolded |
+| INOC-03 | Phase 47 | Scaffolded |
+| INOC-04 | Phase 48 | Scaffolded |
+| INOC-05 | Phase 48 | Scaffolded |
+| INOC-06 | Phase 48 | Scaffolded |
+| INOC-07 | Phase 49 | Scaffolded |
