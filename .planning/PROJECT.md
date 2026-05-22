@@ -102,6 +102,38 @@ Phase 32 (VPS WireGuard hub) + Phase 33 (heartbeat receiver + Signal Tier 1) + P
 - `.planning/milestones/v1.5-ROADMAP.md` / `v1.5-REQUIREMENTS.md`
 - `.planning/v1.5-MILESTONE-AUDIT.md` (status: tech_debt — no critical blockers)
 
+## Queued Milestone: v1.9 Inoc-Session Correctness (scaffolded 2026-05-22, planning deferred until v1.8 ships)
+
+**Goal:** Make the canonical multi-parent inoc session work end-to-end — capture → extract → confirm → commit → surface — using the 2026-05-22 paper-log session as the live ship gate.
+
+**Why now:** May 22 exposed that Phase 38's "95.8% schema conformance" eval set didn't include the most common inoc shape: N children from M>1 parents in one session. 10 of 11 bags fell on the floor on the live session. This is *the* canonical shape at the farm ([[project_inoc_shape_multi_parent_batch]]), not an edge case.
+
+**Target features:**
+- Multi-source extraction fusion (audio+image+text → one draft with per-field provenance; flag conflicts)
+- Groups-shape inoc draft (`{groups: [{parent, species, qty, child_block_names[]}]}`)
+- B5-compliant block-name minting (SEQ per-session, sourced from paper-log photo per 2026-05-22 clarification note in farmos repo `8daea5b`)
+- Session-as-entity (anonymous `fungi` asset; secondary parent on each child block)
+- Per-bag commit fan-out (N seeding logs + 1 session asset, idempotent)
+- Session-shaped confirm preview (compact group table; farmer compares to notebook/shelf)
+- Real-session eval corpus (≥3 sessions; May 22 as named regression guard)
+
+**Schema source-of-truth (locked):**
+- `/mnt/slime-kingdom/shared/farmos/.planning/notes/2026-05-11-session-chat.md` (B1–B7 + C1–C5 lock)
+- `/mnt/slime-kingdom/shared/farmos/.planning/notes/2026-05-22-b5-seq-clarification.md` (B5 SEQ disambiguation)
+
+**Ship gate:** Santi forwards May 22 audio+photo → pipeline emits 11 correctly-named blocks (`260522_SHI_1..3`, `260522_KOY_4..11`) with right parents and a session asset → farmer YES → all 11 logs land in farmOS dev → lineage walks return clean.
+
+**Out of scope (deferred):**
+- Harvest-session shape (same structural concern; gets its own milestone)
+- Multi-session-per-day SEQ disambiguation (defer until it happens; flagged in clarification note)
+- Phase 45 (NORTH-STAR commit_failed ack) — that's v1.8; here the relaxed-for-Santi posture holds ([[feedback_hard_rules_relaxed_when_farmer_is_santi]])
+- Phase 42 SHI-on-sawdust full lifecycle pilot (still calendar-deferred)
+- QR scan binding flow (locked schema's v1.0 path; multimodal-only is the v1.6+ commitment)
+
+**Sequencing:** Phase planning starts only after v1.8 (Phases 44 + 45) ships. Scaffolding-only now to make the shape concrete and zoy-side-visible.
+
+---
+
 ## Current Milestone: v1.7 Multimodal Signal → FarmOS Events
 
 **Goal:** Ship the multimodal extraction pipeline (photo + voice + text → LLM → farmOS event writes) that exercises and validates the 2026-05-11 schema lock, ending with one SHI-on-sawdust block driven end-to-end through farmOS by Signal alone.
