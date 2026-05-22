@@ -148,7 +148,7 @@ describe('createCapturePipeline', () => {
       await pipeline.handle(textEnvelope);
       expect(signalClient.send).toHaveBeenCalled();
       const [, opts] = signalClient.send.mock.calls[0];
-      expect(opts).toEqual({ to: F2_PHONE });
+      expect(opts).toMatchObject({ to: F2_PHONE, intent: 'convo_reply', sourceModule: 'capture.js' });
     });
 
     test('DM envelope: row.reply_target_kind=dm, group_id=null, farmos_person=slug', async () => {

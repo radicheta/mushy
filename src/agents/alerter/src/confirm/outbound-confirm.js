@@ -28,9 +28,17 @@ function createConfirmOutbound({
     throw new Error('createConfirmOutbound: signalClient.send required');
   }
 
-  async function safeSend(body, target) {
+  async function safeSend(body, target, draftId) {
     try {
-      const res = await signalClient.send(body, { to: target });
+      // Phase 44 Plan-03 D-13/D-16: confirm-loop sends go through the wrapped
+      // send with intent='confirm_prompt' so the signal_outbound row carries
+      // the canonical enum + relatedDraftId for auditing.
+      const res = await signalClient.send(body, {
+        to: target,
+        intent: 'confirm_prompt',
+        relatedDraftId: draftId || null,
+        sourceModule: 'outbound-confirm.js',
+      });
       return res || { ok: true };
     } catch (e) {
       logger.warn && logger.warn(`[outbound-confirm] signal send failed: ${e.message}`);
@@ -109,7 +117,7 @@ function createConfirmOutbound({
         return { ok: false, reason: 'no_target' };
       }
 
-      const res = await safeSend(body, target);
+      const res = await safeSend(body, target, draftRow && draftRow.id);
       if (res.ok) {
         logger.info && logger.info(`[outbound-confirm] ${sideEffect} sent draft=${truncId(draftRow && draftRow.id)}`);
       }

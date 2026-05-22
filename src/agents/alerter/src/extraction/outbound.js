@@ -50,14 +50,28 @@ function createOutboundDispatcher({
     return null;
   }
 
-  async function safeSend(body, target) {
+  async function safeSend(body, target, relatedCaptureId) {
     try {
-      const res = await signalClient.send(body, { to: target });
+      // Phase 44 Plan-03 D-13/D-16: extraction outbound sends go through the
+      // wrapped send with intent='extraction_preview' (covers ask-back replies,
+      // needs-review pings, and batch review summaries — all preview-class).
+      const res = await signalClient.send(body, {
+        to: target,
+        intent: 'extraction_preview',
+        relatedCaptureId: relatedCaptureId || null,
+        sourceModule: 'extraction/outbound.js',
+      });
       return res || { ok: true };
     } catch (e) {
       logger.warn && logger.warn(`[outbound] signal send failed: ${e.message}`);
       return { ok: false, reason: e.message };
     }
+  }
+
+  function firstCaptureId(draftRow) {
+    const arr = draftRow && draftRow.source_capture_ids;
+    if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'string') return arr[0];
+    return null;
   }
 
   async function sendAskBack(draftRow) {
@@ -68,7 +82,7 @@ function createOutboundDispatcher({
     }
     const raw = (draftRow && draftRow.farmer_facing_preview) || '';
     const text = sanitize(raw);
-    const res = await safeSend(text, target);
+    const res = await safeSend(text, target, firstCaptureId(draftRow));
     if (res.ok) {
       logger.info && logger.info(`[outbound] ask_back sent draft=${truncId(draftRow.id)} preview="${text.slice(0, 40)}"`);
     }
