@@ -195,12 +195,13 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
       try {
         // D-04: non-reply sends inherit defaultTarget (group when SIGNAL_GROUP_ID set).
         if (action.kind === 'send' || action.kind === 'recovery') {
-          await signalClient.send(action.body);
+          await signalClient.send(action.body, { intent: 'rh_alert', sourceModule: 'index.js' });
         } else if (action.kind === 'heartbeat') {
-          // Heartbeat bypasses the hourly send cap (bypassCap: true)
-          await signalClient.send(action.body, { bypassCap: true });
+          // Heartbeat bypasses the hourly send cap (bypassCap: true).
+          // Phase 46 D-09: heartbeat doubles as the attestation_kickoff carrier.
+          await signalClient.send(action.body, { bypassCap: true, intent: 'attestation_kickoff', sourceModule: 'index.js' });
         } else if (action.kind === 'snooze_ack') {
-          await signalClient.send(action.body);
+          await signalClient.send(action.body, { intent: 'command_echo', sourceModule: 'index.js' });
         }
       } catch (e) {
         logger.error(`[apply] action ${action.kind} failed: ${e.message}`);

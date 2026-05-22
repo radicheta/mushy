@@ -70,7 +70,7 @@ function createReceiveLoop({
   async function dispatchExperiment(exp) {
     if (!fetchImpl) {
       logger.warn('[receive] no fetch impl — cannot dispatch experiment');
-      await signalClient.send('experiment dispatch unavailable (bridge unreachable)').catch(() => {});
+      await signalClient.send('experiment dispatch unavailable (bridge unreachable)', { intent: 'experiment_reject', sourceModule: 'receive-loop.js' }).catch(() => {});
       return;
     }
     try {
@@ -84,11 +84,12 @@ function createReceiveLoop({
         if (resp.status === 200 && body.ok) {
           await signalClient.send(
             `${exp.name} started for ${exp.duration_minutes} min; reverts at ${body.reverts_at_iso} (prior=${body.prior_mode})`,
+            { intent: 'experiment_ack', sourceModule: 'receive-loop.js' },
           );
           logger.info(`[receive] experiment dispatched: ${exp.name} ${exp.duration_minutes}min`);
         } else {
           const err = body.error || body.message || `bridge returned ${resp.status}`;
-          await signalClient.send(`experiment rejected: ${err}`);
+          await signalClient.send(`experiment rejected: ${err}`, { intent: 'experiment_reject', sourceModule: 'receive-loop.js' });
           logger.warn(`[receive] experiment rejected by bridge: ${err}`);
         }
       } else if (exp.kind === 'cancel') {
@@ -99,17 +100,17 @@ function createReceiveLoop({
         });
         const body = await resp.json().catch(() => ({}));
         if (resp.status === 200 && body.ok) {
-          await signalClient.send(`experiment cancelled (ended_at=${body.ended_at_iso})`);
+          await signalClient.send(`experiment cancelled (ended_at=${body.ended_at_iso})`, { intent: 'experiment_cancel', sourceModule: 'receive-loop.js' });
           logger.info('[receive] experiment cancelled');
         } else {
           const err = body.error || body.message || `bridge returned ${resp.status}`;
-          await signalClient.send(`cancel rejected: ${err}`);
+          await signalClient.send(`cancel rejected: ${err}`, { intent: 'experiment_reject', sourceModule: 'receive-loop.js' });
           logger.warn(`[receive] cancel rejected by bridge: ${err}`);
         }
       }
     } catch (e) {
       logger.warn(`[receive] experiment dispatch network error: ${e.message}`);
-      await signalClient.send('experiment dispatch failed; check bridge logs').catch(() => {});
+      await signalClient.send('experiment dispatch failed; check bridge logs', { intent: 'experiment_reject', sourceModule: 'receive-loop.js' }).catch(() => {});
     }
   }
 
@@ -186,7 +187,7 @@ function createReceiveLoop({
           }
           if (exp.reply) {
             logger.info('[receive] invalid experiment command — replying with help text');
-            await signalClient.send(exp.reply).catch((e) =>
+            await signalClient.send(exp.reply, { intent: 'experiment_reject', sourceModule: 'receive-loop.js' }).catch((e) =>
               logger.warn(`[receive] experiment help-reply send failed: ${e.message}`),
             );
             continue;
@@ -202,13 +203,13 @@ function createReceiveLoop({
             dispatch({ type: 'snooze', alertType: parsed.alertType, untilMs: parsed.untilMs });
             // Send ack reply (≤30s budget; ack only — no capture work in this branch)
             await signalClient
-              .send(parsed.ackText || 'snoozed')
+              .send(parsed.ackText || 'snoozed', { intent: 'command_echo', sourceModule: 'receive-loop.js' })
               .catch((e) => logger.warn(`[receive] ack send failed: ${e.message}`));
             continue;
           }
           if (parsed.reply) {
             logger.info(`[receive] invalid snooze — replying with help text`);
-            await signalClient.send(parsed.reply).catch((e) =>
+            await signalClient.send(parsed.reply, { intent: 'command_echo', sourceModule: 'receive-loop.js' }).catch((e) =>
               logger.warn(`[receive] reply send failed: ${e.message}`)
             );
             continue;
