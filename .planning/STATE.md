@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Event-gate + Durable signal_outbound (tenant-aware)
 status: v1.8 scaffolded in ROADMAP; 4 research notes prepped; ready for discuss-phase on Phase 44
-last_updated: "2026-05-22T13:25:33.801Z"
+last_updated: "2026-05-22T13:35:09.713Z"
 last_activity: 2026-05-22
 progress:
   total_phases: 26
   completed_phases: 4
   total_plans: 64
-  completed_plans: 28
+  completed_plans: 29
   percent: 15
 ---
 
@@ -233,6 +233,7 @@ Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (for
 | Phase 44 P00 | 5min | 4 tasks | 11 files |
 | Phase 44 P05 | 12min | 2 tasks | 5 files |
 | Phase 44 P06 | 25 | 3 tasks | 7 files |
+| Phase 44 P03 | 5m44s | 2 tasks | 9 files |
 
 ## Deferred Items
 
@@ -274,7 +275,7 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 ## Session Continuity
 
-Last session: 2026-05-22T13:25:20.161Z
+Last session: 2026-05-22T13:35:03.294Z
 Next up: kick off v1.8 Phase 1 (event-gate + signal_outbound). Plan-01 = 100-capture hand-classification smoke from mushdatadump-prod, BEFORE spec-locking the gate. Reference notes:
 
   - .planning/notes/2026-05-17-is-this-an-event-gate.md (event-gate design)
