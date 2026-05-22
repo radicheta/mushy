@@ -660,6 +660,15 @@ Plans:
 - `.planning/notes/2026-05-17-tenant-id-retrofit-map.md` (tenant boundary inventory)
 - SEED-010 (Foray extraction trigger)
 
+**Plans:** 7 plans
+- [ ] 44-00-PLAN.md — Wave 0 scaffolding (.gitignore + yaml dep + 8 test stubs)
+- [ ] 44-01-PLAN.md — 100-capture hand-classified smoke fixture (operator manual ship-gate)
+- [ ] 44-02-PLAN.md — signal_outbound DDL + DAO + signal.js single persistence hook (OUTBOUND-01, TENANT-01)
+- [ ] 44-03-PLAN.md — Wire intent + sourceModule across all 14 send sites (OUTBOUND-01)
+- [ ] 44-04-PLAN.md — event-gate (rules + Haiku 4.5 classifier) + capture.js wiring + extraction_gate column + smoke harness (GATE-01, GATE-02)
+- [ ] 44-05-PLAN.md — fmtHistory stream merge + lastBotOutbound prompt field (OUTBOUND-02)
+- [ ] 44-06-PLAN.md — tenants/mossrock/ config tree + layered config.js loader (TENANT-01)
+
 ### Phase 45: NORTH-STAR commit_failed ack + replay outstanding silent-failure drafts
 
 **Goal:** Close the NORTH-STAR violation that surfaced 2026-05-15 (Vikki Rambo `commit_failed` on `observation_requires_target` went unreplied; farmer said YES and got silence). Every terminal state in the confirm/commit state machine MUST produce a farmer-facing reply — success AND failure paths. Then live-fire replay the two outstanding silent-failure drafts as UAT.
