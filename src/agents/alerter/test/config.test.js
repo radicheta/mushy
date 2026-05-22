@@ -2,11 +2,16 @@
 
 const { load, maskNumber } = require('../src/config');
 
+// Phase 44 D-11: TENANT_ID='__none__' opts the legacy tests out of the new
+// layered loader (no such tenant dir → empty tenant config). Existing tests
+// that assert env-only behavior MUST use this base so the just-shipped
+// tenants/mossrock/config.yaml does not override their synthetic env.
 const BASE_ENV = {
   SIGNAL_SENDER: '+1',
   SIGNAL_RECIPIENT: '+2',
   TIMESCALE_PASSWORD: 'testpw',
   ANTHROPIC_API_KEY: 'sk-test',
+  TENANT_ID: '__none__',
 };
 
 describe('config.load', () => {
@@ -234,6 +239,111 @@ describe('Phase 39 confirm-loop knobs', () => {
     'use strict';
     const cfg = load({ ...BASE_ENV });
     expect(() => { cfg.maxEditTurns = 99; }).toThrow();
+  });
+});
+
+// Phase 44 TENANT-01 — layered tenant-file → env → default loader.
+//
+// MOSSROCK_ENV: drops TENANT_ID='__none__' from BASE_ENV so tests can opt in
+// to the just-shipped tenants/mossrock/ fixtures (the production default).
+describe('Phase 44: layered tenant loader', () => {
+  const MOSSROCK_ENV = (() => { const e = { ...BASE_ENV }; delete e.TENANT_ID; return e; })();
+
+  test('B1: load(env) signature preserved — synthetic env still works (TENANT_ID=__none__)', () => {
+    const cfg = load({ ...BASE_ENV });
+    expect(cfg.signalSender).toBe('+1');
+    expect(cfg.signalRecipient).toBe('+2');
+    expect(Object.isFrozen(cfg)).toBe(true);
+  });
+
+  test('B2: tenantId defaults to "mossrock" when TENANT_ID unset', () => {
+    const cfg = load({ ...MOSSROCK_ENV });
+    expect(cfg.tenantId).toBe('mossrock');
+  });
+
+  test('B3: tenant file overrides env when both present (mossrock has EVENT_GATE_CONVO_MODE=silent)', () => {
+    // tenant_id defaults to mossrock; env tries to set "off"; tenant wins.
+    const cfg = load({ ...MOSSROCK_ENV, EVENT_GATE_CONVO_MODE: 'off' });
+    expect(cfg.eventGateConvoMode).toBe('silent');
+  });
+
+  test('B4: env overrides default when tenant file missing (TENANT_ID=__none__)', () => {
+    const cfg = load({ ...BASE_ENV, EVENT_GATE_CONVO_MODE: 'negative_only' });
+    expect(cfg.eventGateConvoMode).toBe('negative_only');
+  });
+
+  test('B5: default when both tenant and env missing (TENANT_ID=__none__)', () => {
+    const cfg = load({ ...BASE_ENV });
+    expect(cfg.eventGateConvoMode).toBe('silent');
+  });
+
+  test('B6: strains is the 14-element array from tenants/mossrock/strains.yaml', () => {
+    const cfg = load({ ...MOSSROCK_ENV });
+    expect(Array.isArray(cfg.strains)).toBe(true);
+    expect(cfg.strains).toHaveLength(14);
+    expect(cfg.strains[0]).toBe('SHI');
+    expect(cfg.strains).toContain('LIMA');
+  });
+
+  test('B7: eventGateConvoMode field exists on the frozen object', () => {
+    const cfg = load({ ...MOSSROCK_ENV });
+    expect(cfg).toHaveProperty('eventGateConvoMode');
+    expect(typeof cfg.eventGateConvoMode).toBe('string');
+  });
+
+  test('B8: tenantId field exists on the frozen object (consumed by signal.js Plan-02)', () => {
+    const cfg = load({ ...MOSSROCK_ENV });
+    expect(cfg).toHaveProperty('tenantId');
+    expect(typeof cfg.tenantId).toBe('string');
+  });
+
+  test('B9: secrets still come from env (anthropicApiKey via mustEnv even when tenant file present)', () => {
+    // Even though tenants/mossrock/config.yaml is read, ANTHROPIC_API_KEY is NOT
+    // sourced from there — it MUST come from env (mustEnv). Remove it → throws.
+    const env = { ...MOSSROCK_ENV };
+    delete env.ANTHROPIC_API_KEY;
+    expect(() => load(env)).toThrow('ANTHROPIC_API_KEY');
+    // And when present, it resolves to the env value (not anything from tenant file).
+    const cfg = load({ ...MOSSROCK_ENV });
+    expect(cfg.anthropicApiKey).toBe('sk-test');
+  });
+
+  test('B4-FIELD-SURFACE: all 12 frozen-config fields are !== undefined with fixtures + 3 secret env vars', () => {
+    const cfg = load({ ...MOSSROCK_ENV, FARMOS_PASSWORD: 'fpw-test' });
+    const required = [
+      'anthropicApiKey',
+      'farmosPassword',
+      'farmosUrl',
+      'farmosUsername',
+      'farmosIntegration',
+      'signalSender',
+      'signalRecipient',
+      'signalGroupId',
+      'signalFarmerMap',
+      'strains',
+      'eventGateConvoMode',
+      'tenantId',
+    ];
+    for (const k of required) {
+      expect(cfg[k]).not.toBeUndefined();
+    }
+  });
+
+  test('B-W9: SIGNAL_FARMER_MAP from tenant YAML loads as a Map<phone, slug>', () => {
+    const cfg = load({ ...MOSSROCK_ENV });
+    expect(cfg.signalFarmerMap).toBeInstanceOf(Map);
+    // tenants/mossrock/config.yaml seeds Santi + bot.
+    expect(cfg.signalFarmerMap.get('+59892893012')).toBe('f1');
+    expect(cfg.signalFarmerMap.get('+59891840205')).toBe('bot');
+  });
+
+  test('B-T-44-06-02: TENANT_ID path traversal cannot escape tenants/ base', () => {
+    // Even if attacker sets TENANT_ID='../etc', loadTenantFile must return {}.
+    // Trip-wire: synthetic env passing through; no throw, and eventGateConvoMode
+    // falls back to default 'silent' (no foreign file got read).
+    const cfg = load({ ...BASE_ENV, TENANT_ID: '../../../etc' });
+    expect(cfg.eventGateConvoMode).toBe('silent');
+    expect(cfg.tenantId).toBe('../../../etc'); // recorded as-is, but no file resolved
   });
 });
 
