@@ -1,0 +1,22 @@
+# Mossrock tenant config — Phase 44 D-11
+# Committed (no secrets). Secrets live in tenants/mossrock/secrets.env (gitignored).
+# Read by src/agents/alerter/src/config.js layered loader.
+
+# Phase 37 D-11: phone (E.164) → farmer slug; consumed for farmOS person attribution.
+# Source-of-truth: [[project_farmer_phone_map]] memory.
+SIGNAL_FARMER_MAP:
+  "+59892893012": f1   # Santi
+  "+59891840205": bot  # alerter sender (self)
+
+# Phase 37 D-04/D-16: default Signal targets. Bare base64 group id; signal.js prepends "group.".
+# Migrated from elder-plops .env at Phase 44 ship time.
+SIGNAL_RECIPIENT: "+59892893012"
+SIGNAL_GROUP_ID: ""
+
+# Phase 40 D-01b: farmOS write path.
+FARMOS_URL: "http://10.68.155.50:18080"
+FARMOS_USERNAME: "farmos_agent"
+FARMOS_INTEGRATION: false
+
+# Phase 44 D-06: gate convo-silence behavior. silent | negative_only | off.
+EVENT_GATE_CONVO_MODE: silent

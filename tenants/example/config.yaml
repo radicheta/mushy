@@ -1,0 +1,19 @@
+# Example tenant config — Foray v0.1 placeholder.
+# Copy this directory to tenants/<your-farm>/ and fill in <TODO> values.
+# This file is committed as a template; tenants/<your-farm>/secrets.env stays gitignored.
+
+# Phone (E.164) → farmer slug map for farmOS person attribution.
+SIGNAL_FARMER_MAP:
+  # "+15551234567": f1   # <TODO: replace with your farmer phone>
+
+# Default Signal targets. Bare base64 group id (no "group." prefix; signal.js adds it).
+SIGNAL_RECIPIENT: "<TODO: bot or farmer E.164>"
+SIGNAL_GROUP_ID: ""
+
+# farmOS endpoint (leave blank + INTEGRATION=false to skip farmOS writes).
+FARMOS_URL: "<TODO: http://farmos.example:18080>"
+FARMOS_USERNAME: "<TODO: farmos_agent>"
+FARMOS_INTEGRATION: false
+
+# Event-gate convo-silence behavior. silent | negative_only | off.
+EVENT_GATE_CONVO_MODE: silent
