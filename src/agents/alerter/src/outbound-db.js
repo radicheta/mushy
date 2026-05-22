@@ -1,0 +1,78 @@
+'use strict';
+// Phase 44 Plan-02 (D-12 / D-14): signal_outbound persistence.
+// Regular Postgres table (no hypertable — per-farmer volume too low,
+// same posture as signal_capture).
+//
+// Schema is D-12 verbatim:
+//   uuid PK via gen_random_uuid() (requires pgcrypto — emitted idempotently
+//   below; operator should sanity-check the extension is enabled on the
+//   elder-plops Timescale `mushy` database per RESEARCH A2 / Task 2.1).
+//
+// `insertOutbound` is never-throw per Pattern S1: returns {ok, reason}.
+// The signal.js single-hook persistence call (D-14) depends on this for
+// fail-open per D-03 — outbound insert failures must not back-pressure send().
+
+async function initDb(pool) {
+  // pgcrypto for gen_random_uuid(). Idempotent; needs superuser only on the
+  // very first run. If superuser is unavailable this single statement errors
+  // but `CREATE EXTENSION IF NOT EXISTS` is a no-op when already present.
+  await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS signal_outbound (
+      id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id       text NOT NULL,
+      sent_at         timestamptz NOT NULL DEFAULT now(),
+      recipient_e164  text NOT NULL,
+      intent          text NOT NULL,
+      body            text NOT NULL,
+      attachments     jsonb,
+      source_module   text NOT NULL,
+      source_line     integer,
+      related_capture_id uuid,
+      related_draft_id   uuid
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_signal_outbound_tenant_sent ON signal_outbound(tenant_id, sent_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_signal_outbound_recipient_sent ON signal_outbound(recipient_e164, sent_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_signal_outbound_intent ON signal_outbound(intent)`);
+}
+
+async function insertOutbound(pool, row) {
+  try {
+    await pool.query(
+      `INSERT INTO signal_outbound
+         (tenant_id, sent_at, recipient_e164, intent, body, attachments,
+          source_module, source_line, related_capture_id, related_draft_id)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)`,
+      [
+        row.tenant_id,
+        row.sent_at,
+        row.recipient_e164,
+        row.intent,
+        row.body,
+        row.attachments != null ? JSON.stringify(row.attachments) : null,
+        row.source_module,
+        row.source_line ?? null,
+        row.related_capture_id ?? null,
+        row.related_draft_id ?? null,
+      ]
+    );
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: e.message };
+  }
+}
+
+async function selectRecentByRecipient(pool, recipient, sinceMs) {
+  const since = new Date(sinceMs);
+  const r = await pool.query(
+    `SELECT sent_at, body, intent
+     FROM signal_outbound
+     WHERE recipient_e164 = $1 AND sent_at > $2
+     ORDER BY sent_at ASC`,
+    [recipient, since]
+  );
+  return r.rows;
+}
+
+module.exports = { initDb, insertOutbound, selectRecentByRecipient };
