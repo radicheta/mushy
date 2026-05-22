@@ -352,4 +352,167 @@ describe('signal.js', () => {
       expect(logLines.length).toBeGreaterThan(0);
     });
   });
+
+  describe('Phase 44 Plan-02: signal_outbound persistence hook (D-14 single hook)', () => {
+    function makeFakeOutboundDb() {
+      return {
+        insertOutbound: jest.fn().mockResolvedValue({ ok: true }),
+      };
+    }
+    function makeFakePool() {
+      return { query: jest.fn() };
+    }
+
+    it('Test 1: send() with full opts triggers one insertOutbound with matching fields', async () => {
+      const outboundDb = makeFakeOutboundDb();
+      const pool = makeFakePool();
+      const hookClient = createSignalClient({
+        apiUrl: server.url,
+        sender: SENDER,
+        recipient: RECIPIENT,
+        maxSendsPerHour: 20,
+        outboundDb,
+        pool,
+        tenantId: 'mossrock',
+      });
+      const captureId = '11111111-2222-3333-4444-555555555555';
+      const draftId = '99999999-8888-7777-6666-555555555555';
+      const result = await hookClient.send('hello', {
+        intent: 'rh_alert',
+        relatedCaptureId: captureId,
+        relatedDraftId: draftId,
+        sourceModule: 'state.js',
+      });
+      expect(result.ok).toBe(true);
+      expect(outboundDb.insertOutbound).toHaveBeenCalledTimes(1);
+      const [poolArg, row] = outboundDb.insertOutbound.mock.calls[0];
+      expect(poolArg).toBe(pool);
+      expect(row).toMatchObject({
+        tenant_id: 'mossrock',
+        recipient_e164: RECIPIENT,
+        intent: 'rh_alert',
+        body: 'hello',
+        source_module: 'state.js',
+        related_capture_id: captureId,
+        related_draft_id: draftId,
+      });
+      expect(row.sent_at).toBeInstanceOf(Date);
+    });
+
+    it('Test 2: send() WITHOUT intent logs warn and writes intent=unknown (Pitfall 3 shim)', async () => {
+      const outboundDb = makeFakeOutboundDb();
+      const pool = makeFakePool();
+      const logLines = [];
+      const logger = {
+        info: (...a) => logLines.push(['info', a.join(' ')]),
+        warn: (...a) => logLines.push(['warn', a.join(' ')]),
+        error: (...a) => logLines.push(['error', a.join(' ')]),
+      };
+      const hookClient = createSignalClient({
+        apiUrl: server.url,
+        sender: SENDER,
+        recipient: RECIPIENT,
+        maxSendsPerHour: 20,
+        outboundDb,
+        pool,
+        tenantId: 'mossrock',
+        logger,
+      });
+      await hookClient.send('hi');
+      const row = outboundDb.insertOutbound.mock.calls[0][1];
+      expect(row.intent).toBe('unknown');
+      const warned = logLines.some(([lvl, line]) => lvl === 'warn' && /intent/i.test(line));
+      expect(warned).toBe(true);
+    });
+
+    it('Test 3: group send encodes recipient_e164 as "group:<id>" (prefix encoding — operator decision b)', async () => {
+      const outboundDb = makeFakeOutboundDb();
+      const pool = makeFakePool();
+      const hookClient = createSignalClient({
+        apiUrl: server.url,
+        sender: SENDER,
+        defaultTarget: { groupId: 'GRPID12345=' },
+        maxSendsPerHour: 20,
+        outboundDb,
+        pool,
+        tenantId: 'mossrock',
+      });
+      await hookClient.send('hi', { intent: 'rh_alert' });
+      const row = outboundDb.insertOutbound.mock.calls[0][1];
+      expect(row.recipient_e164).toBe('group:GRPID12345=');
+    });
+
+    it('Test 4: insertOutbound returning {ok:false} warns but does NOT throw and send still returns ok', async () => {
+      const outboundDb = {
+        insertOutbound: jest.fn().mockResolvedValue({ ok: false, reason: 'db down' }),
+      };
+      const pool = makeFakePool();
+      const logLines = [];
+      const logger = {
+        info: () => {},
+        warn: (...a) => logLines.push(a.join(' ')),
+        error: () => {},
+      };
+      const hookClient = createSignalClient({
+        apiUrl: server.url,
+        sender: SENDER,
+        recipient: RECIPIENT,
+        maxSendsPerHour: 20,
+        outboundDb,
+        pool,
+        tenantId: 'mossrock',
+        logger,
+      });
+      const result = await hookClient.send('hi', { intent: 'rh_alert' });
+      expect(result.ok).toBe(true);
+      expect(logLines.some((l) => /db down/.test(l) || /outbound/i.test(l))).toBe(true);
+    });
+
+    it('Test 4b: insertOutbound throwing is swallowed (defense in depth — never block send)', async () => {
+      const outboundDb = {
+        insertOutbound: jest.fn().mockRejectedValue(new Error('boom')),
+      };
+      const pool = makeFakePool();
+      const hookClient = createSignalClient({
+        apiUrl: server.url,
+        sender: SENDER,
+        recipient: RECIPIENT,
+        maxSendsPerHour: 20,
+        outboundDb,
+        pool,
+        tenantId: 'mossrock',
+      });
+      const result = await hookClient.send('hi', { intent: 'rh_alert' });
+      expect(result.ok).toBe(true);
+    });
+
+    it('Test 5: rate-cap path skips insertOutbound (no send happened)', async () => {
+      const outboundDb = makeFakeOutboundDb();
+      const pool = makeFakePool();
+      const cappedClient = createSignalClient({
+        apiUrl: server.url,
+        sender: SENDER,
+        recipient: RECIPIENT,
+        maxSendsPerHour: 1,
+        outboundDb,
+        pool,
+        tenantId: 'mossrock',
+      });
+      await cappedClient.send('a', { intent: 'rh_alert' });
+      const second = await cappedClient.send('b', { intent: 'rh_alert' });
+      expect(second).toEqual({ ok: false, reason: 'rate-cap' });
+      expect(outboundDb.insertOutbound).toHaveBeenCalledTimes(1);
+    });
+
+    it('Test 6: no outboundDb passed → factory still works (back-compat — existing tests rely on this)', async () => {
+      const plainClient = createSignalClient({
+        apiUrl: server.url,
+        sender: SENDER,
+        recipient: RECIPIENT,
+        maxSendsPerHour: 20,
+      });
+      const result = await plainClient.send('hi', { intent: 'rh_alert' });
+      expect(result.ok).toBe(true);
+    });
+  });
 });
