@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Event-gate + Durable signal_outbound (tenant-aware)
 status: v1.8 scaffolded in ROADMAP; 4 research notes prepped; ready for discuss-phase on Phase 44
-last_updated: "2026-05-21T23:50:39.448Z"
-last_activity: 2026-05-21 -- Phase 46 closed (ROADMAP marked); sht30 noise band-aid restored in .env (was accidentally reset 2026-05-20 to 5; back to 1440). Phase 46 close-out + sht30 fix committed.
+last_updated: "2026-05-22T01:03:39.565Z"
+last_activity: 2026-05-22
 progress:
   total_phases: 26
   completed_phases: 4
-  total_plans: 57
-  completed_plans: 24
+  total_plans: 64
+  completed_plans: 25
   percent: 15
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 Phase: 46 — **SHIPPED 2026-05-21.** Live-fire attested Round 3 at T0+3min32s. Two extra bugs found and fixed in-flight: D-09 globals-shadow (`86d4340`) + D-10 oobN/oobWindowMin gate (`5f90cc7`). Two backlog items left as todos.
 Plan: 3 of 3 complete (46-01, 46-02, 46-03)
 Milestone: v1.7 -- Multimodal Signal to FarmOS Events. **Effectively shipped.** Phases 36-43 all complete; only Phase 42 (SHI-on-Sawdust pilot) remains as a calendar-bound human-driven run (3-4wk colonize). Re-audited 2026-05-15.
-Last activity: 2026-05-21 -- Phase 46 closed (ROADMAP marked); sht30 noise band-aid restored in .env (was accidentally reset 2026-05-20 to 5; back to 1440). Phase 46 close-out + sht30 fix committed.
+Last activity: 2026-05-22
 
 **Phase 46 close-out (final):**
 
@@ -226,6 +226,7 @@ Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (for
 |---|-------------|------|--------|-----------|
 | 260518-tbi | 999.53: persist Anthropic token usage in signal_capture for cost visibility | 2026-05-19 | a3ec164 | [260518-tbi-999-53-persist-anthropic-token-usage-in-](./quick/260518-tbi-999-53-persist-anthropic-token-usage-in-/) |
 | 260518-tcj | 999.51 (partial): align bridge control_experiment test srvName with live un-namespaced paths | 2026-05-19 | f1a4331 | [260518-tcj-999-51-mechanical-bridge-srvname-fix](./quick/260518-tcj-999-51-mechanical-bridge-srvname-fix/) |
+| Phase 44 P00 | 5min | 4 tasks | 11 files |
 
 ## Deferred Items
 
@@ -267,7 +268,7 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 ## Session Continuity
 
-Last session: 2026-05-21T23:50:39.438Z
+Last session: 2026-05-22T01:03:35.786Z
 Next up: kick off v1.8 Phase 1 (event-gate + signal_outbound). Plan-01 = 100-capture hand-classification smoke from mushdatadump-prod, BEFORE spec-locking the gate. Reference notes:
 
   - .planning/notes/2026-05-17-is-this-an-event-gate.md (event-gate design)
