@@ -76,12 +76,18 @@ function createHaikuClassifier({
         }],
         tool_choice: { type: 'tool', name: TOOL_NAME },
         messages: [{ role: 'user', content: buildClassifierInput(envCtx) }],
-        signal: AbortSignal.timeout(timeoutMs),
       };
 
       let resp;
       try {
-        resp = await client.messages.create(baseReq);
+        // Anthropic SDK contract: `signal` is a request-option (second arg),
+        // NOT a body param. Passing it inside baseReq triggers
+        // `400 invalid_request_error: "signal: Extra inputs are not permitted"`
+        // because the SDK strict-validates the body against the API schema.
+        // Caught by Task 4.6 live-fire 2026-05-23.
+        resp = await client.messages.create(baseReq, {
+          signal: AbortSignal.timeout(timeoutMs),
+        });
       } catch (e) {
         if (logger && logger.warn) {
           logger.warn(`[haiku-classifier] degraded: ${e && e.message ? e.message : String(e)}`);

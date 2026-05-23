@@ -90,15 +90,18 @@ describe('event-gate/haiku-classifier', () => {
     expect(CACHEABLE_SYSTEM_BLOCKS[0].cache_control).toEqual({ type: 'ephemeral' });
   });
 
-  test('Test 9: timeout uses AbortSignal.timeout(2000) on messages.create', async () => {
+  test('Test 9: timeout uses AbortSignal.timeout(2000) on messages.create (passed as request-options second arg per SDK contract)', async () => {
     const fake = { messages: { create: jest.fn().mockResolvedValue(fakeOkResp()) } };
     const c = createHaikuClassifier({ apiKey: 'test', client: fake, timeoutMs: 2000 });
     await c.classify({ text: 'foo', attachmentCount: 0 });
-    // SDK accepts signal at the top-level options OR as second arg; we pass it on the request object as `signal`.
-    const req = fake.messages.create.mock.calls[0][0];
-    expect(req.signal).toBeDefined();
-    // AbortSignal-shaped: has aborted property and addEventListener.
-    expect(typeof req.signal.aborted).toBe('boolean');
+    // Anthropic SDK rejects `signal` as a body param (400 invalid_request_error
+    // "signal: Extra inputs are not permitted"); it must travel via the
+    // second-arg request-options object. Caught by Task 4.6 live-fire 2026-05-23.
+    const [body, opts] = fake.messages.create.mock.calls[0];
+    expect(body.signal).toBeUndefined();
+    expect(opts).toBeDefined();
+    expect(opts.signal).toBeDefined();
+    expect(typeof opts.signal.aborted).toBe('boolean');
   });
 
   test('Test 10 (W10 holdout): SYSTEM_PROMPT does NOT contain any holdout row text', () => {
