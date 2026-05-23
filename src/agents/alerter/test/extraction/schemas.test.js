@@ -192,8 +192,15 @@ describe('per-field confidence shape', () => {
 describe('index.js -- Draft union', () => {
   const schemas = require('../../src/extraction/schemas');
 
-  test('LOG_TYPES is frozen, length 5, covers all log types', () => {
-    expect(schemas.LOG_TYPES).toEqual(['seeding', 'activity', 'input', 'observation', 'harvest']);
+  test('LOG_TYPES is frozen, length 6, covers all log types (incl. seeding_session)', () => {
+    expect(schemas.LOG_TYPES).toEqual([
+      'seeding',
+      'activity',
+      'input',
+      'observation',
+      'harvest',
+      'seeding_session',
+    ]);
     expect(Object.isFrozen(schemas.LOG_TYPES)).toBe(true);
   });
 
@@ -222,5 +229,81 @@ describe('index.js -- Draft union', () => {
     // Top-level must be an object schema (oneOf/anyOf/discriminated form) reachable via definitions or directly.
     const serialized = JSON.stringify(s);
     expect(serialized).toMatch(/seeding|harvest|activity|input|observation/);
+  });
+});
+
+// ============================================================================
+// Phase 47 Plan 01: SeedingSession wired into Draft + Submission unions.
+// Regression guards: all 5 legacy types still parse; new type parses; empty
+// groups[] rejected.
+// ============================================================================
+
+function provP(value, sources = ['paper_log_photo'], confidence = 0.95) {
+  return { value, sources, confidence };
+}
+
+function minimalSeedingSession(overrides = {}) {
+  return {
+    type: 'seeding_session',
+    event_date: '2026-05-22',
+    groups: [
+      {
+        parent: provP('260118_SHI_23'),
+        species: provP('SHI'),
+        qty: provP(2),
+        child_block_names: provP(['260522_SHI_1', '260522_SHI_2']),
+      },
+    ],
+    ...overrides,
+  };
+}
+
+describe('Phase 47 Plan 01 -- seeding_session in Draft union', () => {
+  const schemas = require('../../src/extraction/schemas');
+
+  test('Draft accepts a minimal seeding_session', () => {
+    const r = schemas.Draft.safeParse(minimalSeedingSession());
+    expect(r.success).toBe(true);
+  });
+
+  test('Draft rejects seeding_session with empty groups[]', () => {
+    const r = schemas.Draft.safeParse(minimalSeedingSession({ groups: [] }));
+    expect(r.success).toBe(false);
+  });
+
+  test('Submission accepts seeding_session at drafts[0].draft', () => {
+    const sub = {
+      drafts: [
+        {
+          draft: minimalSeedingSession(),
+          per_field_confidence: { 'groups[0].parent': 0.95 },
+        },
+      ],
+      continuity: 'start_new',
+      continuity_reason: 'new inoc session',
+    };
+    const r = schemas.Submission.safeParse(sub);
+    expect(r.success).toBe(true);
+  });
+
+  test('SeedingSession + Provenanced are re-exported from schemas/index.js', () => {
+    expect(typeof schemas.SeedingSession).toBe('object');
+    expect(typeof schemas.SeedingSessionGroup).toBe('object');
+    expect(typeof schemas.ConflictEntry).toBe('object');
+    expect(typeof schemas.Provenanced).toBe('function');
+    expect(schemas.SOURCE_ENUM.options).toContain('paper_log_photo');
+  });
+
+  test('regression -- all 5 legacy types still parse through Draft', () => {
+    expect(schemas.Draft.safeParse(validSeeding()).success).toBe(true);
+    expect(schemas.Draft.safeParse(validActivity()).success).toBe(true);
+    expect(schemas.Draft.safeParse(validInput()).success).toBe(true);
+    expect(schemas.Draft.safeParse(validObservation()).success).toBe(true);
+    expect(schemas.Draft.safeParse(validHarvest()).success).toBe(true);
+  });
+
+  test('DRAFT_JSON_SCHEMA mentions seeding_session after extension', () => {
+    const s = JSON.stringify(schemas.DRAFT_JSON_SCHEMA);
+    expect(s).toMatch(/seeding_session/);
   });
 });

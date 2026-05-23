@@ -26,6 +26,10 @@ const REQUIRED_FIELDS = Object.freeze({
   input:       ['recipe_lot', 'asset_ref', 'event_timestamp'],
   observation: ['asset_ref', 'event_timestamp'],
   harvest:     ['harvest_batch_id', 'source_block_refs', 'qty_g', 'event_timestamp'],
+  // Phase 47 Plan 01: multi-parent groups-shape inoc. Required = event_date + groups[].
+  // Per-group presence (parent/species/qty/child_block_names) is enforced by the
+  // SeedingSession Zod schema, not by REQUIRED_FIELDS (which is a flat-field map).
+  seeding_session: ['event_date', 'groups'],
 });
 
 const DRAFT_STATUS = Object.freeze({
