@@ -9,7 +9,9 @@ function mockClient() {
 }
 
 describe('logs.js (Phase 40 Plan 03)', () => {
-  for (const t of logs.LOG_TYPES) {
+  // Phase 48 Plan 01: iterate NATIVE_LOG_TYPES (createLog allow-list), not LOG_TYPES
+  // which now also includes the composite 'seeding_session' (router-only).
+  for (const t of logs.NATIVE_LOG_TYPES) {
     it(`createLog "${t}" posts to /api/log/${t} with correct payload shape`, async () => {
       const client = mockClient();
       await logs.createLog(client, t, {

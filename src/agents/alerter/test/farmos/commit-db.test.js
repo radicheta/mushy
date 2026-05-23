@@ -106,6 +106,57 @@ describe('commit-db (Phase 40 D-02/D-07)', () => {
     expect(r.farmos_response).toEqual(resp);
   });
 
+  // Phase 48 Plan 01: multi-asset / multi-log farmos_response round-trip.
+  // The existing signal_draft.farmos_response JSONB column is the idempotency
+  // surface for the seeding_session composite (1 asset + N child seeding logs).
+  // There is NO separate signal_commit table (CONTEXT.md uses that name but the
+  // actual implementation lives in signal_draft; reconciled silently per the
+  // friction policy: missing-data ask, mismatch silent).
+  it('markCommitted + getCachedResponse round-trip multi-asset multi-log shape (Phase 48 Plan 01)', async () => {
+    const pool = makeFakePool();
+    pool.seedDraft({ id: 'sess1', status: 'committing' });
+    const resp = {
+      asset_ids: ['asset-uuid-a'],
+      log_ids: ['log-uuid-1', 'log-uuid-2', 'log-uuid-3'],
+      file_ids: [],
+      http_status: 201,
+      latency_ms: 42,
+    };
+    const w = await commitDb.markCommitted(pool, 'sess1', resp);
+    expect(w.ok).toBe(true);
+    expect(w.rowCount).toBe(1);
+    const r = await commitDb.getCachedResponse(pool, 'sess1');
+    expect(r.ok).toBe(true);
+    expect(r.status).toBe('committed');
+    expect(r.farmos_response.asset_ids.length).toBe(1);
+    expect(r.farmos_response.log_ids.length).toBe(3);
+    expect(r.farmos_response).toEqual(resp);
+  });
+
+  // Phase 48 Plan 01: idempotent re-commit returns cached response unchanged.
+  // Once status='committed', acquireCommitLock CANNOT re-acquire (WHERE
+  // status='confirmed' guard returns rowCount=0). The watchdog must short-
+  // circuit on the cached farmos_response instead of re-dispatching.
+  it('idempotent re-commit on committed draft yields rowCount=0 lock + intact cache (Phase 48 Plan 01)', async () => {
+    const pool = makeFakePool();
+    const cached = {
+      asset_ids: ['asset-uuid-a'],
+      log_ids: ['log-uuid-1', 'log-uuid-2', 'log-uuid-3'],
+      file_ids: [],
+      http_status: 201,
+      latency_ms: 42,
+    };
+    pool.seedDraft({ id: 'sess2', status: 'committed', farmos_response: cached });
+    const lock = await commitDb.acquireCommitLock(pool, 'sess2');
+    expect(lock.ok).toBe(true);
+    expect(lock.rowCount).toBe(0); // guard rejected -- already committed
+    expect(lock.row).toBeNull();
+    const r = await commitDb.getCachedResponse(pool, 'sess2');
+    expect(r.status).toBe('committed');
+    expect(r.farmos_response).toEqual(cached);
+    expect(pool.getDraft('sess2').status).toBe('committed'); // unchanged
+  });
+
   // Phase 45 D-01 (ACK-04): mark-then-send idempotency primitive.
   describe('tryMarkOutcomeAckSent (Phase 45 D-01 / ACK-04)', () => {
     it('first call returns ok with claimed_at', async () => {
