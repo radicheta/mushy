@@ -24,7 +24,9 @@
 function makeFakePool() {
   const drafts = new Map(); // id -> row
   const events = []; // {draft_id, seq, event, payload, created_at}
+  const captures = new Map(); // id -> row (Phase 50 Plan 03)
   let nowMs = Date.now();
+  let captureSelectShouldThrow = false; // Plan 50-03: simulate DB error on capture lookup
 
   function _now() {
     return new Date(nowMs);
@@ -73,9 +75,37 @@ function makeFakePool() {
     return events.filter((e) => e.draft_id === draftId);
   }
 
+  // Plan 50-03: signal_capture seed/lookup helpers.
+  function seedCapture(row) {
+    const full = Object.assign(
+      {
+        id: row.id,
+        sender: row.sender || '+15550001234',
+        signal_msg_ts: row.signal_msg_ts == null ? null : row.signal_msg_ts,
+        raw_text: row.raw_text == null ? null : row.raw_text,
+      },
+      row
+    );
+    captures.set(full.id, full);
+    return full;
+  }
+  function setCaptureSelectThrow(v) {
+    captureSelectShouldThrow = !!v;
+  }
+
   async function query(sql, params) {
     params = params || [];
     const s = String(sql);
+
+    // Plan 50-03: signal_capture SELECT for getCaptureQuoteTarget.
+    if (/FROM\s+signal_capture/i.test(s) && /signal_msg_ts/.test(s) && /WHERE\s+id\s*=\s*\$1/i.test(s)) {
+      if (captureSelectShouldThrow) {
+        throw new Error('simulated capture select failure');
+      }
+      const id = params[0];
+      const row = captures.get(id);
+      return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
+    }
 
     if (/^\s*ALTER TABLE/i.test(s)) return { rows: [], rowCount: 0 };
     if (/^\s*CREATE TABLE/i.test(s)) return { rows: [], rowCount: 0 };
@@ -254,6 +284,8 @@ function makeFakePool() {
     seedDraft,
     getDraft,
     getEvents,
+    seedCapture,
+    setCaptureSelectThrow,
     _drafts: drafts,
     _events: events,
   };

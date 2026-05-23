@@ -290,6 +290,39 @@ async function findExpireCandidates(pool, timeoutMin) {
   }
 }
 
+// ----- Plan 50-03: outbound quote-threading lookup -----
+
+// getCaptureQuoteTarget(pool, captureId)
+//   -> { signal_msg_ts, sender, raw_text } when the capture row exists AND
+//      signal_msg_ts is non-null.
+//   -> null in every other case (missing captureId, missing row, NULL ts,
+//      ANY DB error). Never throws.
+//
+// This drives the outbound-confirm dispatcher's quote payload for
+// send_commit_outcome_ack + send_confirm_ack. Per CONTEXT D-05 and memory
+// [[feedback_no_silent_failure_after_farmer_confirm]] the dispatcher MUST
+// degrade to an unquoted ack rather than block when this returns null --
+// a vague ack beats no ack.
+async function getCaptureQuoteTarget(pool, captureId) {
+  if (!captureId) return null;
+  if (!pool || typeof pool.query !== 'function') return null;
+  try {
+    const r = await pool.query(
+      'SELECT signal_msg_ts, sender, raw_text FROM signal_capture WHERE id = $1 LIMIT 1',
+      [captureId]
+    );
+    const row = r && r.rows && r.rows[0];
+    if (!row || row.signal_msg_ts == null) return null;
+    return {
+      signal_msg_ts: row.signal_msg_ts,
+      sender: row.sender,
+      raw_text: row.raw_text == null ? '' : row.raw_text,
+    };
+  } catch (_e) {
+    return null;
+  }
+}
+
 module.exports = {
   initDb,
   confirmDraft,
@@ -303,4 +336,5 @@ module.exports = {
   findAwaitingForSender,
   findNudgeCandidates,
   findExpireCandidates,
+  getCaptureQuoteTarget,
 };
