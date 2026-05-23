@@ -170,7 +170,7 @@ Honors locked schema (B5 SEQ per-session per 2026-05-22 clarification in farmos 
 
 **Depends on:** v1.8 (Phases 44+45) ships first. Composes with Phase 38's existing extractor scaffolding — extends, doesn't replace.
 
-**Requirements:** INOC-01, INOC-02, INOC-03
+**Requirements:** INOC-01, INOC-02, INOC-03, INOC-05 (INOC-04 carry-forward to Phase 48)
 
 **Success criteria (what must be TRUE):**
 1. Replay the 2026-05-22 audio+photo turn through the new extractor → emits exactly one draft with 5 groups (3 SHI singles + 4 KOY-118-12 + 4 KOY-425-4), 11 children total, child names `260522_SHI_1..3` + `260522_KOY_4..11` (per-session SEQ from paper-log photo, not per-strain auto-generated).
@@ -185,7 +185,12 @@ Honors locked schema (B5 SEQ per-session per 2026-05-22 clarification in farmos 
 - No auto-generated SEQ when paper-log photo absent — ask-back preferred over guessing per [[project_extraction_holistic_multi_source_fusion]].
 - Honors B5 session-wide SEQ disambiguation ([[project_b5_seq_is_per_session_not_per_strain]]).
 
-**Plans:** TBD during plan-phase. Likely 4-6 plans.
+**Plans:** 5 plans
+- [ ] 47-01-PLAN.md — New schemas (SeedingSession + Provenanced + ConflictEntry) + Draft union extension
+- [ ] 47-02-PLAN.md — System prompt revision + May-22-shape multi-parent few-shot
+- [ ] 47-03-PLAN.md — Pipeline starting_seq ask-back branch + seq-helper.js (Phase 48 reuse)
+- [ ] 47-04-PLAN.md — Preview-builder seeding_session placeholder (Phase 48 ships real preview)
+- [ ] 47-05-PLAN.md — Integration ship-gate (May 22 hermetic + live-fire) for INOC-01/02/03/05
 
 ### Phase 48: Session entity + per-bag commit fan-out + session-shaped confirm preview
 
