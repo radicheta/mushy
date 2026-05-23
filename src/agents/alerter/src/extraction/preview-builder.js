@@ -227,6 +227,21 @@ function buildPreview({ draft, perFieldConfidence, threshold, requiredFields }) 
  * Numbers go through fmtNum; output is sanitized for em-dashes. NEVER touches
  * draft.conflicts[] (Gray Area 4 lock).
  */
+// Phase 47-04 hotfix: human-readable event_date in farmer-facing placeholder.
+// CONTEXT.md style lock: "May 22" not "2026-05-22" in farmer-facing text.
+// Accepts YYYY-MM-DD; returns "Mmm D" (e.g. "May 22"); falls back to raw
+// input on parse failure, "[?]" when absent.
+const MONTH_ABBREV = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function fmtEventDate(d) {
+  if (d == null || d === '') return '[?]';
+  const m = String(d).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return String(d);
+  const month = MONTH_ABBREV[parseInt(m[2], 10) - 1];
+  const day = parseInt(m[3], 10);
+  if (!month || Number.isNaN(day)) return String(d);
+  return `${month} ${day}`;
+}
+
 function buildSeedingSessionPlaceholder(draft) {
   const groups = Array.isArray(draft.groups) ? draft.groups : [];
   const groupCount = groups.length;
@@ -245,7 +260,7 @@ function buildSeedingSessionPlaceholder(draft) {
     }
   }
 
-  const eventDate = draft.event_date || '[?]';
+  const eventDate = fmtEventDate(draft.event_date);
 
   const headline = `${fmtNum(totalChildren)} blocks across ${fmtNum(groupCount)} groups for ${eventDate}`;
 
