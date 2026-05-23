@@ -195,10 +195,29 @@ async function expireIdle(pool, gapMinutes) {
   }
 }
 
+/**
+ * Fetch a single draft row by primary-key id. Returns the row or null.
+ * Added for Phase 47 Plan 03 handleStartingSeqReply: ask-back reply needs
+ * to re-load the draft, mutate child_block_names + needs_input, then
+ * write back via updateDraftStatus({draft_json}).
+ */
+async function getDraftById(pool, id) {
+  try {
+    const r = await pool.query(
+      `SELECT * FROM signal_draft WHERE id = $1 LIMIT 1`,
+      [id],
+    );
+    return r.rows.length > 0 ? r.rows[0] : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
 module.exports = {
   initDb,
   insertDraft,
   getInFlightForSender,
+  getDraftById,
   updateDraftStatus,
   advanceAskbackTurn,
   expireIdle,
