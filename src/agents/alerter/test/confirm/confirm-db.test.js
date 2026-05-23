@@ -119,6 +119,36 @@ describe('confirm-db (Phase 39 D-07/D-07a)', () => {
       const r = await confirmDb.findAwaitingForSender(pool, '+15550001234');
       expect(r.id).toBe('new');
     });
+
+    // Phase 45 Plan 04 follow-on (from Plan 03 hand-off):
+    // EDIT-from-commit_failed (Plan 03 Option X) requires receive-loop lookup
+    // to surface commit_failed drafts. Without this, the wired transition is
+    // unreachable at runtime from a real Signal reply.
+    it('returns commit_failed draft when no awaiting_farmer exists for sender (Plan 03 Option X reachability)', async () => {
+      const pool = makeFakePool();
+      pool.seedDraft({
+        id: 'failed1',
+        sender_e164: '+15550002222',
+        status: 'commit_failed',
+        commit_failed_reason: 'observation_requires_target',
+        updated_at: new Date(2026, 0, 1, 12, 0, 0),
+      });
+      const r = await confirmDb.findAwaitingForSender(pool, '+15550002222');
+      expect(r).not.toBeNull();
+      expect(r.id).toBe('failed1');
+      expect(r.status).toBe('commit_failed');
+    });
+
+    it('prefers awaiting_farmer over commit_failed when both exist for same sender', async () => {
+      const pool = makeFakePool();
+      const tFailedNewer = new Date(2026, 0, 1, 13, 0, 0);
+      const tAwaitingOlder = new Date(2026, 0, 1, 12, 0, 0);
+      pool.seedDraft({ id: 'failed-newer', sender_e164: '+15550003333', status: 'commit_failed', updated_at: tFailedNewer });
+      pool.seedDraft({ id: 'awaiting-older', sender_e164: '+15550003333', status: 'awaiting_farmer', updated_at: tAwaitingOlder });
+      const r = await confirmDb.findAwaitingForSender(pool, '+15550003333');
+      expect(r.id).toBe('awaiting-older');
+      expect(r.status).toBe('awaiting_farmer');
+    });
   });
 
   describe('findNudgeCandidates', () => {

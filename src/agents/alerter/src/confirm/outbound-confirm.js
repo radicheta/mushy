@@ -10,6 +10,16 @@
 //
 // Style locks: no em-dashes (sanitizeFarmerText sweep in preview.js), fmtNum
 // for numbers, named address. Never throws.
+//
+// Phase 45 Plan 04: registers `send_commit_outcome_ack` side-effect. The body
+// is built by `renderOutcomeAck` (commit-outcome-preview.js, Plan 02). Sent
+// with intent='commit_outcome_ack', which causes signal.js's single-hook
+// signal_outbound persistence (Phase 44 Plan-02 D-14) to write a row tagged
+// with tenant_id='mossrock', related_draft_id=draftRow.id. Logging is
+// best-effort in signal.js (fail-open per D-03); we add no extra outboundDb
+// write here.
+
+const { renderOutcomeAck } = require('../farmos/commit-outcome-preview');
 
 function truncId(id) {
   if (typeof id !== 'string') return '';
@@ -28,14 +38,16 @@ function createConfirmOutbound({
     throw new Error('createConfirmOutbound: signalClient.send required');
   }
 
-  async function safeSend(body, target, draftId) {
+  async function safeSend(body, target, draftId, intentOverride) {
     try {
       // Phase 44 Plan-03 D-13/D-16: confirm-loop sends go through the wrapped
       // send with intent='confirm_prompt' so the signal_outbound row carries
       // the canonical enum + relatedDraftId for auditing.
+      // Phase 45 Plan 04: callers may override intent (e.g. 'commit_outcome_ack')
+      // so the signal_outbound row carries the terminal-state ack intent.
       const res = await signalClient.send(body, {
         to: target,
-        intent: 'confirm_prompt',
+        intent: intentOverride || 'confirm_prompt',
         relatedDraftId: draftId || null,
         sourceModule: 'outbound-confirm.js',
       });
@@ -107,6 +119,36 @@ function createConfirmOutbound({
           body = extras.newPreview || (draftRow && draftRow.farmer_facing_preview) || '';
           target = groupAwareTarget(draftRow || {});
           break;
+        case 'send_commit_outcome_ack': {
+          // Phase 45 Plan 04: terminal-state ack (T4 commit_success, T6 commit_failed).
+          // DM-only (per-farmer ack, never group). signal_outbound row is written
+          // by signal.js's single-hook persistence with intent='commit_outcome_ack',
+          // tenant_id='mossrock' (default), related_draft_id=draftRow.id. Best-effort
+          // (fail-open per D-03); logging failure does NOT unwind the ack send.
+          if (!extras.outcome) {
+            logger.warn && logger.warn(`[outbound-confirm] send_commit_outcome_ack missing outcome draft=${truncId(draftRow && draftRow.id)}`);
+            return { ok: false, reason: 'missing_outcome' };
+          }
+          let farmosLink;
+          const resp = draftRow && draftRow.farmos_response;
+          if (resp && typeof resp === 'object' && typeof resp.link === 'string' && resp.link.trim() !== '') {
+            farmosLink = resp.link.trim();
+          }
+          if (dm == null) {
+            logger.warn && logger.warn(`[outbound-confirm] send_commit_outcome_ack: no_target draft=${truncId(draftRow && draftRow.id)}`);
+            return { ok: false, reason: 'no_target' };
+          }
+          body = renderOutcomeAck(draftRow || {}, {
+            outcome: extras.outcome,
+            reason: extras.reason,
+            farmosLink,
+          });
+          const res = await safeSend(body, dm, draftRow && draftRow.id, 'commit_outcome_ack');
+          if (res && res.ok) {
+            logger.info && logger.info(`[outbound-confirm] send_commit_outcome_ack sent outcome=${extras.outcome} draft=${truncId(draftRow && draftRow.id)}`);
+          }
+          return res;
+        }
         default:
           logger.warn && logger.warn(`[outbound-confirm] unknown side_effect=${sideEffect}`);
           return { ok: false, reason: 'unknown_side_effect' };

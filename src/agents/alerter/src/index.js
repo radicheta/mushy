@@ -352,6 +352,11 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
       ctx: commitCtx,
       config,
       auditLogger,
+      // Phase 45 Plan 04: outboundConfirm plumbed in so commit-watchdog can
+      // dispatch send_commit_outcome_ack on T4 (commit_success) and T6
+      // (commit_failed terminal). Gated by Plan 01's tryMarkOutcomeAckSent CAS
+      // claim for ACK-04 idempotency.
+      outboundConfirm: confirmOutbound,
       logger,
     });
   } else {

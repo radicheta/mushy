@@ -103,7 +103,25 @@ function makeFakePool() {
       return { rows: [{ seq }], rowCount: 1 };
     }
 
-    // SELECT * FROM signal_draft WHERE sender_e164=$1 AND status='awaiting_farmer' ORDER BY updated_at DESC LIMIT 1
+    // Phase 45 Plan 04 follow-on: findAwaitingForSender now matches
+    // status IN ('awaiting_farmer','commit_failed') with awaiting_farmer
+    // preferred. Match both shapes (old single-status + new IN-list).
+    if (/SELECT \*\s+FROM signal_draft/i.test(s) && /sender_e164/.test(s) && /status\s+IN\s*\(\s*'awaiting_farmer'\s*,\s*'commit_failed'\s*\)/i.test(s)) {
+      const sender = params[0];
+      const matches = Array.from(drafts.values()).filter(
+        (r) => r.sender_e164 === sender && (r.status === 'awaiting_farmer' || r.status === 'commit_failed')
+      );
+      // awaiting_farmer wins over commit_failed; within status, newer updated_at wins.
+      matches.sort((a, b) => {
+        const ra = a.status === 'awaiting_farmer' ? 0 : 1;
+        const rb = b.status === 'awaiting_farmer' ? 0 : 1;
+        if (ra !== rb) return ra - rb;
+        return new Date(b.updated_at) - new Date(a.updated_at);
+      });
+      const row = matches[0] || null;
+      return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
+    }
+    // Legacy: SELECT * FROM signal_draft WHERE sender_e164=$1 AND status='awaiting_farmer' ORDER BY updated_at DESC LIMIT 1
     if (/SELECT \*\s+FROM signal_draft/i.test(s) && /sender_e164/.test(s) && /status='awaiting_farmer'/.test(s)) {
       const sender = params[0];
       const matches = Array.from(drafts.values()).filter(

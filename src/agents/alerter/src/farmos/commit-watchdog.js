@@ -21,6 +21,7 @@ function createCommitWatchdog({
   ctx,
   config,
   auditLogger,
+  outboundConfirm = null,
   logger = console,
   clock = { now: () => Date.now() },
 }) {
@@ -30,6 +31,35 @@ function createCommitWatchdog({
   const backoffMs = config.commitRetryBackoffMs || [1000, 4000, 16000];
   const staleMin = config.commitLockStaleMin;
   let timer = null;
+
+  // Phase 45 Plan 04: terminal-state ack dispatch helper. Gated by Plan 01's
+  // CAS claim (tryMarkOutcomeAckSent) for ACK-04 idempotency. Two concurrent
+  // ticks on the same draft converge to exactly one ack send. A crash between
+  // mark and send leaves the draft marked (accepted <=1 dropped ack trade-off).
+  async function _maybeDispatchOutcomeAck(lockedRow, outcome, reason) {
+    if (typeof commitDb.tryMarkOutcomeAckSent !== 'function') {
+      // commit-db without Plan 01 helper (older tests). Degrade silently.
+      return;
+    }
+    let claim;
+    try {
+      claim = await commitDb.tryMarkOutcomeAckSent(pool, lockedRow.id);
+    } catch (e) {
+      logger.warn && logger.warn(`[commit-watchdog] tryMarkOutcomeAckSent threw for draft=${lockedRow.id}: ${e.message}`);
+      return;
+    }
+    if (!claim || !claim.ok) return; // already claimed / not found / other tick won
+    if (!outboundConfirm || typeof outboundConfirm.dispatch !== 'function') {
+      logger.warn && logger.warn(`[commit-watchdog] outboundConfirm not wired; skipping ack for draft=${lockedRow.id}`);
+      return;
+    }
+    try {
+      const extras = outcome === 'failed' ? { outcome, reason } : { outcome };
+      await outboundConfirm.dispatch('send_commit_outcome_ack', lockedRow, extras);
+    } catch (e) {
+      logger.warn && logger.warn(`[commit-watchdog] outcome ack dispatch failed draft=${lockedRow.id}: ${e.message}`);
+    }
+  }
 
   async function _processRow(row) {
     // Idempotency probe (D-02a).
@@ -74,6 +104,8 @@ function createCommitWatchdog({
         latency_ms: result.latency_ms,
       });
       await auditLogger.logCommit('commit_success', lockedRow, Object.assign({ attempt }, result));
+      // Phase 45 Plan 04 T4: dispatch send_commit_outcome_ack (success).
+      await _maybeDispatchOutcomeAck(lockedRow, 'success');
       return;
     }
 
@@ -85,6 +117,10 @@ function createCommitWatchdog({
 
     await commitDb.markFailed(pool, lockedRow.id, result.reason || 'unknown');
     await auditLogger.logCommit('commit_failed', lockedRow, Object.assign({ attempt }, result));
+    // Phase 45 Plan 04 T6: dispatch send_commit_outcome_ack (failed) for terminal failure.
+    // commit_attempt_retry (T5, above) is intentionally NOT hooked: transient.
+    const failureReason = result.reason || 'generic_validation_error';
+    await _maybeDispatchOutcomeAck(lockedRow, 'failed', failureReason);
   }
 
   async function tickOnce() {
