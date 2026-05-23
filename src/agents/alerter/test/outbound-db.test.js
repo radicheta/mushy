@@ -39,10 +39,26 @@ describe('outbound-db', () => {
     expect(secondAllSql).toMatch(/CREATE INDEX IF NOT EXISTS idx_signal_outbound_msg_ts/);
   });
 
-  test('insertOutbound omitting signal_msg_ts still succeeds (back-compat — Plan-02 owns the param)', async () => {
-    // Plan 01 does NOT modify insertOutbound's signature. A caller that supplies no
-    // signal_msg_ts (every caller in the codebase at Plan 01 commit time) must still
-    // produce a successful insert; the new column defaults NULL at the table level.
+  test('Plan 50-02: insertOutbound with signal_msg_ts writes it as $11 + signal_msg_ts column appears in INSERT', async () => {
+    const row = {
+      tenant_id: 'mossrock',
+      sent_at: new Date(),
+      recipient_e164: '+15551234567',
+      intent: 'send_commit_outcome_ack',
+      body: 'committed.',
+      source_module: 'outbound-confirm.js',
+      signal_msg_ts: 1779562666675,
+    };
+    const res = await insertOutbound(pool, row);
+    expect(res).toEqual({ ok: true });
+    const [sql, params] = pool.query.mock.calls[0];
+    expect(sql).toMatch(/signal_msg_ts/);
+    expect(sql).toMatch(/VALUES \(\$1, \$2, \$3, \$4, \$5, \$6::jsonb, \$7, \$8, \$9, \$10, \$11\)/);
+    expect(params).toHaveLength(11);
+    expect(params[10]).toBe(1779562666675);
+  });
+
+  test('Plan 50-02: insertOutbound without signal_msg_ts writes NULL in $11 (back-compat — ~14 callers)', async () => {
     const row = {
       tenant_id: 'mossrock',
       sent_at: new Date(),
@@ -50,12 +66,28 @@ describe('outbound-db', () => {
       intent: 'convo_reply',
       body: 'b',
       source_module: 'capture.js',
+      // signal_msg_ts intentionally omitted
     };
     const res = await insertOutbound(pool, row);
     expect(res).toEqual({ ok: true });
-    const [sql] = pool.query.mock.calls[0];
-    // Verify the INSERT statement does NOT reference signal_msg_ts (Plan 02 owns that).
-    expect(sql).not.toMatch(/signal_msg_ts/);
+    const [, params] = pool.query.mock.calls[0];
+    expect(params).toHaveLength(11);
+    expect(params[10]).toBeNull();
+  });
+
+  test('Plan 50-02: insertOutbound with signal_msg_ts=null writes NULL', async () => {
+    const row = {
+      tenant_id: 'mossrock',
+      sent_at: new Date(),
+      recipient_e164: '+1',
+      intent: 'convo_reply',
+      body: 'b',
+      source_module: 'capture.js',
+      signal_msg_ts: null,
+    };
+    await insertOutbound(pool, row);
+    const [, params] = pool.query.mock.calls[0];
+    expect(params[10]).toBeNull();
   });
 
   test('initDb CREATE TABLE uses text for related_*_id (ULID/hex compat per 2026-05-23 hotfix)', async () => {
@@ -74,7 +106,7 @@ describe('outbound-db', () => {
     expect(tableSql).toMatch(/related_draft_id\s+text/);
   });
 
-  test('insertOutbound issues one parameterised INSERT with $1..$10 in D-12 column order', async () => {
+  test('insertOutbound issues one parameterised INSERT with $1..$11 in D-12 + Plan 50-02 column order', async () => {
     const row = {
       tenant_id: 'mossrock',
       sent_at: new Date('2026-05-21T12:00:00Z'),
@@ -92,9 +124,9 @@ describe('outbound-db', () => {
     expect(pool.query).toHaveBeenCalledTimes(1);
     const [sql, params] = pool.query.mock.calls[0];
     expect(sql).toMatch(/INSERT INTO signal_outbound/);
-    expect(sql).toMatch(/\(tenant_id, sent_at, recipient_e164, intent, body, attachments,\s*source_module, source_line, related_capture_id, related_draft_id\)/);
-    expect(sql).toMatch(/VALUES \(\$1, \$2, \$3, \$4, \$5, \$6::jsonb, \$7, \$8, \$9, \$10\)/);
-    expect(params).toHaveLength(10);
+    expect(sql).toMatch(/\(tenant_id, sent_at, recipient_e164, intent, body, attachments,\s*source_module, source_line, related_capture_id, related_draft_id, signal_msg_ts\)/);
+    expect(sql).toMatch(/VALUES \(\$1, \$2, \$3, \$4, \$5, \$6::jsonb, \$7, \$8, \$9, \$10, \$11\)/);
+    expect(params).toHaveLength(11);
     expect(params[0]).toBe('mossrock');
     expect(params[1]).toBeInstanceOf(Date);
     expect(params[2]).toBe('+15551234567');
@@ -105,6 +137,7 @@ describe('outbound-db', () => {
     expect(params[7]).toBe(197);
     expect(params[8]).toBe('11111111-1111-1111-1111-111111111111');
     expect(params[9]).toBeNull();
+    expect(params[10]).toBeNull(); // signal_msg_ts omitted -> NULL
   });
 
   test('insertOutbound JSON.stringifies attachments when non-null', async () => {

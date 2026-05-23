@@ -56,8 +56,8 @@ async function insertOutbound(pool, row) {
     await pool.query(
       `INSERT INTO signal_outbound
          (tenant_id, sent_at, recipient_e164, intent, body, attachments,
-          source_module, source_line, related_capture_id, related_draft_id)
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)`,
+          source_module, source_line, related_capture_id, related_draft_id, signal_msg_ts)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11)`,
       [
         row.tenant_id,
         row.sent_at,
@@ -69,6 +69,10 @@ async function insertOutbound(pool, row) {
         row.source_line ?? null,
         row.related_capture_id ?? null,
         row.related_draft_id ?? null,
+        // Phase 50 Plan-02: Signal-native ms-ts from /v2/send. Row builder in
+        // signal.js Number()-coerces before passing; insertOutbound does NOT
+        // coerce. Omitted/null -> stored NULL (back-compat for ~14 callers).
+        row.signal_msg_ts ?? null,
       ]
     );
     return { ok: true };
