@@ -39,6 +39,9 @@ async function initDb(pool) {
   await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS cache_creation_input_tokens int`);
   await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS cache_read_input_tokens int`);
   await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS model text`);
+  // Phase 44 Plan-04 D-04: event-gate audit column. VARCHAR(32) per locked D-04
+  // decision (NOT downgraded to `text` — D-04 enum longest value 'skipped_rule_neg' is 16 chars).
+  await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS extraction_gate VARCHAR(32)`);
   await pool.query(`
     CREATE OR REPLACE VIEW v_llm_cost_daily AS
     SELECT

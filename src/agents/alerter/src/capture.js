@@ -61,6 +61,13 @@ function createCapturePipeline({
   // signal_capture row lands). Optional; when absent, capture.js behaves as
   // pre-Phase-38 (no extraction path).
   extractionPipeline = null,
+  // Phase 44 Plan-04 D-02/D-04: event-gate runs BEFORE extractionPipeline.enqueue
+  // and BEFORE llmClient.compose. Optional; when absent, capture.js behaves as
+  // pre-Phase-44 (extraction + convo always fire).
+  eventGate = null,
+  // Phase 44 Plan-04 D-06: convo gate respects EVENT_GATE_CONVO_MODE — 'silent'
+  // (default) | 'negative_only' | 'off'. Loaded via config (Plan-06).
+  config = { eventGateConvoMode: 'silent' },
 }) {
   async function handle(envWrapper, ctx = {}) {
     // Extract fields from the signal-cli envelope shape:
@@ -140,11 +147,42 @@ function createCapturePipeline({
       // continue — still try to reply so farmer is not silenced (R6)
     }
 
+    // Phase 44 Plan-04 D-02/D-04: event-gate dispatch BEFORE extractionPipeline.enqueue.
+    // Fetch the last bot outbound within 30 min (NEG fast-path needs it). The
+    // resulting `lastBot` is REUSED by the convo branch below (D-19) — exactly
+    // ONE selectRecentOutboundByRecipient call per capture for the gate; the
+    // convo branch issues a separate 24h-window call.
+    let gateDecision = { gate: 'forced', allow_extract: true, allow_convo: true };
+    let lastBot = null;
+    if (eventGate) {
+      try {
+        const negSinceMs = capturedAtMs - 30 * 60 * 1000;
+        const recentOut = await captureHistory.selectRecentOutboundByRecipient(source, negSinceMs).catch(() => []);
+        lastBot = recentOut && recentOut.length ? recentOut[recentOut.length - 1] : null;
+        gateDecision = await eventGate.classify(
+          { text: text || null, transcript, attachmentCount: attachmentPaths.length },
+          lastBot,
+          capturedAtMs
+        );
+      } catch (e) {
+        logger.warn(`[capture] gate classify failed (fail-OPEN): ${e.message}`);
+        gateDecision = { gate: 'forced', allow_extract: true, allow_convo: true };
+      }
+      // D-04 audit column — best-effort UPDATE; never throws.
+      try {
+        await pool.query(
+          `UPDATE signal_capture SET extraction_gate = $1 WHERE id = $2`,
+          [gateDecision.gate, id]
+        );
+      } catch (e) {
+        logger.warn(`[capture] gate audit failed: ${e.message}`);
+      }
+    }
+
     // Phase 38 Plan 05 -- fire-and-forget extraction enqueue. Gated on known
-    // farmer (farmosPerson resolved to a slug, not the '(unassigned)' sentinel).
-    // NEVER awaited (D-03 / PATTERNS): the capture path's 30s budget must not
-    // be blocked by the extraction LLM call.
-    if (extractionPipeline && farmosPerson && farmosPerson !== '(unassigned)') {
+    // farmer (farmosPerson resolved to a slug, not the '(unassigned)' sentinel)
+    // AND on gateDecision.allow_extract (Phase 44 D-02).
+    if (gateDecision.allow_extract && extractionPipeline && farmosPerson && farmosPerson !== '(unassigned)') {
       extractionPipeline.enqueue({
         captureId: id,
         sender: source,
@@ -158,29 +196,43 @@ function createCapturePipeline({
       }).catch((e) => logger.warn(`[capture] extraction enqueue failed: ${e.message}`));
     }
 
-    // Step 4: LLM compose — gather context + call
+    // Step 4: LLM compose — gate-controlled per D-05/D-06.
     let replyText;
     let llmOk = false;
     // Backlog 999.53: carry token usage + model from compose result into Step 7 UPDATE.
     let llmUsage = null;
     let llmModel = null;
-    try {
-      const sinceMs = capturedAtMs - 24 * 3600 * 1000;
-      const history = await captureHistory.selectRecentBySender(source, sinceMs).catch(() => []);
-      const snapshot = await sensorSnapshot().catch(() => null);
-      const r = await llmClient.compose({
-        history,
-        sensorSnapshot: snapshot,
-        currentMessage: { text, transcript, attachmentCount: attachmentPaths.length, capturedAtMs },
-      });
-      if (r.ok) {
-        replyText = r.text;
-        llmOk = true;
-        llmUsage = r.usage || null;
-        llmModel = r.model || null;
+    const convoAllowed = gateDecision.allow_convo || (config && config.eventGateConvoMode === 'off');
+    if (convoAllowed) {
+      try {
+        const sinceMs = capturedAtMs - 24 * 3600 * 1000;
+        const history = await captureHistory.selectRecentBySender(source, sinceMs).catch(() => []);
+        const snapshot = await sensorSnapshot().catch(() => null);
+        // Phase 44 Plan-04 B3 Option A (D-18/D-19): 24h outbound window for
+        // fmtHistory merge + lastBotOutbound for the "last thing you said to the farmer" block.
+        // lastBot from the gate lookup is REUSED (it's the most-recent outbound across both windows).
+        // Defensive: pre-Phase-44 callers may not inject selectRecentOutboundByRecipient — skip silently.
+        const outboundHistory = typeof captureHistory.selectRecentOutboundByRecipient === 'function'
+          ? await captureHistory.selectRecentOutboundByRecipient(source, sinceMs).catch(() => [])
+          : [];
+        const r = await llmClient.compose({
+          history,
+          outboundHistory,
+          lastBotOutbound: lastBot,
+          sensorSnapshot: snapshot,
+          currentMessage: { text, transcript, attachmentCount: attachmentPaths.length, capturedAtMs },
+        });
+        if (r.ok) {
+          replyText = r.text;
+          llmOk = true;
+          llmUsage = r.usage || null;
+          llmModel = r.model || null;
+        }
+      } catch (e) {
+        logger.warn(`[capture] llm error: ${e.message}`);
       }
-    } catch (e) {
-      logger.warn(`[capture] llm error: ${e.message}`);
+    } else {
+      logger.info(`[capture] convo suppressed by gate=${gateDecision.gate} mode=${config && config.eventGateConvoMode}`);
     }
 
     // Step 5: degraded fallback reply (R6) — never silent

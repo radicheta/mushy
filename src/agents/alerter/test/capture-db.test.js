@@ -9,10 +9,11 @@ describe('capture-db', () => {
     pool = { query: jest.fn().mockResolvedValue({ rows: [], rowCount: 0 }) };
   });
 
-  test('initDb issues CREATE TABLE + 2 CREATE INDEX + 8 ALTER TABLE ADD COLUMN IF NOT EXISTS + 1 CREATE VIEW (no create_hypertable)', async () => {
+  test('initDb issues CREATE TABLE + 2 CREATE INDEX + 9 ALTER TABLE ADD COLUMN IF NOT EXISTS + 1 CREATE VIEW (no create_hypertable)', async () => {
     await initDb(pool);
-    // 1 CREATE TABLE + 2 CREATE INDEX + 3 Phase 37 ALTERs + 5 backlog-999.53 ALTERs + 1 CREATE VIEW = 12
-    expect(pool.query).toHaveBeenCalledTimes(12);
+    // 1 CREATE TABLE + 2 CREATE INDEX + 3 Phase 37 ALTERs + 5 backlog-999.53 ALTERs
+    // + 1 Phase 44 D-04 ALTER (extraction_gate) + 1 CREATE VIEW = 13
+    expect(pool.query).toHaveBeenCalledTimes(13);
     const sql0 = pool.query.mock.calls[0][0];
     expect(sql0).toMatch(/CREATE TABLE IF NOT EXISTS signal_capture/);
     const sql1 = pool.query.mock.calls[1][0];
@@ -30,16 +31,18 @@ describe('capture-db', () => {
     expect(allSql).toMatch(/ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS cache_creation_input_tokens int/);
     expect(allSql).toMatch(/ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS cache_read_input_tokens int/);
     expect(allSql).toMatch(/ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS model text/);
+    // Phase 44 Plan-04 D-04: event-gate audit column (VARCHAR(32) verbatim per locked decision).
+    expect(allSql).toMatch(/ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS extraction_gate VARCHAR\(32\)/);
     expect(allSql).toMatch(/CREATE OR REPLACE VIEW v_llm_cost_daily/);
     // Must NOT call create_hypertable (regular table per RESEARCH Open Q #1)
     expect(allSql).not.toMatch(/create_hypertable/);
   });
 
-  test('initDb is idempotent: second invocation also issues 12 queries with same shape', async () => {
+  test('initDb is idempotent: second invocation also issues 13 queries with same shape', async () => {
     await initDb(pool);
     await initDb(pool);
-    expect(pool.query).toHaveBeenCalledTimes(24);
-    const secondAllSql = pool.query.mock.calls.slice(12).map((c) => c[0]).join('\n');
+    expect(pool.query).toHaveBeenCalledTimes(26);
+    const secondAllSql = pool.query.mock.calls.slice(13).map((c) => c[0]).join('\n');
     expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS group_id text/);
     expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS farmos_person text/);
     expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS reply_target_kind text/);
