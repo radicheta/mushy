@@ -25,6 +25,7 @@ function makeFakePool() {
   const drafts = new Map(); // id -> row
   const events = []; // {draft_id, seq, event, payload, created_at}
   const captures = new Map(); // id -> row (Phase 50 Plan 03)
+  const outbounds = []; // array of {signal_msg_ts, related_draft_id, sent_at, ...} (Phase 50 Plan 04)
   let nowMs = Date.now();
   let captureSelectShouldThrow = false; // Plan 50-03: simulate DB error on capture lookup
 
@@ -93,9 +94,36 @@ function makeFakePool() {
     captureSelectShouldThrow = !!v;
   }
 
+  // Plan 50-04: signal_outbound seed for findDraftByQuotedMsgTs.
+  function seedOutbound(row) {
+    const full = Object.assign(
+      {
+        signal_msg_ts: row.signal_msg_ts == null ? null : row.signal_msg_ts,
+        related_draft_id: row.related_draft_id == null ? null : row.related_draft_id,
+        sent_at: row.sent_at || _now(),
+      },
+      row
+    );
+    outbounds.push(full);
+    return full;
+  }
+
   async function query(sql, params) {
     params = params || [];
     const s = String(sql);
+
+    // Plan 50-04: signal_outbound JOIN signal_draft for findDraftByQuotedMsgTs.
+    // Match: SELECT d.* FROM signal_outbound o JOIN signal_draft d ON d.id = o.related_draft_id WHERE o.signal_msg_ts = $1 ORDER BY o.sent_at DESC LIMIT 1
+    if (/FROM\s+signal_outbound/i.test(s) && /JOIN\s+signal_draft/i.test(s) && /signal_msg_ts/.test(s)) {
+      const ts = params[0];
+      const matches = outbounds
+        .filter((o) => o.signal_msg_ts === ts && o.related_draft_id != null && drafts.has(o.related_draft_id))
+        .sort((a, b) => new Date(b.sent_at) - new Date(a.sent_at));
+      const out = matches[0];
+      if (!out) return { rows: [], rowCount: 0 };
+      const draft = drafts.get(out.related_draft_id);
+      return { rows: [draft], rowCount: 1 };
+    }
 
     // Plan 50-03: signal_capture SELECT for getCaptureQuoteTarget.
     if (/FROM\s+signal_capture/i.test(s) && /signal_msg_ts/.test(s) && /WHERE\s+id\s*=\s*\$1/i.test(s)) {
@@ -286,8 +314,10 @@ function makeFakePool() {
     getEvents,
     seedCapture,
     setCaptureSelectThrow,
+    seedOutbound,
     _drafts: drafts,
     _events: events,
+    _outbounds: outbounds,
   };
 }
 
