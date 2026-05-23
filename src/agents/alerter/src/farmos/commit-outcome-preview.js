@@ -26,6 +26,10 @@ const reasonMap = Object.freeze({
   schema_invalid:               'data format issue',
   taxonomy_term_missing:        'missing a taxonomy term',
   generic_validation_error:     'data validation failed',
+  // Phase 48 Plan 04: seeding_session fan-out failure modes (handler returns these reasons)
+  partial_commit_failed:           'a write partway through failed, nothing saved',
+  session_name_exhausted:          'too many same-day session names already exist',
+  session_fungi_type_term_missing: 'farmOS session taxonomy term missing',
 });
 
 function reasonFor(code) {
@@ -38,11 +42,13 @@ function reasonFor(code) {
 // log_type -> farmer-facing label. Verified against existing convention in
 // confirm/preview.js (uses "seeding", "activity", etc. lowercased).
 const LOG_TYPE_LABEL = Object.freeze({
-  seeding:     'seeding',
-  activity:    'activity',
-  input:       'input log',
-  observation: 'observation',
-  harvest:     'harvest',
+  seeding:         'seeding',
+  activity:        'activity',
+  input:           'input log',
+  observation:     'observation',
+  harvest:         'harvest',
+  // Phase 48 Plan 04: multi-parent inoc session (1 session asset + N children)
+  seeding_session: 'Inoc session',
 });
 
 function labelFor(logType) {
@@ -127,9 +133,43 @@ function pickBestDate(draftJson, createdAt) {
   return created;
 }
 
+// Phase 48 Plan 04: seeding_session disambiguator. The session-shape draft has
+// no name/notes (groups carry the data), so the generic name/notes path yields
+// a bare label. Instead, build "{event_date} Inoc session (N blocks across M
+// parents)" so the farmer's ack names WHAT was committed, not just WHEN.
+function _seedingSessionDisambiguator(draftRow, label) {
+  const dj = draftRow.draft_json || {};
+  const groups = Array.isArray(dj.groups) ? dj.groups : [];
+  let total = 0;
+  for (const g of groups) {
+    const names = g && g.child_block_names && g.child_block_names.value;
+    const qty = g && g.qty && g.qty.value;
+    total += Array.isArray(names) ? names.length : (typeof qty === 'number' ? qty : 0);
+  }
+  // event_date is "YYYY-MM-DD" (already human-readable, locale-stable).
+  // Fall back to pickBestDate -> fmtDate for legacy event_timestamp-only drafts.
+  const eventDate = (typeof dj.event_date === 'string' && dj.event_date.trim() !== '')
+    ? dj.event_date.trim()
+    : fmtDate(pickBestDate(dj, draftRow.created_at));
+  const dateStr = eventDate || '';
+  const parts = [];
+  if (dateStr) parts.push(dateStr);
+  parts.push(label);
+  // "(N blocks across M parents)" -- omit if total=0 AND groups=0 (degenerate)
+  if (total > 0 || groups.length > 0) {
+    parts.push(`(${fmtNum(total)} blocks across ${fmtNum(groups.length)} parents)`);
+  }
+  return parts.join(' ');
+}
+
 // Disambiguator string: "May 13 observation (sterilize)" or "May 13 observation"
 // or "observation (sterilize)" or bare "observation".
 function buildDisambiguator(draftRow, label) {
+  // Phase 48: seeding_session has a session-shape branch.
+  const djType = draftRow.draft_json && draftRow.draft_json.type;
+  if (draftRow.log_type === 'seeding_session' || djType === 'seeding_session') {
+    return _seedingSessionDisambiguator(draftRow, label);
+  }
   const date = fmtDate(pickBestDate(draftRow.draft_json, draftRow.created_at));
   const summary = summaryFromDraft(draftRow.draft_json);
   if (date && summary) return `${date} ${label} (${summary})`;
@@ -165,6 +205,18 @@ function renderOutcomeAck(draftRow, options) {
   const what = buildDisambiguator(row, label);
 
   if (outcome === 'success') {
+    // Phase 48 Plan 04: seeding_session has no single target asset (1 session +
+    // N children). The legacy no-target template ("as a general farm note since
+    // I couldn't match a specific block") is misleading here -- the session
+    // DID commit cleanly. Short-circuit with a clean session-shaped success.
+    const djType = row.draft_json && row.draft_json.type;
+    if (logType === 'seeding_session' || djType === 'seeding_session') {
+      let body = `${hi}saved ${what}.`;
+      if (typeof opts.farmosLink === 'string' && opts.farmosLink.trim() !== '') {
+        body += ` Open in farmOS: ${opts.farmosLink.trim()}`;
+      }
+      return sanitizeFarmerText(body);
+    }
     if (target != null && String(target).trim() !== '') {
       const tgt = fmtTarget(target);
       let body = `${hi}saved ${what} for ${tgt}.`;

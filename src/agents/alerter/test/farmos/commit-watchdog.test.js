@@ -300,6 +300,110 @@ describe('commit-watchdog (Phase 40 Plan 05)', () => {
     expect(commitDb._calls.filter((c) => c.fn === 'tryMarkOutcomeAckSent').length).toBe(1);
   });
 
+  // -----------------------------------------------------------------------
+  // Phase 48 Plan 04: seeding_session rides the Phase 45 ack contract
+  // -----------------------------------------------------------------------
+
+  it('Phase 48: seeding_session success dispatches send_commit_outcome_ack with outcome=success', async () => {
+    const outboundConfirm = makeOutboundConfirm();
+    const { wd, commitDb } = build({
+      drafts: [['sess1', {
+        id: 'sess1',
+        status: 'confirmed',
+        log_type: 'seeding_session',
+        sender_e164: '+59891000001',
+        commit_attempt_count: 0,
+        draft_json: { type: 'seeding_session', event_date: '2026-05-22', groups: [{ child_block_names: { value: ['a','b','c'] } }] },
+      }]],
+      routerImpl: async () => ({
+        ok: true,
+        asset_ids: ['s1','b1','c1','c2','c3'],
+        log_ids: ['l1','l2','l3'],
+        file_ids: [],
+        http_status: 201,
+        latency_ms: 42,
+      }),
+      outboundConfirm,
+    });
+    await wd.tickOnce();
+    expect(commitDb._drafts.get('sess1').status).toBe('committed');
+    expect(outboundConfirm.dispatch).toHaveBeenCalledTimes(1);
+    const args = outboundConfirm.dispatch.mock.calls[0];
+    expect(args[0]).toBe('send_commit_outcome_ack');
+    expect(args[1].id).toBe('sess1');
+    expect(args[1].log_type).toBe('seeding_session');
+    expect(args[2]).toEqual({ outcome: 'success' });
+  });
+
+  it('Phase 48: seeding_session terminal failure dispatches send_commit_outcome_ack with outcome=failed + reason=partial_commit_failed', async () => {
+    const outboundConfirm = makeOutboundConfirm();
+    const { wd, commitDb } = build({
+      drafts: [['sess1', {
+        id: 'sess1',
+        status: 'confirmed',
+        log_type: 'seeding_session',
+        sender_e164: '+59891000001',
+        commit_attempt_count: 0,
+      }]],
+      // 422 is terminal (4xx, not transient) -> markFailed on first attempt
+      routerImpl: async () => ({ ok: false, http_status: 422, reason: 'partial_commit_failed', asset_ids: [], log_ids: [], file_ids: [] }),
+      outboundConfirm,
+    });
+    await wd.tickOnce();
+    expect(commitDb._drafts.get('sess1').status).toBe('commit_failed');
+    expect(outboundConfirm.dispatch).toHaveBeenCalledTimes(1);
+    const args = outboundConfirm.dispatch.mock.calls[0];
+    expect(args[0]).toBe('send_commit_outcome_ack');
+    expect(args[1].log_type).toBe('seeding_session');
+    expect(args[2]).toEqual({ outcome: 'failed', reason: 'partial_commit_failed' });
+  });
+
+  it('Phase 48: idempotent no-op for already-committed seeding_session (no ack dispatch)', async () => {
+    const outboundConfirm = makeOutboundConfirm();
+    const { wd, commitDb, auditLogger } = build({
+      drafts: [['sess1', {
+        id: 'sess1',
+        status: 'confirmed',
+        log_type: 'seeding_session',
+        sender_e164: '+59891000001',
+      }]],
+      outboundConfirm,
+    });
+    // Probe sees status=committed already -> early return before any lock or ack dispatch.
+    commitDb.getCachedResponse = async () => ({
+      ok: true,
+      status: 'committed',
+      farmos_response: { asset_ids: ['s1','c1','c2','c3'], log_ids: ['l1','l2','l3'] },
+    });
+    await wd.tickOnce();
+    expect(outboundConfirm.dispatch).not.toHaveBeenCalled();
+    expect(auditLogger._events[0].event).toBe('commit_idempotent_noop');
+    // CAS not even attempted (early return before _maybeDispatchOutcomeAck)
+    expect(commitDb._calls.filter((c) => c.fn === 'tryMarkOutcomeAckSent').length).toBe(0);
+  });
+
+  it('Phase 48: commit_failed seeding_session is not re-fetched on subsequent ticks (no double ack)', async () => {
+    // findConfirmedCandidates filters on status='confirmed'; commit_failed rows
+    // never re-enter the loop, so a second tick is a no-op for ack purposes.
+    const outboundConfirm = makeOutboundConfirm();
+    const { wd, commitDb } = build({
+      drafts: [['sess1', {
+        id: 'sess1',
+        status: 'confirmed',
+        log_type: 'seeding_session',
+        sender_e164: '+59891000001',
+        commit_attempt_count: 0,
+      }]],
+      routerImpl: async () => ({ ok: false, http_status: 422, reason: 'session_fungi_type_term_missing', asset_ids: [], log_ids: [], file_ids: [] }),
+      outboundConfirm,
+    });
+    await wd.tickOnce(); // marks failed + dispatches ack #1
+    expect(commitDb._drafts.get('sess1').status).toBe('commit_failed');
+    expect(outboundConfirm.dispatch).toHaveBeenCalledTimes(1);
+    await wd.tickOnce(); // no candidates returned (status !== 'confirmed')
+    expect(outboundConfirm.dispatch).toHaveBeenCalledTimes(1);
+  });
+
   it('row exception isolated; second row still processes', async () => {
     const { wd, commitDb } = build({
       drafts: [
