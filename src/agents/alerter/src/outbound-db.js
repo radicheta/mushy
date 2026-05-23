@@ -44,6 +44,11 @@ async function initDb(pool) {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_signal_outbound_tenant_sent ON signal_outbound(tenant_id, sent_at DESC)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_signal_outbound_recipient_sent ON signal_outbound(recipient_e164, sent_at DESC)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_signal_outbound_intent ON signal_outbound(intent)`);
+  // Phase 50 Plan-01 D-02: persist Signal-native ms-since-epoch returned by /v2/send
+  // so future inbound quotes can resolve quote.timestamp -> related_draft_id.
+  // Plan 02 owns the insertOutbound write path; this plan only lands the column + index.
+  await pool.query(`ALTER TABLE signal_outbound ADD COLUMN IF NOT EXISTS signal_msg_ts bigint`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_signal_outbound_msg_ts ON signal_outbound (signal_msg_ts) WHERE signal_msg_ts IS NOT NULL`);
 }
 
 async function insertOutbound(pool, row) {
