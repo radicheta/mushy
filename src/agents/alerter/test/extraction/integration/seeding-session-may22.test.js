@@ -100,7 +100,7 @@ const EXPECTED_CHILD_BLOCK_NAMES = [
 ];
 
 describe('INOC-01 + INOC-02: May 22 seeding_session ship-gate (hermetic)', () => {
-  test('hermetic mock returns the canonical 5-group / 11-child draft; pipeline persists it; validator passes; preview-builder produces placeholder', async () => {
+  test('hermetic mock returns the canonical 5-group / 11-child draft; pipeline persists it; validator passes; preview-builder produces the Phase 48 group-by-parent table', async () => {
     const pool = makePool();
     const perFieldConfidence = { event_date: 0.99 };
     const client = makeMockAnthropicClient(EXPECTED_DRAFT, perFieldConfidence);
@@ -176,15 +176,17 @@ describe('INOC-01 + INOC-02: May 22 seeding_session ship-gate (hermetic)', () =>
       ).toBe(true);
     }
 
-    // --- preview-builder placeholder fires ---------------------------------
+    // --- Phase 48-03 production preview: group-by-parent table ------------
     const preview = previewBuilder.buildPreview({
       draft: EXPECTED_DRAFT,
       perFieldConfidence,
       threshold: 0.7,
       requiredFields: ['event_date', 'groups'],
     });
-    expect(preview).toContain('11 blocks across 5 groups for May 22');
-    expect(preview).toContain('Phase 48');
+    expect(preview).toMatch(/Inoc session: 2026-05-22/);
+    expect(preview).toMatch(/11 blocks across 5 parents/);
+    expect(preview).toMatch(/KEY.*PARENT.*SPECIES.*QTY.*CHILDREN/);
+    expect(preview).toMatch(/YES to commit \| NO to cancel \| EDIT to change/);
     expect(preview).not.toMatch(/—/); // no em-dashes
 
     // --- side-effects (no ask-back: no needs_input on this fixture) --------

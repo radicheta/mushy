@@ -141,7 +141,7 @@ function buildPreview({ draft, perFieldConfidence, threshold, requiredFields }) 
   // CONTEXT.md Gray Area 4 lock, OCR-vs-Whisper conflicts are forensics-only
   // and must never surface to the farmer.
   if (draft && draft.type === 'seeding_session') {
-    return buildSeedingSessionPlaceholder(draft);
+    return renderSeedingSession(draft);
   }
 
   const conf = perFieldConfidence || {};
@@ -210,41 +210,41 @@ function buildPreview({ draft, perFieldConfidence, threshold, requiredFields }) 
 }
 
 /**
- * buildSeedingSessionPlaceholder(draft) -> string
+ * renderSeedingSession(draft) -> string
  *
- * Phase 47-04 minimal placeholder for groups-shape inoc drafts. Production
- * group-by-parent rendering ships in Phase 48. Output shape:
+ * Phase 48-03 production renderer. Replaces the Phase 47-04 placeholder.
  *
- *   Line 1: "{N} blocks across {G} groups for {event_date}"
- *   Line 2: (blank)
- *   Line 3: when needs_input==='starting_seq':
- *             "Awaiting block-number to start at."
- *           otherwise:
- *             "Group-by-parent preview coming in Phase 48."
- *   Line 4+: one line per group: "{species} x {qty} from {parent}"
- *           where parent.value === 'NO_PARENT' renders as "no parent recorded".
+ * Output shape (per CONTEXT.md Gray Area C lock, em-dash policy applied):
  *
- * Numbers go through fmtNum; output is sanitized for em-dashes. NEVER touches
- * draft.conflicts[] (Gray Area 4 lock).
+ *   Inoc session: 2026-05-22
+ *   11 blocks across 5 parents
+ *
+ *   KEY  PARENT          SPECIES  QTY  CHILDREN
+ *   1    260304_SHI_5    SHI      1    260522_SHI_1
+ *   ...
+ *
+ *   YES to commit | NO to cancel | EDIT to change
+ *
+ * - draft.event_date renders as ISO YYYY-MM-DD (Phase 48 lock; the Phase 47-04
+ *   "May 22" hotfix applied to the placeholder only; the session table reads
+ *   like a notebook entry, matching the farmer's paper log).
+ * - 3+ consecutive same-strain child SEQs collapse to `prefix_FIRST..LAST`.
+ * - 1-2 children, or non-consecutive, render as comma-joined names.
+ * - groups.length > 5 renders first 5 + `... (M more groups)` trailing row.
+ * - draft.notes (free-text) renders as a trailing 'note: {notes}' line BEFORE
+ *   the YES/NO/EDIT footer.
+ * - draft.needs_input === 'starting_seq' short-circuits to the ask-back form
+ *   (no table). Defensive: pipeline.js already routes ask-back via a separate
+ *   side-effect path, but the renderer must not crash if called on that draft.
+ * - NEVER reads or surfaces draft.conflicts[] (Gray Area 4 lock).
+ * - sanitizeFarmerText sweep removes em-dashes; output is ASCII.
  */
-// Phase 47-04 hotfix: human-readable event_date in farmer-facing placeholder.
-// CONTEXT.md style lock: "May 22" not "2026-05-22" in farmer-facing text.
-// Accepts YYYY-MM-DD; returns "Mmm D" (e.g. "May 22"); falls back to raw
-// input on parse failure, "[?]" when absent.
-const MONTH_ABBREV = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-function fmtEventDate(d) {
-  if (d == null || d === '') return '[?]';
-  const m = String(d).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return String(d);
-  const month = MONTH_ABBREV[parseInt(m[2], 10) - 1];
-  const day = parseInt(m[3], 10);
-  if (!month || Number.isNaN(day)) return String(d);
-  return `${month} ${day}`;
-}
+function renderSeedingSession(draft) {
+  if (draft && draft.needs_input === 'starting_seq') {
+    return renderStartingSeqAskBack(draft);
+  }
 
-function buildSeedingSessionPlaceholder(draft) {
   const groups = Array.isArray(draft.groups) ? draft.groups : [];
-  const groupCount = groups.length;
 
   // Total child count: prefer child_block_names.value.length when array is
   // present (more authoritative than qty.value when a partial-photo session
@@ -260,28 +260,110 @@ function buildSeedingSessionPlaceholder(draft) {
     }
   }
 
-  const eventDate = fmtEventDate(draft.event_date);
+  const header = `Inoc session: ${draft.event_date != null ? draft.event_date : '[?]'}`;
+  const summary = `${fmtNum(totalChildren)} blocks across ${fmtNum(groups.length)} parents`;
 
-  const headline = `${fmtNum(totalChildren)} blocks across ${fmtNum(groupCount)} groups for ${eventDate}`;
+  const visible = groups.slice(0, 5);
+  const overflowCount = groups.length - 5;
 
-  const phase48Marker = draft.needs_input === 'starting_seq'
-    ? 'Awaiting block-number to start at.'
-    : 'Group-by-parent preview coming in Phase 48.';
+  // Build cell rows for table.
+  const colHeader = ['KEY', 'PARENT', 'SPECIES', 'QTY', 'CHILDREN'];
+  const dataRows = visible.map((g, i) => formatSessionRow(i + 1, g));
 
-  const groupLines = groups.map((g) => {
-    const species = (g && g.species && g.species.value != null)
-      ? renderScalar(g.species.value) : '[?]';
-    const qty = (g && g.qty && g.qty.value != null)
-      ? renderScalar(g.qty.value) : '[?]';
-    const parentVal = g && g.parent && g.parent.value;
-    const parent = parentVal === 'NO_PARENT'
-      ? 'no parent recorded'
-      : (parentVal != null ? renderScalar(parentVal) : '[?]');
-    return `${species} x ${qty} from ${parent}`;
-  });
+  const widths = computeColumnWidths([colHeader, ...dataRows]);
+  const headerLine = padRow(colHeader, widths);
+  const tableLines = dataRows.map((r) => padRow(r, widths));
 
-  const out = [headline, '', phase48Marker, ...groupLines].join('\n');
+  const lines = [header, summary, '', headerLine, ...tableLines];
+  if (overflowCount > 0) {
+    lines.push(`... (${fmtNum(overflowCount)} more groups)`);
+  }
+  if (draft.notes != null && String(draft.notes).trim() !== '') {
+    lines.push('', `note: ${draft.notes}`);
+  }
+  lines.push('', 'YES to commit | NO to cancel | EDIT to change');
+
+  return sanitizeFarmerText(lines.join('\n'));
+}
+
+function renderStartingSeqAskBack(draft) {
+  const groups = Array.isArray(draft.groups) ? draft.groups : [];
+  let totalChildren = 0;
+  for (const g of groups) {
+    const names = g && g.child_block_names && g.child_block_names.value;
+    if (Array.isArray(names)) totalChildren += names.length;
+    else {
+      const qv = g && g.qty && g.qty.value;
+      if (typeof qv === 'number') totalChildren += qv;
+    }
+  }
+  const date = draft.event_date != null ? draft.event_date : '[?]';
+  const out = [
+    `Inoc session: ${date}`,
+    `${fmtNum(totalChildren)} blocks across ${fmtNum(groups.length)} parents (awaiting starting block-number)`,
+    '',
+    'Reply with the starting SEQ (e.g. 4).',
+  ].join('\n');
   return sanitizeFarmerText(out);
+}
+
+function formatSessionRow(key, g) {
+  const parentVal = g && g.parent && g.parent.value;
+  const parent = parentVal === 'NO_PARENT'
+    ? 'no parent recorded'
+    : (parentVal != null ? String(parentVal) : '[?]');
+  const species = (g && g.species && g.species.value != null)
+    ? String(g.species.value) : '[?]';
+  const qtyVal = (g && g.qty && g.qty.value != null) ? g.qty.value : null;
+  const qty = qtyVal != null ? fmtNum(qtyVal) : '[?]';
+  const names = (g && g.child_block_names && Array.isArray(g.child_block_names.value))
+    ? g.child_block_names.value : [];
+  return [String(key), parent, species, qty, renderChildren(names)];
+}
+
+function renderChildren(names) {
+  if (!Array.isArray(names) || names.length === 0) return '';
+  if (names.length <= 2) return names.join(', ');
+  // Range-collapse: parse trailing _SEQ for each, require all parse, all share
+  // the same prefix (everything up to and including the final underscore), and
+  // SEQs sort to a consecutive run differing by 1.
+  const parsed = names.map((n) => {
+    const m = /^(.*_)(\d+)$/.exec(n);
+    return m ? { prefix: m[1], seq: parseInt(m[2], 10) } : null;
+  });
+  if (parsed.every((p) => p !== null)) {
+    const prefix = parsed[0].prefix;
+    if (parsed.every((p) => p.prefix === prefix)) {
+      const seqs = parsed.map((p) => p.seq).slice().sort((a, b) => a - b);
+      const consecutive = seqs.every((s, i) => i === 0 || s === seqs[i - 1] + 1);
+      if (consecutive) {
+        return `${prefix}${seqs[0]}..${seqs[seqs.length - 1]}`;
+      }
+    }
+  }
+  return names.join(', ');
+}
+
+const COL_MIN_WIDTHS = [4, 15, 8, 4, 0]; // KEY, PARENT, SPECIES, QTY, CHILDREN
+function computeColumnWidths(rows) {
+  const widths = COL_MIN_WIDTHS.slice();
+  for (const row of rows) {
+    for (let i = 0; i < row.length; i++) {
+      const len = row[i] != null ? String(row[i]).length : 0;
+      if (len > widths[i]) widths[i] = len;
+    }
+  }
+  return widths;
+}
+
+function padRow(cells, widths) {
+  // Last column needs no trailing pad. Earlier columns padEnd to width + 2
+  // (two-space gutter) so the table reads as fixed-column text.
+  return cells.map((c, i) => {
+    const s = c != null ? String(c) : '';
+    if (i === cells.length - 1) return s;
+    return s.padEnd(widths[i] + 2, ' ');
+  }).join('');
 }
 
 module.exports = {
