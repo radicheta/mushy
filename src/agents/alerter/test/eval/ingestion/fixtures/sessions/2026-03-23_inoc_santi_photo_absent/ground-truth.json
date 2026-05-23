@@ -1,0 +1,50 @@
+{
+  "type": "seeding_session",
+  "event_date": "2026-03-23",
+  "needs_input": "starting_seq",
+  "groups": [
+    {
+      "parent": {
+        "value": "260218_ALM_8",
+        "sources": ["audio"]
+      },
+      "species": {
+        "value": "ALM",
+        "sources": ["audio"]
+      },
+      "qty": {
+        "value": 2,
+        "sources": ["audio"]
+      },
+      "child_block_names": {
+        "value": ["NEEDS_SEQ", "NEEDS_SEQ"],
+        "sources": ["audio"]
+      }
+    },
+    {
+      "parent": {
+        "value": "260228_WIN_16",
+        "sources": ["audio"]
+      },
+      "species": {
+        "value": "WIN",
+        "sources": ["audio"]
+      },
+      "qty": {
+        "value": 4,
+        "sources": ["audio"]
+      },
+      "child_block_names": {
+        "value": ["NEEDS_SEQ", "NEEDS_SEQ", "NEEDS_SEQ", "NEEDS_SEQ"],
+        "sources": ["audio"]
+      }
+    }
+  ],
+  "meta": {
+    "capture_date": "2026-03-23",
+    "source_path": "/mnt/mossrock/shared/mushdatadump/mushroom_log.csv (rows page_date=2026-03-23, entries 1-6)",
+    "regression_guard": false,
+    "synthetic": true,
+    "notes": "Phase 49 Plan 04 third corpus session. Selected per CONTEXT Gray Area F to broaden corpus diversity with a complementary shape to the May-22 multi-parent / paper-log-present capture. Ground-truth is grounded in REAL hand-labeled notebook data (mushroom_log.csv rows for page_date 2026-03-23, entries 1-6: ALM x2 from source 2-18-8, WIN x4 from source 02-28-16) but the audio/photo capture envelope is SYNTHETIC -- the broader mushdatadump corpus does not contain paired audio/photo artifacts for this session (Phase 38 transcribed the notebook into CSV directly; only the May-12 and May-22 captures were intake-staged with audio+photo). This fixture exercises the photo-absent ask-back path: child_block_names use the NEEDS_SEQ sentinel, top-level needs_input='starting_seq', sources are audio-only. Sized small (2 groups, 6 children) to exercise a different cardinality than May-22 (5 groups, 11 children) and May-12 (5 groups, 12 children with NO_PARENT groups). regression_guard=false because the audio/photo artifacts are synthetic; sessions.test.js will load the fixture via sessions-loader but the named-regression gate filter will exclude it. The mock-extraction.json is provided so a hermetic-mode invocation against this fixture still produces a schema-valid draft equal-on-key-fields to ground-truth; if a future plan promotes this session to named-regression status (e.g. by attaching a real captured audio+photo), flip meta.regression_guard to true and remove meta.synthetic."
+  }
+}
