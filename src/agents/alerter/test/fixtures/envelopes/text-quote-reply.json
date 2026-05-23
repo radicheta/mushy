@@ -1,0 +1,24 @@
+[
+  { "envelope": {
+      "source": "+59892893012",
+      "sourceNumber": "+59892893012",
+      "sourceUuid": "11111111-1111-1111-1111-111111111111",
+      "timestamp": 1779562666675,
+      "dataMessage": {
+        "timestamp": 1779562666675,
+        "message": "EDIT block 260415_LIMA_1",
+        "expiresInSeconds": 0,
+        "viewOnce": false,
+        "attachments": [],
+        "quote": {
+          "id": 1779560111000,
+          "author": "+59891840205",
+          "authorNumber": "+59891840205",
+          "authorUuid": "33333333-3333-3333-3333-333333333333",
+          "text": "Saved your seeding on May 22. Reply EDIT to fix.",
+          "attachments": []
+        }
+      }
+    }
+  }
+]

@@ -13,6 +13,8 @@ const fs = require('fs');
 const textEnvelope = require('./fixtures/envelopes/text.json')[0];
 const audioEnvelope = require('./fixtures/envelopes/audio.json')[0];
 const photoBatchEnvelope = require('./fixtures/envelopes/photo-batch.json')[0];
+const textQuoteReplyEnv = require('./fixtures/envelopes/text-quote-reply.json')[0];
+const textQuoteReplyAuthorNumberOnlyEnv = require('./fixtures/envelopes/text-quote-reply-authornumber-only.json')[0];
 
 const { createCapturePipeline } = require('../src/capture');
 
@@ -118,6 +120,51 @@ describe('createCapturePipeline', () => {
     expect(logger.warn).toHaveBeenCalled();
   });
 
+  // Phase 50 Plan-04: capture-side persistence of Signal-native ts + quote target.
+  describe('Phase 50 Plan-04: signal_msg_ts + quote_* persistence', () => {
+    test('text envelope without quote: signal_msg_ts populated from dm.timestamp; quote fields NULL', async () => {
+      await pipeline.handle(textEnvelope);
+      const insertCall = pool.query.mock.calls.find((c) => /INSERT INTO signal_capture/.test(c[0]));
+      expect(insertCall).toBeDefined();
+      const params = insertCall[1];
+      // INSERT positions: 13=signal_msg_ts, 14=quote_msg_ts, 15=quote_author_e164.
+      expect(params[13]).toBe(1714240000000);
+      expect(params[14]).toBeNull();
+      expect(params[15]).toBeNull();
+    });
+
+    test('quote-reply envelope (quote.id + quote.author): all three fields populated', async () => {
+      await pipeline.handle(textQuoteReplyEnv);
+      const insertCall = pool.query.mock.calls.find((c) => /INSERT INTO signal_capture/.test(c[0]));
+      const params = insertCall[1];
+      expect(params[13]).toBe(1779562666675); // inbound msg ts
+      expect(params[14]).toBe(1779560111000); // quote target ts (from quote.id)
+      expect(params[15]).toBe('+59891840205'); // quote author (from quote.author)
+    });
+
+    test('quote-reply envelope (no quote.id, only quote.timestamp; no quote.author, only quote.authorNumber)', async () => {
+      // CONTEXT D-07 / receive-loop.js:23-24 cross-version drift acceptance.
+      await pipeline.handle(textQuoteReplyAuthorNumberOnlyEnv);
+      const insertCall = pool.query.mock.calls.find((c) => /INSERT INTO signal_capture/.test(c[0]));
+      const params = insertCall[1];
+      expect(params[13]).toBe(1779562777777);
+      expect(params[14]).toBe(1779560222000); // from quote.timestamp (no .id)
+      expect(params[15]).toBe('+59891840205'); // from quote.authorNumber (no .author)
+    });
+
+    test('envelope without dataMessage.timestamp: signal_msg_ts is null; capture still saves', async () => {
+      const noTs = JSON.parse(JSON.stringify(textEnvelope));
+      delete noTs.envelope.dataMessage.timestamp;
+      await pipeline.handle(noTs);
+      const insertCall = pool.query.mock.calls.find((c) => /INSERT INTO signal_capture/.test(c[0]));
+      expect(insertCall).toBeDefined();
+      const params = insertCall[1];
+      expect(params[13]).toBeNull();
+      expect(params[14]).toBeNull();
+      expect(params[15]).toBeNull();
+    });
+  });
+
   // ============================================================
   // Phase 37 Plan 03 — replyTarget threading + farmer-map + new row fields
   // ============================================================
@@ -155,9 +202,8 @@ describe('createCapturePipeline', () => {
       rebuild(new Map([[F2_PHONE, 'f2']]));
       await pipeline.handle(textEnvelope);
       const [, params] = pool.query.mock.calls[0];
-      // 13 params: id, captured_at, sender, message_type, raw_text, attachment_paths,
-      // transcript, llm_session_tag, llm_reply, degraded, group_id, farmos_person, reply_target_kind
-      expect(params).toHaveLength(13);
+      // 16 params: 13 base + Phase 50 Plan-04 (signal_msg_ts, quote_msg_ts, quote_author_e164)
+      expect(params).toHaveLength(16);
       expect(params[10]).toBeNull();          // group_id
       expect(params[11]).toBe('f2');           // farmos_person
       expect(params[12]).toBe('dm');           // reply_target_kind

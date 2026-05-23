@@ -125,6 +125,24 @@ function createCapturePipeline({
     }
 
     // Step 3: persist row BEFORE LLM call so capture is durable even if LLM hangs
+    // Phase 50 Plan-04: derive Signal-native ts fields from envelope (best-effort;
+    // NULL when missing). signal_msg_ts is the inbound msg's ms-ts (always; what
+    // the bot quotes on outbound). quote_msg_ts + quote_author_e164 are populated
+    // only when the farmer used Signal's quote/reply UI; receive-loop precedent
+    // at receive-loop.js:23-24 accepts both quote.author and quote.authorNumber
+    // due to cross-version drift in signal-cli (Risk #9 / CONTEXT D-07).
+    const sigMsgTs = (typeof dm.timestamp === 'number')
+      ? dm.timestamp
+      : (Number.isFinite(Number(dm.timestamp)) ? Number(dm.timestamp) : null);
+    const q = dm.quote || null;
+    const quoteMsgTsRaw = q ? (q.id != null ? q.id : q.timestamp) : null;
+    const quoteMsgTs = quoteMsgTsRaw != null && Number.isFinite(Number(quoteMsgTsRaw))
+      ? Number(quoteMsgTsRaw)
+      : null;
+    const quoteAuthor = q ? ((typeof q.author === 'string' && q.author) ? q.author
+                             : (typeof q.authorNumber === 'string' && q.authorNumber) ? q.authorNumber
+                             : null) : null;
+
     try {
       await insertCapture(pool, {
         id,
@@ -141,6 +159,10 @@ function createCapturePipeline({
         group_id: groupId,
         farmos_person: farmosPerson,
         reply_target_kind: replyTargetKind,
+        // Phase 50 Plan-04 — Signal-native quote-thread persistence.
+        signal_msg_ts: sigMsgTs,
+        quote_msg_ts: quoteMsgTs,
+        quote_author_e164: quoteAuthor,
       });
     } catch (e) {
       logger.warn(`[capture] db insert failed: ${e.message}`);
