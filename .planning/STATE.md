@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Event-gate + Durable signal_outbound (tenant-aware)
-status: Phase 48 SHIPPED 2026-05-23. COMMIT half of v1.9 inoc-session correctness in place — `commitSeedingSession` handler + group-by-parent preview + Phase 45 ack contract extension + hermetic ship-gate (7/7 integration tests, 207/207 test/farmos suite). INOC-04, INOC-05, INOC-06 hermetic-attested. Live-fire operator-deferred. Next: Phase 49 (real-session eval corpus + May 22 reprocess ship-gate).
-last_updated: "2026-05-23T23:30:00.000Z"
+status: Phase 49 SHIPPED 2026-05-23. CI eval corpus 3-session (May-22 + May-12 named-regression + 2026-03-23 photo-absent diversity); `sessions.test.js` named-regression gate green hermetic. `scripts/discard-drafts.js` CLI shipped (12/12). `49-SHIP-GATE.md` runbook operator-deferred. INOC-07 hermetic-attested. v1.9 EXTRACTION+COMMIT+CORPUS triad complete. Next: Phase 50 (Signal-native quote threading) — last v1.9 phase.
+last_updated: "2026-05-23T23:55:00.000Z"
 last_activity: 2026-05-23
 progress:
   total_phases: 26
-  completed_phases: 7
-  total_plans: 69
-  completed_plans: 46
-  percent: 69
+  completed_phases: 8
+  total_plans: 73
+  completed_plans: 50
+  percent: 75
 ---
 
 # Project State
