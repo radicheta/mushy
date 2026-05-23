@@ -77,12 +77,13 @@ services:
     # FARMOS_PASSWORD for the bridge and farmos-agent services until they migrate
     # to per-tenant secrets in v1.9 (see 44-06-SUMMARY.md "v1.9 cleanup carryovers").
     env_file:
-      # required:false so `docker compose config` parses on hosts that haven't
-      # provisioned the gitignored secrets.env yet (CI, fresh clones). The alerter
-      # will fail-fast on boot via mustEnv() if the three secrets are absent — that
-      # is the correct loud failure surface, not a compose-parse error.
-      - path: tenants/mossrock/secrets.env
-        required: false
+      # 2026-05-23 hotfix: simple string form for compose v2.40 — the object form
+      # (`- path: ... required: false`) parses to env_file:None silently on this
+      # version, so the alerter never received SIGNAL_SENDER / ANTHROPIC_API_KEY /
+      # FARMOS_PASSWORD and crash-looped on boot. Returning to the simple list
+      # form keeps behaviour explicit; the file must exist on hosts running this
+      # service (gitignored, operator-provisioned per Plan-06 path B).
+      - tenants/mossrock/secrets.env
     environment:
       - BRIDGE_WS_URL=${BRIDGE_WS_URL:-ws://host.docker.internal:8081}
       - BRIDGE_HEALTH_URL=${BRIDGE_HEALTH_URL:-http://host.docker.internal:8081/health}
