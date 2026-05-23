@@ -1,0 +1,52 @@
+{
+  "_comment": "Phase 48-05 hermetic ship-gate expected payload counts for the May 22 fixture (5 groups, 11 children).",
+  "happy_path": {
+    "asset_post_count": 17,
+    "asset_breakdown": {
+      "session": 1,
+      "source_blocks": 5,
+      "child_blocks": 11
+    },
+    "log_post_count": 11,
+    "delete_count": 0,
+    "session_asset_name": "inoc 2026-05-22",
+    "child_block_names": [
+      "260522_SHI_1",
+      "260522_SHI_2",
+      "260522_SHI_3",
+      "260522_KOY_4",
+      "260522_KOY_5",
+      "260522_KOY_6",
+      "260522_KOY_7",
+      "260522_KOY_8",
+      "260522_KOY_9",
+      "260522_KOY_10",
+      "260522_KOY_11"
+    ],
+    "source_block_names": [
+      "260304_SHI_5",
+      "260118_SHI_23",
+      "260118_SHI_26",
+      "260118_KOY_12",
+      "260425_KOY_4"
+    ]
+  },
+  "partial_fail_at_log_4": {
+    "_comment": "Log #4 fails (first KOY group, first child). At failure: 1 session + 4 source blocks + 4 child blocks were created (groups 1-3 contributed 3 children, group 4 child 1 = 4 total).",
+    "delete_count": 9,
+    "failed_at_child_index": 3,
+    "ack_reason": "partial_commit_failed"
+  },
+  "idempotent": {
+    "first_tick_asset_posts": 17,
+    "first_tick_log_posts": 11,
+    "second_tick_asset_posts": 0,
+    "second_tick_log_posts": 0,
+    "second_tick_ack_dispatches": 0
+  },
+  "single_parent_legacy": {
+    "asset_post_count": 7,
+    "log_post_count": 5,
+    "_comment": "1 session + 1 source block + 5 child blocks; covers INOC-04."
+  }
+}
