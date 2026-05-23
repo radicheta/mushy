@@ -33,29 +33,77 @@ function createConfirmOutbound({
   // eslint-disable-next-line no-unused-vars
   operatorRecipient,
   logger = console,
+  // Phase 50 Plan 03: pool + confirmDb needed to resolve quote targets for
+  // send_commit_outcome_ack and send_confirm_ack. Both are OPTIONAL -- when
+  // missing, dispatch degrades to unquoted acks (no crash, no behavior change
+  // from pre-Plan-03 callers).
+  pool = null,
+  confirmDb = null,
 }) {
   if (!signalClient || typeof signalClient.send !== 'function') {
     throw new Error('createConfirmOutbound: signalClient.send required');
   }
 
-  async function safeSend(body, target, draftId, intentOverride) {
+  async function safeSend(body, target, draftId, intentOverride, quote) {
     try {
       // Phase 44 Plan-03 D-13/D-16: confirm-loop sends go through the wrapped
       // send with intent='confirm_prompt' so the signal_outbound row carries
       // the canonical enum + relatedDraftId for auditing.
       // Phase 45 Plan 04: callers may override intent (e.g. 'commit_outcome_ack')
       // so the signal_outbound row carries the terminal-state ack intent.
-      const res = await signalClient.send(body, {
+      // Phase 50 Plan 03: callers may pass a quote payload; signal.js validates
+      // it and falls back to unquoted send if invalid. Undefined means no quote.
+      const opts = {
         to: target,
         intent: intentOverride || 'confirm_prompt',
         relatedDraftId: draftId || null,
         sourceModule: 'outbound-confirm.js',
-      });
+      };
+      if (quote) opts.quote = quote;
+      const res = await signalClient.send(body, opts);
       return res || { ok: true };
     } catch (e) {
       logger.warn && logger.warn(`[outbound-confirm] signal send failed: ${e.message}`);
       return { ok: false, reason: e.message };
     }
+  }
+
+  // Phase 50 Plan 03: resolve the first source-capture's Signal-native ts +
+  // sender into a quote payload. Returns null on EVERY failure mode
+  // (missing pool/confirmDb, missing draftRow, empty source_capture_ids,
+  // capture row missing, NULL signal_msg_ts, DB error). When the lookup
+  // was *attempted* but yielded nothing (capture row missing OR NULL ts OR
+  // DB error), a warn is emitted; the empty-source-capture-ids path stays
+  // silent (that is the expected shape for ack-without-capture flows).
+  async function tryBuildQuoteForDraft(draftRow) {
+    if (!draftRow) return null;
+    if (!pool || !confirmDb || typeof confirmDb.getCaptureQuoteTarget !== 'function') {
+      return null;
+    }
+    const captureIds = Array.isArray(draftRow.source_capture_ids)
+      ? draftRow.source_capture_ids
+      : [];
+    if (captureIds.length === 0) return null;
+    const captureId = captureIds[0];
+    let tgt = null;
+    try {
+      tgt = await confirmDb.getCaptureQuoteTarget(pool, captureId);
+    } catch (_e) {
+      tgt = null;
+    }
+    if (!tgt || tgt.signal_msg_ts == null) {
+      logger.warn &&
+        logger.warn(
+          `[outbound-confirm] no quote target for draft=${truncId(draftRow.id)} capture=${truncId(captureId)} -- sending unquoted ack`
+        );
+      return null;
+    }
+    const trimmed = String(tgt.raw_text || '').slice(0, 200);
+    return {
+      timestamp: Number(tgt.signal_msg_ts),
+      author: tgt.sender,
+      message: trimmed,
+    };
   }
 
   function dmTarget(draftRow) {
@@ -88,10 +136,23 @@ function createConfirmOutbound({
       const dm = dmTarget(draftRow || {});
 
       switch (sideEffect) {
-        case 'send_confirm_ack':
+        case 'send_confirm_ack': {
+          // Phase 50 Plan 03: quote-aware ack. Best-effort -- lookup failure
+          // degrades to unquoted ack rather than blocking (CONTEXT D-05,
+          // [[feedback_no_silent_failure_after_farmer_confirm]]).
           body = previewBuilderConfirm.buildConfirmAck((draftRow && draftRow.id) || '');
           target = dm;
-          break;
+          if (target == null) {
+            logger.warn && logger.warn(`[outbound-confirm] ${sideEffect}: no_target draft=${truncId(draftRow && draftRow.id)}`);
+            return { ok: false, reason: 'no_target' };
+          }
+          const quote = await tryBuildQuoteForDraft(draftRow || null);
+          const res = await safeSend(body, target, draftRow && draftRow.id, undefined, quote);
+          if (res.ok) {
+            logger.info && logger.info(`[outbound-confirm] ${sideEffect} sent draft=${truncId(draftRow && draftRow.id)}`);
+          }
+          return res;
+        }
         case 'send_confirm_idempotent_ack':
           body = previewBuilderConfirm.buildIdempotentAck();
           target = dm;
@@ -143,7 +204,10 @@ function createConfirmOutbound({
             reason: extras.reason,
             farmosLink,
           });
-          const res = await safeSend(body, dm, draftRow && draftRow.id, 'commit_outcome_ack');
+          // Phase 50 Plan 03: quote-aware ack on the highest-traffic terminal
+          // ack site. Best-effort -- lookup failure degrades to unquoted ack.
+          const quote = await tryBuildQuoteForDraft(draftRow || null);
+          const res = await safeSend(body, dm, draftRow && draftRow.id, 'commit_outcome_ack', quote);
           if (res && res.ok) {
             logger.info && logger.info(`[outbound-confirm] send_commit_outcome_ack sent outcome=${extras.outcome} draft=${truncId(draftRow && draftRow.id)}`);
           }

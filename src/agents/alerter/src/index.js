@@ -294,11 +294,15 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
   });
 
   // Phase 39: confirm-loop wiring.
+  // Phase 50 Plan 03: pool + confirmDb passed so send_commit_outcome_ack and
+  // send_confirm_ack can resolve source-capture quote targets at dispatch time.
   const confirmOutbound = confirm.createConfirmOutbound({
     signalClient,
     previewBuilderConfirm: confirm.preview,
     operatorRecipient: config.signalRecipient,
     logger,
+    pool,
+    confirmDb: confirm.confirmDb,
   });
   const editHandler = confirm.createEditHandler({
     pool,
