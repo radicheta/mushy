@@ -145,6 +145,14 @@ function makeFakePool() {
       const row = drafts.get(id);
       if (!row) return { rows: [], rowCount: 0 };
 
+      // Plan 45-03 Option X: commit_failed -> awaiting_farmer transition (re-activate for EDIT).
+      if (/status='awaiting_farmer'/.test(s) && /status='commit_failed'/.test(s)) {
+        if (row.status !== 'commit_failed') return { rows: [], rowCount: 0 };
+        row.status = 'awaiting_farmer';
+        row.updated_at = _now();
+        return { rows: [{ id: row.id }], rowCount: 1 };
+      }
+
       // edit_turn_count increment (bumpEditTurn) -- detect first since it includes RETURNING edit_turn_count
       if (/edit_turn_count = edit_turn_count \+ 1/.test(s)) {
         if (row.status !== 'awaiting_farmer') return { rows: [], rowCount: 0 };

@@ -31,6 +31,45 @@ function createEditHandler({
       const editStr = typeof editText === 'string' ? editText : '';
       const maxTurns = config.maxEditTurns;
 
+      // Plan 45-03 Option X: state guard. EDIT is permitted from awaiting_farmer
+      // (the original Phase 39 path) and from commit_failed (the NORTH-STAR fix:
+      // the "Send EDIT to fix" affordance in the failure ack must be truthful).
+      // Any other state (confirmed, committed, discarded, expired, needs_review,
+      // draft, committing) rejects.
+      const startStatus = draftRow.status;
+      if (startStatus !== 'awaiting_farmer' && startStatus !== 'commit_failed') {
+        return { ok: false, reason: 'wrong_state' };
+      }
+
+      // commit_failed -> awaiting_farmer transition before falling through to
+      // the existing awaiting_farmer code path. We do NOT touch outcome_ack_sent_at
+      // (the original commit's ack stands; Plan 04 ack-slot semantics will apply
+      // to the next attempt). bumpEditTurn + updateDraftAfterEdit both WHERE on
+      // status='awaiting_farmer', so the transition MUST happen first.
+      if (startStatus === 'commit_failed') {
+        let reactivate;
+        try {
+          reactivate = await pool.query(
+            `UPDATE signal_draft
+                SET status='awaiting_farmer',
+                    updated_at=NOW()
+              WHERE id=$1 AND status='commit_failed'
+              RETURNING id`,
+            [draftRow.id]
+          );
+        } catch (e) {
+          logger.warn(`[edit-handler] commit_failed->awaiting_farmer transition threw: ${e.message}`);
+          return { ok: false, reason: e.message };
+        }
+        if (!reactivate || reactivate.rowCount === 0) {
+          // Race: another tick already moved the draft out of commit_failed.
+          logger.info('[edit-handler] commit_failed transition lost the race');
+          return { ok: false, reason: 'state_changed' };
+        }
+        // Reflect on the in-memory draftRow so downstream sees the new state.
+        draftRow.status = 'awaiting_farmer';
+      }
+
       // Pre-cap short-circuit (avoids burning an LLM call when we know the cap is hit).
       if ((draftRow.edit_turn_count || 0) >= maxTurns) {
         return { ok: true, sideEffect: 'send_edit_cap_msg', reason: 'edit_cap_exceeded' };

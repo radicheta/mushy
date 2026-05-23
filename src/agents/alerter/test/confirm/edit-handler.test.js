@@ -135,4 +135,45 @@ describe('edit-handler (Phase 39 D-03)', () => {
     const r = await handler.handleEdit(null, 'foo');
     expect(r.ok).toBe(false);
   });
+
+  // Plan 45-03 Option X: commit_failed -> EDIT -> awaiting_farmer.
+  it('EDIT on commit_failed draft -> transition to awaiting_farmer, re-extract, send_preview_resend', async () => {
+    const extractor = mockOkExtractor();
+    const { pool, handler } = setup({ extractor });
+    // Re-seed d-1 as commit_failed (overwrites the default awaiting_farmer seed).
+    pool.seedDraft({
+      id: 'd-1',
+      status: 'commit_failed',
+      terminal_reason: 'observation_requires_target',
+      edit_turn_count: 0,
+      draft_json: { type: 'seeding' },
+    });
+    const draftRow = pool.getDraft('d-1');
+    const r = await handler.handleEdit(draftRow, 'target is shelf B5');
+    expect(r.ok).toBe(true);
+    expect(r.sideEffect).toBe('send_preview_resend');
+    expect(extractor.extract).toHaveBeenCalledTimes(1);
+    expect(extractor.extract.mock.calls[0][0].farmerCorrection).toBe('target is shelf B5');
+    expect(pool.getDraft('d-1').status).toBe('awaiting_farmer');
+    expect(pool.getDraft('d-1').edit_turn_count).toBe(1);
+  });
+
+  it('EDIT on draft in confirmed/committed/discarded -> rejected, no transition', async () => {
+    for (const startState of ['confirmed', 'committed', 'discarded']) {
+      const extractor = mockOkExtractor();
+      const { pool, handler } = setup({ extractor });
+      pool.seedDraft({
+        id: 'd-1',
+        status: startState,
+        edit_turn_count: 0,
+        draft_json: { type: 'seeding' },
+      });
+      const draftRow = pool.getDraft('d-1');
+      const r = await handler.handleEdit(draftRow, 'try to edit');
+      expect(r.ok).toBe(false);
+      expect(extractor.extract).not.toHaveBeenCalled();
+      // Status unchanged.
+      expect(pool.getDraft('d-1').status).toBe(startState);
+    }
+  });
 });
