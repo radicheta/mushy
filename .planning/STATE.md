@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Event-gate + Durable signal_outbound (tenant-aware)
-status: Phase 45 — code-side 4/5 plans SHIPPED 2026-05-23 (efb7c44, c2ce47b, 1edb08d, 2ac3061). 835 alerter tests green. Verifier status=human_needed — Plan 05 live-fire UAT (Vikki+Santi replay) pending prod alerter deploy + farmer Signal interactions.
-last_updated: "2026-05-23T18:30:00.000Z"
+status: Phase 45 SHIPPED 2026-05-23. NORTH-STAR commit_failed ack live on prod. Original 2026-05-15 violation closed (Vikki + Santi acks delivered); 3 ack-debt extras swept. ACK-01..04 satisfied. Follow-ons: runtime sender_name enrichment (commit-watchdog), ack-debt sweep tooling, Vikki farmer-paste verification.
+last_updated: "2026-05-23T18:10:00.000Z"
 last_activity: 2026-05-23
 progress:
   total_phases: 26
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 64
-  completed_plans: 35
-  percent: 55
+  completed_plans: 36
+  percent: 56
 ---
 
 # Project State

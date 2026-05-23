@@ -1,9 +1,9 @@
 ---
 phase: 45-north-star-commit-failed-ack-replay-outstanding-silent-failu
-verified: 2026-05-23T00:00:00Z
-status: human_needed
-score: 11/11 code-side must-haves verified (Plans 01-04); 2 requirements (ACK-02, ACK-03) deferred to Plan 05 live-fire UAT
-scope: code-side only (Plans 01, 02, 03, 04). Plan 05 (`autonomous: false`) is the live-fire ship-gate and requires prod deploy + Signal interactions with Vikki and Santi.
+verified: 2026-05-23T18:05:00Z
+status: passed
+score: 11/11 code-side must-haves verified (Plans 01-04); ACK-02 + ACK-03 satisfied by Plan 05 live-fire 2026-05-23 (Vikki + Santi acks delivered, Signal ok=true, signal_outbound rows persisted)
+scope: full phase. Plan 05 shipped 2026-05-23; original 2026-05-15 NORTH-STAR violation closed + 3 ack-debt extras swept to Santi. Vikki farmer-paste verification (Task 4) deferred at operator direction — receipt is database-attested via signal_outbound row + signal-cli ok=true. Tracked as follow-on in 45-05-SUMMARY.md.
 human_verification:
   - test: "Plan 05 Task 2 pre-flight (in-prod state checks)"
     expected: "(a) docker exec mushy-alerter-1 grep -c send_commit_outcome_ack /app/src/farmos/commit-watchdog.js >=2. (b) signal_draft has outcome_ack_sent_at column on prod. (c) Drafts b8a1e586... and 1fb28e70... still status=commit_failed with outcome_ack_sent_at IS NULL. (d) Dry-run of backfill script renders English, no em-dashes, named address, correct reason phrase."
