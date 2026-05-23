@@ -56,6 +56,14 @@ async function initDb(pool) {
   await pool.query(
     `ALTER TABLE signal_draft ADD COLUMN IF NOT EXISTS needs_review_reason text`
   );
+  // Phase 49 Plan 01: discard-drafts script (Plan 03) writes these. Nullable;
+  // existing rows + writers that omit them remain valid. Idempotent.
+  await pool.query(
+    `ALTER TABLE signal_draft ADD COLUMN IF NOT EXISTS discarded_reason text`
+  );
+  await pool.query(
+    `ALTER TABLE signal_draft ADD COLUMN IF NOT EXISTS discarded_at timestamptz`
+  );
 }
 
 /**
