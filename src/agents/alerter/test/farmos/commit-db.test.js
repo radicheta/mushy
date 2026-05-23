@@ -4,14 +4,17 @@ const commitDb = require('../../src/farmos/commit-db');
 const { makeFakePool } = require('./fake-pool');
 
 describe('commit-db (Phase 40 D-02/D-07)', () => {
-  it('initDb issues 5 ALTER TABLE statements + 1 CREATE INDEX', async () => {
+  it('initDb issues 6 ALTER TABLE statements + 1 CREATE INDEX', async () => {
     const pool = makeFakePool();
     await commitDb.initDb(pool);
     const sqls = pool.queries.map((q) => q.sql);
     const alters = sqls.filter((s) => /^\s*ALTER TABLE/i.test(s));
     const indexes = sqls.filter((s) => /^\s*CREATE INDEX/i.test(s));
-    expect(alters.length).toBe(5);
+    expect(alters.length).toBe(6);
     expect(indexes.length).toBe(1);
+    // Phase 45 D-01: outcome_ack_sent_at column ships at boot, no new index.
+    expect(sqls.some((s) => /outcome_ack_sent_at timestamptz/i.test(s))).toBe(true);
+    expect(sqls.some((s) => /CREATE INDEX[\s\S]+outcome_ack_sent_at/i.test(s))).toBe(false);
   });
 
   it('findConfirmedCandidates passes batchCap as LIMIT', async () => {
@@ -101,6 +104,43 @@ describe('commit-db (Phase 40 D-02/D-07)', () => {
     expect(r.ok).toBe(true);
     expect(r.status).toBe('committed');
     expect(r.farmos_response).toEqual(resp);
+  });
+
+  // Phase 45 D-01 (ACK-04): mark-then-send idempotency primitive.
+  describe('tryMarkOutcomeAckSent (Phase 45 D-01 / ACK-04)', () => {
+    it('first call returns ok with claimed_at', async () => {
+      const pool = makeFakePool();
+      pool.seedDraft({ id: 'd1', status: 'commit_failed' });
+      const r = await commitDb.tryMarkOutcomeAckSent(pool, 'd1');
+      expect(r.ok).toBe(true);
+      expect(r.id).toBe('d1');
+      expect(r.claimed_at).toBeInstanceOf(Date);
+      expect(pool.getDraft('d1').outcome_ack_sent_at).toBeInstanceOf(Date);
+      // SQL audit: single CAS UPDATE with WHERE outcome_ack_sent_at IS NULL + RETURNING id.
+      const upd = pool.queries.find((q) =>
+        /UPDATE signal_draft[\s\S]+SET outcome_ack_sent_at = now\(\)/i.test(q.sql)
+      );
+      expect(upd).toBeDefined();
+      expect(upd.sql).toMatch(/WHERE id=\$1 AND outcome_ack_sent_at IS NULL/);
+      expect(upd.sql).toMatch(/RETURNING id, outcome_ack_sent_at/);
+    });
+
+    it('second call on already-claimed draft returns ok=false, reason=already_claimed', async () => {
+      const pool = makeFakePool();
+      pool.seedDraft({ id: 'd2', status: 'committed' });
+      const first = await commitDb.tryMarkOutcomeAckSent(pool, 'd2');
+      expect(first.ok).toBe(true);
+      const second = await commitDb.tryMarkOutcomeAckSent(pool, 'd2');
+      expect(second.ok).toBe(false);
+      expect(second.reason).toBe('already_claimed');
+    });
+
+    it('unknown draftId returns ok=false, reason=not_found', async () => {
+      const pool = makeFakePool();
+      const r = await commitDb.tryMarkOutcomeAckSent(pool, 'does-not-exist');
+      expect(r.ok).toBe(false);
+      expect(r.reason).toBe('not_found');
+    });
   });
 
   it('write helpers wrap errors and return {ok:false}', async () => {
