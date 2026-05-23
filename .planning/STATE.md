@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Event-gate + Durable signal_outbound (tenant-aware)
-status: Phase 45 SHIPPED 2026-05-23. NORTH-STAR commit_failed ack live on prod. Original 2026-05-15 violation closed (Vikki + Santi acks delivered); 3 ack-debt extras swept. ACK-01..04 satisfied. Follow-ons: runtime sender_name enrichment (commit-watchdog), ack-debt sweep tooling, Vikki farmer-paste verification.
-last_updated: "2026-05-23T18:10:00.000Z"
+status: Phase 47 SHIPPED 2026-05-23 (later same day). Groups-shape seeding_session draft live; live-fire on real May 22 captures recognized all 5 parents + 11 children + emitted Gray-Area-3 ask-back path. INOC-01,02,03,05 satisfied (INOC-04 carries to Phase 48). 919 alerter tests green. v1.9 underway. Next: Phase 48 (session asset + per-bag fan-out + group-by-parent preview).
+last_updated: "2026-05-23T21:30:00.000Z"
 last_activity: 2026-05-23
 progress:
   total_phases: 26
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 64
-  completed_plans: 36
-  percent: 56
+  completed_plans: 41
+  percent: 64
 ---
 
 # Project State
