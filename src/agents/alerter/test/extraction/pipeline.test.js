@@ -185,3 +185,317 @@ describe('extraction pipeline -- 999.53 usage stamp', () => {
     expect(logger.warn).toHaveBeenCalledWith(expect.stringMatching(/usage stamp failed/));
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 47 Plan 03: seeding_session starting_seq ask-back branch + reply handler
+// ---------------------------------------------------------------------------
+
+const {
+  buildStartingSeqAskBackText,
+  parseStartingSeqReply,
+} = require('../../src/extraction/pipeline');
+
+function makeSeedingSessionDraft({ groups, needsInput = 'starting_seq', eventDate = '2026-05-22' } = {}) {
+  return {
+    type: 'seeding_session',
+    event_date: eventDate,
+    needs_input: needsInput,
+    groups: groups || [
+      {
+        parent: { value: '260118_SHI_25', confidence: 0.95, sources: ['paper_log_photo'] },
+        species: { value: 'SHI', confidence: 0.95, sources: ['paper_log_photo'] },
+        qty: { value: 3, confidence: 0.95, sources: ['paper_log_photo'] },
+        child_block_names: { value: ['NEEDS_SEQ', 'NEEDS_SEQ', 'NEEDS_SEQ'], confidence: 0, sources: ['model_inference'] },
+      },
+    ],
+  };
+}
+
+describe('pipeline -- buildStartingSeqAskBackText', () => {
+  test('renders named greeting + date + total + last-today hint + default + reply hint', () => {
+    const text = buildStartingSeqAskBackText({
+      totalChildren: 11,
+      eventDate: '2026-05-22',
+      lastSeq: 3,
+      lastBlockName: '260522_KOY_3',
+      senderName: 'Santi',
+    });
+    expect(text).toMatch(/^Hi Santi,/);
+    expect(text).toMatch(/May 22 inoc, 11 blocks/);
+    expect(text).toMatch(/block number/);
+    expect(text).toMatch(/Last block number today was 260522_KOY_3/);
+    expect(text).toMatch(/default is 4/);
+    expect(text).toMatch(/Reply with a number or just YES/);
+  });
+
+  test('renders "default is 1" when lastSeq is null', () => {
+    const text = buildStartingSeqAskBackText({
+      totalChildren: 5,
+      eventDate: '2026-05-22',
+      lastSeq: null,
+      lastBlockName: null,
+      senderName: null,
+    });
+    expect(text).toMatch(/No prior session today, so default is 1/);
+    expect(text).not.toMatch(/^Hi /);
+  });
+
+  test('no em-dashes in output (project memory: feedback_no_em_dashes_in_artifacts)', () => {
+    const text = buildStartingSeqAskBackText({
+      totalChildren: 11,
+      eventDate: '2026-05-22',
+      lastSeq: 3,
+      lastBlockName: '260522_KOY_3',
+      senderName: 'Santi',
+    });
+    expect(text).not.toMatch(/—/);
+  });
+});
+
+describe('pipeline -- parseStartingSeqReply', () => {
+  test('YES (any case) -> kind=yes', () => {
+    expect(parseStartingSeqReply('YES').kind).toBe('yes');
+    expect(parseStartingSeqReply('yes').kind).toBe('yes');
+    expect(parseStartingSeqReply('  Yes ').kind).toBe('yes');
+  });
+  test('numeric -> kind=number', () => {
+    expect(parseStartingSeqReply('4')).toEqual({ kind: 'number', n: 4 });
+    expect(parseStartingSeqReply(' 10 ')).toEqual({ kind: 'number', n: 10 });
+  });
+  test('non-numeric / mixed -> kind=unclear', () => {
+    expect(parseStartingSeqReply('4abc').kind).toBe('unclear');
+    expect(parseStartingSeqReply('blah').kind).toBe('unclear');
+    expect(parseStartingSeqReply('').kind).toBe('unclear');
+    expect(parseStartingSeqReply(null).kind).toBe('unclear');
+  });
+});
+
+describe('pipeline -- seeding_session starting_seq enqueue branch', () => {
+  function makeStartingSeqDeps({ lastSeqRows = [] } = {}) {
+    const draft = makeSeedingSessionDraft();
+    const dispatched = [];
+    const updates = [];
+    const pool = {
+      query: jest.fn(async (sql) => {
+        // seq-helper SELECT
+        if (/FROM signal_draft\s+WHERE status IN/.test(sql)) {
+          return { rows: lastSeqRows };
+        }
+        return { rows: [], rowCount: 1 };
+      }),
+    };
+    const extractor = {
+      extract: jest.fn(async () => ({
+        ok: true,
+        drafts: [{ draft, per_field_confidence: {} }],
+        draft,
+        per_field_confidence: {},
+        continuity_decision: 'start_new',
+        usage: null,
+      })),
+    };
+    const extractionDb = {
+      getInFlightForSender: jest.fn(async () => null),
+      insertDraft: jest.fn(async () => ({ ok: true })),
+      updateDraftStatus: jest.fn(async (_pool, id, status, extras) => {
+        updates.push({ id, status, extras });
+        return { ok: true };
+      }),
+      advanceAskbackTurn: jest.fn(async () => ({ ok: true })),
+      computeDraftId: jest.fn((ids, idx) => `draft-${(ids || []).join('-')}-${idx || 0}`),
+      getDraftById: jest.fn(),
+    };
+    const stateMachine = {
+      forceStartNewIfIdle: jest.fn(() => null),
+      transition: jest.fn(),
+    };
+    const previewBuilder = { buildPreview: jest.fn(() => 'preview') };
+    const config = {
+      draftIdleGapMin: 60,
+      extractionConfidenceThreshold: 0.7,
+      maxAskbackTurns: 3,
+    };
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+    const outboundDispatcher = {
+      dispatch: jest.fn((effect, row) => { dispatched.push({ effect, row }); }),
+    };
+    const pipeline = createExtractionPipeline({
+      pool, extractor, extractionDb, stateMachine, previewBuilder, config, logger,
+      outboundDispatcher,
+    });
+    return { pipeline, pool, extractor, extractionDb, stateMachine, outboundDispatcher, logger, dispatched, updates, draft };
+  }
+
+  const ctx = {
+    captureId: 'CAP-SS',
+    sender: '+59891840201',
+    senderName: 'Santi',
+    farmosPerson: 'f1',
+    text: 'May 22 inoc',
+    transcripts: [],
+    attachmentPaths: [],
+    replyTargetKind: 'dm',
+    groupId: null,
+  };
+
+  test('lastSeq=3 in DB -> dispatches send_starting_seq_askback with "default is 4" preview', async () => {
+    const lastSeqRows = [
+      { draft_json: { type: 'seeding', block_name: '260522_KOY_3' } },
+    ];
+    const { pipeline, outboundDispatcher, updates, stateMachine } = makeStartingSeqDeps({ lastSeqRows });
+    const res = await pipeline.enqueue(ctx);
+    expect(res.ok).toBe(true);
+    expect(res.status).toBe('awaiting_farmer');
+    expect(res.sideEffects).toEqual(['send_starting_seq_askback']);
+    // state-machine.transition NOT called on the short-circuit path
+    expect(stateMachine.transition).not.toHaveBeenCalled();
+    // Dispatcher called once with the correct side-effect name
+    const sse = outboundDispatcher.dispatch.mock.calls.find((c) => c[0] === 'send_starting_seq_askback');
+    expect(sse).toBeDefined();
+    expect(sse[1].farmer_facing_preview).toMatch(/default is 4/);
+    expect(sse[1].farmer_facing_preview).toMatch(/^Hi Santi,/);
+    // Persisted preview
+    const lastUpdate = updates[updates.length - 1];
+    expect(lastUpdate.status).toBe('awaiting_farmer');
+    expect(lastUpdate.extras.farmer_facing_preview).toMatch(/default is 4/);
+  });
+
+  test('lastSeq=null -> preview contains "default is 1"', async () => {
+    const { pipeline, outboundDispatcher } = makeStartingSeqDeps({ lastSeqRows: [] });
+    await pipeline.enqueue(ctx);
+    const sse = outboundDispatcher.dispatch.mock.calls.find((c) => c[0] === 'send_starting_seq_askback');
+    expect(sse[1].farmer_facing_preview).toMatch(/default is 1/);
+  });
+});
+
+describe('pipeline -- handleStartingSeqReply', () => {
+  function makeReplyDeps({ draft, lastSeqRows = [] } = {}) {
+    const updates = [];
+    const dispatched = [];
+    const pool = {
+      query: jest.fn(async (sql) => {
+        if (/FROM signal_draft\s+WHERE status IN/.test(sql)) {
+          return { rows: lastSeqRows };
+        }
+        return { rows: [], rowCount: 1 };
+      }),
+    };
+    const initialDraft = draft || makeSeedingSessionDraft({
+      groups: [
+        {
+          parent: { value: 'P1', confidence: 1, sources: ['paper_log_photo'] },
+          species: { value: 'SHI', confidence: 1, sources: ['paper_log_photo'] },
+          qty: { value: 5, confidence: 1, sources: ['paper_log_photo'] },
+          child_block_names: { value: ['NEEDS_SEQ', 'NEEDS_SEQ', 'NEEDS_SEQ', 'NEEDS_SEQ', 'NEEDS_SEQ'], confidence: 0, sources: ['model_inference'] },
+        },
+        {
+          parent: { value: 'P2', confidence: 1, sources: ['paper_log_photo'] },
+          species: { value: 'KOY', confidence: 1, sources: ['paper_log_photo'] },
+          qty: { value: 4, confidence: 1, sources: ['paper_log_photo'] },
+          child_block_names: { value: ['NEEDS_SEQ', 'NEEDS_SEQ', 'NEEDS_SEQ', 'NEEDS_SEQ'], confidence: 0, sources: ['model_inference'] },
+        },
+        {
+          parent: { value: 'P3', confidence: 1, sources: ['paper_log_photo'] },
+          species: { value: 'MAI', confidence: 1, sources: ['paper_log_photo'] },
+          qty: { value: 2, confidence: 1, sources: ['paper_log_photo'] },
+          child_block_names: { value: ['NEEDS_SEQ', 'NEEDS_SEQ'], confidence: 0, sources: ['model_inference'] },
+        },
+      ],
+    });
+    // Live "DB" -- getDraftById returns the latest persisted draft_json.
+    let currentRow = { id: 'D1', sender_e164: '+x', draft_json: initialDraft, status: 'awaiting_farmer' };
+    const extractionDb = {
+      getDraftById: jest.fn(async () => currentRow),
+      updateDraftStatus: jest.fn(async (_p, id, status, extras) => {
+        updates.push({ id, status, extras });
+        if (extras && extras.draft_json) {
+          currentRow = { ...currentRow, draft_json: extras.draft_json, status };
+        } else {
+          currentRow = { ...currentRow, status };
+        }
+        return { ok: true };
+      }),
+      getInFlightForSender: jest.fn(),
+      insertDraft: jest.fn(),
+      advanceAskbackTurn: jest.fn(),
+      computeDraftId: jest.fn(),
+    };
+    const stateMachine = { forceStartNewIfIdle: jest.fn(), transition: jest.fn() };
+    const previewBuilder = { buildPreview: jest.fn(() => '') };
+    const config = { draftIdleGapMin: 60, extractionConfidenceThreshold: 0.7, maxAskbackTurns: 3 };
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+    const outboundDispatcher = {
+      dispatch: jest.fn((effect, row) => { dispatched.push({ effect, row }); }),
+    };
+    const extractor = { extract: jest.fn() };
+    const pipeline = createExtractionPipeline({
+      pool, extractor, extractionDb, stateMachine, previewBuilder, config, logger,
+      outboundDispatcher,
+    });
+    return { pipeline, extractionDb, outboundDispatcher, dispatched, updates, getCurrentRow: () => currentRow };
+  }
+
+  test('replyText=YES with default=4 over 5+4+2 groups -> consecutive child_block_names across groups', async () => {
+    const lastSeqRows = [{ draft_json: { type: 'seeding', block_name: '260522_SHI_3' } }];
+    const { pipeline, updates, dispatched } = makeReplyDeps({ lastSeqRows });
+    const res = await pipeline.handleStartingSeqReply({
+      draftId: 'D1', replyText: 'YES', captureCtx: { senderName: 'Santi' },
+    });
+    expect(res.ok).toBe(true);
+    expect(res.startSeq).toBe(4);
+    const persisted = updates[updates.length - 1].extras.draft_json;
+    expect(persisted.needs_input).toBeUndefined();
+    expect(persisted.groups[0].child_block_names.value).toEqual([
+      '260522_SHI_4', '260522_SHI_5', '260522_SHI_6', '260522_SHI_7', '260522_SHI_8',
+    ]);
+    expect(persisted.groups[1].child_block_names.value).toEqual([
+      '260522_KOY_9', '260522_KOY_10', '260522_KOY_11', '260522_KOY_12',
+    ]);
+    expect(persisted.groups[2].child_block_names.value).toEqual([
+      '260522_MAI_13', '260522_MAI_14',
+    ]);
+    expect(persisted.groups[0].child_block_names.sources).toEqual(['model_inference', 'text']);
+    expect(dispatched.find((d) => d.effect === 'send_seeding_session_filled_preview')).toBeDefined();
+  });
+
+  test('replyText=10 -> starts at 10 across groups', async () => {
+    const { pipeline, updates } = makeReplyDeps({});
+    const res = await pipeline.handleStartingSeqReply({
+      draftId: 'D1', replyText: '10', captureCtx: {},
+    });
+    expect(res.ok).toBe(true);
+    expect(res.startSeq).toBe(10);
+    const persisted = updates[updates.length - 1].extras.draft_json;
+    expect(persisted.groups[0].child_block_names.value[0]).toBe('260522_SHI_10');
+    expect(persisted.groups[1].child_block_names.value[0]).toBe('260522_KOY_15');
+    expect(persisted.groups[2].child_block_names.value[0]).toBe('260522_MAI_19');
+  });
+
+  test('replyText=blah -> dispatches clarifying ask-back, draft unchanged', async () => {
+    const { pipeline, updates, dispatched } = makeReplyDeps({});
+    const res = await pipeline.handleStartingSeqReply({
+      draftId: 'D1', replyText: 'blah', captureCtx: {},
+    });
+    expect(res.ok).toBe(true);
+    expect(res.clarified).toBe(true);
+    // No draft_json mutation persisted
+    expect(updates.find((u) => u.extras && u.extras.draft_json)).toBeUndefined();
+    const reaskback = dispatched.find((d) => d.effect === 'send_starting_seq_askback');
+    expect(reaskback).toBeDefined();
+    expect(reaskback.row.farmer_facing_preview).toMatch(/Please reply with a number or YES/);
+  });
+
+  test('idempotent: second YES after needs_input cleared returns noop:true', async () => {
+    const { pipeline, updates } = makeReplyDeps({});
+    const first = await pipeline.handleStartingSeqReply({
+      draftId: 'D1', replyText: 'YES', captureCtx: {},
+    });
+    expect(first.ok).toBe(true);
+    const updatesAfterFirst = updates.length;
+    const second = await pipeline.handleStartingSeqReply({
+      draftId: 'D1', replyText: 'YES', captureCtx: {},
+    });
+    expect(second).toEqual(expect.objectContaining({ ok: true, noop: true }));
+    expect(updates.length).toBe(updatesAfterFirst);
+  });
+});

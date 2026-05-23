@@ -25,6 +25,13 @@
 
 const { DRAFT_STATUS, REQUIRED_FIELDS } = require('./state-machine');
 const { readImageToBase64 } = require('./multimodal');
+const { sanitizeFarmerText } = require('./preview-builder');
+const { fmtNum } = require('../message');
+const {
+  lookupLastSeqForDate,
+  mintChildBlockNames,
+  yyyymmddToYymmdd,
+} = require('./seq-helper');
 
 const IMAGE_EXT_RE = /\.(jpe?g|png|gif|webp)$/i;
 
@@ -41,6 +48,78 @@ async function loadImageBlocks(paths, logger) {
     blocks.push({ data: r.data, media_type: r.media_type });
   }
   return blocks;
+}
+
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+// Render '2026-05-22' as 'May 22'. Returns the input untouched if it does
+// not match YYYY-MM-DD so the ask-back text degrades gracefully.
+function formatEventDateHuman(eventDate) {
+  if (typeof eventDate !== 'string') return String(eventDate);
+  const m = eventDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return eventDate;
+  const month = MONTHS[parseInt(m[2], 10) - 1] || m[2];
+  const day = parseInt(m[3], 10);
+  return `${month} ${day}`;
+}
+
+/**
+ * buildStartingSeqAskBackText({totalChildren, eventDate, lastSeq, lastBlockName, senderName})
+ *   -> string
+ *
+ * Phase 47 Plan 03: farmer-facing ask-back prompt for a seeding_session draft
+ * with needs_input='starting_seq'. Style locks (project memory):
+ *   - "block number" vocabulary (NOT "SEQ" -- dev shorthand only)
+ *   - named greeting when senderName resolvable
+ *   - no em-dashes (sanitizeFarmerText sweep)
+ *   - fmtNum for the totalChildren count
+ */
+function buildStartingSeqAskBackText({
+  totalChildren,
+  eventDate,
+  lastSeq,
+  lastBlockName,
+  senderName,
+}) {
+  const lines = [];
+  if (senderName && typeof senderName === 'string' && senderName.trim()) {
+    lines.push(`Hi ${senderName.trim()},`);
+  }
+  const dateStr = formatEventDateHuman(eventDate);
+  lines.push(`${dateStr} inoc, ${fmtNum(totalChildren)} blocks. What block number should I start at?`);
+  if (lastSeq != null) {
+    const hint = lastBlockName ? lastBlockName : `block ${fmtNum(lastSeq)}`;
+    lines.push(`Last block number today was ${hint}, so default is ${fmtNum(lastSeq + 1)}.`);
+  } else {
+    lines.push('No prior session today, so default is 1.');
+  }
+  lines.push('Reply with a number or just YES for the default.');
+  return sanitizeFarmerText(lines.join('\n'));
+}
+
+// Parse a farmer reply for the starting_seq ask-back. Returns:
+//   {kind:'yes'} | {kind:'number', n:int} | {kind:'unclear'}
+function parseStartingSeqReply(replyText) {
+  if (typeof replyText !== 'string') return { kind: 'unclear' };
+  const t = replyText.trim();
+  if (!t) return { kind: 'unclear' };
+  if (/^yes$/i.test(t)) return { kind: 'yes' };
+  if (/^(\d+)$/.test(t)) return { kind: 'number', n: parseInt(t, 10) };
+  return { kind: 'unclear' };
+}
+
+// Sum a SeedingSession's group qtys. Tolerates missing/malformed qty fields.
+function sumGroupQtys(groups) {
+  if (!Array.isArray(groups)) return 0;
+  let total = 0;
+  for (const g of groups) {
+    const v = g && g.qty && g.qty.value;
+    if (typeof v === 'number' && Number.isFinite(v)) total += v;
+  }
+  return total;
 }
 
 function createExtractionPipeline({
@@ -347,6 +426,81 @@ function createExtractionPipeline({
         }
       }
 
+      // 5b. Phase 47 Plan 03: seeding_session ask-back short-circuit.
+      // When the extractor emits draft.needs_input='starting_seq', we bypass
+      // the generic state-machine ask-back path entirely: there is no
+      // missing-required-field problem to render with TOP_Q_TEMPLATES (groups
+      // are populated; only the per-session SEQ counter is missing). Build a
+      // dedicated farmer-facing prompt with the last-today hint, persist as
+      // AWAITING_FARMER, dispatch send_starting_seq_askback, return early.
+      if (draft && draft.type === 'seeding_session' && draft.needs_input === 'starting_seq') {
+        let lastSeqResult = { ok: true, lastSeq: null };
+        try {
+          lastSeqResult = await lookupLastSeqForDate(pool, draft.event_date, { logger });
+        } catch (e) {
+          logger.warn && logger.warn(`[extraction] starting_seq lookup threw: ${e.message}`);
+        }
+        const lastSeq = lastSeqResult && lastSeqResult.ok ? lastSeqResult.lastSeq : null;
+        const totalChildren = sumGroupQtys(draft.groups);
+        // Render the prior block_name for the hint when available -- helps the
+        // farmer recognize their own paper-log handwriting.
+        let lastBlockName = null;
+        if (lastSeq != null) {
+          // Best-effort: pull the first species code from the draft for the
+          // hint format. Falls back to a numeric-only hint when unavailable.
+          try {
+            const firstSpecies = draft.groups
+              && draft.groups[0]
+              && draft.groups[0].species
+              && draft.groups[0].species.value;
+            if (firstSpecies) {
+              lastBlockName = `${yyyymmddToYymmdd(draft.event_date)}_${firstSpecies}_${lastSeq}`;
+            }
+          } catch (_e) { /* ignore */ }
+        }
+        const preview = buildStartingSeqAskBackText({
+          totalChildren,
+          eventDate: draft.event_date,
+          lastSeq,
+          lastBlockName,
+          senderName: captureCtx.senderName || null,
+        });
+        const askbackUpd = await extractionDb.updateDraftStatus(
+          pool,
+          draftId,
+          DRAFT_STATUS.AWAITING_FARMER,
+          { farmer_facing_preview: preview },
+        );
+        if (!askbackUpd.ok) {
+          logger.warn && logger.warn(`[extraction] starting_seq status update failed: ${askbackUpd.reason}`);
+          return { ok: false, reason: askbackUpd.reason };
+        }
+        const draftRow = {
+          id: draftId,
+          sender_e164: sender,
+          farmos_person: captureCtx.farmosPerson || null,
+          status: DRAFT_STATUS.AWAITING_FARMER,
+          draft_json: draft,
+          farmer_facing_preview: preview,
+          reply_target_kind: captureCtx.replyTargetKind || null,
+          group_id: captureCtx.groupId || null,
+          source_capture_ids: sourceCaptureIds,
+          askback_turns: priorAskbackTurns,
+        };
+        try {
+          outboundDispatcher.dispatch('send_starting_seq_askback', draftRow);
+        } catch (e) {
+          logger.warn && logger.warn(`[extraction] dispatch send_starting_seq_askback failed: ${e.message}`);
+        }
+        return {
+          ok: true,
+          draftId,
+          status: DRAFT_STATUS.AWAITING_FARMER,
+          continuity,
+          sideEffects: ['send_starting_seq_askback'],
+        };
+      }
+
       // 6. state-machine transition
       const transition = stateMachine.transition(
         {
@@ -441,7 +595,157 @@ function createExtractionPipeline({
     }
   }
 
-  return { enqueue };
+  /**
+   * Phase 47 Plan 03: farmer-reply handler for the starting_seq ask-back.
+   * Phase 48 will wire this into the reply-routing layer; for Phase 47 it is
+   * unit-tested in isolation.
+   *
+   * Behavior:
+   *   - Parse replyText: 'YES' (case-insensitive) -> use default; numeric ->
+   *     use that N; anything else -> re-dispatch a clarifying ask-back.
+   *   - Walk groups[] in order, consuming the per-session SEQ counter:
+   *     each group mints qty.value block_names starting at the running N.
+   *   - Set child_block_names.value = minted array per group, leave
+   *     .confidence unchanged; set .sources to ['model_inference','text']
+   *     to reflect the farmer-supplied SEQ.
+   *   - Clear draft.needs_input.
+   *   - Persist draft_json via updateDraftStatus({status: AWAITING_FARMER}).
+   *   - Dispatch send_seeding_session_filled_preview so Phase 48's preview
+   *     builder can render the group-by-parent table.
+   *   - Idempotent: a second YES on a draft whose needs_input is already
+   *     cleared returns {ok:true, noop:true} without re-minting.
+   */
+  async function handleStartingSeqReply({ draftId, replyText, captureCtx }) {
+    try {
+      if (!draftId) return { ok: false, reason: 'missing_draft_id' };
+      const row = await extractionDb.getDraftById(pool, draftId);
+      if (!row) return { ok: false, reason: 'draft_not_found' };
+
+      const draft = row.draft_json || null;
+      if (!draft || draft.type !== 'seeding_session') {
+        return { ok: false, reason: 'not_seeding_session' };
+      }
+
+      // Idempotency: needs_input already cleared -> noop. Guards against
+      // duplicate replies / Phase 48 retries that double-mint.
+      if (draft.needs_input !== 'starting_seq') {
+        return { ok: true, draftId, noop: true };
+      }
+
+      const parsed = parseStartingSeqReply(replyText);
+
+      if (parsed.kind === 'unclear') {
+        // Re-dispatch clarifying ask-back; draft state unchanged.
+        let lastSeqResult = { ok: true, lastSeq: null };
+        try {
+          lastSeqResult = await lookupLastSeqForDate(pool, draft.event_date, { logger });
+        } catch (_e) { /* ignore */ }
+        const lastSeq = lastSeqResult && lastSeqResult.ok ? lastSeqResult.lastSeq : null;
+        const totalChildren = sumGroupQtys(draft.groups);
+        const base = buildStartingSeqAskBackText({
+          totalChildren,
+          eventDate: draft.event_date,
+          lastSeq,
+          lastBlockName: null,
+          senderName: (captureCtx && captureCtx.senderName) || null,
+        });
+        const preview = sanitizeFarmerText(`Please reply with a number or YES.\n\n${base}`);
+        try {
+          outboundDispatcher.dispatch('send_starting_seq_askback', {
+            ...row,
+            farmer_facing_preview: preview,
+          });
+        } catch (e) {
+          logger.warn && logger.warn(`[extraction] re-dispatch starting_seq failed: ${e.message}`);
+        }
+        return { ok: true, draftId, status: 'awaiting_farmer', clarified: true };
+      }
+
+      // Resolve the starting N.
+      let startN;
+      if (parsed.kind === 'number') {
+        startN = parsed.n;
+      } else {
+        // YES -> use the default (lastSeq + 1, or 1 if none).
+        let lastSeqResult = { ok: true, lastSeq: null };
+        try {
+          lastSeqResult = await lookupLastSeqForDate(pool, draft.event_date, { logger });
+        } catch (_e) { /* ignore */ }
+        const lastSeq = lastSeqResult && lastSeqResult.ok ? lastSeqResult.lastSeq : null;
+        startN = (lastSeq != null) ? lastSeq + 1 : 1;
+      }
+
+      // Mint per-group block_names from the running counter.
+      const yyMMdd = yyyymmddToYymmdd(draft.event_date);
+      const updatedGroups = [];
+      let counter = startN;
+      for (const g of (draft.groups || [])) {
+        const speciesCode = g && g.species && g.species.value;
+        const qty = g && g.qty && g.qty.value;
+        if (!speciesCode || typeof qty !== 'number') {
+          return { ok: false, reason: 'malformed_group' };
+        }
+        const names = mintChildBlockNames({
+          eventDateYYMMDD: yyMMdd,
+          speciesCode,
+          startSeq: counter,
+          qty,
+        });
+        counter += qty;
+        const prevCbn = (g && g.child_block_names) || {};
+        updatedGroups.push({
+          ...g,
+          child_block_names: {
+            value: names,
+            confidence: typeof prevCbn.confidence === 'number' ? prevCbn.confidence : 1,
+            sources: ['model_inference', 'text'],
+          },
+        });
+      }
+
+      const updatedDraft = { ...draft, groups: updatedGroups };
+      delete updatedDraft.needs_input;
+
+      const upd = await extractionDb.updateDraftStatus(
+        pool,
+        draftId,
+        DRAFT_STATUS.AWAITING_FARMER,
+        { draft_json: updatedDraft },
+      );
+      if (!upd.ok) {
+        logger.warn && logger.warn(`[extraction] starting_seq fill update failed: ${upd.reason}`);
+        return { ok: false, reason: upd.reason };
+      }
+
+      try {
+        outboundDispatcher.dispatch('send_seeding_session_filled_preview', {
+          ...row,
+          draft_json: updatedDraft,
+          status: DRAFT_STATUS.AWAITING_FARMER,
+        });
+      } catch (e) {
+        logger.warn && logger.warn(`[extraction] dispatch filled_preview failed: ${e.message}`);
+      }
+
+      return {
+        ok: true,
+        draftId,
+        status: DRAFT_STATUS.AWAITING_FARMER,
+        startSeq: startN,
+        sideEffects: ['send_seeding_session_filled_preview'],
+      };
+    } catch (e) {
+      logger.warn && logger.warn(`[extraction] handleStartingSeqReply error: ${e.message}`);
+      return { ok: false, reason: e.message };
+    }
+  }
+
+  return { enqueue, handleStartingSeqReply };
 }
 
-module.exports = { createExtractionPipeline, loadImageBlocks };
+module.exports = {
+  createExtractionPipeline,
+  loadImageBlocks,
+  buildStartingSeqAskBackText,
+  parseStartingSeqReply,
+};
