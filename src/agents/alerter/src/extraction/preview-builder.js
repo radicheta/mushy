@@ -131,6 +131,19 @@ function classifyField(field, draft, perFieldConfidence, threshold) {
  * sanitizeFarmerText before returning.
  */
 function buildPreview({ draft, perFieldConfidence, threshold, requiredFields }) {
+  // Phase 47-04: seeding_session placeholder branch. Early-return before the
+  // flat-field renderer because the groups-shape provenanced body does not fit
+  // the legacy `field: value` rendering. Phase 48 ships the production
+  // group-by-parent table; this branch is the safety net so previewBuilder
+  // never crashes or returns empty on a seeding_session draft.
+  //
+  // CRITICAL: this branch NEVER reads or renders draft.conflicts[] -- per
+  // CONTEXT.md Gray Area 4 lock, OCR-vs-Whisper conflicts are forensics-only
+  // and must never surface to the farmer.
+  if (draft && draft.type === 'seeding_session') {
+    return buildSeedingSessionPlaceholder(draft);
+  }
+
   const conf = perFieldConfidence || {};
   const required = Array.isArray(requiredFields) ? requiredFields : [];
 
@@ -193,6 +206,66 @@ function buildPreview({ draft, perFieldConfidence, threshold, requiredFields }) 
   }
 
   const out = `${topQ}\n\n${lines.join('\n')}`;
+  return sanitizeFarmerText(out);
+}
+
+/**
+ * buildSeedingSessionPlaceholder(draft) -> string
+ *
+ * Phase 47-04 minimal placeholder for groups-shape inoc drafts. Production
+ * group-by-parent rendering ships in Phase 48. Output shape:
+ *
+ *   Line 1: "{N} blocks across {G} groups for {event_date}"
+ *   Line 2: (blank)
+ *   Line 3: when needs_input==='starting_seq':
+ *             "Awaiting block-number to start at."
+ *           otherwise:
+ *             "Group-by-parent preview coming in Phase 48."
+ *   Line 4+: one line per group: "{species} x {qty} from {parent}"
+ *           where parent.value === 'NO_PARENT' renders as "no parent recorded".
+ *
+ * Numbers go through fmtNum; output is sanitized for em-dashes. NEVER touches
+ * draft.conflicts[] (Gray Area 4 lock).
+ */
+function buildSeedingSessionPlaceholder(draft) {
+  const groups = Array.isArray(draft.groups) ? draft.groups : [];
+  const groupCount = groups.length;
+
+  // Total child count: prefer child_block_names.value.length when array is
+  // present (more authoritative than qty.value when a partial-photo session
+  // has populated names); otherwise fall back to qty.value.
+  let totalChildren = 0;
+  for (const g of groups) {
+    const names = g && g.child_block_names && g.child_block_names.value;
+    if (Array.isArray(names)) {
+      totalChildren += names.length;
+    } else {
+      const qv = g && g.qty && g.qty.value;
+      if (typeof qv === 'number') totalChildren += qv;
+    }
+  }
+
+  const eventDate = draft.event_date || '[?]';
+
+  const headline = `${fmtNum(totalChildren)} blocks across ${fmtNum(groupCount)} groups for ${eventDate}`;
+
+  const phase48Marker = draft.needs_input === 'starting_seq'
+    ? 'Awaiting block-number to start at.'
+    : 'Group-by-parent preview coming in Phase 48.';
+
+  const groupLines = groups.map((g) => {
+    const species = (g && g.species && g.species.value != null)
+      ? renderScalar(g.species.value) : '[?]';
+    const qty = (g && g.qty && g.qty.value != null)
+      ? renderScalar(g.qty.value) : '[?]';
+    const parentVal = g && g.parent && g.parent.value;
+    const parent = parentVal === 'NO_PARENT'
+      ? 'no parent recorded'
+      : (parentVal != null ? renderScalar(parentVal) : '[?]');
+    return `${species} x ${qty} from ${parent}`;
+  });
+
+  const out = [headline, '', phase48Marker, ...groupLines].join('\n');
   return sanitizeFarmerText(out);
 }
 
