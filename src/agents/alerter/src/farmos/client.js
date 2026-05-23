@@ -172,6 +172,10 @@ function createFarmosClient({
     return _request('POST', path, bytes, opts);
   }
   async function head(path, opts) { return _request('HEAD', path, null, opts); }
+  // Phase 48 Plan 02: orphan cleanup after partial commit failure in
+  // commit-seeding-session. farmOS returns 204 on a successful asset delete
+  // (no body), which _request still surfaces as ok=true.
+  async function del(path, opts) { return _request('DELETE', path, null, opts); }
 
   return {
     get,
@@ -179,6 +183,7 @@ function createFarmosClient({
     patch,
     postBinary,
     head,
+    delete: del,
     _session, // test introspection
   };
 }

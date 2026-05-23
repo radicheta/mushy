@@ -42,21 +42,25 @@ describe('commit-router (Phase 40 Plan 04)', () => {
     }
   });
 
-  // Phase 48 Plan 01: LOG_TYPES allow-list extended to include 'seeding_session'.
-  // The router guard MUST NOT bounce it with unsupported_log_type. Plan 02 will
-  // wire the actual DISPATCH entry; until then the dispatch lookup returns
-  // undefined and commit() blows up with a TypeError when calling fn(...) -- the
-  // try/catch wraps it as ok:false with a non-'unsupported_log_type' reason.
-  it("LOG_TYPES accepts 'seeding_session' (Phase 48 Plan 01 foundation)", async () => {
+  // Phase 48 Plan 01 foundation: LOG_TYPES accepts 'seeding_session'.
+  // Phase 48 Plan 02: DISPATCH.seeding_session is now wired to commitSeedingSession.
+  it("LOG_TYPES accepts 'seeding_session' AND DISPATCH dispatches to the handler (Phase 48 Plan 02)", async () => {
     const router = require('../../src/farmos/commits/commit-router');
     const { LOG_TYPES } = require('../../src/farmos/logs');
     expect(LOG_TYPES.includes('seeding_session')).toBe(true);
-    // No DISPATCH entry yet (Plan 02 ships it). The guard MUST pass; the
-    // failure mode is a downstream TypeError, NOT unsupported_log_type.
-    expect(router.DISPATCH.seeding_session).toBeUndefined();
-    const r = await router.commit({}, { id: 'd1', log_type: 'seeding_session' }, { clock: { now: () => 0 } });
-    expect(r.ok).toBe(false);
-    expect(r.reason).not.toBe('unsupported_log_type');
+    expect(typeof router.DISPATCH.seeding_session).toBe('function');
+    const fake = jest.fn(async () => ({ ok: true, asset_ids: ['sess'], log_ids: ['l1','l2'], file_ids: [], http_status: 201 }));
+    const orig = router.DISPATCH.seeding_session;
+    router.DISPATCH.seeding_session = fake;
+    try {
+      const r = await router.commit({}, { id: 'd1', log_type: 'seeding_session', draft_json: {} }, { clock: { now: () => 0 } });
+      expect(fake).toHaveBeenCalled();
+      expect(r.ok).toBe(true);
+      expect(r.asset_ids).toEqual(['sess']);
+      expect(r.log_ids).toEqual(['l1','l2']);
+    } finally {
+      router.DISPATCH.seeding_session = orig;
+    }
   });
 
   it('latency_ms populated on success', async () => {
