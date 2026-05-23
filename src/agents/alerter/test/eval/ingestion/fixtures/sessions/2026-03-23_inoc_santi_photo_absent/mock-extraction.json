@@ -1,0 +1,102 @@
+{
+  "content": [
+    {
+      "type": "tool_use",
+      "id": "toolu_mock_49_04_mar23_photo_absent",
+      "name": "submit_extraction",
+      "input": {
+        "drafts": [
+          {
+            "draft": {
+              "type": "seeding_session",
+              "event_date": "2026-03-23",
+              "needs_input": "starting_seq",
+              "groups": [
+                {
+                  "parent": {
+                    "value": "260218_ALM_8",
+                    "sources": [
+                      "audio"
+                    ],
+                    "confidence": 0.85
+                  },
+                  "species": {
+                    "value": "ALM",
+                    "sources": [
+                      "audio"
+                    ],
+                    "confidence": 0.95
+                  },
+                  "qty": {
+                    "value": 2,
+                    "sources": [
+                      "audio"
+                    ],
+                    "confidence": 0.9
+                  },
+                  "child_block_names": {
+                    "value": [
+                      "NEEDS_SEQ",
+                      "NEEDS_SEQ"
+                    ],
+                    "sources": [
+                      "audio"
+                    ],
+                    "confidence": 0.5
+                  }
+                },
+                {
+                  "parent": {
+                    "value": "260228_WIN_16",
+                    "sources": [
+                      "audio"
+                    ],
+                    "confidence": 0.85
+                  },
+                  "species": {
+                    "value": "WIN",
+                    "sources": [
+                      "audio"
+                    ],
+                    "confidence": 0.95
+                  },
+                  "qty": {
+                    "value": 4,
+                    "sources": [
+                      "audio"
+                    ],
+                    "confidence": 0.9
+                  },
+                  "child_block_names": {
+                    "value": [
+                      "NEEDS_SEQ",
+                      "NEEDS_SEQ",
+                      "NEEDS_SEQ",
+                      "NEEDS_SEQ"
+                    ],
+                    "sources": [
+                      "audio"
+                    ],
+                    "confidence": 0.5
+                  }
+                }
+              ]
+            },
+            "per_field_confidence": {
+              "event_date": 0.95
+            }
+          }
+        ],
+        "continuity": "start_new",
+        "continuity_reason": "No in-flight draft for this sender; photo-absent ask-back synthetic fixture."
+      }
+    }
+  ],
+  "usage": {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0
+  },
+  "stop_reason": "tool_use"
+}
