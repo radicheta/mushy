@@ -204,15 +204,17 @@ describe('INOC-05: photo-absent ask-back -> numeric reply fills block_names', ()
       expect(g.child_block_names.sources).toEqual(['model_inference', 'text']);
     }
 
-    // --- Step 3: downstream preview-builder placeholder fires on filled draft ---
+    // --- Step 3: downstream Phase 48-03 production preview on filled draft ---
     const filledPreview = previewBuilder.buildPreview({
       draft: filledDraft,
       perFieldConfidence: { event_date: 0.9 },
       threshold: 0.7,
       requiredFields: ['event_date', 'groups'],
     });
-    expect(filledPreview).toContain('11 blocks across 2 groups for May 22');
-    expect(filledPreview).toContain('Phase 48');
+    expect(filledPreview).toMatch(/Inoc session: 2026-05-22/);
+    expect(filledPreview).toMatch(/11 blocks across 2 parents/);
+    expect(filledPreview).toMatch(/KEY.*PARENT.*SPECIES.*QTY.*CHILDREN/);
+    expect(filledPreview).toMatch(/YES to commit \| NO to cancel \| EDIT to change/);
     expect(filledPreview).not.toMatch(/—/);
   });
 });
