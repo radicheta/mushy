@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Event-gate + Durable signal_outbound (tenant-aware)
-status: Phase 47 SHIPPED 2026-05-23 (later same day). Groups-shape seeding_session draft live; live-fire on real May 22 captures recognized all 5 parents + 11 children + emitted Gray-Area-3 ask-back path. INOC-01,02,03,05 satisfied (INOC-04 carries to Phase 48). 919 alerter tests green. v1.9 underway. Next: Phase 48 (session asset + per-bag fan-out + group-by-parent preview).
-last_updated: "2026-05-23T21:30:00.000Z"
+status: Phase 48 SHIPPED 2026-05-23. COMMIT half of v1.9 inoc-session correctness in place — `commitSeedingSession` handler + group-by-parent preview + Phase 45 ack contract extension + hermetic ship-gate (7/7 integration tests, 207/207 test/farmos suite). INOC-04, INOC-05, INOC-06 hermetic-attested. Live-fire operator-deferred. Next: Phase 49 (real-session eval corpus + May 22 reprocess ship-gate).
+last_updated: "2026-05-23T23:30:00.000Z"
 last_activity: 2026-05-23
 progress:
   total_phases: 26
-  completed_phases: 6
-  total_plans: 64
-  completed_plans: 41
-  percent: 64
+  completed_phases: 7
+  total_plans: 69
+  completed_plans: 46
+  percent: 69
 ---
 
 # Project State
