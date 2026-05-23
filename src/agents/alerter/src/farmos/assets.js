@@ -59,11 +59,19 @@ async function createFungiAsset(client, opts) {
     draftId,
     qrCodes = [],
     notes = null,
+    allowNoFungiType = false,
   } = opts;
-  if (!fungiTypeName) return { ok: false, reason: 'missing_fungi_type_name' };
+  // Phase 48 Plan 02: session assets are anonymous (no strain) per Gray Area A
+  // lock. The allowNoFungiType flag omits the fungi_type relationship entry so
+  // commit-seeding-session can create the 'inoc YYYY-MM-DD' session asset
+  // without resolving a taxonomy term that does not represent a strain.
+  if (!allowNoFungiType && !fungiTypeName) return { ok: false, reason: 'missing_fungi_type_name' };
   if (!fungiXingName) return { ok: false, reason: 'missing_fungi_xing_name' };
-  const ft = await fungiTypeCache.getFungiTypeUuid(client, fungiTypeName);
-  if (!ft.ok) return { ok: false, reason: ft.reason, fungiTypeName };
+  let ft = null;
+  if (fungiTypeName) {
+    ft = await fungiTypeCache.getFungiTypeUuid(client, fungiTypeName);
+    if (!ft.ok) return { ok: false, reason: ft.reason, fungiTypeName };
+  }
   const fx = await fungiXingCache.getFungiXingUuid(client, fungiXingName);
   if (!fx.ok) return { ok: false, reason: fx.reason, fungiXingName };
   const noteTrailer = (notes ? notes + '\n' : '') + 'mushy:draft:' + draftId;
@@ -78,9 +86,11 @@ async function createFungiAsset(client, opts) {
     },
   };
   const relationships = {
-    fungi_type: { data: [{ type: 'taxonomy_term--fungi_type', id: ft.uuid }] },
     fungi_xing: { data: [{ type: 'taxonomy_term--fungi_xing', id: fx.uuid }] },
   };
+  if (ft && ft.uuid) {
+    relationships.fungi_type = { data: [{ type: 'taxonomy_term--fungi_type', id: ft.uuid }] };
+  }
   if (parentIds.length > 0) {
     relationships.parent = { data: parentIds.map((id) => ({ type: 'asset--fungi', id })) };
   }
@@ -106,4 +116,23 @@ async function resolveOrCreateAsset(client, opts) {
   return createFungiAsset(client, opts);
 }
 
-module.exports = { findAssetByName, createFungiAsset, resolveOrCreateAsset, _clearCache };
+// Phase 48 Plan 02: best-effort orphan cleanup after partial commit failure
+// in commit-seeding-session. Caller treats non-ok as audit-log-and-continue;
+// this primitive never throws.
+async function deleteFungiAsset(client, assetId) {
+  if (!assetId) return { ok: false, reason: 'missing_asset_id' };
+  if (typeof client.delete !== 'function') {
+    return { ok: false, reason: 'client_delete_unavailable' };
+  }
+  const r = await client.delete('/api/asset/fungi/' + assetId);
+  if (!r.ok) return { ok: false, reason: 'http_' + (r.status || 'network'), http_status: r.status };
+  // Invalidate the name cache for any entry that points at this id so a
+  // subsequent re-commit attempt does not return a stale UUID for a deleted
+  // asset. Linear scan is fine (cache is capped at 32).
+  for (const [name, id] of NAME_CACHE.entries()) {
+    if (id === assetId) NAME_CACHE.delete(name);
+  }
+  return { ok: true, http_status: r.status };
+}
+
+module.exports = { findAssetByName, createFungiAsset, resolveOrCreateAsset, deleteFungiAsset, _clearCache };

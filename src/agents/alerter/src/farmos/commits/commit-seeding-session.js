@@ -1,0 +1,217 @@
+'use strict';
+
+// Phase 48 Plan 02: seeding_session commit handler.
+//
+// Asset-first preflight per Gray Area A lock: create one anonymous fungi
+// session asset named `inoc YYYY-MM-DD` (with `#N` collision suffix up to #9),
+// then fan out N child seeding logs each with its source block + the session
+// asset encoded as the child block's asset->asset parent[] lineage.
+//
+// All-or-nothing: if any child write fails, every asset created this run is
+// DELETE'd in reverse order (children first, then source blocks, then session)
+// and the handler returns ok=false. Best-effort cleanup: DELETE failures
+// emit an audit line (orphan_cleanup_failed) for operator sweep, but the
+// handler still returns ok=false without throwing.
+//
+// Lineage encoding correction vs CONTEXT.md Gray Area B: the [source, session]
+// pair lives on the CHILD BLOCK ASSET's parent[] (asset->asset), NOT on the
+// seeding log entity. CONTEXT.md says "taxonomy_term--fungi" refs which is a
+// naming misstatement; the actual encoding is asset--fungi.parent[]. See the
+// 48-02 SUMMARY for the call-out.
+//
+// Session-asset fungi_type handling: extended assets.createFungiAsset with an
+// `allowNoFungiType: true` flag (Plan 02 chose the simpler path; see SUMMARY).
+// fungi_xing for the session asset re-uses the existing 'block' term so no
+// taxonomy work is required on the farmOS side. Operator decision flagged in
+// SUMMARY.
+
+const assets = require('../assets');
+const logs = require('../logs');
+
+const COLLISION_MAX = 9;
+
+function epochSecondsForDate(dateStr) {
+  // YYYY-MM-DD interpreted as UTC midnight. Hermetic, no tz coupling.
+  const ms = Date.parse(dateStr + 'T00:00:00Z');
+  if (!Number.isFinite(ms)) return Math.floor(Date.now() / 1000);
+  return Math.floor(ms / 1000);
+}
+
+async function _resolveSessionName(client, eventDate) {
+  const base = 'inoc ' + eventDate;
+  for (let i = 1; i <= COLLISION_MAX; i++) {
+    const candidate = i === 1 ? base : base + ' #' + i;
+    const lookup = await assets.findAssetByName(client, candidate);
+    if (!lookup.found) return { ok: true, name: candidate };
+  }
+  return { ok: false, reason: 'session_name_exhausted' };
+}
+
+async function _cleanup(client, ctx, draft, createdAssetIds, originalReason, failedAtChildIndex) {
+  // Reverse order: children first (last in), then source blocks, then session
+  // (first in) -- mirrors creation stack.
+  const auditLogger = ctx && ctx.auditLogger;
+  let attempted = 0;
+  let failed = 0;
+  const failedIds = [];
+  for (let i = createdAssetIds.length - 1; i >= 0; i--) {
+    const id = createdAssetIds[i];
+    attempted += 1;
+    const r = await assets.deleteFungiAsset(client, id);
+    if (!r.ok) {
+      failed += 1;
+      failedIds.push(id);
+      if (auditLogger && typeof auditLogger.logCommit === 'function') {
+        try {
+          await auditLogger.logCommit('orphan_cleanup_failed', draft, {
+            asset_ids: [id],
+            reason: 'orphan_cleanup_failed',
+            http_status: r.http_status != null ? r.http_status : null,
+          });
+        } catch (_) { /* audit failure is non-fatal */ }
+      }
+    }
+  }
+  return {
+    ok: false,
+    reason: 'partial_commit_failed',
+    asset_ids: [],
+    log_ids: [],
+    file_ids: [],
+    farmos_response: {
+      original_reason: originalReason,
+      failed_at_child_index: failedAtChildIndex,
+      orphan_attempted_count: attempted,
+      orphan_cleanup_failed_count: failed,
+      orphan_cleanup_failed_ids: failedIds,
+    },
+  };
+}
+
+async function commitSeedingSession(client, draft, ctx) {
+  try {
+    const dj = (draft && draft.draft_json) || {};
+    const eventDate = dj.event_date;
+    const groups = Array.isArray(dj.groups) ? dj.groups : [];
+    const draftId = draft && draft.id;
+    if (!eventDate || groups.length === 0) {
+      return { ok: false, reason: 'invalid_seeding_session', asset_ids: [], log_ids: [], file_ids: [] };
+    }
+
+    // Session-asset preflight: resolve a non-colliding name (#N up to #9).
+    const nameRes = await _resolveSessionName(client, eventDate);
+    if (!nameRes.ok) {
+      return { ok: false, reason: nameRes.reason, asset_ids: [], log_ids: [], file_ids: [] };
+    }
+    const sessionAssetRes = await assets.createFungiAsset(client, {
+      name: nameRes.name,
+      fungiXingName: 'block',
+      allowNoFungiType: true,
+      draftId,
+    });
+    if (!sessionAssetRes.ok) {
+      return {
+        ok: false,
+        reason: sessionAssetRes.reason || 'session_asset_create_failed',
+        http_status: sessionAssetRes.http_status,
+        asset_ids: [], log_ids: [], file_ids: [],
+      };
+    }
+    const sessionAssetId = sessionAssetRes.assetId;
+    const createdAssetIds = [sessionAssetId];
+    const childBlockIds = [];
+    const childLogIds = [];
+    const timestamp = epochSecondsForDate(eventDate);
+    const notes = typeof dj.notes === 'string' ? dj.notes : '';
+
+    let childIndex = 0; // 0-based across the whole session
+
+    for (const g of groups) {
+      const species = g && g.species && g.species.value;
+      const parentName = g && g.parent && g.parent.value;
+      const qty = g && g.qty && g.qty.value;
+      const childNames = (g && g.child_block_names && g.child_block_names.value) || [];
+      if (!species || !parentName || !qty) {
+        return _cleanup(client, ctx, draft, createdAssetIds,
+          'invalid_group_shape', childIndex);
+      }
+
+      // Source block resolution: skip lookup/create for NO_PARENT sentinel.
+      let sourceBlockId = null;
+      if (parentName !== 'NO_PARENT') {
+        const found = await assets.findAssetByName(client, parentName);
+        if (found.found) {
+          sourceBlockId = found.assetId;
+        } else {
+          const created = await assets.createFungiAsset(client, {
+            name: parentName,
+            fungiTypeName: species,
+            fungiXingName: 'block',
+            draftId,
+          });
+          if (!created.ok) {
+            return _cleanup(client, ctx, draft, createdAssetIds,
+              created.reason || 'source_block_create_failed', childIndex);
+          }
+          sourceBlockId = created.assetId;
+          createdAssetIds.push(sourceBlockId);
+        }
+      }
+
+      for (let i = 0; i < qty; i++) {
+        const childName = childNames[i];
+        if (!childName) {
+          return _cleanup(client, ctx, draft, createdAssetIds,
+            'missing_child_block_name', childIndex);
+        }
+        const parentIds = sourceBlockId
+          ? [sourceBlockId, sessionAssetId]
+          : [sessionAssetId];
+        const childRes = await assets.createFungiAsset(client, {
+          name: childName,
+          fungiTypeName: species,
+          fungiXingName: 'block',
+          parentIds,
+          draftId,
+        });
+        if (!childRes.ok) {
+          return _cleanup(client, ctx, draft, createdAssetIds,
+            childRes.reason || 'child_block_create_failed', childIndex);
+        }
+        const childBlockId = childRes.assetId;
+        createdAssetIds.push(childBlockId);
+        childBlockIds.push(childBlockId);
+
+        const logRes = await logs.createLog(client, 'seeding', {
+          name: 'Inoc ' + childName,
+          timestamp,
+          assetIds: [childBlockId],
+          notes,
+          draftId,
+        });
+        if (!logRes.ok) {
+          return _cleanup(client, ctx, draft, createdAssetIds,
+            logRes.reason || 'seeding_log_create_failed', childIndex);
+        }
+        childLogIds.push(logRes.logId);
+        childIndex += 1;
+      }
+    }
+
+    return {
+      ok: true,
+      asset_ids: createdAssetIds,
+      log_ids: childLogIds,
+      file_ids: [],
+      http_status: 201,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      reason: (e && e.message) || 'commit_seeding_session_error',
+      asset_ids: [], log_ids: [], file_ids: [],
+    };
+  }
+}
+
+module.exports = commitSeedingSession;
