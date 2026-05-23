@@ -19,6 +19,14 @@ const { ActivityLog } = require('./activity');
 const { InputLog } = require('./input');
 const { ObservationLog, ObservationLogBase } = require('./observation');
 const { HarvestLog } = require('./harvest');
+// Phase 47 Plan 01: new top-level type for multi-parent groups-shape inoc.
+// Legacy SeedingLog stays for single-bag-no-session contexts (rare).
+const {
+  SeedingSession,
+  SeedingSessionGroup,
+  ConflictEntry,
+} = require('./seeding-session');
+const { Provenanced, SOURCE_ENUM } = require('./provenance');
 
 const Draft = z.discriminatedUnion('type', [
   SeedingLog,
@@ -26,11 +34,19 @@ const Draft = z.discriminatedUnion('type', [
   InputLog,
   ObservationLogBase,
   HarvestLog,
+  SeedingSession,
 ]);
 
 const DRAFT_JSON_SCHEMA = zodToJsonSchema(Draft, 'Draft');
 
-const LOG_TYPES = Object.freeze(['seeding', 'activity', 'input', 'observation', 'harvest']);
+const LOG_TYPES = Object.freeze([
+  'seeding',
+  'activity',
+  'input',
+  'observation',
+  'harvest',
+  'seeding_session',
+]);
 
 // Phase 38 Plan 08: SUBMISSION wrapper, multi-draft shape.
 // Anthropic submit_extraction tool input = {drafts: [{draft, per_field_confidence}],
@@ -68,4 +84,9 @@ module.exports = {
   ObservationLog,
   ObservationLogBase,
   HarvestLog,
+  SeedingSession,
+  SeedingSessionGroup,
+  ConflictEntry,
+  Provenanced,
+  SOURCE_ENUM,
 };
