@@ -12,9 +12,9 @@ describe('outbound-db', () => {
     pool = { query: jest.fn().mockResolvedValue({ rows: [], rowCount: 0 }) };
   });
 
-  test('initDb issues CREATE EXTENSION + CREATE TABLE + 2 idempotent ALTERs + 3 CREATE INDEX (7 total)', async () => {
+  test('initDb issues CREATE EXTENSION + CREATE TABLE + 2 idempotent ALTERs + 3 CREATE INDEX + Phase 50 ALTER + partial INDEX (9 total)', async () => {
     await initDb(pool);
-    expect(pool.query).toHaveBeenCalledTimes(7);
+    expect(pool.query).toHaveBeenCalledTimes(9);
     const sqls = pool.query.mock.calls.map((c) => c[0]);
     expect(sqls[0]).toMatch(/CREATE EXTENSION IF NOT EXISTS pgcrypto/);
     expect(sqls[1]).toMatch(/CREATE TABLE IF NOT EXISTS signal_outbound/);
@@ -25,6 +25,37 @@ describe('outbound-db', () => {
     expect(sqls[4]).toMatch(/CREATE INDEX IF NOT EXISTS idx_signal_outbound_tenant_sent/);
     expect(sqls[5]).toMatch(/CREATE INDEX IF NOT EXISTS idx_signal_outbound_recipient_sent/);
     expect(sqls[6]).toMatch(/CREATE INDEX IF NOT EXISTS idx_signal_outbound_intent/);
+    // Phase 50 Plan-01 D-02: Signal-native msg ts column + partial index for inbound quote resolution.
+    expect(sqls[7]).toMatch(/ALTER TABLE signal_outbound ADD COLUMN IF NOT EXISTS signal_msg_ts bigint/);
+    expect(sqls[8]).toMatch(/CREATE INDEX IF NOT EXISTS idx_signal_outbound_msg_ts ON signal_outbound \(signal_msg_ts\) WHERE signal_msg_ts IS NOT NULL/);
+  });
+
+  test('initDb is idempotent: second invocation issues same 9 queries (Phase 50 IF NOT EXISTS semantics)', async () => {
+    await initDb(pool);
+    await initDb(pool);
+    expect(pool.query).toHaveBeenCalledTimes(18);
+    const secondAllSql = pool.query.mock.calls.slice(9).map((c) => c[0]).join('\n');
+    expect(secondAllSql).toMatch(/ALTER TABLE signal_outbound ADD COLUMN IF NOT EXISTS signal_msg_ts bigint/);
+    expect(secondAllSql).toMatch(/CREATE INDEX IF NOT EXISTS idx_signal_outbound_msg_ts/);
+  });
+
+  test('insertOutbound omitting signal_msg_ts still succeeds (back-compat — Plan-02 owns the param)', async () => {
+    // Plan 01 does NOT modify insertOutbound's signature. A caller that supplies no
+    // signal_msg_ts (every caller in the codebase at Plan 01 commit time) must still
+    // produce a successful insert; the new column defaults NULL at the table level.
+    const row = {
+      tenant_id: 'mossrock',
+      sent_at: new Date(),
+      recipient_e164: '+1',
+      intent: 'convo_reply',
+      body: 'b',
+      source_module: 'capture.js',
+    };
+    const res = await insertOutbound(pool, row);
+    expect(res).toEqual({ ok: true });
+    const [sql] = pool.query.mock.calls[0];
+    // Verify the INSERT statement does NOT reference signal_msg_ts (Plan 02 owns that).
+    expect(sql).not.toMatch(/signal_msg_ts/);
   });
 
   test('initDb CREATE TABLE uses text for related_*_id (ULID/hex compat per 2026-05-23 hotfix)', async () => {
