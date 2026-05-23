@@ -255,6 +255,59 @@ describe('confirm-db (Phase 39 D-07/D-07a)', () => {
     });
   });
 
+  // Phase 50 Plan-04: quote-resolution helper. Joins signal_outbound -> signal_draft
+  // via related_draft_id; ORDER BY sent_at DESC LIMIT 1.
+  describe('findDraftByQuotedMsgTs (Plan 50-04)', () => {
+    it('returns the joined draft when signal_outbound row exists and related_draft_id resolves', async () => {
+      const pool = makeFakePool();
+      pool.seedDraft({ id: 'd-quoted-1', sender_e164: '+15550009999', status: 'awaiting_farmer' });
+      pool.seedOutbound({ signal_msg_ts: 1779562666675, related_draft_id: 'd-quoted-1', sent_at: new Date() });
+      const r = await confirmDb.findDraftByQuotedMsgTs(pool, 1779562666675);
+      expect(r).not.toBeNull();
+      expect(r.id).toBe('d-quoted-1');
+    });
+
+    it('returns null when no signal_outbound row matches the ts', async () => {
+      const pool = makeFakePool();
+      const r = await confirmDb.findDraftByQuotedMsgTs(pool, 9999999999999);
+      expect(r).toBeNull();
+    });
+
+    it('returns null when quote_msg_ts arg is null', async () => {
+      const pool = makeFakePool();
+      const r = await confirmDb.findDraftByQuotedMsgTs(pool, null);
+      expect(r).toBeNull();
+    });
+
+    it('returns null when pool.query throws (no exception escapes)', async () => {
+      const pool = makeFakePool();
+      const orig = pool.query;
+      pool.query = async () => { throw new Error('db down'); };
+      const r = await confirmDb.findDraftByQuotedMsgTs(pool, 1779562666675);
+      expect(r).toBeNull();
+      pool.query = orig;
+    });
+
+    it('returns the LATEST outbound (by sent_at DESC) when two outbounds collide on the same ts', async () => {
+      const pool = makeFakePool();
+      pool.seedDraft({ id: 'd-old', sender_e164: '+15550009999' });
+      pool.seedDraft({ id: 'd-new', sender_e164: '+15550009999' });
+      const older = new Date('2026-05-01T00:00:00Z');
+      const newer = new Date('2026-05-22T00:00:00Z');
+      pool.seedOutbound({ signal_msg_ts: 1779562666675, related_draft_id: 'd-old', sent_at: older });
+      pool.seedOutbound({ signal_msg_ts: 1779562666675, related_draft_id: 'd-new', sent_at: newer });
+      const r = await confirmDb.findDraftByQuotedMsgTs(pool, 1779562666675);
+      expect(r.id).toBe('d-new');
+    });
+
+    it('returns null when signal_outbound row exists but related_draft_id is NULL (JOIN excludes)', async () => {
+      const pool = makeFakePool();
+      pool.seedOutbound({ signal_msg_ts: 1779562666675, related_draft_id: null, sent_at: new Date() });
+      const r = await confirmDb.findDraftByQuotedMsgTs(pool, 1779562666675);
+      expect(r).toBeNull();
+    });
+  });
+
   describe('appendEventViaPool', () => {
     it('returns the inserted seq', async () => {
       const pool = makeFakePool();

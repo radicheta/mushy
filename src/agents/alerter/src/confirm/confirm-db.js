@@ -323,6 +323,36 @@ async function getCaptureQuoteTarget(pool, captureId) {
   }
 }
 
+// ----- Plan 50-04: inbound quote-resolution -----
+
+// findDraftByQuotedMsgTs(pool, quoteMsgTs)
+//   -> the joined signal_draft row when an outbound row exists with the given
+//      signal_msg_ts AND that outbound's related_draft_id resolves to a draft.
+//   -> null in every other case (null arg, no outbound match, related_draft_id
+//      NULL, DB error). Never throws.
+//
+// ORDER BY sent_at DESC LIMIT 1 guards the (rare) case where two outbound rows
+// collide on the same Signal ms-ts -- pick the most recent. Leverages the
+// idx_signal_outbound_msg_ts partial index from Plan 50-01.
+async function findDraftByQuotedMsgTs(pool, quoteMsgTs) {
+  if (quoteMsgTs == null) return null;
+  if (!pool || typeof pool.query !== 'function') return null;
+  try {
+    const r = await pool.query(
+      `SELECT d.*
+         FROM signal_outbound o
+         JOIN signal_draft d ON d.id = o.related_draft_id
+        WHERE o.signal_msg_ts = $1
+        ORDER BY o.sent_at DESC
+        LIMIT 1`,
+      [quoteMsgTs]
+    );
+    return (r && r.rows && r.rows[0]) || null;
+  } catch (_e) {
+    return null;
+  }
+}
+
 module.exports = {
   initDb,
   confirmDraft,
@@ -337,4 +367,5 @@ module.exports = {
   findNudgeCandidates,
   findExpireCandidates,
   getCaptureQuoteTarget,
+  findDraftByQuotedMsgTs,
 };
