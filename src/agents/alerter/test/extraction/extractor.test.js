@@ -250,3 +250,129 @@ describe('Phase 39 D-03: farmerCorrection plumbing', () => {
     expect(JSON.stringify(userContent)).toMatch(/Farmer correction: change qty to 12/);
   });
 });
+
+describe('Phase 47 Plan 02: SYSTEM_PROMPT teaches seeding_session policy', () => {
+  const { CACHEABLE_SYSTEM_BLOCKS } = require('../../src/extraction/prompts/system');
+  const promptText = CACHEABLE_SYSTEM_BLOCKS[0].text;
+
+  test('mentions seeding_session token', () => {
+    expect(promptText).toMatch(/seeding_session/);
+  });
+
+  test('mentions NEEDS_SEQ sentinel', () => {
+    expect(promptText).toContain('NEEDS_SEQ');
+  });
+
+  test('mentions photo_wins_implicit conflict resolution', () => {
+    expect(promptText).toContain('photo_wins_implicit');
+  });
+
+  test('mentions needs_input + starting_seq ask-back', () => {
+    expect(promptText).toContain('needs_input');
+    expect(promptText).toContain('starting_seq');
+  });
+
+  test('mentions conflicts[] forensics array', () => {
+    expect(promptText).toContain('conflicts');
+  });
+
+  test('mentions NO_PARENT sentinel for fresh-grain inoc', () => {
+    expect(promptText).toContain('NO_PARENT');
+  });
+
+  test('mentions session-vs-single cardinality rule (groups + total)', () => {
+    expect(promptText).toMatch(/groups/);
+  });
+
+  test('contains no em-dashes', () => {
+    expect(promptText).not.toMatch(/—/);
+  });
+});
+
+describe('Phase 47 Plan 02: FEW_SHOT includes May-22 multi-parent seeding_session example', () => {
+  const { FEW_SHOT } = require('../../src/extraction/prompts/system');
+  const { Submission } = require('../../src/extraction/schemas');
+
+  function findToolUseById(id) {
+    for (const msg of FEW_SHOT) {
+      if (msg.role !== 'assistant' || !Array.isArray(msg.content)) continue;
+      for (const b of msg.content) {
+        if (b && b.type === 'tool_use' && b.id === id) return b;
+      }
+    }
+    return null;
+  }
+
+  test('tu_fewshot_4 tool_use exists', () => {
+    const tu = findToolUseById('tu_fewshot_4');
+    expect(tu).not.toBeNull();
+    expect(tu.name).toBe('submit_extraction');
+  });
+
+  test('tu_fewshot_4 input.drafts[0].draft validates as SeedingSession via Submission', () => {
+    const tu = findToolUseById('tu_fewshot_4');
+    const parsed = Submission.safeParse(tu.input);
+    if (!parsed.success) {
+      // surface the zod error to make failure obvious
+      throw new Error('Submission.safeParse failed: ' + JSON.stringify(parsed.error.issues, null, 2));
+    }
+    const draft = parsed.data.drafts[0].draft;
+    expect(draft.type).toBe('seeding_session');
+    expect(draft.event_date).toBe('2026-05-22');
+    expect(draft.groups.length).toBe(5);
+    const totalChildren = draft.groups.reduce(
+      (n, g) => n + g.child_block_names.value.length,
+      0
+    );
+    expect(totalChildren).toBe(11);
+    // Expected canonical block-name set per CONTEXT.md INOC-01
+    const allNames = draft.groups.flatMap((g) => g.child_block_names.value);
+    const expected = [
+      '260522_SHI_1', '260522_SHI_2', '260522_SHI_3',
+      '260522_KOY_4', '260522_KOY_5', '260522_KOY_6', '260522_KOY_7',
+      '260522_KOY_8', '260522_KOY_9', '260522_KOY_10', '260522_KOY_11',
+    ];
+    expect(allNames.sort()).toEqual(expected.sort());
+  });
+
+  test('FEW_SHOT tool_use blocks each have a matching tool_result in the next user turn (except the final one which extractor.js closes at runtime)', () => {
+    const toolUses = [];
+    for (let i = 0; i < FEW_SHOT.length; i++) {
+      const msg = FEW_SHOT[i];
+      if (msg.role !== 'assistant' || !Array.isArray(msg.content)) continue;
+      for (const b of msg.content) {
+        if (b && b.type === 'tool_use') toolUses.push({ id: b.id, idx: i });
+      }
+    }
+    for (let k = 0; k < toolUses.length; k++) {
+      const { id, idx } = toolUses[k];
+      const isFinal = k === toolUses.length - 1;
+      if (isFinal) {
+        // Final tool_use is closed by extractor.buildInitialUserContent's tool_result at runtime.
+        // Just assert the live-turn boundary contract: extractor.js currently expects tu_fewshot_3.
+        expect(id).toBe('tu_fewshot_3');
+        continue;
+      }
+      const nextUser = FEW_SHOT[idx + 1];
+      expect(nextUser && nextUser.role).toBe('user');
+      const hasResult = nextUser.content.some(
+        (b) => b && b.type === 'tool_result' && b.tool_use_id === id
+      );
+      if (!hasResult) {
+        throw new Error(`tool_use ${id} has no matching tool_result in the next user turn`);
+      }
+      expect(hasResult).toBe(true);
+    }
+  });
+
+  test('tu_fewshot_3 remains the LAST tool_use in FEW_SHOT (live-turn boundary invariant)', () => {
+    const ids = [];
+    for (const msg of FEW_SHOT) {
+      if (msg.role !== 'assistant' || !Array.isArray(msg.content)) continue;
+      for (const b of msg.content) {
+        if (b && b.type === 'tool_use') ids.push(b.id);
+      }
+    }
+    expect(ids[ids.length - 1]).toBe('tu_fewshot_3');
+  });
+});
