@@ -44,3 +44,4 @@ src/agents/alerter/test/eval/ingestion/test-fixtures/
 # Phase 44: tenant secrets (per D-11) — explicit override of *.env for auditability
 tenants/*/secrets.env
 tenants/*/.env
+.venv/
