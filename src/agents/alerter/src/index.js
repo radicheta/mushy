@@ -30,6 +30,10 @@ const stateMachineMod = require('./extraction/state-machine');
 const previewBuilderMod = require('./extraction/preview-builder');
 const { createExtractionPipeline } = require('./extraction');
 const { createOutboundDispatcher } = require('./extraction/outbound');
+// Phase 44 Plan-04: event-gate (hybrid rules + Haiku 4.5).
+const { createEventGate } = require('./event-gate');
+const { createHaikuClassifier } = require('./event-gate/haiku-classifier');
+const eventGateRules = require('./event-gate/rules');
 // Phase 39 confirm-loop.
 const confirm = require('./confirm');
 // Phase 40 farmOS write path.
@@ -166,6 +170,12 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
     outboundDispatcher,
   });
 
+  // Phase 44 Plan-04 D-01: event-gate boot wiring. Haiku 4.5 classifier reads
+  // ANTHROPIC_API_KEY via config; rules are pure functions injected for testability.
+  const haikuClassifier = createHaikuClassifier({ apiKey: config.anthropicApiKey, logger });
+  const eventGate = createEventGate({ haikuClassifier, rules: eventGateRules, logger });
+  logger.info(`[boot] event-gate ready (convo mode=${config.eventGateConvoMode})`);
+
   const capturePipeline = createCapturePipeline({
     pool,
     signalClient,
@@ -180,6 +190,9 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
     signalFarmerMap: config.signalFarmerMap,
     // Phase 38 Plan 05: fire-and-forget extraction enqueue for known farmers.
     extractionPipeline,
+    // Phase 44 Plan-04 D-02/D-04/D-06: hybrid event-gate + convo-mode steering.
+    eventGate,
+    config,
   });
 
   const retentionJob = createRetentionJob({ pool, config, state: captureHealth, logger });
