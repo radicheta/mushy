@@ -65,6 +65,79 @@ function fmtTarget(target) {
   return String(target);
 }
 
+// Phase 45 Plan 06: disambiguator. When the farmer has multiple recent drafts,
+// a bare "couldn't save observation" has no referent. Embed a {date} {what}
+// hint built from draft_json so each ack maps to a unique real-world event.
+//
+// Date precedence: event_timestamp (real-world event date) > created_at (bot
+// receipt). Format "MMM D" (e.g. "May 13") - human-readable, locale-stable,
+// short. Sentinel timestamps from earlier extractor versions (1970-01-01,
+// 2026-01-01T00:00:00 with no time) are rejected as not-real-dates.
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function fmtDate(d) {
+  if (!d) return '';
+  const dt = (d instanceof Date) ? d : new Date(d);
+  if (Number.isNaN(dt.getTime())) return '';
+  // Reject sentinel dates (1970, year-boundary midnight defaults)
+  const y = dt.getUTCFullYear();
+  if (y < 2000) return '';
+  if (dt.getUTCMonth() === 0 && dt.getUTCDate() === 1 && dt.getUTCHours() === 0 && dt.getUTCMinutes() === 0) return '';
+  return `${MONTH_NAMES[dt.getUTCMonth()]} ${dt.getUTCDate()}`;
+}
+
+// Pull short summary from draft_json. Priority:
+//   1. name field (activity verbs like "relocate", "sterilize") - 1-2 words
+//   2. first ~40 chars of notes field
+// Returns null if nothing useful (caller renders a date-only or bare ack).
+function summaryFromDraft(draftJson) {
+  if (!draftJson || typeof draftJson !== 'object') return null;
+  if (typeof draftJson.name === 'string' && draftJson.name.trim() !== '') {
+    return draftJson.name.trim();
+  }
+  if (typeof draftJson.notes === 'string') {
+    const n = draftJson.notes.trim();
+    if (n === '') return null;
+    if (n.length <= 40) return n;
+    // Truncate at word boundary
+    const cut = n.slice(0, 40);
+    const lastSpace = cut.lastIndexOf(' ');
+    return (lastSpace > 20 ? cut.slice(0, lastSpace) : cut) + '...';
+  }
+  return null;
+}
+
+// Pick the best date for the ack. Prefer draft_json.event_timestamp when it
+// looks real, else fall back to created_at (bot receipt time). Real backdating
+// is rare and short (hours, not months); if event_timestamp predates created_at
+// by more than 30 days, it's an extractor hallucination (sentinel year-boundary
+// values are a known artifact) — use created_at instead.
+function pickBestDate(draftJson, createdAt) {
+  const created = createdAt ? new Date(createdAt) : null;
+  const evRaw = draftJson && draftJson.event_timestamp;
+  if (evRaw) {
+    const ev = new Date(evRaw);
+    if (!Number.isNaN(ev.getTime())) {
+      if (created && !Number.isNaN(created.getTime())) {
+        const daysDelta = (created.getTime() - ev.getTime()) / 86400000;
+        if (daysDelta > 30) return created; // event_timestamp is hallucinated
+      }
+      return ev;
+    }
+  }
+  return created;
+}
+
+// Disambiguator string: "May 13 observation (sterilize)" or "May 13 observation"
+// or "observation (sterilize)" or bare "observation".
+function buildDisambiguator(draftRow, label) {
+  const date = fmtDate(pickBestDate(draftRow.draft_json, draftRow.created_at));
+  const summary = summaryFromDraft(draftRow.draft_json);
+  if (date && summary) return `${date} ${label} (${summary})`;
+  if (date) return `${date} ${label}`;
+  if (summary) return `${label} (${summary})`;
+  return label;
+}
+
 /**
  * renderOutcomeAck(draftRow, options) -> string
  *
@@ -72,6 +145,8 @@ function fmtTarget(target) {
  *   - sender_name?: string  (named address; if absent, no leading greeting)
  *   - log_type:    'seeding'|'activity'|'input'|'observation'|'harvest'
  *   - target?:     string|number|null  (asset name/id; null = farm-level)
+ *   - draft_json?: object   (extraction; provides name + notes + event_timestamp for disambiguation)
+ *   - created_at?: Date|string  (fallback date when event_timestamp absent)
  *
  * options:
  *   - outcome:    'success'|'failed'  (required)
@@ -87,35 +162,25 @@ function renderOutcomeAck(draftRow, options) {
   const target = row.target;
   const label = labelFor(logType);
   const hi = greeting(senderName);
+  const what = buildDisambiguator(row, label);
 
   if (outcome === 'success') {
     if (target != null && String(target).trim() !== '') {
       const tgt = fmtTarget(target);
-      let body = `${hi}saved ${label} for ${tgt}.`;
+      let body = `${hi}saved ${what} for ${tgt}.`;
       if (typeof opts.farmosLink === 'string' && opts.farmosLink.trim() !== '') {
         body += ` Open in farmOS: ${opts.farmosLink.trim()}`;
       }
       return sanitizeFarmerText(body);
     }
-    // Farm-level no-target success. 3 minor variants per CONTEXT.md
-    // (observation / activity / input). Other log_types fall back to the
-    // observation phrasing since seeding/harvest realistically always have a
-    // target.
-    let noTargetBody;
-    if (logType === 'activity') {
-      noTargetBody = `${hi}saved that activity as a general farm note since I couldn't match a specific block. Send EDIT to attach a block if you want.`;
-    } else if (logType === 'input') {
-      noTargetBody = `${hi}saved that input as a general farm note since I couldn't match a specific block. Send EDIT to attach a block if you want.`;
-    } else {
-      // observation (default farm-level variant)
-      noTargetBody = `${hi}saved that observation as a general farm note since I couldn't match a specific block. Send EDIT to attach a block if you want.`;
-    }
-    return sanitizeFarmerText(noTargetBody);
+    // Farm-level no-target success. Embeds disambiguator.
+    const body = `${hi}saved that ${what} as a general farm note since I couldn't match a specific block. Send EDIT to attach a block if you want.`;
+    return sanitizeFarmerText(body);
   }
 
   if (outcome === 'failed') {
     const phrase = reasonFor(opts.reason);
-    const body = `${hi}couldn't save ${label}: ${phrase}. Send EDIT to fix or NO to drop.`;
+    const body = `${hi}about the ${what}: couldn't save it because ${phrase}. Send EDIT to fix or NO to drop.`;
     return sanitizeFarmerText(body);
   }
 

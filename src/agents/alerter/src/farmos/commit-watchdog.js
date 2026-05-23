@@ -54,6 +54,16 @@ function createCommitWatchdog({
       return;
     }
     try {
+      // Phase 45 Plan 06: enrich row.sender_name from signalFarmerMap so the
+      // renderer can prefix "Hi {Name}, ". Schema has no sender_name column;
+      // the map is the canonical phone -> slug mapping.
+      if (lockedRow.sender_name == null && lockedRow.sender_e164 && config && config.signalFarmerMap
+          && typeof config.signalFarmerMap.get === 'function') {
+        const slug = config.signalFarmerMap.get(lockedRow.sender_e164);
+        if (slug && typeof slug === 'string' && slug.length > 0) {
+          lockedRow.sender_name = slug[0].toUpperCase() + slug.slice(1);
+        }
+      }
       const extras = outcome === 'failed' ? { outcome, reason } : { outcome };
       await outboundConfirm.dispatch('send_commit_outcome_ack', lockedRow, extras);
     } catch (e) {
