@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Event-gate + Durable signal_outbound (tenant-aware)
-status: Phase 44 7/7 done; 44-04 event-gate shipped + operator-attested live-fire PASS (8/10, cache empirically verified); v1.8 ship-ready pending prod alerter rebuild+deploy
-last_updated: "2026-05-23T04:00:00.000Z"
+status: Phase 45 — code-side 4/5 plans SHIPPED 2026-05-23 (efb7c44, c2ce47b, 1edb08d, 2ac3061). 835 alerter tests green. Verifier status=human_needed — Plan 05 live-fire UAT (Vikki+Santi replay) pending prod alerter deploy + farmer Signal interactions.
+last_updated: "2026-05-23T18:30:00.000Z"
 last_activity: 2026-05-23
 progress:
   total_phases: 26
   completed_phases: 4
   total_plans: 64
-  completed_plans: 31
-  percent: 48
+  completed_plans: 35
+  percent: 55
 ---
 
 # Project State
@@ -24,7 +24,12 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 
 ## Current Position
 
-Phase: 44 — **7/7 COMPLETE 2026-05-23.** Plan-04 event-gate shipped; operator-attested live-fire PASS 8/10 (at floor) with cache empirically verified (1/10 write, 9/10 read, ~$0.05). One bug surfaced live and fixed: Anthropic SDK contract — `signal` belongs in request-options arg, not body params (commit `1429684`). v1.8 ship-ready pending prod alerter rebuild+deploy.
+Phase: 44 — **7/7 COMPLETE 2026-05-23.** Plan-04 event-gate shipped; operator-attested live-fire PASS 8/10 (at floor) with cache empirically verified (1/10 write, 9/10 read, ~$0.05). One bug surfaced live and fixed: Anthropic SDK contract — `signal` belongs in request-options arg, not body params (commit `1429684`).
+
+**v1.8 ship cutover COMPLETE 2026-05-23:**
+- alerter container recreated 01:41:58 ART (1s after `8b36d36`); image carries node-cron `^3.0.3`, capture.js event-gate dispatch at line 150, signal_outbound TEXT-typed columns
+- bridge container running 0919f83 fc1LastMsgTs (recreated 2026-05-21 10:11 ART, post-Phase-46)
+- runtime verified: alerter healthy, sending Signal, retention sweep firing; `signal_outbound` table present in postgres with tenant_id/intent/related_*_id TEXT
 
 Phase: 46 — **SHIPPED 2026-05-21.** Live-fire attested Round 3 at T0+3min32s. Two extra bugs found and fixed in-flight: D-09 globals-shadow (`86d4340`) + D-10 oobN/oobWindowMin gate (`5f90cc7`). Two backlog items left as todos.
 Plan: 3 of 3 complete (46-01, 46-02, 46-03)
@@ -278,8 +283,8 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 ## Session Continuity
 
-Last session: 2026-05-23T04:00:00.000Z
-Next up: v1.8 ship cutover — rebuild+deploy alerter on elder-plops (`docker compose up -d --build alerter`) to ship Phase 44 event-gate to prod; confirm boot logs + first capture; optional 24-h soak before declaring v1.8 shipped. Then Phase 45 (NORTH-STAR commit_failed ack + replay outstanding silent-failure drafts).
+Last session: 2026-05-23T17:00:00.000Z
+Next up: Phase 45 (NORTH-STAR commit_failed ack + replay outstanding silent-failure drafts `b8a1e586` Vikki Rambo + `1fb28e70` Santi LIMA). Optional: 24-h v1.8 soak observation before starting Phase 45 scope work. v1.8 cutover already complete (alerter recreated 01:41:58 ART; bridge already on Phase 46 code).
 
 Previously: kick off v1.8 Phase 1 (event-gate + signal_outbound). Plan-01 = 100-capture hand-classification smoke from mushdatadump-prod, BEFORE spec-locking the gate. Reference notes:
 
