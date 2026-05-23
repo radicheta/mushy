@@ -61,24 +61,43 @@ describe('capture-db', () => {
     expect(secondAllSql).toMatch(/CREATE OR REPLACE VIEW v_llm_cost_daily/);
   });
 
-  test('insertCapture omitting Phase 50 quote columns still succeeds (back-compat — Plan 04 owns the params)', async () => {
-    // Plan 01 does NOT modify insertCapture's signature. Every caller at Plan 01
-    // commit time omits signal_msg_ts / quote_msg_ts / quote_author_e164 and the
-    // INSERT statement does not reference them; the columns default NULL on the
-    // table. Plan 04 will extend the signature.
+  // Phase 50 Plan-04: extend insertCapture signature with three new fields.
+  // Back-compat: callers that omit these fields still succeed; columns store NULL.
+  test('Plan 50-04: insertCapture omitting signal_msg_ts/quote_* still succeeds, params 14..16 are null', async () => {
     const row = {
-      id: 'ulid-p50-01', captured_at: new Date(), sender: '+1', message_type: 'text',
+      id: 'ulid-p50-04-bc', captured_at: new Date(), sender: '+1', message_type: 'text',
       raw_text: null, attachment_paths: [], transcript: null,
       llm_session_tag: null, llm_reply: null, degraded: false,
     };
     await insertCapture(pool, row);
-    const [sql] = pool.query.mock.calls[0];
-    expect(sql).not.toMatch(/signal_msg_ts/);
-    expect(sql).not.toMatch(/quote_msg_ts/);
-    expect(sql).not.toMatch(/quote_author_e164/);
+    const [sql, params] = pool.query.mock.calls[0];
+    expect(sql).toMatch(/signal_msg_ts/);
+    expect(sql).toMatch(/quote_msg_ts/);
+    expect(sql).toMatch(/quote_author_e164/);
+    expect(params).toHaveLength(16);
+    expect(params[13]).toBeNull();   // signal_msg_ts
+    expect(params[14]).toBeNull();   // quote_msg_ts
+    expect(params[15]).toBeNull();   // quote_author_e164
   });
 
-  test('insertCapture calls pool.query once with 13 parameterized placeholders; row.id first, three new fields last', async () => {
+  test('Plan 50-04: insertCapture writes provided signal_msg_ts + quote_msg_ts + quote_author_e164 at positions 14..16', async () => {
+    const row = {
+      id: 'ulid-p50-04-q', captured_at: new Date(), sender: '+59892893012', message_type: 'text',
+      raw_text: 'EDIT block 260415_LIMA_1', attachment_paths: [], transcript: null,
+      llm_session_tag: null, llm_reply: null, degraded: false,
+      signal_msg_ts: 1779562666675,
+      quote_msg_ts: 1779560111000,
+      quote_author_e164: '+59891840205',
+    };
+    await insertCapture(pool, row);
+    const [, params] = pool.query.mock.calls[0];
+    expect(params).toHaveLength(16);
+    expect(params[13]).toBe(1779562666675);
+    expect(params[14]).toBe(1779560111000);
+    expect(params[15]).toBe('+59891840205');
+  });
+
+  test('insertCapture calls pool.query once with 16 parameterized placeholders (13 base + 3 Phase 50)', async () => {
     const row = {
       id: 'ulid-test-01',
       captured_at: new Date('2026-04-27T12:00:00Z'),
@@ -94,14 +113,18 @@ describe('capture-db', () => {
     await insertCapture(pool, row);
     expect(pool.query).toHaveBeenCalledTimes(1);
     const [sql, params] = pool.query.mock.calls[0];
-    expect(sql).toMatch(/VALUES \(\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, \$10, \$11, \$12, \$13\)/);
-    expect(params).toHaveLength(13);
+    expect(sql).toMatch(/VALUES \(\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, \$10, \$11, \$12, \$13, \$14, \$15, \$16\)/);
+    expect(params).toHaveLength(16);
     expect(params[0]).toBe('ulid-test-01');   // id first
     expect(params[9]).toBe(false);             // degraded
     // Phase 37: three new fields default to null when row omits them.
     expect(params[10]).toBeNull();             // group_id
     expect(params[11]).toBeNull();             // farmos_person
     expect(params[12]).toBeNull();             // reply_target_kind
+    // Phase 50 Plan-04: three quote-thread fields default to null.
+    expect(params[13]).toBeNull();             // signal_msg_ts
+    expect(params[14]).toBeNull();             // quote_msg_ts
+    expect(params[15]).toBeNull();             // quote_author_e164
   });
 
   test('insertCapture writes provided group_id, farmos_person, reply_target_kind at positions 11..13', async () => {

@@ -71,10 +71,13 @@ async function initDb(pool) {
 }
 
 async function insertCapture(pool, row) {
+  // Phase 50 Plan-04: signal_msg_ts (every inbound msg ts), quote_msg_ts +
+  // quote_author_e164 (set only when farmer used Signal's quote/reply UI).
+  // All three default NULL when caller omits them (back-compat).
   await pool.query(
     `INSERT INTO signal_capture
-       (id, captured_at, sender, message_type, raw_text, attachment_paths, transcript, llm_session_tag, llm_reply, degraded, group_id, farmos_person, reply_target_kind)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+       (id, captured_at, sender, message_type, raw_text, attachment_paths, transcript, llm_session_tag, llm_reply, degraded, group_id, farmos_person, reply_target_kind, signal_msg_ts, quote_msg_ts, quote_author_e164)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
     [
       row.id,
       row.captured_at,
@@ -89,6 +92,9 @@ async function insertCapture(pool, row) {
       row.group_id ?? null,
       row.farmos_person ?? null,
       row.reply_target_kind ?? null,
+      row.signal_msg_ts ?? null,
+      row.quote_msg_ts ?? null,
+      row.quote_author_e164 ?? null,
     ]
   );
 }
