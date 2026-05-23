@@ -37,11 +37,14 @@ Group collapse mapping (audio-only, 12 children, 5 groups):
 | DT x3 (no parent named in audio; "9, 10, 11")        | parent=null, species=DT, qty=3, children 9,10,11              |
 | Outdoor SHI x1 (no source ID, "some bark from logs") | parent=null, species=SHI, qty=1, children 12                  |
 
-Two parent.value entries are null because the audio narration did not
-name a parent for those groups -- a real-data shape the regression
-guard preserves. The Phase 47 SeedingSession Zod schema accepts
-nullable parent values per CONTEXT.md decision (parent is not always
-present on every paper-log entry).
+Two groups use the `NO_PARENT` sentinel string for `parent.value`
+because the audio narration did not name a parent for those groups
+(DT bags + outdoor-shiitake bag). The Phase 47 SeedingSession Zod
+schema (`schemas/seeding-session.js`) defines ParentRef as
+`z.string().min(1)` with the `NO_PARENT` sentinel as the documented
+"extractor cannot infer" path -- nullable parent values are NOT
+allowed at the schema layer. The regression guard preserves this
+real-data shape.
 
 ## Source-file caveat
 

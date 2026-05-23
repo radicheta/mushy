@@ -1,0 +1,213 @@
+{
+  "content": [
+    {
+      "type": "tool_use",
+      "id": "toolu_mock_49_02_may12",
+      "name": "submit_extraction",
+      "input": {
+        "drafts": [
+          {
+            "draft": {
+              "type": "seeding_session",
+              "event_date": "2026-04-25",
+              "groups": [
+                {
+                  "parent": {
+                    "value": "260118_SHI_25",
+                    "sources": [
+                      "audio",
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.9
+                  },
+                  "species": {
+                    "value": "SHI",
+                    "sources": [
+                      "audio",
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.95
+                  },
+                  "qty": {
+                    "value": 3,
+                    "sources": [
+                      "audio",
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.95
+                  },
+                  "child_block_names": {
+                    "value": [
+                      "260425_SHI_1",
+                      "260425_SHI_2",
+                      "260425_SHI_3"
+                    ],
+                    "sources": [
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.85
+                  }
+                },
+                {
+                  "parent": {
+                    "value": "260118_KOY_7",
+                    "sources": [
+                      "audio",
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.9
+                  },
+                  "species": {
+                    "value": "KOY",
+                    "sources": [
+                      "audio",
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.95
+                  },
+                  "qty": {
+                    "value": 2,
+                    "sources": [
+                      "audio",
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.95
+                  },
+                  "child_block_names": {
+                    "value": [
+                      "260425_KOY_4",
+                      "260425_KOY_5"
+                    ],
+                    "sources": [
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.85
+                  }
+                },
+                {
+                  "parent": {
+                    "value": "260323_WIN_3",
+                    "sources": [
+                      "audio",
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.9
+                  },
+                  "species": {
+                    "value": "WIN",
+                    "sources": [
+                      "audio",
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.95
+                  },
+                  "qty": {
+                    "value": 3,
+                    "sources": [
+                      "audio",
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.95
+                  },
+                  "child_block_names": {
+                    "value": [
+                      "260425_WIN_6",
+                      "260425_WIN_7",
+                      "260425_WIN_8"
+                    ],
+                    "sources": [
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.85
+                  }
+                },
+                {
+                  "parent": {
+                    "value": "NO_PARENT",
+                    "sources": [
+                      "audio"
+                    ],
+                    "confidence": 0.9
+                  },
+                  "species": {
+                    "value": "DT",
+                    "sources": [
+                      "audio",
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.95
+                  },
+                  "qty": {
+                    "value": 3,
+                    "sources": [
+                      "audio",
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.95
+                  },
+                  "child_block_names": {
+                    "value": [
+                      "260425_DT_9",
+                      "260425_DT_10",
+                      "260425_DT_11"
+                    ],
+                    "sources": [
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.85
+                  }
+                },
+                {
+                  "parent": {
+                    "value": "NO_PARENT",
+                    "sources": [
+                      "audio"
+                    ],
+                    "confidence": 0.9
+                  },
+                  "species": {
+                    "value": "SHI",
+                    "sources": [
+                      "audio",
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.95
+                  },
+                  "qty": {
+                    "value": 1,
+                    "sources": [
+                      "audio",
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.95
+                  },
+                  "child_block_names": {
+                    "value": [
+                      "260425_SHI_12"
+                    ],
+                    "sources": [
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.85
+                  }
+                }
+              ]
+            },
+            "per_field_confidence": {
+              "event_date": 0.98
+            }
+          }
+        ],
+        "continuity": "start_new",
+        "continuity_reason": "No in-flight draft for this sender; May-12 capture describing 2026-04-25 inoc session."
+      }
+    }
+  ],
+  "usage": {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0
+  },
+  "stop_reason": "tool_use"
+}
