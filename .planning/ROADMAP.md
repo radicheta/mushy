@@ -760,7 +760,12 @@ Plans:
 **Depends on:** Phase 44 (signal_outbound table is the natural place to log the ack send; not strictly required but bundles naturally — confirm at discuss-phase)
 **Requirements (proposed; lock at discuss-phase):** ACK-01 (no terminal state in the confirm/commit machine is silent post-YES — enumerated and tested), ACK-02 (replay of draft `b8a1e586` Vikki Rambo through the fixed path produces an English-default farmer-facing reply on the failure path — Vikki is English-first per `[[farmer-language-stacks]]`), ACK-03 (replay of draft `1fb28e70` Santi LIMA likewise), ACK-04 (idempotency: a retried commit does not double-send the ack)
 **Reference:** `.planning/notes/2026-05-17-northstar-commit-failed-reply.md` + `.planning/notes/2026-05-17-northstar-ack-sketch.md` (impl-sketch produced by overnight research) + memory `[[feedback_no_silent_failure_after_farmer_confirm]]`
-**Plans:** TBD at plan-phase
+**Plans:** 5 plans
+- [ ] 45-01-PLAN.md — Schema: signal_draft.outcome_ack_sent_at + tryMarkOutcomeAckSent idempotency primitive (ACK-04)
+- [ ] 45-02-PLAN.md — commit-outcome-preview.js renderer: 10 templates + 3 farm-level + 8-code reasonMap (ACK-01)
+- [ ] 45-03-PLAN.md — edit-handler Option X: commit_failed → EDIT → awaiting_farmer transition (ACK-01)
+- [ ] 45-04-PLAN.md — Wire T4+T6 dispatch hooks + outboundConfirm plumbing + signal_outbound logging (ACK-01, ACK-04)
+- [ ] 45-05-PLAN.md — Live-fire UAT: backfill replay of Vikki + Santi drafts (ACK-02, ACK-03)
 
 ---
 *Roadmap created 2026-03-28. v1.4 shipped 2026-05-01. v1.5 shipped 2026-05-09. v1.6 shipped 2026-05-11. v1.7 effectively shipped 2026-05-16 (Phase 42 calendar-deferred). v1.8 scaffolded 2026-05-17.*
