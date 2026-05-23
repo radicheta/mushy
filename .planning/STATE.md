@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Event-gate + Durable signal_outbound (tenant-aware)
-status: Phase 49 SHIPPED 2026-05-23. CI eval corpus 3-session (May-22 + May-12 named-regression + 2026-03-23 photo-absent diversity); `sessions.test.js` named-regression gate green hermetic. `scripts/discard-drafts.js` CLI shipped (12/12). `49-SHIP-GATE.md` runbook operator-deferred. INOC-07 hermetic-attested. v1.9 EXTRACTION+COMMIT+CORPUS triad complete. Next: Phase 50 (Signal-native quote threading) — last v1.9 phase.
-last_updated: "2026-05-23T23:55:00.000Z"
-last_activity: 2026-05-23
+status: v1.9 SHIPPED 2026-05-23 (autonomous run). All four v1.9 phases (47/48/49/50) closed in sequence. Phase 50 (Signal-native quote threading) delivers 3 new schema cols + outbound quote payload + inbound resolution with CONTEXT D-04 algorithm + fail-open posture + numbered-ask-back fallback. QUOT-01..06 hermetic-attested (1024/1033 alerter tests green). Three operator-deferred runbooks pending: 48-LIVE-FIRE (Phase 48 commit handler against farmOS dev), 49-SHIP-GATE (May 22 reprocess + discard failed drafts), 50-LIVE-FIRE (quote thread round-trip). v1.9 milestone shape complete.
+last_updated: "2026-05-24T00:30:00.000Z"
+last_activity: 2026-05-24
 progress:
   total_phases: 26
-  completed_phases: 8
-  total_plans: 73
-  completed_plans: 50
-  percent: 75
+  completed_phases: 9
+  total_plans: 78
+  completed_plans: 55
+  percent: 80
 ---
 
 # Project State
