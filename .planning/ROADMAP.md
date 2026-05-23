@@ -745,9 +745,9 @@ Plans:
 - `.planning/notes/2026-05-17-tenant-id-retrofit-map.md` (tenant boundary inventory)
 - SEED-010 (Foray extraction trigger)
 
-**Plans:** 5/7 plans executed
+**Plans:** 6/7 plans executed
 - [x] 44-00-PLAN.md — Wave 0 scaffolding (.gitignore + yaml dep + 8 test stubs)
-- [ ] 44-01-PLAN.md — 100-capture hand-classified smoke fixture (operator manual ship-gate)
+- [x] 44-01-PLAN.md — 100-capture hand-classified smoke fixture (operator manual ship-gate)
 - [x] 44-02-PLAN.md — signal_outbound DDL + DAO + signal.js single persistence hook (OUTBOUND-01, TENANT-01)
 - [x] 44-03-PLAN.md — Wire intent + sourceModule across all 14 send sites (OUTBOUND-01)
 - [ ] 44-04-PLAN.md — event-gate (rules + Haiku 4.5 classifier) + capture.js wiring + extraction_gate column + smoke harness (GATE-01, GATE-02)

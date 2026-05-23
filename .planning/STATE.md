@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Event-gate + Durable signal_outbound (tenant-aware)
-status: v1.8 scaffolded in ROADMAP; 4 research notes prepped; ready for discuss-phase on Phase 44
-last_updated: "2026-05-22T13:35:09.713Z"
-last_activity: 2026-05-22
+status: Phase 44 6/7 done; 44-01 ship-gate fixture shipped (61 real + 39 synth, D-20 exact); only 44-04 remains (event-gate code + smoke harness)
+last_updated: "2026-05-23T00:00:00.000Z"
+last_activity: 2026-05-23
 progress:
   total_phases: 26
   completed_phases: 4
   total_plans: 64
-  completed_plans: 29
-  percent: 15
+  completed_plans: 30
+  percent: 47
 ---
 
 # Project State
