@@ -235,10 +235,20 @@ async function updateDraftAfterEdit(pool, draftId, fields) {
 
 async function findAwaitingForSender(pool, senderE164) {
   try {
+    // Phase 45 Plan 04 follow-on (Plan 03 hand-off): include commit_failed in
+    // the active-draft lookup so EDIT replies from a farmer on a failed commit
+    // actually reach the edit-handler (which now accepts commit_failed per
+    // Plan 03's Option X). Without this extension the EDIT-from-commit_failed
+    // path is wired in code but unreachable at runtime from a real Signal reply.
+    // Ordering: awaiting_farmer wins over commit_failed when both exist for the
+    // same sender (most recent active confirm beats a leftover failed draft);
+    // within the same status, most recent updated_at wins.
     const r = await pool.query(
       `SELECT * FROM signal_draft
-        WHERE sender_e164=$1 AND status='awaiting_farmer'
-        ORDER BY updated_at DESC
+        WHERE sender_e164=$1
+          AND status IN ('awaiting_farmer','commit_failed')
+        ORDER BY CASE status WHEN 'awaiting_farmer' THEN 0 ELSE 1 END ASC,
+                 updated_at DESC
         LIMIT 1`,
       [senderE164]
     );
