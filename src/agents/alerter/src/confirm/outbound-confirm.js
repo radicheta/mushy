@@ -19,7 +19,45 @@
 // best-effort in signal.js (fail-open per D-03); we add no extra outboundDb
 // write here.
 
-const { renderOutcomeAck } = require('../farmos/commit-outcome-preview');
+const { renderOutcomeAck, buildDisambiguator, labelFor } = require('../farmos/commit-outcome-preview');
+
+// Phase 50 Plan-04: numbered ask-back body for the >1-active no-quote case.
+// One-shot semantics: this is a single response. We do NOT track an
+// "awaiting numbered reply" state -- next inbound from the farmer goes through
+// the same routing logic again (quote wins if attached; or current parser
+// handles "1" / "EDIT block ..." text). Capped at 5 entries to keep body sane.
+function renderNumberedAskBack(activeDrafts) {
+  const rows = (activeDrafts || []).slice(0, 5);
+  const lines = rows.map((d, i) => {
+    const label = labelFor(d && d.log_type);
+    const what = buildDisambiguator(d || {}, label);
+    return `${i + 1}. ${what}`;
+  });
+  return [
+    'Which one are you replying about?',
+    ...lines,
+    'Reply with the number, or quote the original message.',
+  ].join('\n');
+}
+
+// Phase 50 Plan-04: polite "that one is already closed" ack when a farmer
+// quote-replies a bot ack that targets a draft already in a terminal state
+// (committed / discarded / expired). Plan-06 disambiguator shape so the reply
+// names WHICH log they referenced. ASCII-only; no em-dashes.
+function renderQuoteClosed(draftRow) {
+  const d = draftRow || {};
+  const label = labelFor(d.log_type);
+  const what = buildDisambiguator(d, label);
+  const status = d.status || 'closed';
+  // Status word that reads naturally to a farmer.
+  const statusWord = status === 'committed' ? 'saved'
+    : status === 'discarded' ? 'discarded'
+    : status === 'expired' ? 'expired'
+    : status === 'needs_review' ? 'pending review'
+    : status === 'confirmed' ? 'saved'
+    : 'closed';
+  return `That ${what} is already ${statusWord}. n/a`;
+}
 
 function truncId(id) {
   if (typeof id !== 'string') return '';
@@ -210,6 +248,47 @@ function createConfirmOutbound({
           const res = await safeSend(body, dm, draftRow && draftRow.id, 'commit_outcome_ack', quote);
           if (res && res.ok) {
             logger.info && logger.info(`[outbound-confirm] send_commit_outcome_ack sent outcome=${extras.outcome} draft=${truncId(draftRow && draftRow.id)}`);
+          }
+          return res;
+        }
+        case 'send_ask_back': {
+          // Phase 50 Plan-04 (CONTEXT D-06): emitted only when >1 active draft
+          // AND inbound carried no quote. DM-only; never quotes. extras must
+          // carry { activeDrafts, senderE164 }. draftRow is null for this case
+          // because there is no single resolved draft yet -- routing target is
+          // the sender directly.
+          const activeDrafts = Array.isArray(extras.activeDrafts) ? extras.activeDrafts : [];
+          const sender = extras.senderE164 || (draftRow && draftRow.sender_e164);
+          if (!sender) {
+            logger.warn && logger.warn(`[outbound-confirm] send_ask_back: no_target`);
+            return { ok: false, reason: 'no_target' };
+          }
+          if (activeDrafts.length < 2) {
+            logger.warn && logger.warn(`[outbound-confirm] send_ask_back: <2 drafts (${activeDrafts.length}); skipping`);
+            return { ok: false, reason: 'insufficient_drafts' };
+          }
+          const askBody = renderNumberedAskBack(activeDrafts);
+          // intent='ask_back' so signal_outbound row carries the canonical
+          // label for audit. No quote, no related_draft_id (it's deliberately
+          // not pinned to a single draft).
+          const res = await safeSend(askBody, sender, null, 'ask_back', null);
+          if (res && res.ok) {
+            logger.info && logger.info(`[outbound-confirm] send_ask_back sent n=${activeDrafts.length} sender=${truncId(sender)}`);
+          }
+          return res;
+        }
+        case 'send_quote_closed': {
+          // Phase 50 Plan-04 (CONTEXT D-04 step 2c): farmer quote-replied a
+          // bot ack whose draft is already terminal. Polite single-line ack;
+          // does NOT mutate the draft (terminal state stands).
+          if (dm == null) {
+            logger.warn && logger.warn(`[outbound-confirm] send_quote_closed: no_target draft=${truncId(draftRow && draftRow.id)}`);
+            return { ok: false, reason: 'no_target' };
+          }
+          const closedBody = renderQuoteClosed(draftRow || {});
+          const res = await safeSend(closedBody, dm, draftRow && draftRow.id, 'quote_closed', null);
+          if (res && res.ok) {
+            logger.info && logger.info(`[outbound-confirm] send_quote_closed sent draft=${truncId(draftRow && draftRow.id)} status=${draftRow && draftRow.status}`);
           }
           return res;
         }

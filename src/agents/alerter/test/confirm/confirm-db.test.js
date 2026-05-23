@@ -255,6 +255,36 @@ describe('confirm-db (Phase 39 D-07/D-07a)', () => {
     });
   });
 
+  // Phase 50 Plan-04: list-shape sibling of findAwaitingForSender.
+  describe('findActiveDraftsForSender (Plan 50-04)', () => {
+    it('returns [] when no drafts match', async () => {
+      const pool = makeFakePool();
+      const r = await confirmDb.findActiveDraftsForSender(pool, '+15550009999');
+      expect(r).toEqual([]);
+    });
+
+    it('returns all awaiting_farmer + commit_failed drafts; awaiting_farmer first', async () => {
+      const pool = makeFakePool();
+      const tA = new Date('2026-05-22T12:00:00Z');
+      const tB = new Date('2026-05-21T12:00:00Z');
+      const tF = new Date('2026-05-23T12:00:00Z');
+      pool.seedDraft({ id: 'd-A', sender_e164: '+15550008888', status: 'awaiting_farmer', updated_at: tA });
+      pool.seedDraft({ id: 'd-B', sender_e164: '+15550008888', status: 'awaiting_farmer', updated_at: tB });
+      pool.seedDraft({ id: 'd-F', sender_e164: '+15550008888', status: 'commit_failed',   updated_at: tF });
+      // Other sender's draft must not leak.
+      pool.seedDraft({ id: 'd-other', sender_e164: '+15559999999', status: 'awaiting_farmer', updated_at: tF });
+      const r = await confirmDb.findActiveDraftsForSender(pool, '+15550008888');
+      expect(r.map((d) => d.id)).toEqual(['d-A', 'd-B', 'd-F']);
+    });
+
+    it('returns [] on DB error (no exception escapes)', async () => {
+      const pool = makeFakePool();
+      pool.query = async () => { throw new Error('db down'); };
+      const r = await confirmDb.findActiveDraftsForSender(pool, '+1');
+      expect(r).toEqual([]);
+    });
+  });
+
   // Phase 50 Plan-04: quote-resolution helper. Joins signal_outbound -> signal_draft
   // via related_draft_id; ORDER BY sent_at DESC LIMIT 1.
   describe('findDraftByQuotedMsgTs (Plan 50-04)', () => {
