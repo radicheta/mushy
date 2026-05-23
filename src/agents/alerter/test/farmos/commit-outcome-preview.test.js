@@ -146,6 +146,101 @@ describe('renderOutcomeAck (Phase 45 Plan 02)', () => {
     });
   });
 
+  describe('Disambiguator (Plan 06)', () => {
+    it('failed ack includes event date when draft_json.event_timestamp is present', () => {
+      const out = renderOutcomeAck(
+        row({
+          log_type: 'observation',
+          target: null,
+          draft_json: { event_timestamp: '2026-05-21T15:00:00Z', notes: 'block contaminated on the back shelf' },
+        }),
+        { outcome: 'failed', reason: 'observation_requires_target' }
+      );
+      expect(out).toContain('May 21');
+      expect(out).toContain('observation');
+      expect(out).toContain('block contaminated on the back shelf');
+    });
+
+    it('failed ack falls back to created_at when event_timestamp absent', () => {
+      const out = renderOutcomeAck(
+        row({
+          log_type: 'activity',
+          target: null,
+          created_at: '2026-05-13T12:37:00Z',
+          draft_json: { name: 'sterilize' },
+        }),
+        { outcome: 'failed', reason: 'no_target_asset_for_activity' }
+      );
+      expect(out).toContain('May 13');
+      expect(out).toContain('(sterilize)');
+    });
+
+    it('rejects sentinel date 1970-01-01', () => {
+      const out = renderOutcomeAck(
+        row({
+          log_type: 'observation',
+          target: null,
+          draft_json: { event_timestamp: '1970-01-01T00:00:00Z', notes: 'thumbs up' },
+        }),
+        { outcome: 'failed', reason: 'observation_requires_target' }
+      );
+      expect(out).not.toMatch(/Jan 1\b/);
+      expect(out).toContain('thumbs up');
+    });
+
+    it('rejects year-boundary midnight sentinel (2026-01-01T00:00:00Z)', () => {
+      const out = renderOutcomeAck(
+        row({
+          log_type: 'observation',
+          target: null,
+          draft_json: { event_timestamp: '2026-01-01T00:00:00Z', notes: 'UX comment' },
+        }),
+        { outcome: 'failed', reason: 'observation_requires_target' }
+      );
+      expect(out).not.toMatch(/Jan 1\b/);
+      expect(out).toContain('UX comment');
+    });
+
+    it('truncates long notes at word boundary with ellipsis', () => {
+      const longNotes = 'Farmer commented at length about every single thing they observed today including detailed measurements';
+      const out = renderOutcomeAck(
+        row({
+          log_type: 'observation',
+          target: null,
+          draft_json: { event_timestamp: '2026-05-21T10:00:00Z', notes: longNotes },
+        }),
+        { outcome: 'failed', reason: 'observation_requires_target' }
+      );
+      expect(out).toMatch(/\.\.\.\)/); // truncated, closes paren
+      expect(out.length).toBeLessThan(200);
+    });
+
+    it('hallucinated event_timestamp (>30 days before created_at) falls back to created_at', () => {
+      // Reproduces the Phase 45 Plan-06 dry-run bug: draft 0c5533f9 had
+      // event_timestamp=2026-01-01T23:30:00Z but created_at=2026-05-21.
+      const out = renderOutcomeAck(
+        row({
+          log_type: 'activity',
+          target: null,
+          created_at: '2026-05-21T02:33:00Z',
+          draft_json: { event_timestamp: '2026-01-01T23:30:00Z', name: 'sterilize' },
+        }),
+        { outcome: 'failed', reason: 'no_target_asset_for_activity' }
+      );
+      expect(out).toContain('May 21');
+      expect(out).not.toContain('Jan 1');
+    });
+
+    it('bare log_type fallback when no date and no summary', () => {
+      const out = renderOutcomeAck(
+        { log_type: 'observation', target: null, sender_name: 'Santi' },
+        { outcome: 'failed', reason: 'observation_requires_target' }
+      );
+      // No date, no draft_json -> disambiguator collapses to label
+      expect(out).toContain('about the observation:');
+    });
+  });
+
   describe('Named address', () => {
     it('omits greeting when sender_name is undefined; never emits "undefined" or leading comma', () => {
       const out = renderOutcomeAck(
@@ -155,7 +250,7 @@ describe('renderOutcomeAck (Phase 45 Plan 02)', () => {
       expect(out).not.toMatch(/undefined/);
       expect(out.startsWith(', ')).toBe(false);
       expect(out.startsWith('Hi ,')).toBe(false);
-      expect(out.startsWith('saved')).toBe(true);
+      expect(out.toLowerCase().startsWith('saved')).toBe(true);
     });
 
     it('omits greeting when sender_name is empty string', () => {
@@ -164,7 +259,7 @@ describe('renderOutcomeAck (Phase 45 Plan 02)', () => {
         { outcome: 'success', farmosLink: 'https://farmos.example/log/1' }
       );
       expect(out.startsWith('Hi')).toBe(false);
-      expect(out.startsWith('saved')).toBe(true);
+      expect(out.toLowerCase().startsWith('saved')).toBe(true);
     });
 
     it('uses named greeting when sender_name is present', () => {
