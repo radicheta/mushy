@@ -176,8 +176,13 @@ function makeFakePool() {
         if (ra !== rb) return ra - rb;
         return new Date(b.updated_at) - new Date(a.updated_at);
       });
-      const row = matches[0] || null;
-      return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
+      // Phase 50 Plan-04: list-shape variant (findActiveDraftsForSender) has no
+      // LIMIT 1 clause -- return all matches. Single-row variant keeps LIMIT 1.
+      if (/LIMIT\s+1/i.test(s)) {
+        const row = matches[0] || null;
+        return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
+      }
+      return { rows: matches, rowCount: matches.length };
     }
     // Legacy: SELECT * FROM signal_draft WHERE sender_e164=$1 AND status='awaiting_farmer' ORDER BY updated_at DESC LIMIT 1
     if (/SELECT \*\s+FROM signal_draft/i.test(s) && /sender_e164/.test(s) && /status='awaiting_farmer'/.test(s)) {

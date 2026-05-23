@@ -244,4 +244,8 @@ module.exports = {
   renderOutcomeAck,
   reasonMap,
   reasonFor,
+  // Phase 50 Plan-04: exported for reuse by receive-loop's numbered ask-back
+  // and quote-resolved-to-terminal acks (Plan-06 disambiguator shape).
+  buildDisambiguator,
+  labelFor,
 };

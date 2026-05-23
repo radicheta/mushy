@@ -259,6 +259,27 @@ async function findAwaitingForSender(pool, senderE164) {
   }
 }
 
+// Phase 50 Plan-04: list-shape sibling of findAwaitingForSender. Returns ALL
+// active drafts (awaiting_farmer + commit_failed) for a sender; same ordering
+// as the single-row variant (awaiting_farmer wins; within status, newer
+// updated_at wins). Used by receive-loop to detect the >1-active ambiguity
+// case and emit a numbered ask-back per CONTEXT D-04.
+async function findActiveDraftsForSender(pool, senderE164) {
+  try {
+    const r = await pool.query(
+      `SELECT * FROM signal_draft
+        WHERE sender_e164=$1
+          AND status IN ('awaiting_farmer','commit_failed')
+        ORDER BY CASE status WHEN 'awaiting_farmer' THEN 0 ELSE 1 END ASC,
+                 updated_at DESC`,
+      [senderE164]
+    );
+    return r.rows || [];
+  } catch (_e) {
+    return [];
+  }
+}
+
 async function findNudgeCandidates(pool, nudgeMin) {
   try {
     const r = await pool.query(
@@ -368,4 +389,5 @@ module.exports = {
   findExpireCandidates,
   getCaptureQuoteTarget,
   findDraftByQuotedMsgTs,
+  findActiveDraftsForSender,
 };

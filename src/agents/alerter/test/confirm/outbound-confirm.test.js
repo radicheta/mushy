@@ -345,3 +345,137 @@ describe('Phase 50 Plan 03: 6 other dispatch sites remain quote-free', () => {
     expect(signal.send.mock.calls[0][1].quote).toBeUndefined();
   });
 });
+
+describe('Phase 50 Plan-04: send_ask_back + send_quote_closed', () => {
+  it('send_ask_back: renders numbered body for 2 drafts; intent=ask_back; target=sender; no quote', async () => {
+    const signal = makeSignal();
+    const d = createConfirmOutbound({
+      signalClient: signal, previewBuilderConfirm, operatorRecipient: '+x', logger: silentLogger(),
+    });
+    const activeDrafts = [
+      { id: 'd-A', sender_e164: '+15550001234', log_type: 'observation',
+        draft_json: { event_timestamp: '2026-05-22T12:00:00Z', notes: 'block A note' },
+        created_at: new Date('2026-05-22T12:00:00Z') },
+      { id: 'd-B', sender_e164: '+15550001234', log_type: 'seeding',
+        draft_json: { event_timestamp: '2026-05-21T12:00:00Z', name: 'inoc' },
+        created_at: new Date('2026-05-21T12:00:00Z') },
+    ];
+    const r = await d.dispatch('send_ask_back', null, { activeDrafts, senderE164: '+15550001234' });
+    expect(r.ok).toBe(true);
+    expect(signal.send).toHaveBeenCalledTimes(1);
+    const [body, opts] = signal.send.mock.calls[0];
+    expect(body).toMatch(/Which one are you replying about\?/);
+    expect(body).toMatch(/^1\. /m);
+    expect(body).toMatch(/^2\. /m);
+    expect(body).toMatch(/Reply with the number/);
+    expect(opts).toMatchObject({ to: '+15550001234', intent: 'ask_back' });
+    expect(opts.quote).toBeUndefined();
+    expect(opts.relatedDraftId).toBeNull();
+  });
+
+  it('send_ask_back: caps at 5 entries even if >5 active drafts', async () => {
+    const signal = makeSignal();
+    const d = createConfirmOutbound({
+      signalClient: signal, previewBuilderConfirm, operatorRecipient: '+x', logger: silentLogger(),
+    });
+    const activeDrafts = [];
+    for (let i = 0; i < 7; i++) {
+      activeDrafts.push({
+        id: `d-${i}`, sender_e164: '+15550001234', log_type: 'observation',
+        draft_json: { notes: `note ${i}` },
+        created_at: new Date(`2026-05-2${i}T12:00:00Z`),
+      });
+    }
+    await d.dispatch('send_ask_back', null, { activeDrafts, senderE164: '+15550001234' });
+    const body = signal.send.mock.calls[0][0];
+    expect(body).toMatch(/^5\. /m);
+    expect(body).not.toMatch(/^6\. /m);
+  });
+
+  it('send_ask_back: missing senderE164 -> no_target; no send', async () => {
+    const signal = makeSignal();
+    const d = createConfirmOutbound({
+      signalClient: signal, previewBuilderConfirm, operatorRecipient: '+x', logger: silentLogger(),
+    });
+    const r = await d.dispatch('send_ask_back', null, { activeDrafts: [{}, {}] });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe('no_target');
+    expect(signal.send).not.toHaveBeenCalled();
+  });
+
+  it('send_ask_back: <2 drafts -> insufficient_drafts; no send', async () => {
+    const signal = makeSignal();
+    const d = createConfirmOutbound({
+      signalClient: signal, previewBuilderConfirm, operatorRecipient: '+x', logger: silentLogger(),
+    });
+    const r = await d.dispatch('send_ask_back', null, { activeDrafts: [{ id: 'only' }], senderE164: '+1' });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe('insufficient_drafts');
+    expect(signal.send).not.toHaveBeenCalled();
+  });
+
+  it('send_quote_closed: committed draft -> body says "saved"; intent=quote_closed; no quote', async () => {
+    const signal = makeSignal();
+    const d = createConfirmOutbound({
+      signalClient: signal, previewBuilderConfirm, operatorRecipient: '+x', logger: silentLogger(),
+    });
+    const draftRow = {
+      id: 'd-old', sender_e164: '+15550001234', status: 'committed',
+      log_type: 'seeding', draft_json: { name: 'inoc' },
+      created_at: new Date('2026-05-13T12:00:00Z'),
+    };
+    const r = await d.dispatch('send_quote_closed', draftRow);
+    expect(r.ok).toBe(true);
+    expect(signal.send).toHaveBeenCalledTimes(1);
+    const [body, opts] = signal.send.mock.calls[0];
+    expect(body).toMatch(/already saved/i);
+    expect(body).toMatch(/n\/a/);
+    expect(opts).toMatchObject({ to: '+15550001234', intent: 'quote_closed', relatedDraftId: 'd-old' });
+    expect(opts.quote).toBeUndefined();
+  });
+
+  it('send_quote_closed: discarded draft -> body says "discarded"', async () => {
+    const signal = makeSignal();
+    const d = createConfirmOutbound({
+      signalClient: signal, previewBuilderConfirm, operatorRecipient: '+x', logger: silentLogger(),
+    });
+    const draftRow = {
+      id: 'd-no', sender_e164: '+15550001234', status: 'discarded',
+      log_type: 'observation', draft_json: { notes: 'oops' },
+      created_at: new Date('2026-05-13T12:00:00Z'),
+    };
+    await d.dispatch('send_quote_closed', draftRow);
+    expect(signal.send.mock.calls[0][0]).toMatch(/already discarded/i);
+  });
+
+  it('send_quote_closed: no sender_e164 -> no_target; no send', async () => {
+    const signal = makeSignal();
+    const d = createConfirmOutbound({
+      signalClient: signal, previewBuilderConfirm, operatorRecipient: '+x', logger: silentLogger(),
+    });
+    const r = await d.dispatch('send_quote_closed', { id: 'd-x', status: 'committed' });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe('no_target');
+  });
+
+  it('ASCII guard: ask-back and quote-closed bodies contain no em-dash', async () => {
+    const signal = makeSignal();
+    const d = createConfirmOutbound({
+      signalClient: signal, previewBuilderConfirm, operatorRecipient: '+x', logger: silentLogger(),
+    });
+    await d.dispatch('send_ask_back', null, {
+      activeDrafts: [
+        { id: 'a', sender_e164: '+1', log_type: 'seeding', draft_json: { name: 'x' }, created_at: new Date() },
+        { id: 'b', sender_e164: '+1', log_type: 'observation', draft_json: { notes: 'y' }, created_at: new Date() },
+      ],
+      senderE164: '+1',
+    });
+    await d.dispatch('send_quote_closed', {
+      id: 'c', sender_e164: '+1', status: 'committed',
+      log_type: 'seeding', draft_json: { name: 'z' }, created_at: new Date(),
+    });
+    for (const call of signal.send.mock.calls) {
+      expect(call[0]).not.toMatch(/[—–]/); // em-dash, en-dash
+    }
+  });
+});

@@ -219,11 +219,73 @@ function createReceiveLoop({
         // Phase 39 confirm-reply branch (between snooze and capture).
         // Skip when wiring is incomplete (defensive back-compat for legacy tests).
         if (pool && confirmDb && confirmParser && confirmOutbound && editHandler && text) {
+          // Phase 50 Plan-04 (CONTEXT D-04): quote-first routing. When the
+          // farmer's incoming message carries a quote target, prefer the
+          // resolved draft over the most-recent-active heuristic.
+          const dmQuote = dm && dm.quote ? dm.quote : null;
+          const quoteMsgTsRaw = dmQuote
+            ? (dmQuote.id != null ? dmQuote.id : dmQuote.timestamp)
+            : null;
+          const quoteMsgTs = quoteMsgTsRaw != null && Number.isFinite(Number(quoteMsgTsRaw))
+            ? Number(quoteMsgTsRaw)
+            : null;
+
           let draftRow = null;
-          try {
-            draftRow = await confirmDb.findAwaitingForSender(pool, source);
-          } catch (e) {
-            logger.warn(`[receive] confirm lookup failed: ${e.message}`);
+          let quoteResolved = false;
+          if (quoteMsgTs != null && typeof confirmDb.findDraftByQuotedMsgTs === 'function') {
+            let qr = null;
+            try {
+              qr = await confirmDb.findDraftByQuotedMsgTs(pool, quoteMsgTs);
+            } catch (e) {
+              logger.warn(`[receive] quote-resolve failed: ${e.message}`);
+            }
+            if (qr) {
+              // T-50-04-01: sender-equality guard. If the quoted draft belongs
+              // to a different farmer, do NOT route -- treat as orphan quote.
+              if (qr.sender_e164 && qr.sender_e164 !== source) {
+                logger.warn(`[receive] quote spoof guard: draft sender mismatch (drop)`);
+              } else if (qr.status === 'awaiting_farmer' || qr.status === 'commit_failed') {
+                draftRow = qr;
+                quoteResolved = true;
+              } else if (qr.status === 'committed' || qr.status === 'discarded' || qr.status === 'expired' || qr.status === 'needs_review' || qr.status === 'confirmed') {
+                // Terminal-state quote: polite "already closed" ack; do not mutate.
+                await confirmOutbound.dispatch('send_quote_closed', qr);
+                continue;
+              }
+              // Other transitional statuses fall through to the most-recent-active path.
+            }
+          }
+
+          // Quote did not pin a draft -> fall back to active-draft lookup.
+          // Use the list-shape variant so we can detect the >1-active ambiguity
+          // and emit a numbered ask-back (CONTEXT D-06).
+          let activeDrafts = [];
+          if (!draftRow) {
+            if (typeof confirmDb.findActiveDraftsForSender === 'function') {
+              try {
+                activeDrafts = await confirmDb.findActiveDraftsForSender(pool, source) || [];
+              } catch (e) {
+                logger.warn(`[receive] active-drafts lookup failed: ${e.message}`);
+                activeDrafts = [];
+              }
+            } else {
+              // Back-compat for tests / wiring that don't expose the list helper.
+              try {
+                const single = await confirmDb.findAwaitingForSender(pool, source);
+                if (single) activeDrafts = [single];
+              } catch (e) {
+                logger.warn(`[receive] confirm lookup failed: ${e.message}`);
+              }
+            }
+            if (activeDrafts.length > 1 && !quoteResolved) {
+              // Numbered ask-back: one-shot response, no state tracking.
+              await confirmOutbound.dispatch('send_ask_back', null, {
+                activeDrafts,
+                senderE164: source,
+              });
+              continue;
+            }
+            draftRow = activeDrafts[0] || null;
           }
           if (draftRow) {
             const parsed = confirmParser.parseReply(text);
