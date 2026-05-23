@@ -3,8 +3,15 @@
 // Phase 40 D-03 / D-03c: B7 log creation. Native types only (C5):
 // seeding | activity | input | observation | harvest. Any other log_type
 // throws UnsupportedLogTypeError BEFORE any farmOS call (commit-router catches).
+//
+// Phase 48 Plan 01: 'seeding_session' is a COMPOSITE log_type recognized by the
+// commit-router (so the guard does not bounce it) but NOT a native farmOS log
+// type. createLog rejects it -- the seeding_session handler (Plan 02) writes
+// one asset + N child seeding logs by calling createLog(client, 'seeding', ...).
+// NATIVE_LOG_TYPES is the createLog allow-list; LOG_TYPES is the router guard.
 
-const LOG_TYPES = ['seeding', 'activity', 'input', 'observation', 'harvest'];
+const NATIVE_LOG_TYPES = ['seeding', 'activity', 'input', 'observation', 'harvest'];
+const LOG_TYPES = [...NATIVE_LOG_TYPES, 'seeding_session'];
 
 class UnsupportedLogTypeError extends Error {
   constructor(logType) {
@@ -15,7 +22,7 @@ class UnsupportedLogTypeError extends Error {
 }
 
 async function createLog(client, logType, opts) {
-  if (!LOG_TYPES.includes(logType)) {
+  if (!NATIVE_LOG_TYPES.includes(logType)) {
     throw new UnsupportedLogTypeError(logType);
   }
   const { name, timestamp, assetIds = [], fileIds = [], notes = '', draftId } = opts;
@@ -47,4 +54,4 @@ async function createLog(client, logType, opts) {
   return { ok: true, logId, http_status: r.status };
 }
 
-module.exports = { LOG_TYPES, UnsupportedLogTypeError, createLog };
+module.exports = { LOG_TYPES, NATIVE_LOG_TYPES, UnsupportedLogTypeError, createLog };
