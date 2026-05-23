@@ -42,6 +42,14 @@ async function initDb(pool) {
   // Phase 44 Plan-04 D-04: event-gate audit column. VARCHAR(32) per locked D-04
   // decision (NOT downgraded to `text` — D-04 enum longest value 'skipped_rule_neg' is 16 chars).
   await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS extraction_gate VARCHAR(32)`);
+  // Phase 50 Plan-01 D-02: three nullable columns for Signal-native quote threading.
+  // signal_msg_ts  = ms-since-epoch of the inbound message (what the bot will quote on outbound acks).
+  // quote_msg_ts   = ms-since-epoch of the bot message the farmer's incoming msg is quoting (resolved via signal_outbound.signal_msg_ts).
+  // quote_author_e164 = e164 of the original quoted author (the bot's number when farmer quote-replies an ack).
+  // Plan 04 owns the receive-loop write path; this plan only lands the columns.
+  await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS signal_msg_ts bigint`);
+  await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS quote_msg_ts bigint`);
+  await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS quote_author_e164 text`);
   await pool.query(`
     CREATE OR REPLACE VIEW v_llm_cost_daily AS
     SELECT
