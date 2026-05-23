@@ -9,11 +9,11 @@ describe('capture-db', () => {
     pool = { query: jest.fn().mockResolvedValue({ rows: [], rowCount: 0 }) };
   });
 
-  test('initDb issues CREATE TABLE + 2 CREATE INDEX + 9 ALTER TABLE ADD COLUMN IF NOT EXISTS + 1 CREATE VIEW (no create_hypertable)', async () => {
+  test('initDb issues CREATE TABLE + 2 CREATE INDEX + 12 ALTER TABLE ADD COLUMN IF NOT EXISTS + 1 CREATE VIEW (no create_hypertable)', async () => {
     await initDb(pool);
     // 1 CREATE TABLE + 2 CREATE INDEX + 3 Phase 37 ALTERs + 5 backlog-999.53 ALTERs
-    // + 1 Phase 44 D-04 ALTER (extraction_gate) + 1 CREATE VIEW = 13
-    expect(pool.query).toHaveBeenCalledTimes(13);
+    // + 1 Phase 44 D-04 ALTER (extraction_gate) + 3 Phase 50 Plan-01 ALTERs + 1 CREATE VIEW = 16
+    expect(pool.query).toHaveBeenCalledTimes(16);
     const sql0 = pool.query.mock.calls[0][0];
     expect(sql0).toMatch(/CREATE TABLE IF NOT EXISTS signal_capture/);
     const sql1 = pool.query.mock.calls[1][0];
@@ -33,16 +33,20 @@ describe('capture-db', () => {
     expect(allSql).toMatch(/ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS model text/);
     // Phase 44 Plan-04 D-04: event-gate audit column (VARCHAR(32) verbatim per locked decision).
     expect(allSql).toMatch(/ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS extraction_gate VARCHAR\(32\)/);
+    // Phase 50 Plan-01: three nullable columns for Signal-native quote threading.
+    expect(allSql).toMatch(/ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS signal_msg_ts bigint/);
+    expect(allSql).toMatch(/ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS quote_msg_ts bigint/);
+    expect(allSql).toMatch(/ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS quote_author_e164 text/);
     expect(allSql).toMatch(/CREATE OR REPLACE VIEW v_llm_cost_daily/);
     // Must NOT call create_hypertable (regular table per RESEARCH Open Q #1)
     expect(allSql).not.toMatch(/create_hypertable/);
   });
 
-  test('initDb is idempotent: second invocation also issues 13 queries with same shape', async () => {
+  test('initDb is idempotent: second invocation also issues 16 queries with same shape', async () => {
     await initDb(pool);
     await initDb(pool);
-    expect(pool.query).toHaveBeenCalledTimes(26);
-    const secondAllSql = pool.query.mock.calls.slice(13).map((c) => c[0]).join('\n');
+    expect(pool.query).toHaveBeenCalledTimes(32);
+    const secondAllSql = pool.query.mock.calls.slice(16).map((c) => c[0]).join('\n');
     expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS group_id text/);
     expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS farmos_person text/);
     expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS reply_target_kind text/);
@@ -51,7 +55,27 @@ describe('capture-db', () => {
     expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS cache_creation_input_tokens int/);
     expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS cache_read_input_tokens int/);
     expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS model text/);
+    expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS signal_msg_ts bigint/);
+    expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS quote_msg_ts bigint/);
+    expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS quote_author_e164 text/);
     expect(secondAllSql).toMatch(/CREATE OR REPLACE VIEW v_llm_cost_daily/);
+  });
+
+  test('insertCapture omitting Phase 50 quote columns still succeeds (back-compat — Plan 04 owns the params)', async () => {
+    // Plan 01 does NOT modify insertCapture's signature. Every caller at Plan 01
+    // commit time omits signal_msg_ts / quote_msg_ts / quote_author_e164 and the
+    // INSERT statement does not reference them; the columns default NULL on the
+    // table. Plan 04 will extend the signature.
+    const row = {
+      id: 'ulid-p50-01', captured_at: new Date(), sender: '+1', message_type: 'text',
+      raw_text: null, attachment_paths: [], transcript: null,
+      llm_session_tag: null, llm_reply: null, degraded: false,
+    };
+    await insertCapture(pool, row);
+    const [sql] = pool.query.mock.calls[0];
+    expect(sql).not.toMatch(/signal_msg_ts/);
+    expect(sql).not.toMatch(/quote_msg_ts/);
+    expect(sql).not.toMatch(/quote_author_e164/);
   });
 
   test('insertCapture calls pool.query once with 13 parameterized placeholders; row.id first, three new fields last', async () => {
