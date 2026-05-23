@@ -241,6 +241,143 @@ describe('renderOutcomeAck (Phase 45 Plan 02)', () => {
     });
   });
 
+  // -------------------------------------------------------------------------
+  // Phase 48 Plan 04: seeding_session ack contract
+  // -------------------------------------------------------------------------
+  describe('seeding_session (Phase 48 Plan 04)', () => {
+    // May 22 fixture: 5 groups, 11 children total.
+    function may22Draft(overrides) {
+      return Object.assign(
+        {
+          id: 'sess1',
+          sender_e164: '+59891000001',
+          sender_name: 'Santi',
+          log_type: 'seeding_session',
+          target: null,
+          created_at: '2026-05-22T15:00:00Z',
+          draft_json: {
+            type: 'seeding_session',
+            event_date: '2026-05-22',
+            groups: [
+              { child_block_names: { value: ['260522_KOY_4', '260522_KOY_5', '260522_KOY_6'] } },
+              { child_block_names: { value: ['260522_SHI_7', '260522_SHI_8'] } },
+              { child_block_names: { value: ['260522_MAI_1', '260522_MAI_2'] } },
+              { child_block_names: { value: ['260522_KOS_3', '260522_KOS_4'] } },
+              { child_block_names: { value: ['260522_DT_1', '260522_DT_2'] } },
+            ],
+          },
+        },
+        overrides || {}
+      );
+    }
+
+    it('Test A: success renders clean session-shaped ack (no general-farm-note boilerplate)', () => {
+      const out = renderOutcomeAck(may22Draft(), { outcome: 'success' });
+      // Must include date + label + counts disambiguator
+      expect(out).toContain('2026-05-22');
+      expect(out).toContain('Inoc session');
+      expect(out).toContain('11 blocks across 5 parents');
+      // Must NOT use the legacy farm-level boilerplate (would be misleading)
+      expect(out).not.toContain('general farm note');
+      expect(out).not.toContain("couldn't match a specific block");
+      // Named greeting present
+      expect(out.startsWith('Hi Santi, ')).toBe(true);
+      // Clean closing: "saved {what}."
+      expect(out).toMatch(/saved 2026-05-22 Inoc session \(11 blocks across 5 parents\)\.$/);
+    });
+
+    it('Test B: failed / partial_commit_failed', () => {
+      const out = renderOutcomeAck(may22Draft(), { outcome: 'failed', reason: 'partial_commit_failed' });
+      expect(out).toContain('about the 2026-05-22 Inoc session (11 blocks across 5 parents):');
+      expect(out).toContain("couldn't save it because a write partway through failed, nothing saved");
+      expect(out).toContain('Send EDIT to fix or NO to drop.');
+    });
+
+    it('Test C: failed / session_name_exhausted', () => {
+      const out = renderOutcomeAck(may22Draft(), { outcome: 'failed', reason: 'session_name_exhausted' });
+      expect(out).toContain('too many same-day session names already exist');
+    });
+
+    it('Test D: failed / session_fungi_type_term_missing', () => {
+      const out = renderOutcomeAck(may22Draft(), { outcome: 'failed', reason: 'session_fungi_type_term_missing' });
+      expect(out).toContain('farmOS session taxonomy term missing');
+    });
+
+    it('Test E: failed / unknown reason falls back to generic_validation_error phrasing', () => {
+      const out = renderOutcomeAck(may22Draft(), { outcome: 'failed', reason: 'totally_unknown_session_code' });
+      expect(out).toContain(reasonMap.generic_validation_error);
+      expect(out).not.toContain('totally_unknown_session_code');
+    });
+
+    it('Test F: legacy seeding ack remains byte-identical (regression guard)', () => {
+      // Pre-Phase-48 expected output for a seeding success ack.
+      const out = renderOutcomeAck(
+        {
+          id: 'abcdef1234',
+          sender_e164: '+59891000001',
+          sender_name: 'Santi',
+          log_type: 'seeding',
+          target: '260512_SHI_4',
+        },
+        { outcome: 'success', farmosLink: 'https://farmos.example/log/1001' }
+      );
+      expect(out).toBe('Hi Santi, saved seeding for 260512_SHI_4. Open in farmOS: https://farmos.example/log/1001');
+    });
+
+    it('Test G: no em-dash, no en-dash, no emoji in any seeding_session ack', () => {
+      const cases = [
+        { outcome: 'success' },
+        { outcome: 'failed', reason: 'partial_commit_failed' },
+        { outcome: 'failed', reason: 'session_name_exhausted' },
+        { outcome: 'failed', reason: 'session_fungi_type_term_missing' },
+      ];
+      for (const opts of cases) {
+        const out = renderOutcomeAck(may22Draft(), opts);
+        expect(out).not.toMatch(/—/); // em-dash
+        expect(out).not.toMatch(/–/); // en-dash
+        // No emoji (loose check: any character in the Misc Symbols / Emoji blocks)
+        expect(out).not.toMatch(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u);
+      }
+    });
+
+    it('counts: blocks total uses sum of child_block_names lengths', () => {
+      // Two groups, 3 + 4 = 7 children.
+      const draft = {
+        log_type: 'seeding_session',
+        sender_name: 'Vikki',
+        target: null,
+        draft_json: {
+          type: 'seeding_session',
+          event_date: '2026-05-23',
+          groups: [
+            { child_block_names: { value: ['a', 'b', 'c'] } },
+            { child_block_names: { value: ['d', 'e', 'f', 'g'] } },
+          ],
+        },
+      };
+      const out = renderOutcomeAck(draft, { outcome: 'success' });
+      expect(out).toContain('7 blocks across 2 parents');
+    });
+
+    it('counts: falls back to qty.value when child_block_names is absent', () => {
+      const draft = {
+        log_type: 'seeding_session',
+        sender_name: 'Vikki',
+        target: null,
+        draft_json: {
+          type: 'seeding_session',
+          event_date: '2026-05-23',
+          groups: [
+            { qty: { value: 4 } },
+            { qty: { value: 6 } },
+          ],
+        },
+      };
+      const out = renderOutcomeAck(draft, { outcome: 'success' });
+      expect(out).toContain('10 blocks across 2 parents');
+    });
+  });
+
   describe('Named address', () => {
     it('omits greeting when sender_name is undefined; never emits "undefined" or leading comma', () => {
       const out = renderOutcomeAck(
