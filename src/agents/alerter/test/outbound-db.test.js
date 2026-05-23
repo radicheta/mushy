@@ -12,18 +12,22 @@ describe('outbound-db', () => {
     pool = { query: jest.fn().mockResolvedValue({ rows: [], rowCount: 0 }) };
   });
 
-  test('initDb issues CREATE EXTENSION + CREATE TABLE + 3 CREATE INDEX (5 total)', async () => {
+  test('initDb issues CREATE EXTENSION + CREATE TABLE + 2 idempotent ALTERs + 3 CREATE INDEX (7 total)', async () => {
     await initDb(pool);
-    expect(pool.query).toHaveBeenCalledTimes(5);
+    expect(pool.query).toHaveBeenCalledTimes(7);
     const sqls = pool.query.mock.calls.map((c) => c[0]);
     expect(sqls[0]).toMatch(/CREATE EXTENSION IF NOT EXISTS pgcrypto/);
     expect(sqls[1]).toMatch(/CREATE TABLE IF NOT EXISTS signal_outbound/);
-    expect(sqls[2]).toMatch(/CREATE INDEX IF NOT EXISTS idx_signal_outbound_tenant_sent/);
-    expect(sqls[3]).toMatch(/CREATE INDEX IF NOT EXISTS idx_signal_outbound_recipient_sent/);
-    expect(sqls[4]).toMatch(/CREATE INDEX IF NOT EXISTS idx_signal_outbound_intent/);
+    // 2026-05-23 hotfix: idempotent ALTER to migrate older hosts where the
+    // FK columns were created as `uuid` (rejected ULID/hex ids at write time).
+    expect(sqls[2]).toMatch(/ALTER TABLE signal_outbound ALTER COLUMN related_capture_id TYPE text/);
+    expect(sqls[3]).toMatch(/ALTER TABLE signal_outbound ALTER COLUMN related_draft_id TYPE text/);
+    expect(sqls[4]).toMatch(/CREATE INDEX IF NOT EXISTS idx_signal_outbound_tenant_sent/);
+    expect(sqls[5]).toMatch(/CREATE INDEX IF NOT EXISTS idx_signal_outbound_recipient_sent/);
+    expect(sqls[6]).toMatch(/CREATE INDEX IF NOT EXISTS idx_signal_outbound_intent/);
   });
 
-  test('initDb CREATE TABLE preserves D-12 column types verbatim', async () => {
+  test('initDb CREATE TABLE uses text for related_*_id (ULID/hex compat per 2026-05-23 hotfix)', async () => {
     await initDb(pool);
     const tableSql = pool.query.mock.calls[1][0];
     expect(tableSql).toMatch(/id\s+uuid PRIMARY KEY DEFAULT gen_random_uuid\(\)/);
@@ -35,8 +39,8 @@ describe('outbound-db', () => {
     expect(tableSql).toMatch(/attachments\s+jsonb/);
     expect(tableSql).toMatch(/source_module\s+text NOT NULL/);
     expect(tableSql).toMatch(/source_line\s+integer/);
-    expect(tableSql).toMatch(/related_capture_id\s+uuid/);
-    expect(tableSql).toMatch(/related_draft_id\s+uuid/);
+    expect(tableSql).toMatch(/related_capture_id\s+text/);
+    expect(tableSql).toMatch(/related_draft_id\s+text/);
   });
 
   test('insertOutbound issues one parameterised INSERT with $1..$10 in D-12 column order', async () => {

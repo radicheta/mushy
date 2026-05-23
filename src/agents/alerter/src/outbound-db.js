@@ -28,10 +28,19 @@ async function initDb(pool) {
       attachments     jsonb,
       source_module   text NOT NULL,
       source_line     integer,
-      related_capture_id uuid,
-      related_draft_id   uuid
+      related_capture_id text,
+      related_draft_id   text
     )
   `);
+  // 2026-05-23 hotfix: Plan-02 D-12 originally declared related_*_id as uuid,
+  // but signal_capture.id is a ULID (text, e.g. "01KS9HSSJZYC6QHNKFT8Y3RF1H")
+  // and signal_draft.id is a hex sha (text, e.g. "f87eb1e0..."). Postgres
+  // rejected every insert with `invalid input syntax for type uuid`; the
+  // insertOutbound fail-open mask hid the breakage until a live capture went
+  // through post-cutover. ALTER the existing columns idempotently for hosts
+  // already running the uuid version of the schema.
+  await pool.query(`ALTER TABLE signal_outbound ALTER COLUMN related_capture_id TYPE text`);
+  await pool.query(`ALTER TABLE signal_outbound ALTER COLUMN related_draft_id TYPE text`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_signal_outbound_tenant_sent ON signal_outbound(tenant_id, sent_at DESC)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_signal_outbound_recipient_sent ON signal_outbound(recipient_e164, sent_at DESC)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_signal_outbound_intent ON signal_outbound(intent)`);
