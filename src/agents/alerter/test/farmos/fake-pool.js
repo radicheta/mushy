@@ -34,6 +34,7 @@ function makeFakePool() {
         commit_failed_reason: row.commit_failed_reason || null,
         commit_attempt_count: row.commit_attempt_count || 0,
         committed_at_attempt: row.committed_at_attempt || null,
+        outcome_ack_sent_at: row.outcome_ack_sent_at || null,
         created_at: row.created_at || _now(),
         updated_at: row.updated_at || _now(),
       },
@@ -132,6 +133,24 @@ function makeFakePool() {
       if (!r || r.status !== 'committing') return { rows: [], rowCount: 0 };
       r.status = 'confirmed';
       return { rows: [], rowCount: 1 };
+    }
+
+    // Phase 45: tryMarkOutcomeAckSent existence probe
+    if (/SELECT 1 FROM signal_draft WHERE id=\$1/i.test(s)) {
+      const id = params[0];
+      const r = drafts.get(id);
+      if (!r) return { rows: [], rowCount: 0 };
+      return { rows: [{ '?column?': 1 }], rowCount: 1 };
+    }
+
+    // Phase 45: tryMarkOutcomeAckSent CAS
+    if (/UPDATE signal_draft[\s\S]+SET outcome_ack_sent_at = now\(\)[\s\S]+WHERE id=\$1 AND outcome_ack_sent_at IS NULL/i.test(s)) {
+      const id = params[0];
+      const r = drafts.get(id);
+      if (!r) return { rows: [], rowCount: 0 };
+      if (r.outcome_ack_sent_at != null) return { rows: [], rowCount: 0 };
+      r.outcome_ack_sent_at = _now();
+      return { rows: [{ id: r.id, outcome_ack_sent_at: r.outcome_ack_sent_at }], rowCount: 1 };
     }
 
     // releaseStaleLocks

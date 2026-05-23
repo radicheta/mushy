@@ -32,6 +32,12 @@ async function initDb(pool) {
   await pool.query(
     `ALTER TABLE signal_draft ADD COLUMN IF NOT EXISTS committed_at_attempt timestamptz`
   );
+  // Phase 45 D-01 (ACK-04): mark-then-send idempotency claim for commit
+  // outcome acks. The CAS UPDATE in tryMarkOutcomeAckSent is the only writer.
+  // No index: column is never scanned, only single-row CAS by id.
+  await pool.query(
+    `ALTER TABLE signal_draft ADD COLUMN IF NOT EXISTS outcome_ack_sent_at timestamptz`
+  );
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_signal_draft_status_confirmed
        ON signal_draft (status, confirmed_at) WHERE status IN ('confirmed','committing')`
@@ -174,6 +180,35 @@ async function getAttemptCount(pool, draftId) {
   }
 }
 
+// Phase 45 D-01 (ACK-04): mark-then-send claim primitive.
+//
+// Single-statement CAS that converts a NULL outcome_ack_sent_at into now() and
+// returns the row exactly once. Second + Nth callers see rowCount=0 and get
+// { ok:false, reason:'already_claimed' }. Unknown id => { ok:false,
+// reason:'not_found' }. SQL errors throw (consistent with the read helpers'
+// shape, distinct from the never-throw write helpers above; this is the
+// dispatch-side primitive and callers must see hard failures).
+async function tryMarkOutcomeAckSent(pool, draftId) {
+  const exists = await pool.query(
+    `SELECT 1 FROM signal_draft WHERE id=$1`,
+    [draftId]
+  );
+  if (!exists.rows || exists.rows.length === 0) {
+    return { ok: false, reason: 'not_found' };
+  }
+  const r = await pool.query(
+    `UPDATE signal_draft
+        SET outcome_ack_sent_at = now()
+      WHERE id=$1 AND outcome_ack_sent_at IS NULL
+      RETURNING id, outcome_ack_sent_at`,
+    [draftId]
+  );
+  if (r.rowCount === 0) {
+    return { ok: false, reason: 'already_claimed' };
+  }
+  return { ok: true, id: r.rows[0].id, claimed_at: r.rows[0].outcome_ack_sent_at };
+}
+
 module.exports = {
   initDb,
   findConfirmedCandidates,
@@ -184,4 +219,5 @@ module.exports = {
   releaseStaleLocks,
   getCachedResponse,
   getAttemptCount,
+  tryMarkOutcomeAckSent,
 };
