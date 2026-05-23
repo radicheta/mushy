@@ -211,7 +211,7 @@ describe('INOC-05: photo-absent ask-back -> numeric reply fills block_names', ()
       threshold: 0.7,
       requiredFields: ['event_date', 'groups'],
     });
-    expect(filledPreview).toContain('11 blocks across 2 groups for 2026-05-22');
+    expect(filledPreview).toContain('11 blocks across 2 groups for May 22');
     expect(filledPreview).toContain('Phase 48');
     expect(filledPreview).not.toMatch(/—/);
   });

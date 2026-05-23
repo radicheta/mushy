@@ -184,7 +184,9 @@ describe('buildPreview: seeding_session placeholder branch', () => {
       requiredFields: ['event_date', 'groups'],
     });
     expect(out).toMatch(/11 blocks across 5 groups/);
-    expect(out).toMatch(/2026-05-22/);
+    // Phase 47-04 hotfix: human-readable date ("May 22") per CONTEXT.md style lock.
+    expect(out).toMatch(/May 22/);
+    expect(out).not.toMatch(/2026-05-22/);
     // Per-group line for each group's species x qty from parent.
     expect(out).toMatch(/SHI x 3 from 260118_SHI_25/);
     expect(out).toMatch(/KOY x 2 from 260201_KOY_1/);
