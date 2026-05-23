@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Event-gate + Durable signal_outbound (tenant-aware)
-status: Phase 44 6/7 done; 44-01 ship-gate fixture shipped (61 real + 39 synth, D-20 exact); only 44-04 remains (event-gate code + smoke harness)
-last_updated: "2026-05-23T00:00:00.000Z"
+status: Phase 44 7/7 done; 44-04 event-gate shipped + operator-attested live-fire PASS (8/10, cache empirically verified); v1.8 ship-ready pending prod alerter rebuild+deploy
+last_updated: "2026-05-23T04:00:00.000Z"
 last_activity: 2026-05-23
 progress:
   total_phases: 26
   completed_phases: 4
   total_plans: 64
-  completed_plans: 30
-  percent: 47
+  completed_plans: 31
+  percent: 48
 ---
 
 # Project State
@@ -23,6 +23,8 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 **Current focus:** Phase 46 SHIPPED 2026-05-21. Next up: choose between Phase 44 (v1.8 first phase) and the sht30 watchdog structural fix.
 
 ## Current Position
+
+Phase: 44 — **7/7 COMPLETE 2026-05-23.** Plan-04 event-gate shipped; operator-attested live-fire PASS 8/10 (at floor) with cache empirically verified (1/10 write, 9/10 read, ~$0.05). One bug surfaced live and fixed: Anthropic SDK contract — `signal` belongs in request-options arg, not body params (commit `1429684`). v1.8 ship-ready pending prod alerter rebuild+deploy.
 
 Phase: 46 — **SHIPPED 2026-05-21.** Live-fire attested Round 3 at T0+3min32s. Two extra bugs found and fixed in-flight: D-09 globals-shadow (`86d4340`) + D-10 oobN/oobWindowMin gate (`5f90cc7`). Two backlog items left as todos.
 Plan: 3 of 3 complete (46-01, 46-02, 46-03)
@@ -200,6 +202,7 @@ Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (for
 - [Phase ?]: 44-05: D-18 truncation — inbound 200ch / outbound 400ch per-stream caps in merged fmtHistory
 - [Phase ?]: 44-05: D-19 prompt field — lastBotOutbound rendered as distinct '## Last thing you said to the farmer' block
 - [Phase ?]: Phase 44-06 path B: alerter secrets via env_file — tenants/mossrock/secrets.env (required:false); root .env retains shared secrets until v1.9
+- [v1.8 lesson, 44-04]: Anthropic SDK contract surprise — `signal` belongs in the request-options second arg of `client.messages.create(body, opts)`, NOT inside `body`. The SDK strict-validates the body schema and rejects unknown keys with 400 `invalid_request_error`. jest.fn() unit mocks accept any param shape, so this is invisible until a real SDK touches a real API. Caught by EVAL_RUN_LIVE=1 live-fire on round 1; fixed in `1429684` (test flipped from codifying-the-bug to asserting-SDK-correct-shape). Reinforces [[feedback_unit_tests_dont_catch_wiring]] — live-fire is the real ship-gate.
 
 ### Pending Todos
 
@@ -275,8 +278,10 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 ## Session Continuity
 
-Last session: 2026-05-22T13:35:03.294Z
-Next up: kick off v1.8 Phase 1 (event-gate + signal_outbound). Plan-01 = 100-capture hand-classification smoke from mushdatadump-prod, BEFORE spec-locking the gate. Reference notes:
+Last session: 2026-05-23T04:00:00.000Z
+Next up: v1.8 ship cutover — rebuild+deploy alerter on elder-plops (`docker compose up -d --build alerter`) to ship Phase 44 event-gate to prod; confirm boot logs + first capture; optional 24-h soak before declaring v1.8 shipped. Then Phase 45 (NORTH-STAR commit_failed ack + replay outstanding silent-failure drafts).
+
+Previously: kick off v1.8 Phase 1 (event-gate + signal_outbound). Plan-01 = 100-capture hand-classification smoke from mushdatadump-prod, BEFORE spec-locking the gate. Reference notes:
 
   - .planning/notes/2026-05-17-is-this-an-event-gate.md (event-gate design)
   - .planning/notes/2026-05-17-llm-outbound-amnesia.md (signal_outbound table shape)
