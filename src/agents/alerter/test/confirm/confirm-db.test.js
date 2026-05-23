@@ -194,6 +194,67 @@ describe('confirm-db (Phase 39 D-07/D-07a)', () => {
     });
   });
 
+  // Phase 50 Plan 03: getCaptureQuoteTarget helper for outbound quote-threading.
+  describe('getCaptureQuoteTarget (Plan 50-03)', () => {
+    it('returns {signal_msg_ts, sender, raw_text} when capture has populated ts', async () => {
+      const pool = makeFakePool();
+      pool.seedCapture({
+        id: 'cap-ok',
+        sender: '+59891840205',
+        signal_msg_ts: 1779562666675,
+        raw_text: 'hello from farmer',
+      });
+      const r = await confirmDb.getCaptureQuoteTarget(pool, 'cap-ok');
+      expect(r).toEqual({
+        signal_msg_ts: 1779562666675,
+        sender: '+59891840205',
+        raw_text: 'hello from farmer',
+      });
+    });
+
+    it('returns null when capture has signal_msg_ts NULL', async () => {
+      const pool = makeFakePool();
+      pool.seedCapture({ id: 'cap-null-ts', sender: '+1', signal_msg_ts: null, raw_text: 'x' });
+      const r = await confirmDb.getCaptureQuoteTarget(pool, 'cap-null-ts');
+      expect(r).toBeNull();
+    });
+
+    it('returns null when capture row not found', async () => {
+      const pool = makeFakePool();
+      const r = await confirmDb.getCaptureQuoteTarget(pool, 'cap-missing');
+      expect(r).toBeNull();
+    });
+
+    it('returns null when captureId is null', async () => {
+      const pool = makeFakePool();
+      const r = await confirmDb.getCaptureQuoteTarget(pool, null);
+      expect(r).toBeNull();
+    });
+
+    it('returns null on DB error (no exception escapes)', async () => {
+      const pool = makeFakePool();
+      pool.setCaptureSelectThrow(true);
+      const r = await confirmDb.getCaptureQuoteTarget(pool, 'cap-anything');
+      expect(r).toBeNull();
+    });
+
+    it('normalises null raw_text to empty string', async () => {
+      const pool = makeFakePool();
+      pool.seedCapture({
+        id: 'cap-imgonly',
+        sender: '+1',
+        signal_msg_ts: 1779562666676,
+        raw_text: null,
+      });
+      const r = await confirmDb.getCaptureQuoteTarget(pool, 'cap-imgonly');
+      expect(r).toEqual({
+        signal_msg_ts: 1779562666676,
+        sender: '+1',
+        raw_text: '',
+      });
+    });
+  });
+
   describe('appendEventViaPool', () => {
     it('returns the inserted seq', async () => {
       const pool = makeFakePool();
