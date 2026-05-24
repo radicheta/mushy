@@ -278,9 +278,15 @@ function createExtractionPipeline({
       }];
       let extractResult;
       try {
+        // Phase 53 BACK-01: forward corpus_context (e.g. {default_year:2025,
+        // source:'paper_log'}) when the caller supplies it. The extractor's
+        // buildInitialUserContent emits a `corpus_context: {...}` prompt block
+        // only when this is a non-null object (extractor.js:64-69), so passing
+        // null is a back-compat no-op for every existing live-capture caller.
         extractResult = await extractor.extract({
           captures,
           inFlightDraft: treatInFlight,
+          corpusContext: captureCtx.corpusContext || null,
         });
       } catch (e) {
         logger.warn && logger.warn(`[extraction] extract threw: ${e.message}`);

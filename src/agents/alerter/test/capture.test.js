@@ -202,8 +202,9 @@ describe('createCapturePipeline', () => {
       rebuild(new Map([[F2_PHONE, 'f2']]));
       await pipeline.handle(textEnvelope);
       const [, params] = pool.query.mock.calls[0];
-      // 16 params: 13 base + Phase 50 Plan-04 (signal_msg_ts, quote_msg_ts, quote_author_e164)
-      expect(params).toHaveLength(16);
+      // 17 params: 13 base + Phase 50 Plan-04 (signal_msg_ts, quote_msg_ts, quote_author_e164) + Phase 53 BACK-01 (corpus_context)
+      expect(params).toHaveLength(17);
+      expect(params[16]).toBeNull();           // corpus_context (live captures never set it)
       expect(params[10]).toBeNull();          // group_id
       expect(params[11]).toBe('f2');           // farmos_person
       expect(params[12]).toBe('dm');           // reply_target_kind

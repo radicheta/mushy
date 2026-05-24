@@ -72,6 +72,43 @@ const captureCtx = {
   capturedAtMs: Date.parse('2026-05-18T12:00:00Z'),
 };
 
+// Phase 53 BACK-01 Task 2: corpus_context plumbing.
+// captureCtx.corpusContext -> extractor.extract({corpusContext:...}). Null/absent
+// preserves pre-Phase-53 behavior (back-compat with every existing live caller).
+describe('extraction pipeline -- BACK-01 corpus_context plumbing', () => {
+  test('captureCtx.corpusContext={default_year:2025,...} passes through to extractor.extract verbatim', async () => {
+    const cc = { default_year: 2025, source: 'paper_log' };
+    const { pipeline, extractor } = makeBaseDeps({
+      extractResult: {
+        ok: true,
+        drafts: [{ draft: { type: 'observation' }, per_field_confidence: {} }],
+        draft: { type: 'observation' },
+        per_field_confidence: {},
+        continuity_decision: 'start_new',
+      },
+    });
+    await pipeline.enqueue({ ...captureCtx, corpusContext: cc });
+    expect(extractor.extract).toHaveBeenCalledTimes(1);
+    const arg = extractor.extract.mock.calls[0][0];
+    expect(arg.corpusContext).toEqual(cc);
+  });
+
+  test('captureCtx omits corpusContext -> extractor.extract called with corpusContext:null (back-compat)', async () => {
+    const { pipeline, extractor } = makeBaseDeps({
+      extractResult: {
+        ok: true,
+        drafts: [{ draft: { type: 'observation' }, per_field_confidence: {} }],
+        draft: { type: 'observation' },
+        per_field_confidence: {},
+        continuity_decision: 'start_new',
+      },
+    });
+    await pipeline.enqueue(captureCtx);
+    const arg = extractor.extract.mock.calls[0][0];
+    expect(arg.corpusContext).toBeNull();
+  });
+});
+
 describe('extraction pipeline -- 999.53 usage stamp', () => {
   test('ok + usage object: issues UPDATE signal_capture SET input_tokens ... WHERE id = captureId', async () => {
     const { pipeline, pool } = makeBaseDeps({

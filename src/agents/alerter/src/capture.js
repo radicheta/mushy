@@ -215,6 +215,10 @@ function createCapturePipeline({
         replyTargetKind,
         groupId,
         capturedAtMs,
+        // Phase 53 BACK-01: corpus_context propagates from the receive layer
+        // (Phase 54 backfill harness sets it; live receive-loop never does).
+        // Defaults to null so live captures behave exactly as pre-Phase-53.
+        corpusContext: ctx.corpusContext || null,
       }).catch((e) => logger.warn(`[capture] extraction enqueue failed: ${e.message}`));
     }
 
