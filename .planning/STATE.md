@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.10
 milestone_name: Order-Independent Writes (upsert-by-stable-identity)
 status: Phase 51 complete
-last_updated: "2026-05-24T18:42:50.970Z"
-last_activity: 2026-05-24 -- Phase 51 marked complete
+last_updated: "2026-05-24T19:33:58.930Z"
+last_activity: 2026-05-24
 progress:
   total_phases: 23
   completed_phases: 10
@@ -87,7 +87,7 @@ Phase: 51 — COMPLETE
 Phase: 46 — **SHIPPED 2026-05-21.** Live-fire attested Round 3 at T0+3min32s. Two extra bugs found and fixed in-flight: D-09 globals-shadow (`86d4340`) + D-10 oobN/oobWindowMin gate (`5f90cc7`). Two backlog items left as todos.
 Plan: 1 of 6
 Milestone: v1.7 -- Multimodal Signal to FarmOS Events. **Effectively shipped.** Phases 36-43 all complete; only Phase 42 (SHI-on-Sawdust pilot) remains as a calendar-bound human-driven run (3-4wk colonize). Re-audited 2026-05-15.
-Last activity: 2026-05-24 -- Phase 51 marked complete
+Last activity: 2026-05-24
 
 **Phase 46 close-out (final):**
 
