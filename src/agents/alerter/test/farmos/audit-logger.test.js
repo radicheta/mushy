@@ -19,7 +19,7 @@ describe('audit-logger (Phase 40 Plan 05)', () => {
     return { al, infoCalls, warnCalls, eventCalls };
   }
 
-  it('emits one JSON line with 13 named keys', async () => {
+  it('emits one JSON line with 16 named keys (Phase 51: outcome/conflicts/etag_source)', async () => {
     const { al, infoCalls } = build();
     await al.logCommit('commit_success', {
       id: 'd1', sender_e164: '+15550001234', log_type: 'seeding',
@@ -30,8 +30,41 @@ describe('audit-logger (Phase 40 Plan 05)', () => {
     expect(infoCalls.length).toBe(1);
     const obj = JSON.parse(infoCalls[0]);
     expect(Object.keys(obj).sort()).toEqual([
-      'asset_ids','attempt','draft_id','event','farmer','farmos_url','file_ids',
-      'http_status','latency_ms','log_ids','log_type','reason','ts',
+      'asset_ids','attempt','conflicts','draft_id','etag_source','event','farmer','farmos_url','file_ids',
+      'http_status','latency_ms','log_ids','log_type','outcome','reason','ts',
+    ]);
+    expect(Object.keys(obj).length).toBe(16);
+  });
+
+  it('outcome propagates from result', async () => {
+    const { al, infoCalls } = build();
+    await al.logCommit('commit_success', { id: 'd1' }, { outcome: 'patched' });
+    const obj = JSON.parse(infoCalls[0]);
+    expect(obj.outcome).toBe('patched');
+  });
+
+  it('conflicts defaults to [] when omitted', async () => {
+    const { al, infoCalls } = build();
+    await al.logCommit('commit_success', { id: 'd1' }, {});
+    const obj = JSON.parse(infoCalls[0]);
+    expect(obj.conflicts).toEqual([]);
+  });
+
+  it('etag_source defaults to null when omitted', async () => {
+    const { al, infoCalls } = build();
+    await al.logCommit('commit_success', { id: 'd1' }, {});
+    const obj = JSON.parse(infoCalls[0]);
+    expect(obj.etag_source).toBeNull();
+  });
+
+  it('conflicts array passes through unchanged', async () => {
+    const { al, infoCalls } = build();
+    await al.logCommit('commit_success', { id: 'd1' }, {
+      conflicts: [{ field: 'fungi_type', existing: 'SHI', incoming: 'KOY', kind: 'scalar_conflict' }],
+    });
+    const obj = JSON.parse(infoCalls[0]);
+    expect(obj.conflicts).toEqual([
+      { field: 'fungi_type', existing: 'SHI', incoming: 'KOY', kind: 'scalar_conflict' },
     ]);
   });
 
@@ -48,7 +81,7 @@ describe('audit-logger (Phase 40 Plan 05)', () => {
     expect(warnCalls.some((w) => /event-row write failed/.test(w))).toBe(true);
   });
 
-  it('null result fields default to [] / null', async () => {
+  it('null result fields default to [] / null (Phase 51 adds outcome/conflicts/etag_source defaults)', async () => {
     const { al, infoCalls } = build();
     await al.logCommit('commit_attempt', { id: 'd1' }, null);
     const obj = JSON.parse(infoCalls[0]);
@@ -57,6 +90,9 @@ describe('audit-logger (Phase 40 Plan 05)', () => {
     expect(obj.file_ids).toEqual([]);
     expect(obj.http_status).toBeNull();
     expect(obj.latency_ms).toBeNull();
+    expect(obj.outcome).toBeNull();
+    expect(obj.conflicts).toEqual([]);
+    expect(obj.etag_source).toBeNull();
   });
 
   it('ts is ISO-8601', async () => {
