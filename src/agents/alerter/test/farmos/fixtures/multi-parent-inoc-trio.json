@@ -1,0 +1,76 @@
+{
+  "_comment": "Phase 51 Plan 01 Task 3 — May-22 + Jan-18 + Mar-04 inoc trio. Multi-parent shape is expressed as two groups[] entries in event 2 because commit-seeding-session.js parses g.parent.value as a scalar (line 110). The expected_final.parent_lineage records the logical multi-parent fact for property-test assertions. Stub UUIDs sourced from .planning/notes/2026-05-24-prod-write-receipt-uuids.json.",
+  "events": [
+    {
+      "label": "260522_KOY inoc — single parent → 4 children",
+      "event_date": "2026-05-22",
+      "groups": [
+        {
+          "species": { "value": "KOY" },
+          "parent": { "value": "260118_KOY_12" },
+          "qty": { "value": 4 },
+          "child_block_names": {
+            "value": ["260522_KOY_1", "260522_KOY_2", "260522_KOY_3", "260522_KOY_4"]
+          }
+        }
+      ]
+    },
+    {
+      "label": "260118_SHI inoc — multi-parent (SHI_23 + SHI_26) → 3 children",
+      "event_date": "2026-01-18",
+      "groups": [
+        {
+          "species": { "value": "SHI" },
+          "parent": { "value": "260118_SHI_23" },
+          "qty": { "value": 2 },
+          "child_block_names": {
+            "value": ["260118_SHI_C1", "260118_SHI_C2"]
+          }
+        },
+        {
+          "species": { "value": "SHI" },
+          "parent": { "value": "260118_SHI_26" },
+          "qty": { "value": 1 },
+          "child_block_names": {
+            "value": ["260118_SHI_C3"]
+          }
+        }
+      ]
+    },
+    {
+      "label": "260304_SHI inoc — single parent → 2 children",
+      "event_date": "2026-03-04",
+      "groups": [
+        {
+          "species": { "value": "SHI" },
+          "parent": { "value": "260304_SHI_5" },
+          "qty": { "value": 2 },
+          "child_block_names": {
+            "value": ["260304_SHI_C1", "260304_SHI_C2"]
+          }
+        }
+      ]
+    }
+  ],
+  "expected_final": {
+    "asset_count": 13,
+    "log_count": 9,
+    "parent_lineage": {
+      "260522_KOY_1": ["260118_KOY_12"],
+      "260522_KOY_2": ["260118_KOY_12"],
+      "260522_KOY_3": ["260118_KOY_12"],
+      "260522_KOY_4": ["260118_KOY_12"],
+      "260118_SHI_C1": ["260118_SHI_23", "260118_SHI_26"],
+      "260118_SHI_C2": ["260118_SHI_23", "260118_SHI_26"],
+      "260118_SHI_C3": ["260118_SHI_23", "260118_SHI_26"],
+      "260304_SHI_C1": ["260304_SHI_5"],
+      "260304_SHI_C2": ["260304_SHI_5"]
+    }
+  },
+  "stub_uuids": {
+    "260304_SHI_5": "5dc1c155-c806-4377-81aa-bcd8b8d88474",
+    "260118_SHI_23": "302d0064-a45c-4f28-8852-a219160c211a",
+    "260118_SHI_26": "ec445750-a1b2-4ee6-b04c-42a88340196f",
+    "260118_KOY_12": "56c719d1-8367-4dfb-9fec-15ed1d8a5078"
+  }
+}

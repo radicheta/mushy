@@ -153,4 +153,30 @@ describe('createFarmosClient (Phase 40 Plan 02)', () => {
     expect(captured.headers['Content-Disposition']).toMatch(/filename="pic.jpg"/);
   });
 
+  // Phase 51 Plan 01 Task 2: opts.headers must reach fetch and WIN over defaults.
+  it('opts.headers reaches fetch alongside default headers (If-Match plumbing)', async () => {
+    let captured = null;
+    const fetchImpl = jest.fn(async (url, init) => {
+      if (/login/.test(url)) return authResponse();
+      captured = init;
+      return mockResponse({ status: 200, body: { data: {} } });
+    });
+    const c = makeClient(fetchImpl);
+    await c.patch('/api/asset/fungi/a-1', { data: {} }, { headers: { 'If-Match': '7' } });
+    expect(captured.headers['If-Match']).toBe('7');
+    expect(captured.headers.Accept).toBe('application/vnd.api+json');
+  });
+
+  it('opts.headers WINS over default Accept', async () => {
+    let captured = null;
+    const fetchImpl = jest.fn(async (url, init) => {
+      if (/login/.test(url)) return authResponse();
+      captured = init;
+      return mockResponse({ status: 200, body: { data: {} } });
+    });
+    const c = makeClient(fetchImpl);
+    await c.get('/api/asset/fungi/a-1', { headers: { Accept: 'application/json' } });
+    expect(captured.headers.Accept).toBe('application/json');
+  });
+
 });
