@@ -243,7 +243,16 @@ Honors locked schema (B5 SEQ per-session per 2026-05-22 clarification in farmos 
 - BACK-06: Bulk-backfill mode flag short-circuits CONF-01 YES requirement for `farmer=santi` only; every auto-confirmed draft still emits a farmer-facing summary (audit, not just silent write).
 - BACK-07: Paid LLM responses persisted to `.planning/backfill/2025-notebook/<run-id>/responses.jsonl` (append-only, per-call unique).
 - BACK-08: Smoke run on 10 representative pages produces correct stub-enrichment on the 4 May-22 ancestors (UUIDs byte-identical pre/post per Phase 51 contract). No duplicate assets created.
-**Touches:** `scripts/`, possibly small alerter additions for the bulk-mode short-circuit.
+**Touches:** `scripts/`, possibly small alerter additions for the bulk-mode short-circuit. Path corrected from ROADMAP-original `mushdatadump-prod/` to actual corpus path `/mnt/slime-kingdom/shared/mushdatadump/jpeg/` (range IMG_3775..IMG_3861). BACK-08 stub-enrichment sub-clause resolved as N/A (May-22 stubs are 2026-dated, postdate 2025 notebook); substituted intra-cycle upsert-stability check against Phase 51 contract — same invariant, validated on existing data.
+**Plans:** 6 plans
+
+Plans:
+- [ ] 54-01-PLAN.md — backfill-notebook.js CLI core, prod-guard, santi-gate, page-range filter, synthetic-capture dispatch (BACK-05)
+- [ ] 54-02-PLAN.md — bulk-backfill short-circuit: auto-flip drafts to confirmed + commit-router dispatch + summaries.log audit (BACK-06)
+- [ ] 54-03-PLAN.md — paid-LLM observer hook on extractor + append-only responses.jsonl per run-id (BACK-07)
+- [ ] 54-04-PLAN.md — receipt.md builder: per-page + aggregate + Phase 51 upsert-stability check (BACK-08 part 1)
+- [ ] 54-05-PLAN.md — Cycle 1 (5 pages) operator runbook + farmer checkpoint (BACK-08 part 2)
+- [ ] 54-06-PLAN.md — Cycle 2 (20 pages) operator runbook + farmer checkpoint + Phase 55 unlock decision (BACK-08 part 3)
 
 ### Phase 55: Full corpus run + receipt
 
