@@ -9,11 +9,12 @@ describe('capture-db', () => {
     pool = { query: jest.fn().mockResolvedValue({ rows: [], rowCount: 0 }) };
   });
 
-  test('initDb issues CREATE TABLE + 2 CREATE INDEX + 12 ALTER TABLE ADD COLUMN IF NOT EXISTS + 1 CREATE VIEW (no create_hypertable)', async () => {
+  test('initDb issues CREATE TABLE + 2 CREATE INDEX + 13 ALTER TABLE ADD COLUMN IF NOT EXISTS + 1 CREATE VIEW (no create_hypertable)', async () => {
     await initDb(pool);
     // 1 CREATE TABLE + 2 CREATE INDEX + 3 Phase 37 ALTERs + 5 backlog-999.53 ALTERs
-    // + 1 Phase 44 D-04 ALTER (extraction_gate) + 3 Phase 50 Plan-01 ALTERs + 1 CREATE VIEW = 16
-    expect(pool.query).toHaveBeenCalledTimes(16);
+    // + 1 Phase 44 D-04 ALTER (extraction_gate) + 3 Phase 50 Plan-01 ALTERs
+    // + 1 Phase 53 BACK-01 ALTER (corpus_context) + 1 CREATE VIEW = 17
+    expect(pool.query).toHaveBeenCalledTimes(17);
     const sql0 = pool.query.mock.calls[0][0];
     expect(sql0).toMatch(/CREATE TABLE IF NOT EXISTS signal_capture/);
     const sql1 = pool.query.mock.calls[1][0];
@@ -37,16 +38,18 @@ describe('capture-db', () => {
     expect(allSql).toMatch(/ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS signal_msg_ts bigint/);
     expect(allSql).toMatch(/ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS quote_msg_ts bigint/);
     expect(allSql).toMatch(/ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS quote_author_e164 text/);
+    // Phase 53 BACK-01: corpus_context JSONB for year-context shim (Phase 54 backfill harness).
+    expect(allSql).toMatch(/ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS corpus_context jsonb/);
     expect(allSql).toMatch(/CREATE OR REPLACE VIEW v_llm_cost_daily/);
     // Must NOT call create_hypertable (regular table per RESEARCH Open Q #1)
     expect(allSql).not.toMatch(/create_hypertable/);
   });
 
-  test('initDb is idempotent: second invocation also issues 16 queries with same shape', async () => {
+  test('initDb is idempotent: second invocation also issues 17 queries with same shape', async () => {
     await initDb(pool);
     await initDb(pool);
-    expect(pool.query).toHaveBeenCalledTimes(32);
-    const secondAllSql = pool.query.mock.calls.slice(16).map((c) => c[0]).join('\n');
+    expect(pool.query).toHaveBeenCalledTimes(34);
+    const secondAllSql = pool.query.mock.calls.slice(17).map((c) => c[0]).join('\n');
     expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS group_id text/);
     expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS farmos_person text/);
     expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS reply_target_kind text/);
@@ -58,7 +61,40 @@ describe('capture-db', () => {
     expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS signal_msg_ts bigint/);
     expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS quote_msg_ts bigint/);
     expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS quote_author_e164 text/);
+    expect(secondAllSql).toMatch(/ADD COLUMN IF NOT EXISTS corpus_context jsonb/);
     expect(secondAllSql).toMatch(/CREATE OR REPLACE VIEW v_llm_cost_daily/);
+  });
+
+  // Phase 53 BACK-01: insertCapture accepts an optional corpus_context JSONB blob.
+  // Default null (back-compat for every existing live-capture caller); when set,
+  // bound as a JS object — node-postgres handles native JSONB serialization for
+  // plain objects, so JSON.stringify is not required.
+  test('BACK-01: insertCapture omitting corpus_context binds null at position 17 and SQL includes the column', async () => {
+    const row = {
+      id: 'ulid-back01-bc', captured_at: new Date(), sender: '+1', message_type: 'text',
+      raw_text: null, attachment_paths: [], transcript: null,
+      llm_session_tag: null, llm_reply: null, degraded: false,
+    };
+    await insertCapture(pool, row);
+    const [sql, params] = pool.query.mock.calls[0];
+    expect(sql).toMatch(/corpus_context/);
+    expect(sql).toMatch(/VALUES \(\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, \$10, \$11, \$12, \$13, \$14, \$15, \$16, \$17\)/);
+    expect(params).toHaveLength(17);
+    expect(params[16]).toBeNull();
+  });
+
+  test('BACK-01: insertCapture writes provided corpus_context object at position 17 verbatim', async () => {
+    const corpusContext = { default_year: 2025, source: 'paper_log' };
+    const row = {
+      id: 'ulid-back01-set', captured_at: new Date(), sender: '+1', message_type: 'text',
+      raw_text: null, attachment_paths: [], transcript: null,
+      llm_session_tag: null, llm_reply: null, degraded: false,
+      corpus_context: corpusContext,
+    };
+    await insertCapture(pool, row);
+    const [, params] = pool.query.mock.calls[0];
+    expect(params).toHaveLength(17);
+    expect(params[16]).toEqual(corpusContext);
   });
 
   // Phase 50 Plan-04: extend insertCapture signature with three new fields.
@@ -74,7 +110,7 @@ describe('capture-db', () => {
     expect(sql).toMatch(/signal_msg_ts/);
     expect(sql).toMatch(/quote_msg_ts/);
     expect(sql).toMatch(/quote_author_e164/);
-    expect(params).toHaveLength(16);
+    expect(params).toHaveLength(17);
     expect(params[13]).toBeNull();   // signal_msg_ts
     expect(params[14]).toBeNull();   // quote_msg_ts
     expect(params[15]).toBeNull();   // quote_author_e164
@@ -91,13 +127,13 @@ describe('capture-db', () => {
     };
     await insertCapture(pool, row);
     const [, params] = pool.query.mock.calls[0];
-    expect(params).toHaveLength(16);
+    expect(params).toHaveLength(17);
     expect(params[13]).toBe(1779562666675);
     expect(params[14]).toBe(1779560111000);
     expect(params[15]).toBe('+59891840205');
   });
 
-  test('insertCapture calls pool.query once with 16 parameterized placeholders (13 base + 3 Phase 50)', async () => {
+  test('insertCapture calls pool.query once with 17 parameterized placeholders (13 base + 3 Phase 50 + 1 Phase 53)', async () => {
     const row = {
       id: 'ulid-test-01',
       captured_at: new Date('2026-04-27T12:00:00Z'),
@@ -113,8 +149,8 @@ describe('capture-db', () => {
     await insertCapture(pool, row);
     expect(pool.query).toHaveBeenCalledTimes(1);
     const [sql, params] = pool.query.mock.calls[0];
-    expect(sql).toMatch(/VALUES \(\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, \$10, \$11, \$12, \$13, \$14, \$15, \$16\)/);
-    expect(params).toHaveLength(16);
+    expect(sql).toMatch(/VALUES \(\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, \$10, \$11, \$12, \$13, \$14, \$15, \$16, \$17\)/);
+    expect(params).toHaveLength(17);
     expect(params[0]).toBe('ulid-test-01');   // id first
     expect(params[9]).toBe(false);             // degraded
     // Phase 37: three new fields default to null when row omits them.
@@ -125,6 +161,8 @@ describe('capture-db', () => {
     expect(params[13]).toBeNull();             // signal_msg_ts
     expect(params[14]).toBeNull();             // quote_msg_ts
     expect(params[15]).toBeNull();             // quote_author_e164
+    // Phase 53 BACK-01: corpus_context defaults to null.
+    expect(params[16]).toBeNull();             // corpus_context
   });
 
   test('insertCapture writes provided group_id, farmos_person, reply_target_kind at positions 11..13', async () => {
