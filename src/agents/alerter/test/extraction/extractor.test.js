@@ -377,3 +377,85 @@ describe('Phase 47 Plan 02: FEW_SHOT includes May-22 multi-parent seeding_sessio
     expect(ids[ids.length - 1]).toBe('tu_fewshot_6');
   });
 });
+
+// ============================================================================
+// Phase 54 Plan 03: onLlmCall observer hook tests.
+// ============================================================================
+
+describe('extractor onLlmCall observer (Phase 54 Plan 03)', () => {
+  beforeEach(() => {
+    mockCreate.mockReset();
+  });
+
+  test('fires once per successful Anthropic call with all documented fields', async () => {
+    mockCreate.mockResolvedValueOnce(toolUseResponse(validInput()));
+    const observed = [];
+    const ex = createExtractor({
+      apiKey: 'k', logger: silentLogger,
+      onLlmCall: (o) => { observed.push(o); },
+    });
+    const r = await ex.extract({
+      captures: [{ captureId: 'cap-1', text: 'hi' }],
+    });
+    expect(r.ok).toBe(true);
+    expect(observed).toHaveLength(1);
+    const o = observed[0];
+    expect(o.captureId).toBe('cap-1');
+    expect(o.model).toBe('claude-sonnet-4-6');
+    expect(typeof o.input_tokens).toBe('number');
+    expect(typeof o.output_tokens).toBe('number');
+    expect(typeof o.latency_ms).toBe('number');
+    expect(o.raw_response).toBeTruthy();
+    expect(o.request_hash).toMatch(/^[0-9a-f]{16}$/);
+    expect(typeof o.ts).toBe('string');
+    expect(o.error).toBeNull();
+  });
+
+  test('fires for BOTH the initial call and the schema-retry call', async () => {
+    // First call -> invalid (forces retry); second -> valid.
+    mockCreate
+      .mockResolvedValueOnce(toolUseResponse({ bogus: true }))
+      .mockResolvedValueOnce(toolUseResponse(validInput()));
+    const observed = [];
+    const ex = createExtractor({
+      apiKey: 'k', logger: silentLogger,
+      onLlmCall: (o) => { observed.push(o); },
+    });
+    const r = await ex.extract({ captures: [{ captureId: 'cap-2', text: 'x' }] });
+    expect(r.ok).toBe(true);
+    expect(observed).toHaveLength(2);
+    expect(observed.every((o) => o.captureId === 'cap-2')).toBe(true);
+  });
+
+  test('observer throwing does not propagate; extract returns normal result', async () => {
+    mockCreate.mockResolvedValueOnce(toolUseResponse(validInput()));
+    const warnings = [];
+    const ex = createExtractor({
+      apiKey: 'k',
+      logger: { ...silentLogger, warn: (m) => warnings.push(m) },
+      onLlmCall: () => { throw new Error('observer-boom'); },
+    });
+    const r = await ex.extract({ captures: [{ captureId: 'cap-3', text: 'x' }] });
+    expect(r.ok).toBe(true);
+    expect(warnings.some((m) => /onLlmCall observer threw: observer-boom/.test(m))).toBe(true);
+  });
+
+  test('without onLlmCall, no errors and existing call sites unchanged (regression)', async () => {
+    mockCreate.mockResolvedValueOnce(toolUseResponse(validInput()));
+    const ex = createExtractor({ apiKey: 'k', logger: silentLogger });
+    const r = await ex.extract({ captures: [{ text: 'x' }] });
+    expect(r.ok).toBe(true);
+  });
+
+  test('request_hash differs per request content', async () => {
+    mockCreate.mockResolvedValue(toolUseResponse(validInput()));
+    const observed = [];
+    const ex = createExtractor({
+      apiKey: 'k', logger: silentLogger,
+      onLlmCall: (o) => { observed.push(o); },
+    });
+    await ex.extract({ captures: [{ captureId: 'c1', text: 'alpha' }] });
+    await ex.extract({ captures: [{ captureId: 'c2', text: 'beta' }] });
+    expect(observed[0].request_hash).not.toBe(observed[1].request_hash);
+  });
+});

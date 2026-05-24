@@ -374,6 +374,80 @@ function computeRunDir(runId) {
   return path.join(RUN_DIR_ROOT, runId);
 }
 
+// ============================================================================
+// Phase 54 Plan 03: paid-LLM responses.jsonl writer + onLlmCall observer +
+// run-id collision guard. Honors [[feedback_persist_paid_results_default]]
+// and [[feedback_never_overwrite_paid_live_api_results]].
+// ============================================================================
+
+// 2026-05-24 Anthropic pricing per MTok (Sonnet 4.6 + Haiku 3.5). Adjust on
+// rate-card change. Documented inline so the cost_estimate_usd line in
+// responses.jsonl traces back to a single source of truth.
+const SONNET_INPUT_USD_PER_MTOK = 3.00;
+const SONNET_OUTPUT_USD_PER_MTOK = 15.00;
+const HAIKU_INPUT_USD_PER_MTOK = 0.80;
+const HAIKU_OUTPUT_USD_PER_MTOK = 4.00;
+
+function estimateCostUsd(model, inputTokens, outputTokens) {
+  const m = String(model || '').toLowerCase();
+  const isHaiku = m.includes('haiku');
+  const inRate = isHaiku ? HAIKU_INPUT_USD_PER_MTOK : SONNET_INPUT_USD_PER_MTOK;
+  const outRate = isHaiku ? HAIKU_OUTPUT_USD_PER_MTOK : SONNET_OUTPUT_USD_PER_MTOK;
+  return ((inputTokens || 0) / 1e6) * inRate + ((outputTokens || 0) / 1e6) * outRate;
+}
+
+function runIdExistsGuard(runDir) {
+  // Refuses to start if responses.jsonl already exists in the runDir; an empty
+  // runDir is fine (allows manual retry after a failed bootstrap).
+  try {
+    const f = path.join(runDir, 'responses.jsonl');
+    if (fs.existsSync(f)) {
+      const err = new Error('run_id_exists');
+      err.code = 'RUN_ID_EXISTS';
+      err.path = f;
+      throw err;
+    }
+  } catch (e) {
+    if (e && e.code === 'RUN_ID_EXISTS') throw e;
+    // fs error other than ENOENT — treat as fatal to avoid clobbering.
+    if (e && e.code && e.code !== 'ENOENT') throw e;
+  }
+}
+
+function openResponsesJsonl(runDir) {
+  fs.mkdirSync(runDir, { recursive: true });
+  return fs.openSync(path.join(runDir, 'responses.jsonl'), 'a');
+}
+
+function buildResponsesLine(observation) {
+  const line = {
+    ts: observation.ts,
+    captureId: observation.captureId || null,
+    model: observation.model,
+    input_tokens: observation.input_tokens || 0,
+    output_tokens: observation.output_tokens || 0,
+    cache_creation_input_tokens: observation.cache_creation_input_tokens || 0,
+    cache_read_input_tokens: observation.cache_read_input_tokens || 0,
+    latency_ms: observation.latency_ms || 0,
+    cost_estimate_usd: estimateCostUsd(
+      observation.model, observation.input_tokens, observation.output_tokens
+    ),
+    request_hash: observation.request_hash,
+    raw_response: observation.raw_response || null,
+    error: observation.error || null,
+  };
+  return JSON.stringify(line);
+}
+
+function makeResponsesObserver(fd) {
+  // Synchronous fs.writeSync per call — guarantees evidence is on-disk before
+  // extract() returns (T-54-09 mitigation).
+  return function onLlmCall(observation) {
+    const line = buildResponsesLine(observation);
+    fs.writeSync(fd, line + '\n');
+  };
+}
+
 function printUsage() {
   process.stdout.write(USAGE);
 }
@@ -443,34 +517,38 @@ async function main(argv = process.argv.slice(2), {
     return { code: 0, runId, runSummary };
   }
 
-  // Build pool + pipeline. Tests inject via poolFactory/pipelineFactory.
-  let pool = null;
-  let pipeline = null;
-  try {
-    pool = poolFactory ? await poolFactory({ env, logger }) : null;
-    pipeline = pipelineFactory ? await pipelineFactory({ env, logger, pool }) : null;
-    if (!pool || !pipeline) {
-      // Plan 02 wires the canonical bootstrap. For Plan 01 a real run without injection
-      // is unsupported; return a clear marker rather than silently no-oping.
-      logger.error && logger.error(
-        '[backfill] real-run bootstrap not wired in Plan 01 — pass poolFactory/pipelineFactory or use --dry-run.'
-      );
-      return { code: 1 };
-    }
-  } catch (e) {
-    logger.error && logger.error(`[backfill] bootstrap failed: ${e.message}`);
-    return { code: 1 };
-  }
-
   const sender = env.BACKFILL_SENDER_E164 || BACKFILL_SENDER_DEFAULT;
   const corpusContext = { default_year: 2025, source: 'paper_log' };
-
-  // Plan 02: runDir + summaries.log open before any dispatch (audit-first).
   const runDir = computeRunDir(runId);
+
+  // Plan 03: refuse to start if responses.jsonl already exists (T-54-10).
+  if (!opts.dryRun) {
+    try {
+      runIdExistsGuard(runDir);
+    } catch (e) {
+      if (e && e.code === 'RUN_ID_EXISTS') {
+        logger.error && logger.error(
+          `REFUSING: --run-id ${runId} already has responses.jsonl at ${e.path}. Use a fresh --run-id.`
+        );
+        return { code: 6 };
+      }
+      throw e;
+    }
+  }
+
+  // Plan 02: summaries.log + Plan 03: responses.jsonl opened before any
+  // dispatch (audit-first). Both written only when --bulk-backfill mode is
+  // active (no audit needed for non-mutating dry-run / pending-status runs).
   let summariesFd = null;
+  let responsesFd = null;
+  let onLlmCall = null;
   let client = null;
   if (opts.bulkBackfill) {
     summariesFd = openSummariesLog(runDir);
+    if (!opts.dryRun) {
+      responsesFd = openResponsesJsonl(runDir);
+      onLlmCall = makeResponsesObserver(responsesFd);
+    }
     if (clientFactory) {
       client = await clientFactory({ env, logger });
     } else {
@@ -485,9 +563,33 @@ async function main(argv = process.argv.slice(2), {
       } catch (e) {
         logger.error && logger.error(`[backfill] createFarmosClient failed: ${e.message}`);
         if (summariesFd != null) fs.closeSync(summariesFd);
+        if (responsesFd != null) fs.closeSync(responsesFd);
         return { code: 1 };
       }
     }
+  }
+
+  // Build pool + pipeline. Tests inject via poolFactory/pipelineFactory.
+  // pipelineFactory receives onLlmCall so its extractor instance forwards
+  // every paid call to the responses.jsonl observer.
+  let pool = null;
+  let pipeline = null;
+  try {
+    pool = poolFactory ? await poolFactory({ env, logger }) : null;
+    pipeline = pipelineFactory ? await pipelineFactory({ env, logger, pool, onLlmCall }) : null;
+    if (!pool || !pipeline) {
+      logger.error && logger.error(
+        '[backfill] real-run bootstrap not yet wired — pass poolFactory/pipelineFactory or use --dry-run.'
+      );
+      if (summariesFd != null) fs.closeSync(summariesFd);
+      if (responsesFd != null) fs.closeSync(responsesFd);
+      return { code: 1 };
+    }
+  } catch (e) {
+    logger.error && logger.error(`[backfill] bootstrap failed: ${e.message}`);
+    if (summariesFd != null) fs.closeSync(summariesFd);
+    if (responsesFd != null) fs.closeSync(responsesFd);
+    return { code: 1 };
   }
 
   const runSummary = [];
@@ -512,6 +614,9 @@ async function main(argv = process.argv.slice(2), {
   } finally {
     if (summariesFd != null) {
       try { fs.closeSync(summariesFd); } catch (_e) {}
+    }
+    if (responsesFd != null) {
+      try { fs.closeSync(responsesFd); } catch (_e) {}
     }
   }
 
@@ -539,6 +644,16 @@ module.exports = {
   computeRunDir,
   DRAFT_STATUS_CONFIRMED,
   RUN_DIR_ROOT,
+  // Plan 03
+  runIdExistsGuard,
+  openResponsesJsonl,
+  buildResponsesLine,
+  makeResponsesObserver,
+  estimateCostUsd,
+  SONNET_INPUT_USD_PER_MTOK,
+  SONNET_OUTPUT_USD_PER_MTOK,
+  HAIKU_INPUT_USD_PER_MTOK,
+  HAIKU_OUTPUT_USD_PER_MTOK,
   main,
   // Constants.
   PAGE_REGEX,
