@@ -307,3 +307,61 @@ describe('Phase 47 Plan 01 -- seeding_session in Draft union', () => {
     expect(s).toMatch(/seeding_session/);
   });
 });
+
+// ============================================================================
+// Phase 53 BACK-03: optional capture_kind field on the Submission envelope.
+// Allowed values: paper_log | physical_object_photo | voice_note | text.
+// Field is optional + nullable so existing callers / partial outputs keep
+// validating (back-compat lock per D-BACK-03).
+// ============================================================================
+
+describe('Phase 53 BACK-03 -- capture_kind on Submission envelope', () => {
+  const schemas = require('../../src/extraction/schemas');
+
+  function baseSubmission(extra = {}) {
+    return {
+      drafts: [
+        {
+          draft: validSeeding(),
+          per_field_confidence: { species: 0.9 },
+        },
+      ],
+      continuity: 'start_new',
+      continuity_reason: 'new',
+      ...extra,
+    };
+  }
+
+  test('back-compat: Submission with no capture_kind still validates', () => {
+    const r = schemas.Submission.safeParse(baseSubmission());
+    expect(r.success).toBe(true);
+  });
+
+  test('accepts capture_kind: physical_object_photo', () => {
+    const r = schemas.Submission.safeParse(baseSubmission({ capture_kind: 'physical_object_photo' }));
+    expect(r.success).toBe(true);
+  });
+
+  test('accepts all four enum values', () => {
+    for (const v of ['paper_log', 'physical_object_photo', 'voice_note', 'text']) {
+      const r = schemas.Submission.safeParse(baseSubmission({ capture_kind: v }));
+      expect(r.success).toBe(true);
+    }
+  });
+
+  test('accepts capture_kind: null (explicit null)', () => {
+    const r = schemas.Submission.safeParse(baseSubmission({ capture_kind: null }));
+    expect(r.success).toBe(true);
+  });
+
+  test('rejects invalid capture_kind value', () => {
+    const r = schemas.Submission.safeParse(baseSubmission({ capture_kind: 'banana' }));
+    expect(r.success).toBe(false);
+  });
+
+  test('SUBMISSION_JSON_SCHEMA mentions capture_kind', () => {
+    const s = JSON.stringify(schemas.SUBMISSION_JSON_SCHEMA);
+    expect(s).toMatch(/capture_kind/);
+    expect(s).toMatch(/physical_object_photo/);
+  });
+});

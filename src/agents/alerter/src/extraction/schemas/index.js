@@ -61,11 +61,20 @@ const DraftSubmission = z
   })
   .strict();
 
+// Phase 53 BACK-03: optional capture_kind classifier on the extraction
+// envelope. Allowed values: paper_log | physical_object_photo | voice_note |
+// text. Nullable + optional so existing/partial-output callers keep
+// validating (back-compat lock per D-BACK-03). Routing (BACK-02) does NOT
+// consume this field today -- it is supportive analytics metadata + a hook
+// for future per-capture-kind refinements.
+const CAPTURE_KIND_ENUM = z.enum(['paper_log', 'physical_object_photo', 'voice_note', 'text']);
+
 const Submission = z
   .object({
     drafts: z.array(DraftSubmission).min(1),
     continuity: z.enum(['append', 'replace', 'start_new']),
     continuity_reason: z.string().min(1),
+    capture_kind: CAPTURE_KIND_ENUM.nullable().optional(),
   })
   .strict();
 
@@ -89,4 +98,5 @@ module.exports = {
   ConflictEntry,
   Provenanced,
   SOURCE_ENUM,
+  CAPTURE_KIND_ENUM,
 };
