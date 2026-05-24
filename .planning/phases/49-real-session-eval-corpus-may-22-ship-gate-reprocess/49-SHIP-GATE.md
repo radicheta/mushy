@@ -347,7 +347,41 @@ Do NOT patch silently in Phase 49. The deviation is the signal.
 
 ## Result
 
-(empty -- to be filled in by the operator who runs Steps 2-11 against prod timescale + farmOS dev)
+### 2026-05-24 — A2 partial run (Santi via Claude, autonomous in-session)
+
+**Verdict:** PARTIAL — prod-timescale side closed; farmOS-dev live-fire deferred.
+
+Scope chosen: discard the still-open May-22 inoc draft and reason-stamp it; skip the live-fire extraction + farmOS dev write because the hermetic gate already attests the codepath (sessions.test.js 3/3 green this run) and the live-fire spend was not authorized in-session.
+
+**Step 1 hermetic sanity:** PASS — sessions.test.js 3/3 (2 named regressions + 1 live-fire path doc case) under `npx jest --config test/eval/ingestion/jest.config.js --testPathPattern='sessions.test.js$' --no-coverage`.
+
+**Step 2 UUID lookup deviation:** of the two runbook UUIDs against prod timescale:
+- `6edaaba7deb026ff401b788938d407bc35dd10c8e958ab6138406c3632190a77` — `status=expired`, `log_type=seeding`. THE May-22 inoc draft. → Step 3/4 target.
+- `e3a564d063d4fb1819403ac56df61aeaa523a943afdb3cafbd5ccb733858368a` — `status=discarded` since 2026-05-23 18:01:39Z, `discarded_reason=NULL`, `log_type=observation`. Already swept (likely during Phase 45 ack-debt sweep) without a reason set. CLI classified `already-discarded` and was left untouched per Step 3 dry-run; reason-backfill not attempted (CLI is idempotent on `status != 'discarded'`).
+
+**Step 3 dry-run:** `dry-run summary: 1 would-update, 1 already-discarded, 0 unknown`.
+
+**Step 4 apply (single-uuid invocation, `6edaaba` only):**
+```
+updated uuid=6edaaba7deb026ff401b788938d407bc35dd10c8e958ab6138406c3632190a77 prev=candidate new=discarded reason="superseded by Phase 49 reprocess (v1.9 ship-gate)" at=2026-05-24T13:34:29.622Z
+apply summary: 1 updated, 0 already-discarded, 0 unknown
+```
+Post-apply prod-timescale state:
+```
+ id_pfx       | status     | log_type    | discarded_reason                                  | discarded_at
+ 6edaaba7deb0 | discarded  | seeding     | superseded by Phase 49 reprocess (v1.9 ship-gate) | 2026-05-24 13:34:29.622755+00
+ e3a564d063d4 | discarded  | observation | (null)                                            | 2026-05-23 18:01:39.598627+00
+```
+
+**Steps 5-11:** NOT RUN. Live-fire extraction (Step 6, paid Whisper + Anthropic), farmOS dev commit (Step 7, http://10.68.155.50:18080), lineage walk (Step 8), success-ack proof (Step 9), and cleanup (Step 11) all deferred pending operator authorization. The runbook stands as-is for a future full-send.
+
+**Side finding — farmOS dev location:** initial in-session diagnosis misread the elder-plops topology as single-instance. Corrected: dev farmOS = `/mnt/slime-kingdom/shared/farmos/` → host port `:18080`; prod farmOS = `/mnt/slime-kingdom/opt/farmos/` → host port `:8082`. Alerter `FARMOS_URL=http://10.68.155.50:8082` (prod). Any future live-fire of this runbook must override to `:18080` with a dev-minted bearer token. Captured in memory: `[[reference_farmos_dev_vs_prod_on_elder_plops]]`.
+
+**Deviations from hermetic:** none in the work actually executed; e3a564's existing discarded-without-reason state is a paper-trail gap from a prior sweep, not a new deviation.
+
+### To-be-filled (future full-send)
+
+(empty -- to be filled in by the operator who runs Steps 5-11 against farmOS dev)
 
 ```
 Date:
