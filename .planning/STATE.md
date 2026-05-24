@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.10
-milestone_name: Order-Independent Writes (upsert-by-stable-identity)
-status: Awaiting next milestone
-last_updated: "2026-05-24T22:16:32.390Z"
-last_activity: 2026-05-24 — Milestone v1.10 completed and archived
+milestone: v1.11
+milestone_name: Extraction prereqs + 2025-paper backfill
+status: Phase 53 Plans 01-03 SHIPPED; Plan 04 BLOCKED on operator fixture labels
+last_updated: "2026-05-24T22:55:00.000Z"
+last_activity: 2026-05-24 — Phase 53 BACK-01/02/03 shipped (corpus_context plumbing + small-N routing + capture_kind classifier); BACK-04 eval-gate scaffolded, fixtures pending operator
 progress:
   total_phases: 28
-  completed_phases: 11
-  total_plans: 88
-  completed_plans: 61
-  percent: 39
+  completed_phases: 12
+  total_plans: 96
+  completed_plans: 68
+  percent: 45
 ---
 
 # Project State
@@ -76,12 +76,33 @@ All in `.planning/todos/pending/`:
 
 ## Current Position
 
-Phase: 52 — Session entity via asset--group + activity-log membership (v1.10.1)
-Plan: 05 — live-fire awaits operator
-Status: Plans 01-04 shipped; live-fire ship-gate pending operator
-Last activity: 2026-05-24 — Phase 52 Plans 01-04 committed; live-fire script + runbook ready
+Phase: 53 — Extraction prerequisites — year-context shim + Phase 38 batch-mode fixes (v1.11)
+Plan: 04 — BACK-04 eval-gate (scaffolded; fixtures pending operator)
+Status: Plans 01-03 SHIPPED; Plan 04 BLOCKED on operator fixture labels (Phase 54 stays blocked)
+Last activity: 2026-05-24 — Phase 53 BACK-01/02/03 shipped; BACK-04 harness ready; needs operator-curated 2025-notebook fixtures
+
+**Phase 53 commit chain:**
+
+- `bf721e2` feat(53-01): add corpus_context JSONB column to signal_capture
+- `9d25ec7` feat(53-01): plumb corpus_context capture -> pipeline -> extractor
+- `9835caf` feat(53-02): route small-N high-conf multi-draft to per-draft confirm (closes DT-tubs todo)
+- `52f0874` feat(53-03): add optional capture_kind enum to Submission envelope
+- `673c413` feat(53-03): teach extractor capture_kind via 2 new few-shots (tu_fewshot_5 + tu_fewshot_6)
+- `a2467ea` feat(53-04): scaffold BACK-04 hermetic eval gate (fixtures pending operator)
+
+**Phase 53 deviations:**
+
+- 53-02: bumped existing Plan-08 batch integration tests B1/B2 from 3/5 → 6 drafts to keep batch-mode coverage under the new >5 threshold (BACK-02 intended behavior change).
+- 53-03: DT-tubs few-shot uses `type=seeding` not `type=activity` because the locked ACTIVITY_NAMES enum does not include `'inoc'` — fresh spawn-tub inoculation IS a seeding event per the locked schema.
+- 53-04: Task 1 fixture curation + Task 3 operator confirmation were NOT auto-executed (plan-acknowledged operator-gate). Harness ships green-when-empty; per-fixture cases skip until operator commits real labels.
+
+**BLOCKERS (open):**
+
+- Phase 53-04 fixture corpus needs operator curation. See `.planning/phases/53-.../53-04-SUMMARY.md` "Operator handoff" section for the 5-step contract.
+- Phase 54 (backfill harness) STAYS BLOCKED until 53-04 fixtures land + hermetic gate is green.
 
 **Phase 52 commit chain:**
+
 - 52-01 (groupAssets.js primitives): `96dabcc`
 - 52-02 (activityLogs.js membership log): `7ca0639`
 - 52-03 (commit-seeding-session.js rewire): `8a6601a`
