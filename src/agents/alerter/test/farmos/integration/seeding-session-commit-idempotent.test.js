@@ -25,7 +25,7 @@ describe('seeding-session commit pipeline -- INOC-05 idempotency (Phase 48 Plan 
 
     // First tick: full happy-path commit.
     await watchdog.tickOnce();
-    expect(farmosClient._created.assets.length).toBe(17);
+    expect(farmosClient._created.assets.length).toBe(16);
     expect(farmosClient._created.logs.length).toBe(11);
     expect(commitDb._drafts.get(row.id).status).toBe('committed');
     expect(outboundConfirm.dispatch).toHaveBeenCalledTimes(1);

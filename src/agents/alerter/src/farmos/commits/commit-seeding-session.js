@@ -28,23 +28,11 @@
 const assets = require('../assets');
 const logs = require('../logs');
 
-const COLLISION_MAX = 9;
-
 function epochSecondsForDate(dateStr) {
   // YYYY-MM-DD interpreted as UTC midnight. Hermetic, no tz coupling.
   const ms = Date.parse(dateStr + 'T00:00:00Z');
   if (!Number.isFinite(ms)) return Math.floor(Date.now() / 1000);
   return Math.floor(ms / 1000);
-}
-
-async function _resolveSessionName(client, eventDate) {
-  const base = 'inoc ' + eventDate;
-  for (let i = 1; i <= COLLISION_MAX; i++) {
-    const candidate = i === 1 ? base : base + ' #' + i;
-    const lookup = await assets.findAssetByName(client, candidate);
-    if (!lookup.found) return { ok: true, name: candidate };
-  }
-  return { ok: false, reason: 'session_name_exhausted' };
 }
 
 async function _cleanup(client, ctx, draft, createdAssetIds, originalReason, failedAtChildIndex) {
@@ -98,27 +86,18 @@ async function commitSeedingSession(client, draft, ctx) {
       return { ok: false, reason: 'invalid_seeding_session', asset_ids: [], log_ids: [], file_ids: [] };
     }
 
-    // Session-asset preflight: resolve a non-colliding name (#N up to #9).
-    const nameRes = await _resolveSessionName(client, eventDate);
-    if (!nameRes.ok) {
-      return { ok: false, reason: nameRes.reason, asset_ids: [], log_ids: [], file_ids: [] };
-    }
-    const sessionAssetRes = await assets.createFungiAsset(client, {
-      name: nameRes.name,
-      fungiXingName: 'block',
-      allowNoFungiType: true,
-      draftId,
-    });
-    if (!sessionAssetRes.ok) {
-      return {
-        ok: false,
-        reason: sessionAssetRes.reason || 'session_asset_create_failed',
-        http_status: sessionAssetRes.http_status,
-        asset_ids: [], log_ids: [], file_ids: [],
-      };
-    }
-    const sessionAssetId = sessionAssetRes.assetId;
-    const createdAssetIds = [sessionAssetId];
+    // Phase 48 Gray Area A LOCK ("anonymous fungi session asset") REVERSED
+    // 2026-05-24: live-fire on dev farmOS returned HTTP 422 (fungi_type NOT
+    // NULL enforced). Patching to fungi_type:(unassigned) or :session would
+    // smuggle a non-strain into a strain field. Per the Playlist:Version
+    // analogy (santi 2026-05-24), a session is a first-class entity of a
+    // DIFFERENT kind from a block, with membership pointers as its primary
+    // data. The right farmOS shape is `asset--group` from the stock
+    // `farm_group` module, which is not currently enabled on either dev or
+    // prod farmOS. Until that lands, ship children + logs only; session
+    // identity is recoverable from "all seeding logs on this date by this
+    // sender". See .planning/notes/2026-05-24-session-as-asset-group-design.md.
+    const createdAssetIds = [];
     const childBlockIds = [];
     const childLogIds = [];
     const timestamp = epochSecondsForDate(eventDate);
@@ -164,9 +143,7 @@ async function commitSeedingSession(client, draft, ctx) {
           return _cleanup(client, ctx, draft, createdAssetIds,
             'missing_child_block_name', childIndex);
         }
-        const parentIds = sourceBlockId
-          ? [sourceBlockId, sessionAssetId]
-          : [sessionAssetId];
+        const parentIds = sourceBlockId ? [sourceBlockId] : [];
         const childRes = await assets.createFungiAsset(client, {
           name: childName,
           fungiTypeName: species,

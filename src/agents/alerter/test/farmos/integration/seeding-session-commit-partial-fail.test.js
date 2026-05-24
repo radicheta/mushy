@@ -27,17 +27,18 @@ describe('seeding-session commit pipeline -- partial-fail orphan cleanup (Phase 
 
     await watchdog.tickOnce();
 
-    // ----- 9 DELETEs in reverse order (last DELETE = session asset) -----
-    expect(farmosClient._deletes.length).toBe(9);
-    const sessionId = farmosClient._created.assets[0].id;
+    // ----- 8 DELETEs in reverse order (interim no-session shape) -----
+    expect(farmosClient._deletes.length).toBe(8);
+    const firstCreatedId = farmosClient._created.assets[0].id;
     const lastDelete = farmosClient._deletes[farmosClient._deletes.length - 1];
-    expect(lastDelete).toBe('/api/asset/fungi/' + sessionId);
+    expect(lastDelete).toBe('/api/asset/fungi/' + firstCreatedId);
 
     // First DELETE must be the most-recently-created asset (the 4th child block).
-    // Assets created in order: [session, source1, child1(log1 ok),
-    //                           source2, child2(log2 ok),
-    //                           source3, child3(log3 ok),
-    //                           source4, child4(log4 FAIL)]
+    // Assets created in order (no session asset):
+    //   [source1, child1(log1 ok),
+    //    source2, child2(log2 ok),
+    //    source3, child3(log3 ok),
+    //    source4, child4(log4 FAIL)]
     // So the most-recent is child4 (the only child asset created in group 4 so far).
     const child4Asset = farmosClient._created.assets[farmosClient._created.assets.length - 1];
     expect(child4Asset.name).toMatch(/^260522_KOY_/);
@@ -73,11 +74,11 @@ describe('seeding-session commit pipeline -- partial-fail orphan cleanup (Phase 
 
     await watchdog.tickOnce();
 
-    expect(farmosClient._deletes.length).toBe(9);
+    expect(farmosClient._deletes.length).toBe(8);
 
-    // 9 orphan_cleanup_failed audit lines, one per failed DELETE.
+    // 8 orphan_cleanup_failed audit lines, one per failed DELETE.
     const orphanFailures = auditLogger._events.filter((e) => e.event === 'orphan_cleanup_failed');
-    expect(orphanFailures.length).toBe(9);
+    expect(orphanFailures.length).toBe(8);
     for (const f of orphanFailures) {
       expect(f.result.asset_ids.length).toBe(1);
     }

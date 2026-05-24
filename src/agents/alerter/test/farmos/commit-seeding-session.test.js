@@ -87,37 +87,28 @@ beforeEach(() => {
 });
 
 describe('commitSeedingSession (Phase 48 Plan 02)', () => {
-  it('Test A (happy path May 22): 17 asset POSTs, 11 seeding log POSTs, child parent[] = [source, session]', async () => {
+  // 2026-05-24: session-asset shape on hold pending farm_group module enable +
+  // asset--group design (see .planning/notes/2026-05-24-session-as-asset-group-design.md).
+  // Children commit with parent=[sourceBlockId] only; session identity is
+  // recoverable from "all seeding logs on this date by this sender".
+
+  it('Test A (happy path May 22): 16 asset POSTs, 11 seeding log POSTs, child parent[] = [source]', async () => {
     const client = makeSessionMockClient();
     const { ctx } = makeAuditCtx();
     const r = await commitSeedingSession(client, draftFor(MAY22_FIXTURE), ctx);
 
     expect(r.ok).toBe(true);
-    expect(client._created.assets.length).toBe(17); // 1 session + 5 source blocks + 11 child blocks
+    expect(client._created.assets.length).toBe(16); // 5 source blocks + 11 child blocks; no session asset
     expect(client._created.logs.length).toBe(11);
     expect(r.log_ids.length).toBe(11);
-    expect(r.asset_ids.length).toBe(17);
+    expect(r.asset_ids.length).toBe(16);
 
-    // Session asset is the first POSTed asset; name 'inoc 2026-05-22'.
-    const sessionAsset = client._created.assets[0];
-    expect(sessionAsset.name).toBe('inoc 2026-05-22');
-    const sessionId = sessionAsset.id;
-    // allowNoFungiType: session asset has fungi_xing but NOT fungi_type.
-    expect(sessionAsset.payload.data.relationships.fungi_type).toBeUndefined();
-    expect(sessionAsset.payload.data.relationships.fungi_xing).toBeDefined();
-
-    // Every CHILD block asset (the 11 created after the 5 source blocks) has
-    // parent[] = [sourceBlockId, sessionId] in that order. Source blocks are
-    // assets[1..5]; child blocks are assets[6..16] but interleaved per group.
-    // The simplest invariant: every child block (any asset whose name starts
-    // with '260522_') has parent.data length 2, last = sessionId.
+    // Every CHILD block asset has parent[] = [sourceBlockId] only.
     const childAssets = client._created.assets.filter((a) => /^260522_/.test(a.name));
     expect(childAssets.length).toBe(11);
     for (const c of childAssets) {
       const parents = c.payload.data.relationships.parent.data;
-      expect(parents.length).toBe(2);
-      expect(parents[1].id).toBe(sessionId);
-      // First parent is a source block id (one of the 5 created earlier).
+      expect(parents.length).toBe(1);
     }
 
     // Each seeding log refers to its child block (one assetId per log).
@@ -126,16 +117,7 @@ describe('commitSeedingSession (Phase 48 Plan 02)', () => {
     }
   });
 
-  it('Test B (name collision): #2 suffix used when inoc 2026-05-22 already exists', async () => {
-    const client = makeSessionMockClient({
-      knownAssetsByName: { 'inoc 2026-05-22': 'existing-session-asset' },
-    });
-    const r = await commitSeedingSession(client, draftFor(MAY22_FIXTURE), {});
-    expect(r.ok).toBe(true);
-    expect(client._created.assets[0].name).toBe('inoc 2026-05-22 #2');
-  });
-
-  it('Test C (single-parent legacy, INOC-04): 1 group of 5 children still creates a session asset + 5 child blocks', async () => {
+  it('Test C (single-parent legacy, INOC-04): 1 group of 5 children creates 1 source block + 5 child blocks', async () => {
     const dj = {
       type: 'seeding_session',
       event_date: '2026-05-22',
@@ -151,19 +133,18 @@ describe('commitSeedingSession (Phase 48 Plan 02)', () => {
     const client = makeSessionMockClient();
     const r = await commitSeedingSession(client, draftFor(dj, 'd-single-parent'), {});
     expect(r.ok).toBe(true);
-    // 1 session + 1 source block + 5 child blocks = 7 assets.
-    expect(client._created.assets.length).toBe(7);
+    // 1 source block + 5 child blocks = 6 assets.
+    expect(client._created.assets.length).toBe(6);
     expect(client._created.logs.length).toBe(5);
-    const sessionId = client._created.assets[0].id;
-    const sourceId = client._created.assets[1].id;
+    const sourceId = client._created.assets[0].id;
     const childAssets = client._created.assets.filter((a) => /^260522_/.test(a.name));
     for (const c of childAssets) {
       const parents = c.payload.data.relationships.parent.data;
-      expect(parents.map((p) => p.id)).toEqual([sourceId, sessionId]);
+      expect(parents.map((p) => p.id)).toEqual([sourceId]);
     }
   });
 
-  it('Test D (NO_PARENT): child blocks created with parentIds = [sessionAssetId] only', async () => {
+  it('Test D (NO_PARENT): child blocks created with parentIds = []', async () => {
     const dj = {
       type: 'seeding_session',
       event_date: '2026-05-22',
@@ -179,23 +160,22 @@ describe('commitSeedingSession (Phase 48 Plan 02)', () => {
     const client = makeSessionMockClient();
     const r = await commitSeedingSession(client, draftFor(dj, 'd-no-parent'), {});
     expect(r.ok).toBe(true);
-    // 1 session + 0 source blocks (NO_PARENT skips resolution) + 2 child blocks.
-    expect(client._created.assets.length).toBe(3);
-    const sessionId = client._created.assets[0].id;
+    // 0 source blocks (NO_PARENT skips resolution) + 2 child blocks = 2 assets.
+    expect(client._created.assets.length).toBe(2);
     const childAssets = client._created.assets.filter((a) => /^260522_SHI_X/.test(a.name));
     expect(childAssets.length).toBe(2);
     for (const c of childAssets) {
-      const parents = c.payload.data.relationships.parent.data;
-      expect(parents.length).toBe(1);
-      expect(parents[0].id).toBe(sessionId);
+      // Empty parentIds → no parent relationship on the payload at all.
+      expect(c.payload.data.relationships.parent).toBeUndefined();
     }
   });
 
-  it('Test E (partial failure on log #4): reverse-order DELETE for session + 4 source blocks + 4 child blocks; ok=false, failed_at_child_index=3', async () => {
+  it('Test E (partial failure on log #4): reverse-order DELETE for 4 source blocks + 4 child blocks; ok=false, failed_at_child_index=3', async () => {
     // Log #4 corresponds to the 4th seeding log POST (1-based). Per the
     // May 22 fixture: groups 1-3 each contribute 1 child (logs 1, 2, 3);
     // group 4 (260118_KOY_12, qty=4) starts at log 4. So at failure time,
-    // we have created: 1 session + 4 source blocks + 4 child blocks = 9 assets.
+    // we have created: 4 source blocks + 4 child blocks = 8 assets (no
+    // session asset in the interim no-session shape).
     const client = makeSessionMockClient({ failLogIndex: 4 });
     const { ctx, calls: auditCalls } = makeAuditCtx();
     const r = await commitSeedingSession(client, draftFor(MAY22_FIXTURE), ctx);
@@ -206,17 +186,15 @@ describe('commitSeedingSession (Phase 48 Plan 02)', () => {
     expect(r.asset_ids).toEqual([]);
     expect(r.log_ids).toEqual([]);
 
-    // 1 session + 4 source blocks + 4 child blocks = 9 DELETEs.
-    expect(client._deletes.length).toBe(9);
-    expect(r.farmos_response.orphan_attempted_count).toBe(9);
+    expect(client._deletes.length).toBe(8);
+    expect(r.farmos_response.orphan_attempted_count).toBe(8);
     expect(r.farmos_response.orphan_cleanup_failed_count).toBe(0);
 
-    // Reverse-order invariant: the FIRST DELETE is the most recently created
-    // asset (the 4th child block); the LAST DELETE is the session asset.
-    const sessionId = client._created.assets[0].id;
-    expect(client._deletes[client._deletes.length - 1]).toBe('/api/asset/fungi/' + sessionId);
+    // Reverse-order invariant: the LAST DELETE is the first-created asset
+    // (the first source block).
+    const firstCreatedId = client._created.assets[0].id;
+    expect(client._deletes[client._deletes.length - 1]).toBe('/api/asset/fungi/' + firstCreatedId);
 
-    // No orphan_cleanup_failed audit since DELETEs all succeeded.
     expect(auditCalls.find((c) => c.event === 'orphan_cleanup_failed')).toBeUndefined();
   });
 
@@ -230,14 +208,12 @@ describe('commitSeedingSession (Phase 48 Plan 02)', () => {
 
     expect(r.ok).toBe(false);
     expect(r.reason).toBe('partial_commit_failed');
-    // All 9 DELETEs attempted, all failed.
-    expect(client._deletes.length).toBe(9);
-    expect(r.farmos_response.orphan_cleanup_failed_count).toBe(9);
-    expect(r.farmos_response.orphan_cleanup_failed_ids.length).toBe(9);
+    expect(client._deletes.length).toBe(8);
+    expect(r.farmos_response.orphan_cleanup_failed_count).toBe(8);
+    expect(r.farmos_response.orphan_cleanup_failed_ids.length).toBe(8);
 
-    // 9 audit calls, one per failed orphan delete.
     const orphanCalls = auditCalls.filter((c) => c.event === 'orphan_cleanup_failed');
-    expect(orphanCalls.length).toBe(9);
+    expect(orphanCalls.length).toBe(8);
     for (const c of orphanCalls) {
       expect(c.result.asset_ids.length).toBe(1);
       expect(c.draft_id).toBe('d-session-1');
