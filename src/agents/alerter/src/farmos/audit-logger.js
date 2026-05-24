@@ -22,6 +22,12 @@ function createAuditLogger({ pool, logger = console, farmosUrl, confirmDb }) {
       latency_ms: result.latency_ms != null ? Math.round(result.latency_ms) : null,
       attempt: result.attempt != null ? result.attempt : null,
       reason: result.reason != null ? result.reason : null,
+      // Phase 51 UPSERT-06: upsert outcome dimension. outcome ∈
+      // {created|patched|noop|mixed|null}; conflicts is per-field structured
+      // surface; etag_source ∈ {soft_compare|absent|null}.
+      outcome: result.outcome != null ? result.outcome : null,
+      conflicts: Array.isArray(result.conflicts) ? result.conflicts : [],
+      etag_source: result.etag_source != null ? result.etag_source : null,
     };
     try {
       if (logger && logger.info) logger.info(JSON.stringify(payload));
