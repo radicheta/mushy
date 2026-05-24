@@ -42,6 +42,27 @@ describe('commit-router (Phase 40 Plan 04)', () => {
     }
   });
 
+  // Phase 48 Plan 01 foundation: LOG_TYPES accepts 'seeding_session'.
+  // Phase 48 Plan 02: DISPATCH.seeding_session is now wired to commitSeedingSession.
+  it("LOG_TYPES accepts 'seeding_session' AND DISPATCH dispatches to the handler (Phase 48 Plan 02)", async () => {
+    const router = require('../../src/farmos/commits/commit-router');
+    const { LOG_TYPES } = require('../../src/farmos/logs');
+    expect(LOG_TYPES.includes('seeding_session')).toBe(true);
+    expect(typeof router.DISPATCH.seeding_session).toBe('function');
+    const fake = jest.fn(async () => ({ ok: true, asset_ids: ['sess'], log_ids: ['l1','l2'], file_ids: [], http_status: 201 }));
+    const orig = router.DISPATCH.seeding_session;
+    router.DISPATCH.seeding_session = fake;
+    try {
+      const r = await router.commit({}, { id: 'd1', log_type: 'seeding_session', draft_json: {} }, { clock: { now: () => 0 } });
+      expect(fake).toHaveBeenCalled();
+      expect(r.ok).toBe(true);
+      expect(r.asset_ids).toEqual(['sess']);
+      expect(r.log_ids).toEqual(['l1','l2']);
+    } finally {
+      router.DISPATCH.seeding_session = orig;
+    }
+  });
+
   it('latency_ms populated on success', async () => {
     const orig = router.DISPATCH.activity;
     router.DISPATCH.activity = async () => ({ ok: true, asset_ids: [], log_ids: ['l'], file_ids: [], http_status: 201 });

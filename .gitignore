@@ -45,3 +45,7 @@ src/agents/alerter/test/eval/ingestion/test-fixtures/
 tenants/*/secrets.env
 tenants/*/.env
 .venv/
+
+# Claude Code auto-memory (symlinked from ~/.claude/projects/-mnt-slime-kingdom-opt-mushy/memory/)
+# Lives in-tree for greppability but stays per-machine.
+.planning/memory/

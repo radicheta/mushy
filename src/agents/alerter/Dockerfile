@@ -4,5 +4,6 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev || npm install --omit=dev
 COPY src/ ./src/
+COPY scripts/ ./scripts/
 ENV NODE_ENV=production
 CMD ["node", "src/index.js"]

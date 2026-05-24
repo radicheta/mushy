@@ -44,6 +44,11 @@ async function initDb(pool) {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_signal_outbound_tenant_sent ON signal_outbound(tenant_id, sent_at DESC)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_signal_outbound_recipient_sent ON signal_outbound(recipient_e164, sent_at DESC)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_signal_outbound_intent ON signal_outbound(intent)`);
+  // Phase 50 Plan-01 D-02: persist Signal-native ms-since-epoch returned by /v2/send
+  // so future inbound quotes can resolve quote.timestamp -> related_draft_id.
+  // Plan 02 owns the insertOutbound write path; this plan only lands the column + index.
+  await pool.query(`ALTER TABLE signal_outbound ADD COLUMN IF NOT EXISTS signal_msg_ts bigint`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_signal_outbound_msg_ts ON signal_outbound (signal_msg_ts) WHERE signal_msg_ts IS NOT NULL`);
 }
 
 async function insertOutbound(pool, row) {
@@ -51,8 +56,8 @@ async function insertOutbound(pool, row) {
     await pool.query(
       `INSERT INTO signal_outbound
          (tenant_id, sent_at, recipient_e164, intent, body, attachments,
-          source_module, source_line, related_capture_id, related_draft_id)
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)`,
+          source_module, source_line, related_capture_id, related_draft_id, signal_msg_ts)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11)`,
       [
         row.tenant_id,
         row.sent_at,
@@ -64,6 +69,10 @@ async function insertOutbound(pool, row) {
         row.source_line ?? null,
         row.related_capture_id ?? null,
         row.related_draft_id ?? null,
+        // Phase 50 Plan-02: Signal-native ms-ts from /v2/send. Row builder in
+        // signal.js Number()-coerces before passing; insertOutbound does NOT
+        // coerce. Omitted/null -> stored NULL (back-compat for ~14 callers).
+        row.signal_msg_ts ?? null,
       ]
     );
     return { ok: true };

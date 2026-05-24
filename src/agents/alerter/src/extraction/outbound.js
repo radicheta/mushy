@@ -89,6 +89,19 @@ function createOutboundDispatcher({
     return res;
   }
 
+  // Hotfix 2026-05-24: trinity-skip. When operatorRecipient == the captured
+  // event's sender (Santi/radicheta/farmer-1 trinity), operator-channel pings
+  // would interrupt his own farmer-side conversation with internal-looking
+  // chatter (his own phone written back, opaque draft-id hex, batch
+  // mechanics). Skip the operator ping in that case; the operator IS the
+  // farmer here and the per-draft farmer-facing flow already covers it.
+  function isOperatorEqualsSender(senderE164) {
+    return typeof operatorRecipient === 'string'
+      && typeof senderE164 === 'string'
+      && operatorRecipient.length > 0
+      && operatorRecipient === senderE164;
+  }
+
   async function sendBatchReviewSummary(batch) {
     // Plan 08 batch mode (paper-log scan: drafts.length > 1).
     // batch = { sender_e164, draftIds: [{id, type, status}, ...], reply_target_kind, group_id, source_capture_ids }
@@ -99,6 +112,10 @@ function createOutboundDispatcher({
     }
     const drafts = (batch && Array.isArray(batch.draftIds)) ? batch.draftIds : [];
     const sender = (batch && batch.sender_e164) || '(unknown)';
+    if (isOperatorEqualsSender(sender)) {
+      logger.info && logger.info(`[outbound] batch_review_summary skipped: operator==sender (trinity); drafts=${drafts.length}`);
+      return { ok: true, skipped: 'trinity' };
+    }
     const total = drafts.length;
     const needReview = drafts.filter((d) => d && d.status === 'needs_review').length;
     const clean = total - needReview;
@@ -120,6 +137,10 @@ function createOutboundDispatcher({
     }
     const id = truncId(draftRow && draftRow.id);
     const sender = (draftRow && draftRow.sender_e164) || '(unknown)';
+    if (isOperatorEqualsSender(sender)) {
+      logger.info && logger.info(`[outbound] needs_review_ping skipped: operator==sender (trinity); draft=${id}`);
+      return { ok: true, skipped: 'trinity' };
+    }
     const reason = (draftRow && draftRow.needs_review_reason) || 'askback_cap';
     // Address Don Santiago by name (project memory: never "operator" as referent).
     const raw = `Hey Don Santiago, draft ${id} for ${sender} hit the 3-turn ask-back cap. Marked for manual review. Reason: ${reason}.`;

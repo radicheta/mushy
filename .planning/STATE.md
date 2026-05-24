@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.8
-milestone_name: Event-gate + Durable signal_outbound (tenant-aware)
-status: Phase 44 7/7 done; 44-04 event-gate shipped + operator-attested live-fire PASS (8/10, cache empirically verified); v1.8 ship-ready pending prod alerter rebuild+deploy
-last_updated: "2026-05-23T04:00:00.000Z"
-last_activity: 2026-05-23
+milestone: v1.10
+milestone_name: Order-Independent Writes (upsert-by-stable-identity)
+status: Awaiting next milestone
+last_updated: "2026-05-24T19:53:42.716Z"
+last_activity: 2026-05-24 — Milestone v1.10 completed and archived
 progress:
-  total_phases: 26
-  completed_phases: 4
-  total_plans: 64
-  completed_plans: 31
-  percent: 48
+  total_phases: 23
+  completed_phases: 10
+  total_plans: 83
+  completed_plans: 56
+  percent: 43
 ---
 
 # Project State
@@ -20,73 +20,66 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 46 SHIPPED 2026-05-21. Next up: choose between Phase 44 (v1.8 first phase) and the sht30 watchdog structural fix.
+**Current focus:** Phase 51 — order-independent-farmos-writes-upsert-by-stable-identity-se
+
+## Today's Closeout (2026-05-24)
+
+**48-LIVE-FIRE on dev (DONE — commit `d3bb6a3`):**
+
+- First attempt 422'd — real farmOS field config enforces `fungi_type NOT NULL`, falsifying Phase 48's Gray Area A LOCK ("anonymous fungi session asset"). The Plan 02 design didn't survive contact with real farmOS schema.
+- User's framing: "session is to block like Playlist is to version on shotgrid" — different kinds, both first-class. Right shape is `asset--group` (stock `farm_group` module, not currently enabled on either dev or prod farmOS).
+- Interim pivot: removed session-asset preflight entirely; children commit with `parent=[sourceBlock]` only. 13/13 hermetic tests green at new counts (16 assets / 11 logs; legacy 6/5; partial-fail 8 DELETEs).
+- Re-run live-fire dev: PASS in 4.4s. 16 assets + 11 seeding logs. Lineage walks clean.
+- Design note for farmos team dropped at `.planning/notes/2026-05-24-session-as-asset-group-design.md`; mirrored into farmos repo, committed there as `3049cb0`.
+
+**49-SHIP-GATE A2 partial (DONE — commit `7ac92ea`):**
+
+- Discard applied to `6edaaba` (May-22 seeding draft, was `expired`) via `discard-drafts.js`.
+- Companion `e3a564` already discarded 2026-05-23 (Phase 45 ack-debt sweep), reason NULL; left as-is.
+- Live-fire extraction (Step 6) NOT RUN — Plan 04's `EVAL_RUN_LIVE=1` branch in `sessions.test.js` is an explicit no-op (`return` early). The "live-fire" was documented but not implemented; building it would be scope expansion.
+
+**May-22 inoc in PROD farmOS (DONE — commit `24b8fab`):**
+
+- 4 ancestor parents stubbed via direct API POST with structured notes marker `STUB - awaits 2025-paper-scan backfill; ... upsert layer (Phase 51) will enrich in-place on backfill arrival.`
+- `260304_SHI_5` = `5de992ca-...`, `260118_SHI_23` = `5d70eaec-...`, `260118_SHI_26` = `92f83fe6-...`, `260118_KOY_12` = `91459b30-...`. `260425_KOY_4` pre-existed.
+- `scripts/live-fire-48.js` (corrected harness) against prod: 11 children + 11 seeding logs in 3.5s. Zero source-block duplicates (findAssetByName reused all 5).
+- Sample lineage walks (verified): `260522_SHI_1 -> 260304_SHI_5`, `260522_KOY_7 -> 260118_KOY_12`, `260522_KOY_11 -> 260425_KOY_4` — matches fixture.
+- Paper trail: `.planning/notes/2026-05-24-prod-write-receipt.md` + `2026-05-24-prod-write-receipt-uuids.json`.
+
+**v1.10 milestone + Phase 51 filed (in `24b8fab`):**
+
+- ROADMAP.md gains v1.10 "Order-Independent Writes (upsert-by-stable-identity)" milestone.
+- Phase 51 specifies: `upsertFungiAsset` + `upsertLog` + set-union merge per array field + conflict-surfacing on scalars + etag-on-PATCH concurrency + property-test gates (order independence + stub enrichment + conflict surfacing).
+- Driver: tonight's stub strategy works under current `findAssetByName` lookup, but the stubs only get enriched (rather than just reused) once Phase 51 lands the merge layer. Independently, this makes the 2025-paper-scan backfill safe in any order vs. live captures, and makes observation-of-unknown-asset (today's UAT principle) a real path.
+
+**Phase 50 LIVE-FIRE Step 3 (BLOCKED on wire-level quote rendering — 4 findings filed):**
+
+- Hermetic still green (1032 pass / 9 skipped / 0 fail). Schema columns all present. Alerter healthy.
+- Triggered the runbook trigger ("harvest of nothing"); LLM extracted as observation (not commit_failed as runbook anticipated) — went through `extraction_preview` + later (via Santi-driven retry with "999999_FAKE_99") `commit_outcome_ack` after YES.
+- **The `commit_outcome_ack` IS quote-wired and dispatched cleanly (no warn logs); but on Santi's phone it rendered as a plain bubble with NO QUOTE attachment.** Controlled curl probe (manual /v2/send with a valid quote payload) reproduced the same — REST 201 OK, capabilities advertise `quotes`, but client renders unquoted.
+- Disposition: **DEFER to the alerter-Python port** (`.planning/todos/pending/2026-05-14-port-alerter-to-farm-agent-python.md`). Patching this in the current Node+REST+signal-cli stack means forking a Go wrapper that's being replaced anyway. Phase 50 stays HERMETIC-ATTESTED ONLY; live-fire QUOT-01..06 attestation moves to the Python port's wire-level smoke.
+
+## Findings filed 2026-05-24 (Phase 50 LIVE-FIRE byproducts)
+
+All in `.planning/todos/pending/`:
+
+1. **`...phase50-quote-rendering-broken-end-to-end.md`** (CRITICAL, defer-to-python-port) — REST returns 201 on quote-bearing sends but no quote bubble renders on Signal clients. Affects every QUOT-* requirement.
+2. **`...signal-capture-missing-followup-messages.md`** (HIGH) — Inbound farmer messages after the first one in a draft thread don't land in `signal_capture`. The bot processes them (draft gets edited, YES gets handled) but the rows are missing. Breaks Phase 50 quote routing AND Phase 51 stub-merge audit.
+3. **`...phase50-quote-thread-missing-on-extraction-preview-and-ask-back.md`** (high) — Phase 50 wired only `commit_outcome_ack` + `confirm_ack`; the highest-traffic farmer-ack (`extraction_preview`) and the disambiguator (`ask_back`) are unwired.
+4. **`...phase50-extraction-preview-related-draft-id-null.md`** (medium) — `extraction_preview` outbound rows land with `related_draft_id=NULL` despite the draft existing at dispatch time. Forensic blocker.
+
+## Pending operator runbooks
+
+- **Phase 50 LIVE-FIRE Steps 3-8** — DEFERRED end-of-2026-05-24 (wire-level bug; rolling into Python port).
+
+## Previously: Phase 46 close-out (kept for context)
 
 ## Current Position
 
-Phase: 44 — **7/7 COMPLETE 2026-05-23.** Plan-04 event-gate shipped; operator-attested live-fire PASS 8/10 (at floor) with cache empirically verified (1/10 write, 9/10 read, ~$0.05). One bug surfaced live and fixed: Anthropic SDK contract — `signal` belongs in request-options arg, not body params (commit `1429684`). v1.8 ship-ready pending prod alerter rebuild+deploy.
-
-Phase: 46 — **SHIPPED 2026-05-21.** Live-fire attested Round 3 at T0+3min32s. Two extra bugs found and fixed in-flight: D-09 globals-shadow (`86d4340`) + D-10 oobN/oobWindowMin gate (`5f90cc7`). Two backlog items left as todos.
-Plan: 3 of 3 complete (46-01, 46-02, 46-03)
-Milestone: v1.7 -- Multimodal Signal to FarmOS Events. **Effectively shipped.** Phases 36-43 all complete; only Phase 42 (SHI-on-Sawdust pilot) remains as a calendar-bound human-driven run (3-4wk colonize). Re-audited 2026-05-15.
-Last activity: 2026-05-22
-
-**Phase 46 close-out (final):**
-
-- 46-01 shipped 2026-05-21 (bridge fc1LastMsgTs aggregator; 241/241 tests)
-- 46-02 shipped 2026-05-21 (alerter chamber-dark wiring; 720/728 tests)
-- 46-03 shipped 2026-05-21 with 3-round live-fire:
-  - Round 1 (16:27Z–16:54Z): exposed wiring bug (`index.js:227` destructure-drop); fixed in `206f202`. Surfaced D-09 (globals shadow env).
-  - Round 2 (18:02Z–18:08Z): D-09 fix shipped (`86d4340`, hard 3-min threshold for fc1LastMsgTs branch). Attestation initially declared PASS but RETRACTED (`52c1d50`) — the 91-char send was sht30 boot-watchdog, not chamber-dark pi. Surfaced D-10 (oobN/oobWindowMin gate blocks fast pi FIRING).
-  - Round 3 (23:11Z–23:28Z): D-10 fix shipped (`5f90cc7`, piCfg override). 148-char chamber-dark message at T0+3min32s; ZERO per-sensor sends in silence window; 85-char recovery message on fc1 republish. Farmer paste-back of message body verified verbatim 2026-05-21 ~23:30Z. CD-01..CD-04 all ATTESTED. **Ship-gate RELEASED.**
-
-**Backlog from Phase 46 (do not block ship):**
-
-- `.planning/todos/pending/2026-05-21-alerter-tz-montevideo-and-local-time-rendering.md` — TZ Toronto→Montevideo + hhmm() local-time rendering (currently `@ HH:MM` in chamber-dark message is UTC)
-- `[[project_alerter_watchdog_quiet_topic_bug]]` — sht30 structural fix (band-aid restored 2026-05-21 to 1440min)
-- Captured memories: `[[project-phase46-d09-globals-shadow-env]]`, `[[feedback-unit-tests-dont-catch-wiring]]`, `[[feedback-verify-signal-send-attribution]]`, `[[project-alerter-tz-toronto-legacy]]`
-- Operator-window protocol superseded by live-fire log in 46-03-SMOKE.md
-  "Live-fire Attestation" section.
-
-- Don Santiago was the farmer for this smoke (`+59892893012` per
-  `[[project_farmer_phone_map]]`); responded "Great" to a sht30 noise alert
-  at 16:41:42Z; no out-of-band farmer-paste needed.
-
-**Next milestone (v1.8) is scoped + locked** per 2026-05-17 findings discussion:
-
-1. Phase 1: Event-gate + durable `signal_outbound` table (bundles findings 7 + 1b; ~4-5d). Plan-01 task is the 100-capture hand-classification smoke from `mushdatadump-prod` (per [[smoke-before-expensive-batch]]).
-2. Phase 2+: NORTH-STAR commit_failed silent-reply ack fix (finding 3); replay outstanding silent-failure drafts `b8a1e586` (Vikki Rambo) + `1fb28e70` (Santi LIMA) as live-fire UAT.
-
-Reference: [[project_2026_05_17_findings_discussion_decisions]] memory + `.planning/notes/2026-05-17-*.md` research notes.
-
-**Phase 43 (Schema Normalizer) shipped 2026-05-16** — 700 tests green, SCHEMA-01..04 PASS, REVIEW + VERIFICATION artifacts committed.
-
-**Overnight research kicked off as background agents** (results expected by morning):
-
-- `.planning/notes/2026-05-16-schema-audit.md` (Agent A: Phase 38<->Phase 40 schema diff per log_type)
-- `.planning/notes/2026-05-16-farmos-no-target-and-strain-coverage.md` (Agent B: farmOS no-target patterns + active-strain coverage gap)
-
-Phase 38 close audit (Plan 09 trail):
-
-- Plan 09 ran 96-fixture re-eval (95 curated + 1 real prod session) -> PASS at 95.8% schema conformance
-- Bugs fixed in cycle: whisper GPU drift (restart + cache volume), pipeline image-wire (a04a6bc), fake-green whisper /health (deep probe), extractor maxTokens 2048 -> 16384 default, species-vocab gap (winecap->WIN), harness-pipeline parity (loadImageBlocks exported), real-session fixture in ship-gate denominator, whisper hallucination tail (VAD filter)
-- Plan 08 (prod-log advisory eval) superseded by Plan 09
-- Total Plan 09 spend: ## Current Position
-
-0.91 paid Anthropic ($5.65 FAIL run-1 + $0.51 smoke + $4.75 PASS run-2)
-
-- Paper trail in .planning/phases/38-extraction-pipeline/38-EVAL-REPORT-plan07.md | -plan09-smoke.md | -plan09-run1-FAIL.md | -plan09-run2-PASS.md
-- Prod inoc session corpus at /mnt/mossrock/shared/mushdatadump-prod/2026-05-12_inoc_santi/
-
-Autonomous task #2 (Phase 39 -> 42 v1.7 close): READY to resume; awaiting user signal to re-launch (session has been long, user may want a break).
-
-Phase 37 Plan 04 remains PARTIAL — Tasks 1+2 shipped (7b7256c, 7bff438); Task 3 live attestations deferred to operator per 37-RUNBOOK.md.
-
-Plan 04 progress:
-
-- Task 1 (index.js wire-up + compose env plumbing) — commit 7b7256c
-- Task 2 (37-RUNBOOK.md authored) — commit 7bff438
-- Task 3 (live attestations A/B/C/D + Phase 33 E) — DEFERRED to operator (cannot be automated; requires three live farmers + operator-authored .env)
+Phase: Milestone v1.10 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-05-24 — Milestone v1.10 completed and archived
 
 ## Previous Milestones
 
@@ -278,8 +271,8 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 ## Session Continuity
 
-Last session: 2026-05-23T04:00:00.000Z
-Next up: v1.8 ship cutover — rebuild+deploy alerter on elder-plops (`docker compose up -d --build alerter`) to ship Phase 44 event-gate to prod; confirm boot logs + first capture; optional 24-h soak before declaring v1.8 shipped. Then Phase 45 (NORTH-STAR commit_failed ack + replay outstanding silent-failure drafts).
+Last session: 2026-05-23T17:00:00.000Z
+Next up: Phase 45 (NORTH-STAR commit_failed ack + replay outstanding silent-failure drafts `b8a1e586` Vikki Rambo + `1fb28e70` Santi LIMA). Optional: 24-h v1.8 soak observation before starting Phase 45 scope work. v1.8 cutover already complete (alerter recreated 01:41:58 ART; bridge already on Phase 46 code).
 
 Previously: kick off v1.8 Phase 1 (event-gate + signal_outbound). Plan-01 = 100-capture hand-classification smoke from mushdatadump-prod, BEFORE spec-locking the gate. Reference notes:
 
@@ -303,3 +296,7 @@ v1.7 phase order (hard sequencing):
 **Last completed:** Phase 35 (vps-tierA-backup) SHIPPED 2026-05-11
 
 **Planned Phase:** 37 (multi-farmer-routing) — 4 plans — 2026-05-11T20:23:31.281Z
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone

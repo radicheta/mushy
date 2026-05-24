@@ -213,6 +213,57 @@ describe('createOutboundDispatcher', () => {
     expect(signalClient.send).not.toHaveBeenCalled();
   });
 
+  // Hotfix 2026-05-24: trinity-skip. When operatorRecipient == capture sender
+  // (Santi/radicheta/farmer-1 trinity), operator-channel pings would interrupt
+  // the farmer-side conversation with internal-looking chatter. Skip.
+  test('hotfix-2026-05-24: send_batch_review_summary skipped when operator==sender (trinity)', async () => {
+    const signalClient = makeSignalOk();
+    const d = createOutboundDispatcher({
+      signalClient, config: {}, logger: silentLogger,
+      previewBuilder, operatorRecipient: '+59892893012',
+    });
+    const batch = {
+      sender_e164: '+59892893012', // SAME as operatorRecipient
+      draftIds: [
+        { id: 'bb34475403aa', status: 'needs_review' },
+        { id: 'ccd52457c2bb', status: 'needs_review' },
+      ],
+    };
+    const r = await d.dispatch('send_batch_review_summary', batch);
+    expect(r.ok).toBe(true);
+    expect(r.skipped).toBe('trinity');
+    expect(signalClient.send).not.toHaveBeenCalled();
+  });
+
+  test('hotfix-2026-05-24: send_batch_review_summary still fires when operator!=sender (Vikki case)', async () => {
+    const signalClient = makeSignalOk();
+    const d = createOutboundDispatcher({
+      signalClient, config: {}, logger: silentLogger,
+      previewBuilder, operatorRecipient: '+59892893012',
+    });
+    const batch = {
+      sender_e164: '+59898018597', // Vikki, NOT the operator
+      draftIds: [{ id: 'aa', status: 'needs_review' }, { id: 'bb', status: 'needs_review' }],
+    };
+    const r = await d.dispatch('send_batch_review_summary', batch);
+    expect(r.ok).toBe(true);
+    expect(r.skipped).toBeUndefined();
+    expect(signalClient.send).toHaveBeenCalledTimes(1);
+  });
+
+  test('hotfix-2026-05-24: send_needs_review_ping skipped when operator==sender (trinity)', async () => {
+    const signalClient = makeSignalOk();
+    const d = createOutboundDispatcher({
+      signalClient, config: {}, logger: silentLogger,
+      previewBuilder, operatorRecipient: '+59892893012',
+    });
+    const row = makeDraftRow({ sender_e164: '+59892893012' }); // SAME as operator
+    const r = await d.dispatch('send_needs_review_ping', row);
+    expect(r.ok).toBe(true);
+    expect(r.skipped).toBe('trinity');
+    expect(signalClient.send).not.toHaveBeenCalled();
+  });
+
   test('send_needs_review_ping with missing operatorRecipient -> ok:false, no send', async () => {
     const signalClient = makeSignalOk();
     const d = createOutboundDispatcher({

@@ -12,8 +12,9 @@
 - ✅ **v1.5 Analog Humidity Control & Condensation/Evaporation Forcing** — Phases 27–31 (shipped 2026-05-09; ALRT-10 calendar-deferred). See `.planning/milestones/v1.5-ROADMAP.md`.
 - ✅ **v1.6 VPS Hub + Outage/Recovery Stack** — Phases 32–35 + 999.43.1 (shipped 2026-05-10/11; scaffolding deferred). See `.planning/milestones/v1.6-ROADMAP.md`.
 - 🚧 **v1.7 Multimodal Signal → FarmOS Events** — Phases 36–43 (effectively shipped 2026-05-16; Phase 42 calendar-deferred — biological lifecycle)
-- 🚧 **v1.8 Event-gate + Durable `signal_outbound` (tenant-aware)** — Phases 44–45 (locked 2026-05-17; OSS-Foray Option α — every PR ships tenant_id-aware from day one)
-- 📋 **v1.9 Inoc-Session Correctness** — Phases 47–49 (scaffolded 2026-05-22; phase planning deferred until v1.8 ships). Ship gate: 2026-05-22 paper-log session reprocessed end-to-end.
+- ✅ **v1.8 Event-gate + Durable `signal_outbound` (tenant-aware)** — Phases 44–46 (shipped 2026-05-23; OSS-Foray Option α — every PR ships tenant_id-aware from day one)
+- ✅ **v1.9 Inoc-Session Correctness** — Phases 47–50 (shipped 2026-05-23; INOC-01..07 + QUOT-01..06 hermetic-attested; live-fire & May-22 reprocess operator-deferred via runbooks)
+- ✅ **v1.10 Order-Independent Writes (upsert-by-stable-identity)** — Phase 51 (shipped 2026-05-24; UPSERT-01..07 all verified; live-fire on dev farmOS: 16 assets patched / 0 created, 11 logs patched / 0 created, zero duplicates). See `.planning/milestones/v1.10-ROADMAP.md`.
 
 ## Phases
 
@@ -145,7 +146,7 @@ Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 202
 Locked 2026-05-17 per `.planning/notes/2026-05-17-oss-foray-decision.md` and prior `[[project_2026_05_17_findings_discussion_decisions]]` memory. Bundles findings 7 (phantom drafts from chit-chat / is-this-an-event gate) + 1b (LLM outbound amnesia / durable signal_outbound) + 3 (NORTH-STAR commit_failed silent-reply ack). First milestone under OSS-Foray Option α — every new schema ships with `tenant_id` from day one so the v2.0 Foray Apache-2.0 extraction is a clean carve, not a 9-months-of-ALTERs ops event.
 
 - [x] **Phase 44: Event-gate + durable `signal_outbound` (tenant-aware)** — 7/7 plans complete 2026-05-23. Rules-only event gate at `capture.js:147` + `signal_outbound(tenant_id, intent, ...)` table + Phase 37 prompt consumes `lastBotOutbound`; ship-gate is 100-capture hand-classification smoke from prod corpus (Plan-01); per-tenant config tree under `tenants/mossrock/`. Plan-04 operator-attested live-fire PASS 2026-05-23: 8/10 agreement (at floor), cache empirically verified (1/10 write + 9/10 read, ~$0.05). One Anthropic SDK-contract bug surfaced live and fixed (`1429684`: `signal` belongs in request-options arg, not body). v1.8 ship-ready pending prod alerter rebuild+deploy. References `.planning/notes/2026-05-17-is-this-an-event-gate.md` + `.planning/notes/2026-05-17-llm-outbound-amnesia.md`.
-- [ ] **Phase 45: NORTH-STAR commit_failed ack + replay outstanding silent-failure drafts** — every terminal state post-farmer-YES must produce a farmer-facing reply (success + failure paths). Implements `[[feedback_no_silent_failure_after_farmer_confirm]]`. Live-fire UAT: replay drafts `b8a1e586` (Vikki Rambo) + `1fb28e70` (Santi LIMA) through the fixed path. References `.planning/notes/2026-05-17-northstar-commit-failed-reply.md`.
+- [x] **Phase 45: NORTH-STAR commit_failed ack + replay outstanding silent-failure drafts (5/5 plans)** — SHIPPED 2026-05-23. Every terminal state post-farmer-YES now produces a farmer-facing reply on prod (T4 success + T6 failed). Original 2026-05-15 violation closed: Vikki + Santi acks delivered, 3 ack-debt extras swept to Santi (2026-05-13/15/21). ACK-01..04 satisfied. Follow-ons: runtime `sender_name` enrichment in commit-watchdog (renderer reads it but schema lacks it; backfill patched via SIGNAL_FARMER_MAP); ack-debt sweep tooling; Vikki farmer-paste verification (operator-deferred — receipt database-attested via signal_outbound row).
 - [x] **Phase 46: Chamber-dark detector — real fc1-liveness signal + farmer-readable pi-offline message** — Shipped 2026-05-21. Live-fire attested Round 3 at T0+3min32s. Two extra bugs found and fixed during smoke: D-09 globals-shadow (commit `86d4340`) and D-10 oobN/oobWindowMin gate (commit `5f90cc7`). Hotfix from 2026-05-20 fc1 outage debug session. `isPiOffline` keys off alerter↔bridge WS + a one-shot `rosReady` boot flag; neither reflects fc1 publisher liveness, so during fc1's 10h47m blackout the only Signal alert that fired was "co2 sensor offline" (per-sensor, vague). Fix: bridge tracks `fc1LastMsgTs` across all fc1 topics + exposes in `/health`; alerter consumes as a third OR-trigger for `isPiOffline`; `formatProblem('pi')` becomes chamber-level using the `lastKnown` payload `state.js` already builds. References `.planning/debug/alerter-co2-only-not-pi.md`.
 
 </details>
@@ -157,11 +158,50 @@ Driver: 2026-05-22 paper-log session exposed that Phase 38's eval set lacked the
 
 Honors locked schema (B5 SEQ per-session per 2026-05-22 clarification in farmos repo `8daea5b`, B7 native log types only, C4 multi-parent via log refs, C5 native-only). Operates under [[feedback_hard_rules_relaxed_when_farmer_is_santi]] — Phase 45 NORTH-STAR ack remains in v1.8 scope.
 
-- [ ] **Phase 47: Multi-source extraction fusion + groups-shape inoc draft** — extraction prompt + draft schema emit `{type: "seeding", event_date, groups: [{parent, species, qty, child_block_names[]}]}`; multi-source fusion (audio+image+text → one draft with per-field provenance); B5 SEQ from paper-log photo as primary source; conflict flagging in confirm UX. Implements INOC-01..03.
-- [ ] **Phase 48: Session entity + per-bag commit fan-out + session-shaped confirm preview** — anonymous `fungi` session asset as secondary parent on each child block; N per-block `seeding` logs from one groups-shape draft; idempotent on duplicate YES; confirm preview is compact group-by-parent table. Implements INOC-04..06.
-- [ ] **Phase 49: Real-session eval corpus + May 22 ship-gate reprocess** — ≥3 real inoc sessions added to CI eval set from `/mnt/mossrock/shared/mushdatadump-prod/`; 2026-05-22 session is the named regression guard; CI fails if any named session regresses; May 22 captured-but-failed drafts (`e3a564d0…` + `6edaaba7…`) marked discarded and the audio+photo reprocessed through the new pipeline to farmOS dev as the ship gate. Implements INOC-07.
+- [x] **Phase 47: Multi-source extraction fusion + groups-shape inoc draft (5/5 plans)** — SHIPPED 2026-05-23. New top-level `seeding_session` draft type with inline-provenance fields per Gray Area 1+2 locks. Live-fire on real 2026-05-22 captures (audio+photo+text from prod) recognized all 5 parents (`260304_SHI_5`, `260118_SHI_23`, `260118_SHI_26`, `260118_KOY_12`, `260425_KOY_4`) + correct 1/1/1/4/4 = 11 child distribution + emitted Gray-Area-3 ask-back path (model conservatively asked for starting SEQ rather than auto-deriving from row positions; friction-policy-correct). Conflict UX is silent-photo-wins per Gray Area 4 (overrides memory `[[extraction-holistic-multi-source-fusion]]` rule 2). Implements INOC-01,02,03,05; INOC-04 (single-parent legacy → groups.length===1) carries forward to Phase 48.
+- [x] **Phase 48: Session entity + per-bag commit fan-out + session-shaped confirm preview (5/5 plans)** — SHIPPED 2026-05-23. `commitSeedingSession` handler with asset-first preflight + N-child fan-out + all-or-nothing orphan cleanup (reverse-order DELETE on partial failure). Session asset is anonymous `fungi` named `inoc YYYY-MM-DD` with `allowNoFungiType:true`. Each child seeding log carries `parent[]=[sourceBlock, sessionAsset]` (source primary, session secondary) per locked Gray Area B. Idempotency on `signal_draft.id` + cached `farmos_response` (Phase 40 design; no separate `signal_commit` table — CONTEXT memory drift reconciled). `renderSeedingSession` produces compact group-by-parent table with range-collapse + overflow folding, ASCII-only no em-dashes. Phase 45 ack contract extended with `seeding_session` LOG_TYPE_LABEL + 3 reasonMap entries + session-shaped success/failed renderer. Hermetic ship-gate: 7/7 integration tests green (May-22 happy path + single-parent legacy + partial-fail + double-YES idempotent); full `test/farmos` 207/207. Live-fire operator-deferred (48-LIVE-FIRE.md, gated `EVAL_RUN_LIVE=1`). Implements INOC-04, INOC-05, INOC-06.
+- [x] **Phase 49: Real-session eval corpus + May 22 ship-gate reprocess (4/4 plans)** — SHIPPED 2026-05-23. `signal_draft` gains `discarded_reason` + `discarded_at` columns. CI eval corpus expands to 3 sessions under `test/eval/ingestion/fixtures/sessions/`: 2026-05-22 (named regression guard, 5 groups / 11 children), 2026-05-12 inoc-santi (named regression guard, Phase-38 Plan-09 hand labels), 2026-03-23 photo-absent synthetic-envelope (broaden corpus, exercises `needs_input='starting_seq'` path). New `sessions.test.js` (`it.each(NAMED)`) hermetic via mock-extractor, real extractor gated `EVAL_RUN_LIVE=1`. `scripts/discard-drafts.js` CLI: dry-run default + `--apply` + idempotent (`WHERE status != 'discarded'`) + 12/12 unit tests. `49-SHIP-GATE.md` operator runbook provides exact `psql`/`discard-drafts.js --apply`/EVAL_RUN_LIVE reprocess/lineage-walk/Phase-45-ack-verification commands for the May-22 reprocess to farmOS dev (operator-deferred per locked Gray Area D). INOC-07 hermetic-attested; live ship-gate ready-to-attest. Implements INOC-07.
+- [x] **Phase 50: Signal-native quote threading for ack and reply routing (5/5 plans)** — SHIPPED 2026-05-23. Three new schema columns (`signal_outbound.signal_msg_ts`, `signal_capture.signal_msg_ts`, `signal_capture.{quote_msg_ts, quote_author_e164}`) plus a partial index on outbound. `signal.js send()` carries `quote:{timestamp, author, message}` payload through to /v2/send (spike-verified `0.14.2`); on success persists native ts. Outbound dispatch at the two highest-traffic acks (`send_commit_outcome_ack` + `send_confirm_ack`) fetches source capture quote target via `tryBuildQuoteForDraft`; FAIL-OPEN — null capture/ts logs warning, sends unquoted (no exception). Inbound receive-loop persists native + quote columns at capture time. New `findDraftByQuotedMsgTs` resolver. Routing patch in `receive-loop.js` implements CONTEXT D-04 algorithm verbatim: quote→actionable routes to that draft; quote→terminal dispatches `send_quote_closed` polite-close; quote→orphan or no-quote falls through; >1 active AND no quote fires `send_ask_back` numbered fallback. T-50-04-01 sender-equality spoof guard. 1024/1033 alerter tests green. QUOT-01..06 hermetic-attested. `50-LIVE-FIRE.md` operator runbook ready (10 numbered steps; 4 round-trip scenarios). Live-fire operator-deferred. Implements QUOT-01..06.
 
 </details>
+
+### Phase 51: Order-independent farmOS writes — upsert-by-stable-identity + set-union merge
+
+**Goal:** Make every farmOS write a content-addressable upsert keyed by the entity's natural identity, so processing events out of order produces the same final farmOS state as processing them chronologically. Backfill of the 2025-paper-log scan can land in any sequence relative to live captures; observations on yet-to-be-logged assets backfill instead of failing; partial stubs (today's May-22 ancestor placeholders) enrich in-place when the real history arrives.
+
+**Driver:** 2026-05-24 conversation while running 48-LIVE-FIRE. The May-22 prod write needed 4 ancestor parent blocks (260304_SHI_5, 260118_SHI_23, 260118_SHI_26, 260118_KOY_12) that don't exist in prod farmOS because their Jan/Mar inoc sessions live in the 2025 paper notebook and haven't been scanned yet. Silently minting them now creates assets the future 2025-scan-backfill will collide with. The fix isn't a stub strategy — the fix is that ALL writes become merge-by-default so out-of-order arrival is structurally safe. Cross-refs: `[[feedback_farmer_is_reality_source_of_truth]]` (today's observation-of-unknown-asset principle), `.planning/notes/2026-05-24-v1.9-uat-findings.md` (observation-backfill todo), `.planning/notes/2026-05-24-session-as-asset-group-design.md` (composes with the asset--group work).
+
+**Requirements:**
+- UPSERT-01: `assets.upsertFungiAsset(client, opts)` — lookup by name → if found, PATCH merged fields → if not, POST. Returns same shape as `createFungiAsset`. All existing callers (`commit-seeding-session`, `commit-observation`, `commit-seeding`, future ones) route through this.
+- UPSERT-02: `logs.upsertLog(client, type, opts)` — lookup by stable key (per-type rule, see below) → PATCH merged or POST. Seeding logs key = `(type='seeding', asset.id)` (B5: one inoc event per child).
+- UPSERT-03: Merge rules per field type, codified in a `_mergeAssetFields(existing, incoming)` function. Array-valued ref fields (parent[], qr_codes[], farm_id_tag[]) = set-union. Scalar identity fields (name, type) = never mutated. Scalar non-identity (fungi_type, fungi_xing, status) = conflict-surface if differs, no silent overwrite. Notes = append-with-dedup OR structured notes_entries list (decide in plan).
+- UPSERT-04: Optimistic concurrency via etag — PATCH carries `If-Match: <attrs.drupal_internal__revision_id or fetched etag>`; on 412 retry the GET + merge cycle once before failing.
+- UPSERT-05: Stub-detection contract — assets minted as ancestor placeholders (today: notes contains "STUB awaits 2025-scan") are findable by a structured query. The upsert layer treats them as fully-mergeable on next encounter; no special STUB handling needed at the asset code path. Worth documenting that the marker exists so the 2025-scan-backfill author knows to look for it.
+- UPSERT-06: Hermetic ship-gate. Property tests:
+  - Order independence: for a randomized permutation of {May-22 inoc, Jan-18 inoc, Mar-04 inoc} writes, final farmOS state (asset count + parent[] sets + log count) is identical to the chronological order.
+  - Stub enrichment: stub-then-real produces same final state as real-only.
+  - Conflict surfacing: incoming `fungi_type=KOY` against existing `fungi_type=SHI` returns a structured conflict, not a silent overwrite.
+- UPSERT-07: Live-fire ship-gate. Replay May-22 against dev with the stubs already in place (the 4 dev stubs after today's session, if we add the STUB marker); assert children's parent[] resolves to the existing stubs (no duplicates).
+
+**Depends on:** none active. Composes with the asset--group design (Phase 52+ candidate); that work also flows through `upsertFungiAsset` / `logs.upsertLog`.
+
+**Touches:** `src/agents/alerter/src/farmos/assets.js`, `src/agents/alerter/src/farmos/logs.js`, `src/agents/alerter/src/farmos/commits/commit-seeding-session.js`, `src/agents/alerter/src/farmos/commits/commit-observation.js`, `src/agents/alerter/src/farmos/commits/commit-seeding.js` (legacy), the audit log shape if upsert outcome (created/patched/noop) becomes a logged dimension, tests across `test/farmos/`.
+
+**Constraints:**
+- Honors `[[feedback_farmer_is_reality_source_of_truth]]` — observation on unknown asset becomes a real upsert path, not an error.
+- Honors substrate log-only lock and C4 (lineage = log, not field) — the upsert is at the *asset+log* granularity, not at a lineage graph.
+- Idempotency on `signal_draft.id` (Phase 40 audit) stays in place as a coarser safety net.
+- farmOS JSON:API etag-on-PATCH is the concurrency primitive — no custom version columns.
+
+**Plans:** 6/6 plans complete
+
+Plans:
+- [x] 51-01-wave0-infrastructure-PLAN.md — mock-client PATCH/delete/by-id/412 + client.js opts.headers + audit-logger outcome/conflicts/etag_source + fixture + dev-farmOS notes round-trip probe
+- [x] 51-02-merge-pure-module-PLAN.md — merge.js pure module (mergeAssetFields + IdentityMutationError + STABLE_NOTES_SEPARATOR) with Jest coverage of all 5 rule classes + stub-marker preservation
+- [x] 51-03-upsert-fungi-asset-PLAN.md — upsertFungiAsset + isStubAsset + STUB_BACKFILL_MARKER on assets.js with soft revision_id compare (UPSERT-04 degraded per RESEARCH)
+- [x] 51-04-upsert-log-seeding-PLAN.md — upsertLog seeding + LOG_STABLE_KEYS table + LogIdentityCollision; non-seeding types preserve POST-only
+- [x] 51-05-commit-migration-and-property-tests-PLAN.md — migrate commit-seeding-session + commit-seeding + commit-observation review; grep-gate clean; property tests (order-independence + stub-enrichment + conflict-surfacing, 20× permutations)
+- [x] 51-06-live-fire-attestation-PLAN.md — scripts/live-fire-51.js sibling-copy of 48; human checkpoint to run against dev farmOS and commit receipt
 
 ### Phase 47: Multi-source extraction fusion + groups-shape inoc draft
 
@@ -169,7 +209,7 @@ Honors locked schema (B5 SEQ per-session per 2026-05-22 clarification in farmos 
 
 **Depends on:** v1.8 (Phases 44+45) ships first. Composes with Phase 38's existing extractor scaffolding — extends, doesn't replace.
 
-**Requirements:** INOC-01, INOC-02, INOC-03
+**Requirements:** INOC-01, INOC-02, INOC-03, INOC-05 (INOC-04 carry-forward to Phase 48)
 
 **Success criteria (what must be TRUE):**
 1. Replay the 2026-05-22 audio+photo turn through the new extractor → emits exactly one draft with 5 groups (3 SHI singles + 4 KOY-118-12 + 4 KOY-425-4), 11 children total, child names `260522_SHI_1..3` + `260522_KOY_4..11` (per-session SEQ from paper-log photo, not per-strain auto-generated).
@@ -184,7 +224,12 @@ Honors locked schema (B5 SEQ per-session per 2026-05-22 clarification in farmos 
 - No auto-generated SEQ when paper-log photo absent — ask-back preferred over guessing per [[project_extraction_holistic_multi_source_fusion]].
 - Honors B5 session-wide SEQ disambiguation ([[project_b5_seq_is_per_session_not_per_strain]]).
 
-**Plans:** TBD during plan-phase. Likely 4-6 plans.
+**Plans:** 5 plans
+- [ ] 47-01-PLAN.md — New schemas (SeedingSession + Provenanced + ConflictEntry) + Draft union extension
+- [ ] 47-02-PLAN.md — System prompt revision + May-22-shape multi-parent few-shot
+- [ ] 47-03-PLAN.md — Pipeline starting_seq ask-back branch + seq-helper.js (Phase 48 reuse)
+- [ ] 47-04-PLAN.md — Preview-builder seeding_session placeholder (Phase 48 ships real preview)
+- [ ] 47-05-PLAN.md — Integration ship-gate (May 22 hermetic + live-fire) for INOC-01/02/03/05
 
 ### Phase 48: Session entity + per-bag commit fan-out + session-shaped confirm preview
 
@@ -760,7 +805,12 @@ Plans:
 **Depends on:** Phase 44 (signal_outbound table is the natural place to log the ack send; not strictly required but bundles naturally — confirm at discuss-phase)
 **Requirements (proposed; lock at discuss-phase):** ACK-01 (no terminal state in the confirm/commit machine is silent post-YES — enumerated and tested), ACK-02 (replay of draft `b8a1e586` Vikki Rambo through the fixed path produces an English-default farmer-facing reply on the failure path — Vikki is English-first per `[[farmer-language-stacks]]`), ACK-03 (replay of draft `1fb28e70` Santi LIMA likewise), ACK-04 (idempotency: a retried commit does not double-send the ack)
 **Reference:** `.planning/notes/2026-05-17-northstar-commit-failed-reply.md` + `.planning/notes/2026-05-17-northstar-ack-sketch.md` (impl-sketch produced by overnight research) + memory `[[feedback_no_silent_failure_after_farmer_confirm]]`
-**Plans:** TBD at plan-phase
+**Plans:** 5 plans
+- [ ] 45-01-PLAN.md — Schema: signal_draft.outcome_ack_sent_at + tryMarkOutcomeAckSent idempotency primitive (ACK-04)
+- [ ] 45-02-PLAN.md — commit-outcome-preview.js renderer: 10 templates + 3 farm-level + 8-code reasonMap (ACK-01)
+- [ ] 45-03-PLAN.md — edit-handler Option X: commit_failed → EDIT → awaiting_farmer transition (ACK-01)
+- [ ] 45-04-PLAN.md — Wire T4+T6 dispatch hooks + outboundConfirm plumbing + signal_outbound logging (ACK-01, ACK-04)
+- [ ] 45-05-PLAN.md — Live-fire UAT: backfill replay of Vikki + Santi drafts (ACK-02, ACK-03)
 
 ---
 *Roadmap created 2026-03-28. v1.4 shipped 2026-05-01. v1.5 shipped 2026-05-09. v1.6 shipped 2026-05-11. v1.7 effectively shipped 2026-05-16 (Phase 42 calendar-deferred). v1.8 scaffolded 2026-05-17.*
