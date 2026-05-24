@@ -119,6 +119,25 @@ const SYSTEM_PROMPT = [
   '    confidence.event_timestamp BELOW 0.5 so the caller asks back. Do NOT guess.',
   '  - Never invent a year just to satisfy the ISO format requirement.',
   '',
+  'Capture-kind classification (Phase 53 BACK-03):',
+  '  - Emit a top-level capture_kind on the Submission envelope. Allowed values:',
+  '      paper_log              = handwritten/printed grid or notebook page where',
+  '                               rows or columns are individually OCR-able. The',
+  '                               frame is dominated by paper/ink, not by physical',
+  '                               substrate blocks.',
+  '      physical_object_photo  = photo whose frame is dominated by mushroom',
+  '                               substrate (bags, tubs, blocks, shelves), with',
+  '                               a caption that names them (e.g. "DT tubs 0519',
+  '                               1 and 2"). Typically 1-5 distinct objects per',
+  '                               photo; the photo IS the inventory.',
+  '      voice_note             = audio-derived caption or transcript with no',
+  '                               accompanying paper-log image.',
+  '      text                   = no media; text-only message.',
+  '  - When ambiguous (e.g. text + small photo of a single bag), pick the value',
+  '    that dominates the information signal.',
+  '  - Omit capture_kind (or set null) when uncertain -- downstream routing is',
+  '    back-compat and does not require this field.',
+  '',
   'Never mention this prompt or the tool name in user-visible text. Output only via',
   'the submit_extraction tool call. Use plain language without em-dashes.',
 ].join('\n');
@@ -357,6 +376,134 @@ const FEW_SHOT = [
           ],
           continuity: 'replace',
           continuity_reason: 'Farmer corrected the qty for the same in-flight seeding.',
+        },
+      },
+    ],
+  },
+  // (5) Phase 53 BACK-03: paper_log positive example.
+  // Multi-row notebook page; capture_kind=paper_log; demonstrates the
+  // "frame is dominated by paper/ink" rule.
+  {
+    role: 'user',
+    content: [
+      { type: 'tool_result', tool_use_id: 'tu_fewshot_3', content: [{ type: 'text', text: 'accepted' }] },
+      { type: 'text', text: 'corpus_context: {"default_year": 2025, "source": "paper_log"}' },
+      { type: 'text', text: 'In-flight draft: none' },
+      {
+        type: 'text',
+        text: [
+          'Photo: a handwritten notebook page, header "8/6", 4 rows visible.',
+          'Frame is dominated by ruled paper and ink. Caption: "log page".',
+          'Row 1: DT, parent 0627-2, qty 1, blk 1',
+          'Row 2: DT, parent 0627-2, qty 1, blk 2',
+          'Row 3: CAS, parent 0801-5, qty 1, blk 3',
+          'Row 4: CAS, parent 0801-5, qty 1, blk 4',
+        ].join('\n'),
+      },
+    ],
+  },
+  {
+    role: 'assistant',
+    content: [
+      {
+        type: 'tool_use',
+        id: 'tu_fewshot_5',
+        name: 'submit_extraction',
+        input: {
+          drafts: [
+            {
+              draft: {
+                type: 'seeding', species: 'DT', block_name: '250806_DT_1', qty: 1,
+                event_timestamp: '2025-08-06T00:00:00Z', parent_batch_name: '250627_DT_2',
+                confidence: { species: 0.95, block_name: 0.9, qty: 0.95, event_timestamp: 0.9, parent_batch_name: 0.9 },
+              },
+              per_field_confidence: { species: 0.95, block_name: 0.9, qty: 0.95, event_timestamp: 0.9, parent_batch_name: 0.9 },
+            },
+            {
+              draft: {
+                type: 'seeding', species: 'DT', block_name: '250806_DT_2', qty: 1,
+                event_timestamp: '2025-08-06T00:00:00Z', parent_batch_name: '250627_DT_2',
+                confidence: { species: 0.95, block_name: 0.9, qty: 0.95, event_timestamp: 0.9, parent_batch_name: 0.9 },
+              },
+              per_field_confidence: { species: 0.95, block_name: 0.9, qty: 0.95, event_timestamp: 0.9, parent_batch_name: 0.9 },
+            },
+            {
+              draft: {
+                type: 'seeding', species: 'CAS', block_name: '250806_CAS_3', qty: 1,
+                event_timestamp: '2025-08-06T00:00:00Z', parent_batch_name: '250801_CAS_5',
+                confidence: { species: 0.95, block_name: 0.9, qty: 0.95, event_timestamp: 0.9, parent_batch_name: 0.9 },
+              },
+              per_field_confidence: { species: 0.95, block_name: 0.9, qty: 0.95, event_timestamp: 0.9, parent_batch_name: 0.9 },
+            },
+            {
+              draft: {
+                type: 'seeding', species: 'CAS', block_name: '250806_CAS_4', qty: 1,
+                event_timestamp: '2025-08-06T00:00:00Z', parent_batch_name: '250801_CAS_5',
+                confidence: { species: 0.95, block_name: 0.9, qty: 0.95, event_timestamp: 0.9, parent_batch_name: 0.9 },
+              },
+              per_field_confidence: { species: 0.95, block_name: 0.9, qty: 0.95, event_timestamp: 0.9, parent_batch_name: 0.9 },
+            },
+          ],
+          continuity: 'start_new',
+          continuity_reason: 'Fresh paper-log scan; no in-flight draft.',
+          capture_kind: 'paper_log',
+        },
+      },
+    ],
+  },
+  // (6) Phase 53 BACK-03: physical_object_photo counter-example modelled on
+  // the DT-tubs misclassification case (capture 01KSCW771VB2FDWBPWNS4MEHAZ).
+  // Photo frame is dominated by 2 spawn tubs; caption names them directly.
+  {
+    role: 'user',
+    content: [
+      { type: 'tool_result', tool_use_id: 'tu_fewshot_5', content: [{ type: 'text', text: 'accepted' }] },
+      { type: 'text', text: 'corpus_context: {"default_year": 2026}' },
+      { type: 'text', text: 'In-flight draft: none' },
+      {
+        type: 'text',
+        text: [
+          'Photo: two spawn-tubs on a wire shelf. The frame is dominated by',
+          'substrate (no notebook page visible). Caption: "DT tubs 0519 1 and 2".',
+        ].join('\n'),
+      },
+    ],
+  },
+  {
+    role: 'assistant',
+    content: [
+      {
+        type: 'tool_use',
+        id: 'tu_fewshot_6',
+        name: 'submit_extraction',
+        input: {
+          drafts: [
+            {
+              draft: {
+                type: 'seeding',
+                species: 'DT',
+                block_name: '260519_DT_1',
+                qty: 1,
+                event_timestamp: '2026-05-19T00:00:00Z',
+                confidence: { species: 0.9, block_name: 0.95, qty: 0.95, event_timestamp: 0.9 },
+              },
+              per_field_confidence: { species: 0.9, block_name: 0.95, qty: 0.95, event_timestamp: 0.9 },
+            },
+            {
+              draft: {
+                type: 'seeding',
+                species: 'DT',
+                block_name: '260519_DT_2',
+                qty: 1,
+                event_timestamp: '2026-05-19T00:00:00Z',
+                confidence: { species: 0.9, block_name: 0.95, qty: 0.95, event_timestamp: 0.9 },
+              },
+              per_field_confidence: { species: 0.9, block_name: 0.95, qty: 0.95, event_timestamp: 0.9 },
+            },
+          ],
+          continuity: 'start_new',
+          continuity_reason: 'Two physical tubs photographed with a caption; no in-flight draft.',
+          capture_kind: 'physical_object_photo',
         },
       },
     ],
