@@ -220,6 +220,25 @@ describe('commitSeedingSession (Phase 48 Plan 02)', () => {
     }
   });
 
+  it('Test H (Phase 51 idempotency): replaying the same seeding session twice produces the same final asset/log set (no duplicates)', async () => {
+    const client = makeSessionMockClient();
+    const r1 = await commitSeedingSession(client, draftFor(MAY22_FIXTURE), {});
+    expect(r1.ok).toBe(true);
+    const assetsAfterFirst = client._created.assets.length;   // 16
+    const logsAfterFirst = client._created.logs.length;       // 11
+
+    const r2 = await commitSeedingSession(client, draftFor(MAY22_FIXTURE), {});
+    expect(r2.ok).toBe(true);
+    // No new POSTs on replay — every upsert hits an existing asset/log and
+    // is either patched (notes draft-trailer merge) or noop.
+    expect(client._created.assets.length).toBe(assetsAfterFirst);
+    expect(client._created.logs.length).toBe(logsAfterFirst);
+    // r2 returns the same set of assetIds + logIds (every upsert returned an id;
+    // createdAssetIds only tracks 'created' outcome, so on replay it's empty).
+    expect(r2.asset_ids).toEqual([]);
+    expect(r2.log_ids.length).toBe(logsAfterFirst);
+  });
+
   it('Test G (router dispatch): commit(client, draft) with draft.log_type=seeding_session routes to commitSeedingSession', async () => {
     expect(typeof commitRouter.DISPATCH.seeding_session).toBe('function');
     // Same function reference -- confirms the router import is wired to this

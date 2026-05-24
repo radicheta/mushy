@@ -19,7 +19,7 @@
 // naming misstatement; the actual encoding is asset--fungi.parent[]. See the
 // 48-02 SUMMARY for the call-out.
 //
-// Session-asset fungi_type handling: extended assets.createFungiAsset with an
+// Session-asset fungi_type handling: extended assets.create-fungi-asset with an
 // `allowNoFungiType: true` flag (Plan 02 chose the simpler path; see SUMMARY).
 // fungi_xing for the session asset re-uses the existing 'block' term so no
 // taxonomy work is required on the farmOS side. Operator decision flagged in
@@ -116,24 +116,33 @@ async function commitSeedingSession(client, draft, ctx) {
       }
 
       // Source block resolution: skip lookup/create for NO_PARENT sentinel.
+      // Phase 51 UPSERT-01: route through upsertFungiAsset so a re-run against a
+      // populated farmOS is idempotent. Only push to createdAssetIds when
+      // outcome==='created' — patched/noop assets must NOT be rolled back on
+      // partial-commit failure (T-51-10 mitigation).
       let sourceBlockId = null;
       if (parentName !== 'NO_PARENT') {
-        const found = await assets.findAssetByName(client, parentName);
-        if (found.found) {
-          sourceBlockId = found.assetId;
-        } else {
-          const created = await assets.createFungiAsset(client, {
-            name: parentName,
-            fungiTypeName: species,
-            fungiXingName: 'block',
-            draftId,
-          });
-          if (!created.ok) {
-            return _cleanup(client, ctx, draft, createdAssetIds,
-              created.reason || 'source_block_create_failed', childIndex);
-          }
-          sourceBlockId = created.assetId;
-          createdAssetIds.push(sourceBlockId);
+        const r = await assets.upsertFungiAsset(client, {
+          name: parentName,
+          fungiTypeName: species,
+          fungiXingName: 'block',
+          draftId,
+        });
+        if (!r.ok) {
+          return _cleanup(client, ctx, draft, createdAssetIds,
+            r.reason || 'source_block_upsert_failed', childIndex);
+        }
+        sourceBlockId = r.assetId;
+        if (r.outcome === 'created') createdAssetIds.push(sourceBlockId);
+        if (ctx && ctx.auditLogger && typeof ctx.auditLogger.logCommit === 'function') {
+          try {
+            await ctx.auditLogger.logCommit('upsert_outcome', draft, {
+              asset_ids: [sourceBlockId],
+              outcome: r.outcome,
+              conflicts: r.conflicts,
+              etag_source: r.etag_source,
+            });
+          } catch (_) { /* audit failure is non-fatal */ }
         }
       }
 
@@ -144,7 +153,7 @@ async function commitSeedingSession(client, draft, ctx) {
             'missing_child_block_name', childIndex);
         }
         const parentIds = sourceBlockId ? [sourceBlockId] : [];
-        const childRes = await assets.createFungiAsset(client, {
+        const childRes = await assets.upsertFungiAsset(client, {
           name: childName,
           fungiTypeName: species,
           fungiXingName: 'block',
@@ -153,13 +162,23 @@ async function commitSeedingSession(client, draft, ctx) {
         });
         if (!childRes.ok) {
           return _cleanup(client, ctx, draft, createdAssetIds,
-            childRes.reason || 'child_block_create_failed', childIndex);
+            childRes.reason || 'child_block_upsert_failed', childIndex);
         }
         const childBlockId = childRes.assetId;
-        createdAssetIds.push(childBlockId);
+        if (childRes.outcome === 'created') createdAssetIds.push(childBlockId);
         childBlockIds.push(childBlockId);
+        if (ctx && ctx.auditLogger && typeof ctx.auditLogger.logCommit === 'function') {
+          try {
+            await ctx.auditLogger.logCommit('upsert_outcome', draft, {
+              asset_ids: [childBlockId],
+              outcome: childRes.outcome,
+              conflicts: childRes.conflicts,
+              etag_source: childRes.etag_source,
+            });
+          } catch (_) { /* audit failure is non-fatal */ }
+        }
 
-        const logRes = await logs.createLog(client, 'seeding', {
+        const logRes = await logs.upsertLog(client, 'seeding', {
           name: 'Inoc ' + childName,
           timestamp,
           assetIds: [childBlockId],
@@ -168,9 +187,19 @@ async function commitSeedingSession(client, draft, ctx) {
         });
         if (!logRes.ok) {
           return _cleanup(client, ctx, draft, createdAssetIds,
-            logRes.reason || 'seeding_log_create_failed', childIndex);
+            logRes.reason || 'seeding_log_upsert_failed', childIndex);
         }
         childLogIds.push(logRes.logId);
+        if (ctx && ctx.auditLogger && typeof ctx.auditLogger.logCommit === 'function') {
+          try {
+            await ctx.auditLogger.logCommit('upsert_outcome', draft, {
+              log_ids: [logRes.logId],
+              outcome: logRes.outcome,
+              conflicts: logRes.conflicts || [],
+              etag_source: logRes.etag_source,
+            });
+          } catch (_) { /* audit failure is non-fatal */ }
+        }
         childIndex += 1;
       }
     }
