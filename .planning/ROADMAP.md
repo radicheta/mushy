@@ -15,6 +15,10 @@
 - ✅ **v1.8 Event-gate + Durable `signal_outbound` (tenant-aware)** — Phases 44–46 (shipped 2026-05-23; OSS-Foray Option α — every PR ships tenant_id-aware from day one)
 - ✅ **v1.9 Inoc-Session Correctness** — Phases 47–50 (shipped 2026-05-23; INOC-01..07 + QUOT-01..06 hermetic-attested; live-fire & May-22 reprocess operator-deferred via runbooks)
 - ✅ **v1.10 Order-Independent Writes (upsert-by-stable-identity)** — Phase 51 (shipped 2026-05-24; UPSERT-01..07 all verified; live-fire on dev farmOS: 16 assets patched / 0 created, 11 logs patched / 0 created, zero duplicates). See `.planning/milestones/v1.10-ROADMAP.md`.
+- 📋 **v1.10.1 Session-Entity Adoption (asset--group)** — Phase 52 (planned 2026-05-24; reverses Phase 48 "no session entity" interim now that farmos team enabled `farm_group` on dev+prod, commit `1857037`; session = `asset--group`, membership = `activity` log with `is_group_assignment=true`).
+- 📋 **v1.11 2025-Notebook Backfill** — Phases 53–55 (planned 2026-05-24; runs the mushdatadump 2025 paper-log corpus through the now-unblocked extraction+upsert pipeline; gated on Phase 38 batch-mode fix + year-context shim).
+- 📋 **v1.12 Farm-Agent Python Port** — Phases 56–? (planned 2026-05-24; ports the Node alerter/extraction stack to Python, unblocks Phase 50 wire-level quote-rendering bugs deferred from v1.9, sets up Foray v2.0 surface).
+- 📋 **v1.13 Auto-Commit Narrowing** — Phases TBD (planned 2026-05-24; carves per-shape auto-commit lanes gated on ≥99% historical YES rate + n≥50, with UNDO + auto-demotion; structurally depends on v1.11 generating the confirm corpus).
 
 ## Phases
 
@@ -164,6 +168,117 @@ Honors locked schema (B5 SEQ per-session per 2026-05-22 clarification in farmos 
 - [x] **Phase 50: Signal-native quote threading for ack and reply routing (5/5 plans)** — SHIPPED 2026-05-23. Three new schema columns (`signal_outbound.signal_msg_ts`, `signal_capture.signal_msg_ts`, `signal_capture.{quote_msg_ts, quote_author_e164}`) plus a partial index on outbound. `signal.js send()` carries `quote:{timestamp, author, message}` payload through to /v2/send (spike-verified `0.14.2`); on success persists native ts. Outbound dispatch at the two highest-traffic acks (`send_commit_outcome_ack` + `send_confirm_ack`) fetches source capture quote target via `tryBuildQuoteForDraft`; FAIL-OPEN — null capture/ts logs warning, sends unquoted (no exception). Inbound receive-loop persists native + quote columns at capture time. New `findDraftByQuotedMsgTs` resolver. Routing patch in `receive-loop.js` implements CONTEXT D-04 algorithm verbatim: quote→actionable routes to that draft; quote→terminal dispatches `send_quote_closed` polite-close; quote→orphan or no-quote falls through; >1 active AND no quote fires `send_ask_back` numbered fallback. T-50-04-01 sender-equality spoof guard. 1024/1033 alerter tests green. QUOT-01..06 hermetic-attested. `50-LIVE-FIRE.md` operator runbook ready (10 numbered steps; 4 round-trip scenarios). Live-fire operator-deferred. Implements QUOT-01..06.
 
 </details>
+
+## v1.10.1 Session-Entity Adoption (Phase 52) — PLANNED 2026-05-24
+
+**Driver:** farmOS team enabled the `farm_group` module on dev (`:18080`) and prod (`:8082`) farmOS — committed as `1857037` on the farmos repo. This reverses today's Phase 48 interim, where the seeding-session commit handler had to be stripped of its session-asset preflight after the original `asset--fungi` lock got HTTP-422'd by `fungi_type NOT NULL`. See `/mnt/slime-kingdom/shared/farmos/.planning/notes/2026-05-24-farm-group-enabled-reply-to-mushy.md` for the smoke evidence and the API-shape correction (there is no `log--group` bundle — canonical pattern is `log--activity` with `is_group_assignment: true`).
+
+**Strategic role:** Drops cleanly into v1.11 backfill so every 2025 notebook session lands as a real persistent group entity from day one (much cheaper than retrofitting later). Also composes with `[[feedback_farmer_is_reality_source_of_truth]]` — session-level observations get a real entity to attach to.
+
+**Boundary:** intentionally tiny. Only re-introduces the session-asset preflight (this time creating `asset--group`) and the membership-log call. Does not touch v1.11 backfill scope, does not touch the open Phase 38 batch-mode bugs, does not promote prod write (`FARMOS_INTEGRATION=0` stays).
+
+### Phase 52: Session entity via asset--group + activity-log membership
+
+**Goal:** A confirmed groups-shape draft commits with one `asset--group` named `inoc YYYY-MM-DD` as the session entity, plus N per-block seeding logs (one per child, parent = source block only), plus one `log--activity` with `is_group_assignment=true` that lists the N children under the session group. Children carry NO `parent[]` edge to the session — membership lives on the membership log, not on the asset.
+
+**Requirements:**
+- SESSION-01: `commit-seeding-session.js` preflight: lookup-or-create the session group asset by name (composes with Phase 51 upsert — group assets are upserted by name too). Anonymous-by-default; structured notes carry draft id provenance.
+- SESSION-02: After children created, POST a single `log--activity` carrying `is_group_assignment: true`, `relationships.asset.data[]` = child UUIDs, `relationships.group.data[]` = [sessionGroupId], timestamp = the session event_date day-grain epoch the seeding logs already use.
+- SESSION-03: Children's `parent[]` stays single-source (the source block). NO secondary parent edge to the session group. Lineage walk from a child returns its strain ancestry; "what session was this in?" answered by a query against the membership log.
+- SESSION-04: All-or-nothing semantics preserved — if the membership log POST fails, the session asset + N children + N seeding logs all get reverse-order cleanup (Phase 48 partial-failure pattern extends to 1 extra entity + 1 extra log).
+- SESSION-05: Idempotency preserved — duplicate YES on the same draft hits the cached farmos_response per Phase 40 audit; no double-creation of session asset or membership log.
+- SESSION-06: Same-day collision naming — `inoc YYYY-MM-DD` then `inoc YYYY-MM-DD #2` etc. (carry the original Phase 48 `_resolveSessionName` logic, simplified for group assets).
+- SESSION-07: Hermetic ship-gate — Phase 48 integration suite extended: 17 asset POSTs (1 group + 5 source + 11 children) + 12 logs (1 activity-with-flag + 11 seeding); 7/7 scenarios green including double-YES idempotent and partial-fail orphan cleanup.
+- SESSION-08: Live-fire ship-gate — re-run `scripts/live-fire-48.js` (or sibling) against dev farmOS with the new shape; session group asset queryable, membership walk via `GET /api/log/activity?filter[is_group_assignment]=1&filter[asset.id]=<child>` returns the right group.
+
+**Depends on:** farm_group enabled on both dev + prod (DONE — `1857037`). No active mushy-side blockers.
+
+**Touches:** `src/agents/alerter/src/farmos/commits/commit-seeding-session.js`, new `src/agents/alerter/src/farmos/group-membership.js` (or extension of `logs.js`), `assets.js` group-asset helpers (likely a thin `upsertGroupAsset` sibling of `upsertFungiAsset`), tests across `test/farmos/`, possibly the audit-logger schema if "session group asset" becomes a logged dimension.
+
+**Constraints:**
+- Honors C4 (lineage via log refs, not asset properties) — membership lives on a log, not an asset field.
+- Composes with Phase 51 upsert — group assets are content-addressable by name, same merge layer.
+- Honors the substrate log-only lock — group asset is not a substrate, doesn't collide.
+- Optional follow-on: backfill the 11 dev children from today's 48-LIVE-FIRE into a retro group (per the farmos-side note's open item #5). Not gating; can be done as a one-liner script during/after Phase 52 ships.
+
+**Plans:** TBD during plan-phase. Likely 3 plans: group-asset + membership-log primitives + tests; commit-handler integration + collision naming + idempotency; live-fire attestation.
+
+---
+
+## v1.11 2025-Notebook Backfill (Phases 53–55) — PLANNED 2026-05-24
+
+**Driver:** Phase 51 upsert layer (shipped 2026-05-24) structurally unblocks running the `/mnt/mossrock/shared/mushdatadump-prod/` 2025 paper-log corpus through the extraction+confirm+write pipeline without create-collisions against the May-22 stubs or any future captures. Today's prod write minted 4 stubs (`260304_SHI_5`, `260118_SHI_23`, `260118_SHI_26`, `260118_KOY_12`) carrying `STUB - awaits 2025-paper-scan backfill` markers — v1.11 is what makes them get *enriched* in place rather than just reused.
+
+**Strategic role:** Generates the high-volume confirm corpus that v1.13 auto-commit narrowing structurally requires (today: 43 drafts in last 30d, ~44% commit rate — nowhere near the n≥50/shape × ≥99% bar). Also closes [[project_mushdatadump_is_2025_notebook]] (year hallucination) and the two open Phase 38 batch-mode findings filed 2026-05-24.
+
+**Honors:** `[[feedback_smoke_before_expensive_batch]]` (5-10 pages first), `[[feedback_persist_paid_results_default]]` (per-call unique paths + JSONL append), `[[feedback_real_data_before_ship_gate_pass]]` (real notebook scans are the ship gate), `[[feedback_hard_rules_relaxed_when_farmer_is_santi]]` (bulk-backfill mode can auto-confirm under `--farmer=santi`).
+
+**Phases:**
+
+### Phase 53: Extraction prerequisites — year-context shim + Phase 38 batch-mode fixes
+
+**Goal:** Close the three known extraction bugs that would corrupt a notebook backfill before any batch run touches farmOS.
+**Requirements:**
+- BACK-01: `corpus_context` extension lets a fixture/job pin `year=2025` so extractor stops hallucinating years on undated notebook pages.
+- BACK-02: Phase 38 batch-mode no longer misroutes small multi-draft captures (closes `2026-05-24-phase38-batch-mode-misroutes-small-multi-draft-captures.md`).
+- BACK-03: Photo-vs-paper-log classifier reins in eagerness (closes `2026-05-24-phase38-photo-vs-paper-log-classifier-too-eager.md`).
+- BACK-04: Hermetic eval on 5-10 hand-labeled 2025 notebook pages PASSES before any batch run.
+**Touches:** `src/agents/alerter/src/extraction/`, eval fixtures, possibly `signal_capture.corpus_context` column.
+
+### Phase 54: Backfill harness + dev-farmOS smoke (≤20 pages)
+
+**Goal:** A scripted harness ingests N notebook pages from the `mushdatadump-prod/` corpus, runs them through extraction → confirm (auto-YES under `--bulk-backfill --farmer=santi`) → upsert into dev farmOS, with paid-LLM results persisted per-call.
+**Requirements:**
+- BACK-05: `scripts/backfill-notebook.js` (or sibling) iterates corpus pages, builds synthetic `signal_capture` rows with `corpus_context={year:2025, source:'paper_log'}`, dispatches through the normal pipeline.
+- BACK-06: Bulk-backfill mode flag short-circuits CONF-01 YES requirement for `farmer=santi` only; every auto-confirmed draft still emits a farmer-facing summary (audit, not just silent write).
+- BACK-07: Paid LLM responses persisted to `.planning/backfill/2025-notebook/<run-id>/responses.jsonl` (append-only, per-call unique).
+- BACK-08: Smoke run on 10 representative pages produces correct stub-enrichment on the 4 May-22 ancestors (UUIDs byte-identical pre/post per Phase 51 contract). No duplicate assets created.
+**Touches:** `scripts/`, possibly small alerter additions for the bulk-mode short-circuit.
+
+### Phase 55: Full corpus run + receipt
+
+**Goal:** Run the full 2025 notebook corpus to dev farmOS, generate a receipt of every asset/log created or patched, decide whether to promote any subset to prod via upsert.
+**Requirements:**
+- BACK-09: Full corpus processed; receipt at `.planning/notes/2026-XX-XX-2025-notebook-backfill-receipt.md` + JSONL of UUIDs.
+- BACK-10: Per-shape confirm-accuracy stats computed from the run (input to v1.13). Reports n_per_shape and YES rate (auto-YES counts here are not signal for v1.13 — v1.13 needs human-YES; bulk-backfill receipts are tagged accordingly).
+- BACK-11: Prod-promotion decision documented (default: dev-only; prod write only if operator opts in per-session-class).
+
+### Phase 55b: TBD if needed (per-tenant backfill story, observation-of-unknown-asset path)
+
+---
+
+## v1.12 Farm-Agent Python Port (Phases 56–?) — PLANNED 2026-05-24
+
+**Driver:** Phase 50 live-fire (2026-05-23/24) hit a wire-level Signal quote-rendering bug that REST 201s succeed but client-side renders unquoted. Fix-in-place means forking a Go wrapper of signal-cli — the entire stack is being replaced anyway. Per `2026-05-14-port-alerter-to-farm-agent-python.md`, port to Python with signal-cli library bindings (or alternative client) where quote-threading is first-class. Also absorbs `2026-05-24-signal-capture-missing-followup-messages.md`, `2026-05-24-phase50-quote-thread-missing-on-extraction-preview-and-ask-back.md`, `2026-05-24-phase50-extraction-preview-related-draft-id-null.md`, and `2026-05-21-alerter-tz-montevideo-and-local-time-rendering.md`.
+
+**Strategic role:** Sets up the OSS-Foray v2.0 surface (Python is the Foray reference impl per [[project_2026_05_17_oss_foray_alpha_lock]]). Tenant_id-aware from day one (already paid the tax since v1.8).
+
+**Hard constraint:** Atomic cutover with rollback. Node alerter is the current production farmer-facing pipeline; a botched cutover blacks out f1 alerts. Both stacks coexist behind a feature flag until live-fire attestation on f1 passes.
+
+**Phases:** TBD during plan-phase. Likely 4-6 phases covering: capture+receive parity, extraction+confirm parity, write-path+upsert parity, quote-threading native, cutover + Node retire.
+
+---
+
+## v1.13 Auto-Commit Narrowing (Phases TBD) — PLANNED 2026-05-24
+
+**Driver:** Today every farmOS write requires explicit farmer YES (CONF-01). The right north-star at v1.7, but every confirmed draft is a vote that the extractor got that shape right. With v1.11 generating hundreds of historical confirms, certain shapes will exceed >99% YES — and the YES tax becomes pure friction against `[[feedback_no_farmer_bookkeeping_tax]]`.
+
+**Structural prerequisite:** v1.11 must ship first. Current data: 43 drafts last 30d, ~44% commit rate, no shape with n≥50. v1.11 produces the corpus this milestone narrows on.
+
+**Honors:** OSS-Foray α — per-tenant opt-in, never cross-tenant defaults. Reversibility — auto-committed writes still send farmer-facing summaries with `UNDO <id>` within 1h. Demotion ratchet — shape's 7-day confirm rate <97% auto-demotes back to YES-required.
+
+**Requirements (provisional):**
+- AUTO-01: Per-draft "shape" classifier tags every extracted draft (`single-block-observation`, `multi-parent-inoc-session`, `harvest-bagging`, `activity-watering`, ...).
+- AUTO-02: Per-shape historical accuracy table — YES rate, n, last-7d trend — computed nightly from `signal_draft` history.
+- AUTO-03: Per-tenant + per-farmer opt-in config gates which shapes are eligible for auto-commit.
+- AUTO-04: Auto-commit gate: shape eligible AND ≥99% historical YES AND n≥50 AND opted-in → write proceeds without farmer YES, farmer receives summary with `UNDO <id>` token.
+- AUTO-05: `UNDO <id>` within 1h triggers Phase 51 upsert with `discarded_at` + `discarded_reason='farmer_undo'` cascade; outside 1h returns a polite-close with manual-correction guidance.
+- AUTO-06: Auto-demotion: shape's 7-day rolling YES rate drops below 97% → automatically removed from auto-commit eligibility, farmer notified.
+- AUTO-07: Ship-gate: at least 3 shapes auto-committing live to prod farmOS for ≥1 week with zero UNDOs in that window (or all UNDOs traced to a real extractor bug, fixed, shape re-promoted).
+
+**Phases:** TBD during plan-phase. Likely 4-5 phases: classifier+accuracy table, opt-in config, auto-commit gate + UNDO handler, demotion monitor, live ship-gate.
+
+---
 
 ### Phase 51: Order-independent farmOS writes — upsert-by-stable-identity + set-union merge
 
