@@ -75,7 +75,11 @@ async function commitHarvest(client, draft, ctx) {
   const bagIds = [];
   for (const bag of bags) {
     const bagName = bag.name || `${batchName || 'harvest'}-bag-${bagIds.length + 1}`;
-    const bagRes = await assets.createFungiAsset(client, {
+    // Phase 51 UPSERT-01: bag asset goes through upsertFungiAsset so re-runs
+    // converge instead of duplicating bags. Bag QR pre-check above already
+    // ensures the QR slot is free; upsert semantics make name-based idempotency
+    // safe for accidental replay.
+    const bagRes = await assets.upsertFungiAsset(client, {
       name: bagName,
       parentIds: sourceIds,
       fungiTypeName: strain,
@@ -83,7 +87,7 @@ async function commitHarvest(client, draft, ctx) {
       qrCodes: bag.qr_code ? [bag.qr_code] : [],
       draftId,
     });
-    if (!bagRes.ok) return { ok: false, reason: bagRes.reason || 'bag_create_failed', http_status: bagRes.http_status, asset_ids: [...bagIds] };
+    if (!bagRes.ok) return { ok: false, reason: bagRes.reason || 'bag_upsert_failed', http_status: bagRes.http_status, asset_ids: [...bagIds] };
     bagIds.push(bagRes.assetId);
   }
 
