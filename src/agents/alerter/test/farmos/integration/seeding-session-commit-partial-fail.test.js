@@ -27,19 +27,16 @@ describe('seeding-session commit pipeline -- partial-fail orphan cleanup (Phase 
 
     await watchdog.tickOnce();
 
-    // ----- 8 DELETEs in reverse order (interim no-session shape) -----
-    expect(farmosClient._deletes.length).toBe(8);
+    // ----- 9 DELETEs in reverse order (Phase 52: 8 fungi + 1 session group) -----
+    expect(farmosClient._deletes.length).toBe(9);
+    const sessionGroupId = farmosClient._created.groups[0].id;
+    // Session group DELETE is LAST (created first, deleted last).
+    expect(farmosClient._deletes[farmosClient._deletes.length - 1]).toBe('/api/asset/group/' + sessionGroupId);
+    // 2nd-to-last fungi DELETE is the first source block (created first among fungi).
     const firstCreatedId = farmosClient._created.assets[0].id;
-    const lastDelete = farmosClient._deletes[farmosClient._deletes.length - 1];
-    expect(lastDelete).toBe('/api/asset/fungi/' + firstCreatedId);
+    expect(farmosClient._deletes[farmosClient._deletes.length - 2]).toBe('/api/asset/fungi/' + firstCreatedId);
 
-    // First DELETE must be the most-recently-created asset (the 4th child block).
-    // Assets created in order (no session asset):
-    //   [source1, child1(log1 ok),
-    //    source2, child2(log2 ok),
-    //    source3, child3(log3 ok),
-    //    source4, child4(log4 FAIL)]
-    // So the most-recent is child4 (the only child asset created in group 4 so far).
+    // First DELETE must be the most-recently-created fungi asset (the 4th child block).
     const child4Asset = farmosClient._created.assets[farmosClient._created.assets.length - 1];
     expect(child4Asset.name).toMatch(/^260522_KOY_/);
     expect(farmosClient._deletes[0]).toBe('/api/asset/fungi/' + child4Asset.id);
@@ -74,11 +71,11 @@ describe('seeding-session commit pipeline -- partial-fail orphan cleanup (Phase 
 
     await watchdog.tickOnce();
 
-    expect(farmosClient._deletes.length).toBe(8);
+    expect(farmosClient._deletes.length).toBe(9);
 
-    // 8 orphan_cleanup_failed audit lines, one per failed DELETE.
+    // 9 orphan_cleanup_failed audit lines, one per failed DELETE (8 fungi + 1 group).
     const orphanFailures = auditLogger._events.filter((e) => e.event === 'orphan_cleanup_failed');
-    expect(orphanFailures.length).toBe(8);
+    expect(orphanFailures.length).toBe(9);
     for (const f of orphanFailures) {
       expect(f.result.asset_ids.length).toBe(1);
     }

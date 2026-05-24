@@ -30,9 +30,11 @@ function makeMockClient({
   force412Ids = [],          // asset/log ids that 412 on first PATCH then succeed
   revisionIds = {},          // name -> revision_id override (default 1)
   knownLogsByAssetId = {},   // assetId -> { id, type } seed for log GET-by-id (Plan 02+)
+  knownGroupsByName = {},    // Phase 52: name -> { id, attributes? } for asset--group seeding
 } = {}) {
-  const created = { assets: [], logs: [], files: [] };
+  const created = { assets: [], logs: [], files: [], groups: [], activityLogs: [] };
   let assetSeq = 1; let logSeq = 1; let fileSeq = 1;
+  let groupSeq = 1;
   const calls = [];
   const _force412 = new Set(force412Ids || []);
 
@@ -59,6 +61,22 @@ function makeMockClient({
 
   const _logsByAssetId = knownLogsByAssetId || {};
 
+  // Phase 52: asset--group registry (name <-> id + body).
+  const _groupById = {};
+  const _groupIdByName = {};
+  for (const [name, val] of Object.entries(knownGroupsByName || {})) {
+    const id = typeof val === 'string' ? val : (val && val.id);
+    if (!id) continue;
+    _groupIdByName[name] = id;
+    const baseAttrs = (typeof val === 'object' && val.attributes) ? val.attributes : {};
+    _groupById[id] = {
+      id,
+      type: 'asset--group',
+      attributes: Object.assign({ name }, baseAttrs),
+      relationships: {},
+    };
+  }
+
   function _ok(status, body) { return { ok: status >= 200 && status < 300, status, body }; }
 
   function _mergeForPatch(existing, incoming) {
@@ -73,6 +91,8 @@ function makeMockClient({
     _byId,
     _idByName,
     _logsByAssetId,
+    _groupById,
+    _groupIdByName,
     _force412,
 
     get: jest.fn(async (path, opts) => {
@@ -83,6 +103,20 @@ function makeMockClient({
         const name = decodeURIComponent(m[1]);
         if (_idByName[name]) return _ok(200, { data: [{ id: _idByName[name] }] });
         return _ok(200, { data: [] });
+      }
+      // Phase 52: asset--group lookup by name.
+      m = /\/api\/asset\/group\?filter\[name\]\[value\]=([^&]+)/.exec(path);
+      if (m) {
+        const name = decodeURIComponent(m[1]);
+        if (_groupIdByName[name]) return _ok(200, { data: [{ id: _groupIdByName[name] }] });
+        return _ok(200, { data: [] });
+      }
+      // Phase 52: asset--group GET by id.
+      m = /^\/api\/asset\/group\/([A-Za-z0-9-]+)$/.exec(path);
+      if (m) {
+        const id = m[1];
+        if (_groupById[id]) return _ok(200, { data: _groupById[id] });
+        return _ok(404, { errors: [{ status: '404', title: 'Not Found' }] });
       }
       m = /\/api\/asset\/fungi\?filter\[id_tag\.id\]\[value\]=([^&]+)/.exec(path);
       if (m) {
@@ -152,6 +186,19 @@ function makeMockClient({
 
     post: jest.fn(async (path, body, opts) => {
       calls.push({ method: 'POST', path, body });
+      if (path === '/api/asset/group') {
+        const id = 'group-' + (groupSeq++);
+        const name = body.data.attributes.name;
+        created.groups.push({ id, name, payload: body });
+        _groupIdByName[name] = id;
+        _groupById[id] = {
+          id,
+          type: 'asset--group',
+          attributes: Object.assign({}, body.data.attributes || {}),
+          relationships: (body.data && body.data.relationships) || {},
+        };
+        return _ok(201, { data: { id, type: 'asset--group' } });
+      }
       if (path === '/api/asset/fungi') {
         const id = 'asset-' + (assetSeq++);
         const name = body.data.attributes.name;
@@ -171,7 +218,14 @@ function makeMockClient({
       if (/^\/api\/log\//.test(path)) {
         const id = 'log-' + (logSeq++);
         const t = path.split('/').pop();
-        created.logs.push({ id, type: t, payload: body });
+        const entry = { id, type: t, payload: body };
+        created.logs.push(entry);
+        // Phase 52: parallel index for group-assignment activity logs.
+        const isGroupAssign = body && body.data && body.data.attributes
+          && body.data.attributes.is_group_assignment === true;
+        if (t === 'activity' && isGroupAssign) {
+          created.activityLogs.push(entry);
+        }
         // Register POSTed log so upsertLog stable-key lookup + GET-by-id hit.
         const relAsset = body.data && body.data.relationships && body.data.relationships.asset;
         const assetIds = (relAsset && Array.isArray(relAsset.data))

@@ -261,7 +261,7 @@ async function commitSeedingSession(client, draft, ctx) {
     });
     if (!membershipRes.ok) {
       return _cleanup(client, ctx, draft, createdAssetIds,
-        membershipRes.reason || 'membership_log_create_failed', childIndex,
+        'membership_log_create_failed', childIndex,
         { sessionGroupIdJustCreated: sessionGroupJustCreated ? sessionGroupId : null });
     }
 

@@ -25,8 +25,10 @@ describe('seeding-session commit pipeline -- INOC-05 idempotency (Phase 48 Plan 
 
     // First tick: full happy-path commit.
     await watchdog.tickOnce();
+    // Phase 52: 16 fungi + 1 session group; 11 seeding + 1 activity = 12 logs.
     expect(farmosClient._created.assets.length).toBe(16);
-    expect(farmosClient._created.logs.length).toBe(11);
+    expect(farmosClient._created.groups.length).toBe(1);
+    expect(farmosClient._created.logs.length).toBe(12);
     expect(commitDb._drafts.get(row.id).status).toBe('committed');
     expect(outboundConfirm.dispatch).toHaveBeenCalledTimes(1);
 

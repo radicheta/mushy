@@ -1,12 +1,20 @@
 'use strict';
 
-// Phase 48 Plan 02: commitSeedingSession handler tests.
+// Phase 52 Plan 04: commitSeedingSession handler tests at the new
+// asset--group + log--activity shape.
 //
-// Hermetic -- uses the shared makeMockClient + an extension for client.delete
-// and for log-create injection (Test E/F simulate a 4xx on log #4).
+// Hermetic -- uses shared makeMockClient (extended in Plan 04 to route
+// /api/asset/group + /api/log/activity).
 //
-// Fixture: 2026-05-22 inoc session (5 groups, 11 children) read from
-// test/fixtures/seeding-session-may22/expected-draft.json.
+// Fixture: 2026-05-22 inoc session (5 groups, 11 children).
+// Expected happy-path counts:
+//   - 1 asset--group (session)
+//   - 5 asset--fungi source blocks
+//   - 11 asset--fungi child blocks
+//   = 17 asset POSTs total
+//   - 1 log--activity (membership, is_group_assignment=true)
+//   - 11 log--seeding (one per child)
+//   = 12 logs total
 
 const path = require('path');
 const fs = require('fs');
@@ -14,6 +22,7 @@ const fs = require('fs');
 const commitSeedingSession = require('../../src/farmos/commits/commit-seeding-session');
 const commitRouter = require('../../src/farmos/commits/commit-router');
 const assets = require('../../src/farmos/assets');
+const groupAssets = require('../../src/farmos/groupAssets');
 const fungiTypeCache = require('../../src/farmos/fungi-type-cache');
 const fungiXingCache = require('../../src/farmos/fungi-xing-cache');
 const { makeMockClient } = require('./mock-client');
@@ -28,21 +37,26 @@ const MAY22_FIXTURE = JSON.parse(
 function makeSessionMockClient(opts = {}) {
   const {
     knownAssetsByName = {},
-    failLogIndex = -1,         // 1-based log POST count to fail; -1 = never
+    knownGroupsByName = {},
+    failLogIndex = -1,         // 1-based seeding-log POST to fail; -1 = never
     failLogStatus = 422,
-    deleteResponse = null,     // function(path) -> { ok, status, body }; default ok 204
+    failActivityLog = false,   // fail the /api/log/activity POST
+    deleteResponse = null,
   } = opts;
 
-  const client = makeMockClient({ knownAssetsByName });
+  const client = makeMockClient({ knownAssetsByName, knownGroupsByName });
   client._deletes = [];
 
-  // Replace post to support failLogIndex.
+  // Replace post to support failLogIndex (seeding logs) and failActivityLog.
   const origPost = client.post;
-  let logPostCount = 0;
+  let seedingLogPostCount = 0;
   client.post = jest.fn(async (p, body, o) => {
-    if (/^\/api\/log\//.test(p)) {
-      logPostCount += 1;
-      if (failLogIndex > 0 && logPostCount === failLogIndex) {
+    if (p === '/api/log/activity' && failActivityLog) {
+      return { ok: false, status: failLogStatus, body: { errors: [{ detail: 'validation' }] } };
+    }
+    if (p === '/api/log/seeding') {
+      seedingLogPostCount += 1;
+      if (failLogIndex > 0 && seedingLogPostCount === failLogIndex) {
         return { ok: false, status: failLogStatus, body: { errors: [{ detail: 'validation' }] } };
       }
     }
@@ -82,42 +96,71 @@ function draftFor(json, id = 'd-session-1') {
 
 beforeEach(() => {
   assets._clearCache();
+  groupAssets._clearCache();
   fungiTypeCache._clear();
   fungiXingCache._clear();
 });
 
-describe('commitSeedingSession (Phase 48 Plan 02)', () => {
-  // 2026-05-24: session-asset shape on hold pending farm_group module enable +
-  // asset--group design (see .planning/notes/2026-05-24-session-as-asset-group-design.md).
-  // Children commit with parent=[sourceBlockId] only; session identity is
-  // recoverable from "all seeding logs on this date by this sender".
+describe('commitSeedingSession (Phase 52 Plan 03/04)', () => {
 
-  it('Test A (happy path May 22): 16 asset POSTs, 11 seeding log POSTs, child parent[] = [source]', async () => {
+  it('Test A (happy path May 22): 17 asset POSTs (1 group + 5 source + 11 children), 12 logs (1 activity-with-flag + 11 seeding), child parent[] = [source] ONLY', async () => {
     const client = makeSessionMockClient();
     const { ctx } = makeAuditCtx();
     const r = await commitSeedingSession(client, draftFor(MAY22_FIXTURE), ctx);
 
     expect(r.ok).toBe(true);
-    expect(client._created.assets.length).toBe(16); // 5 source blocks + 11 child blocks; no session asset
-    expect(client._created.logs.length).toBe(11);
-    expect(r.log_ids.length).toBe(11);
-    expect(r.asset_ids.length).toBe(16);
 
-    // Every CHILD block asset has parent[] = [sourceBlockId] only.
+    // 1 session group + 5 source + 11 children = 17 asset writes
+    expect(client._created.groups.length).toBe(1);
+    expect(client._created.assets.length).toBe(16); // 5 source + 11 children
+    // 1 activity + 11 seeding = 12 logs
+    expect(client._created.activityLogs.length).toBe(1);
+    expect(client._created.logs.filter((l) => l.type === 'seeding').length).toBe(11);
+
+    // Return shape: session group id at asset_ids[0]; membership log at log_ids[0]
+    const sessionGroupId = client._created.groups[0].id;
+    expect(r.asset_ids[0]).toBe(sessionGroupId);
+    expect(r.asset_ids.length).toBe(17);
+    expect(r.log_ids.length).toBe(12);
+    const membershipLogId = client._created.activityLogs[0].id;
+    expect(r.log_ids[0]).toBe(membershipLogId);
+
+    // Activity POST body shape
+    const activityBody = client._created.activityLogs[0].payload;
+    expect(activityBody.data.type).toBe('log--activity');
+    expect(activityBody.data.attributes.is_group_assignment).toBe(true);
+    expect(activityBody.data.relationships.asset.data.length).toBe(11);
+    for (const ref of activityBody.data.relationships.asset.data) {
+      expect(ref.type).toBe('asset--fungi');
+    }
+    expect(activityBody.data.relationships.group.data).toEqual([
+      { type: 'asset--group', id: sessionGroupId },
+    ]);
+
+    // Every CHILD block asset has parent[] = [sourceBlockId] only (length 1, NO sessionGroupId).
     const childAssets = client._created.assets.filter((a) => /^260522_/.test(a.name));
     expect(childAssets.length).toBe(11);
     for (const c of childAssets) {
       const parents = c.payload.data.relationships.parent.data;
       expect(parents.length).toBe(1);
+      for (const p of parents) {
+        expect(p.type).toBe('asset--fungi');
+        expect(p.id).not.toBe(sessionGroupId);
+      }
     }
 
     // Each seeding log refers to its child block (one assetId per log).
-    for (const log of client._created.logs) {
+    const seedingLogs = client._created.logs.filter((l) => l.type === 'seeding');
+    for (const log of seedingLogs) {
       expect(log.payload.data.relationships.asset.data.length).toBe(1);
     }
+
+    // log_ids[1..] are the 11 seeding log ids in order.
+    const seedingLogIds = client._created.logs.filter((l) => l.type === 'seeding').map((l) => l.id);
+    expect(r.log_ids.slice(1)).toEqual(seedingLogIds);
   });
 
-  it('Test C (single-parent legacy, INOC-04): 1 group of 5 children creates 1 source block + 5 child blocks', async () => {
+  it('Test C (single-parent legacy, INOC-04): 1 session group + 1 source + 5 children + 1 activity log + 5 seeding logs', async () => {
     const dj = {
       type: 'seeding_session',
       event_date: '2026-05-22',
@@ -133,9 +176,10 @@ describe('commitSeedingSession (Phase 48 Plan 02)', () => {
     const client = makeSessionMockClient();
     const r = await commitSeedingSession(client, draftFor(dj, 'd-single-parent'), {});
     expect(r.ok).toBe(true);
-    // 1 source block + 5 child blocks = 6 assets.
-    expect(client._created.assets.length).toBe(6);
-    expect(client._created.logs.length).toBe(5);
+    expect(client._created.groups.length).toBe(1);
+    expect(client._created.assets.length).toBe(6); // 1 source + 5 children
+    expect(client._created.activityLogs.length).toBe(1);
+    expect(client._created.logs.filter((l) => l.type === 'seeding').length).toBe(5);
     const sourceId = client._created.assets[0].id;
     const childAssets = client._created.assets.filter((a) => /^260522_/.test(a.name));
     for (const c of childAssets) {
@@ -144,7 +188,7 @@ describe('commitSeedingSession (Phase 48 Plan 02)', () => {
     }
   });
 
-  it('Test D (NO_PARENT): child blocks created with parentIds = []', async () => {
+  it('Test D (NO_PARENT): child blocks created with parentIds = []; session group + activity log still mint', async () => {
     const dj = {
       type: 'seeding_session',
       event_date: '2026-05-22',
@@ -160,22 +204,19 @@ describe('commitSeedingSession (Phase 48 Plan 02)', () => {
     const client = makeSessionMockClient();
     const r = await commitSeedingSession(client, draftFor(dj, 'd-no-parent'), {});
     expect(r.ok).toBe(true);
-    // 0 source blocks (NO_PARENT skips resolution) + 2 child blocks = 2 assets.
+    expect(client._created.groups.length).toBe(1);
     expect(client._created.assets.length).toBe(2);
+    expect(client._created.activityLogs.length).toBe(1);
     const childAssets = client._created.assets.filter((a) => /^260522_SHI_X/.test(a.name));
-    expect(childAssets.length).toBe(2);
     for (const c of childAssets) {
-      // Empty parentIds → no parent relationship on the payload at all.
       expect(c.payload.data.relationships.parent).toBeUndefined();
     }
   });
 
-  it('Test E (partial failure on log #4): reverse-order DELETE for 4 source blocks + 4 child blocks; ok=false, failed_at_child_index=3', async () => {
-    // Log #4 corresponds to the 4th seeding log POST (1-based). Per the
-    // May 22 fixture: groups 1-3 each contribute 1 child (logs 1, 2, 3);
-    // group 4 (260118_KOY_12, qty=4) starts at log 4. So at failure time,
-    // we have created: 4 source blocks + 4 child blocks = 8 assets (no
-    // session asset in the interim no-session shape).
+  it('Test E (partial failure on seeding log #4): reverse-order DELETE for fungi + session group; activity log NOT yet created', async () => {
+    // At seeding log #4 failure (1-based), we have created:
+    //   1 session group + 4 source blocks + 4 child blocks = 9 entities to roll back.
+    // Membership activity log has NOT been posted yet (it comes after the loop).
     const client = makeSessionMockClient({ failLogIndex: 4 });
     const { ctx, calls: auditCalls } = makeAuditCtx();
     const r = await commitSeedingSession(client, draftFor(MAY22_FIXTURE), ctx);
@@ -186,19 +227,27 @@ describe('commitSeedingSession (Phase 48 Plan 02)', () => {
     expect(r.asset_ids).toEqual([]);
     expect(r.log_ids).toEqual([]);
 
-    expect(client._deletes.length).toBe(8);
-    expect(r.farmos_response.orphan_attempted_count).toBe(8);
+    // Mock-tracked counts: 1 group POST + 8 asset POSTs + 0 activity-log POSTs.
+    expect(client._created.groups.length).toBe(1);
+    expect(client._created.activityLogs.length).toBe(0);
+
+    // DELETEs: 8 fungi assets (reverse order) + 1 session group = 9 total.
+    expect(client._deletes.length).toBe(9);
+    expect(r.farmos_response.orphan_attempted_count).toBe(9);
     expect(r.farmos_response.orphan_cleanup_failed_count).toBe(0);
 
-    // Reverse-order invariant: the LAST DELETE is the first-created asset
-    // (the first source block).
-    const firstCreatedId = client._created.assets[0].id;
-    expect(client._deletes[client._deletes.length - 1]).toBe('/api/asset/fungi/' + firstCreatedId);
+    // Session group DELETE is LAST in the sequence.
+    const sessionGroupId = client._created.groups[0].id;
+    expect(client._deletes[client._deletes.length - 1]).toBe('/api/asset/group/' + sessionGroupId);
+
+    // First fungi DELETE is the LAST-created fungi (reverse order).
+    const lastCreatedFungiId = client._created.assets[client._created.assets.length - 1].id;
+    expect(client._deletes[0]).toBe('/api/asset/fungi/' + lastCreatedFungiId);
 
     expect(auditCalls.find((c) => c.event === 'orphan_cleanup_failed')).toBeUndefined();
   });
 
-  it('Test F (orphan cleanup itself fails): auditLogger.logCommit called with orphan_cleanup_failed for each failed DELETE', async () => {
+  it('Test F (orphan cleanup itself fails): auditLogger.logCommit called with orphan_cleanup_failed for EACH failed DELETE', async () => {
     const client = makeSessionMockClient({
       failLogIndex: 4,
       deleteResponse: () => ({ ok: false, status: 500, body: null }),
@@ -208,41 +257,117 @@ describe('commitSeedingSession (Phase 48 Plan 02)', () => {
 
     expect(r.ok).toBe(false);
     expect(r.reason).toBe('partial_commit_failed');
-    expect(client._deletes.length).toBe(8);
-    expect(r.farmos_response.orphan_cleanup_failed_count).toBe(8);
-    expect(r.farmos_response.orphan_cleanup_failed_ids.length).toBe(8);
+    // 8 fungi + 1 session group = 9 DELETE attempts.
+    expect(client._deletes.length).toBe(9);
+    expect(r.farmos_response.orphan_cleanup_failed_count).toBe(9);
+    expect(r.farmos_response.orphan_cleanup_failed_ids.length).toBe(9);
 
     const orphanCalls = auditCalls.filter((c) => c.event === 'orphan_cleanup_failed');
-    expect(orphanCalls.length).toBe(8);
+    expect(orphanCalls.length).toBe(9);
     for (const c of orphanCalls) {
       expect(c.result.asset_ids.length).toBe(1);
       expect(c.draft_id).toBe('d-session-1');
     }
   });
 
-  it('Test H (Phase 51 idempotency): replaying the same seeding session twice produces the same final asset/log set (no duplicates)', async () => {
+  it('Test E2 (membership log POST fails): all children + seeding logs succeed; rollback covers session group + ALL 11 children', async () => {
+    const client = makeSessionMockClient({ failActivityLog: true });
+    const { ctx } = makeAuditCtx();
+    const r = await commitSeedingSession(client, draftFor(MAY22_FIXTURE), ctx);
+
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe('partial_commit_failed');
+    expect(r.farmos_response.original_reason).toBe('membership_log_create_failed');
+    expect(r.asset_ids).toEqual([]);
+    expect(r.log_ids).toEqual([]);
+
+    // All children + source blocks + session group exist by the time activity-log fails.
+    expect(client._created.groups.length).toBe(1);
+    expect(client._created.assets.length).toBe(16); // 5 source + 11 children
+    expect(client._created.logs.filter((l) => l.type === 'seeding').length).toBe(11);   // seeding logs all succeeded
+    expect(client._created.activityLogs.length).toBe(0); // activity post failed -> not registered
+
+    const sessionGroupId = client._created.groups[0].id;
+    const childAssetIds = client._created.assets
+      .filter((a) => /^260522_/.test(a.name))
+      .map((a) => a.id);
+
+    // Rollback: 16 fungi DELETEs + 1 session group DELETE = 17 total. No activity-log DELETE
+    // because the activity-log POST never returned a logId.
+    expect(client._deletes.length).toBe(17);
+
+    // Session group id appears in DELETE list AND is LAST.
+    expect(client._deletes).toContain('/api/asset/group/' + sessionGroupId);
+    expect(client._deletes[client._deletes.length - 1]).toBe('/api/asset/group/' + sessionGroupId);
+
+    // All 11 child fungi ids appear in DELETE list.
+    for (const cid of childAssetIds) {
+      expect(client._deletes).toContain('/api/asset/fungi/' + cid);
+    }
+
+    // Reverse-order invariant: session group DELETE comes after all fungi DELETEs.
+    const groupDeleteIdx = client._deletes.indexOf('/api/asset/group/' + sessionGroupId);
+    const firstChildDeleteIdx = client._deletes.indexOf('/api/asset/fungi/' + childAssetIds[0]);
+    expect(groupDeleteIdx).toBeGreaterThan(firstChildDeleteIdx);
+  });
+
+  it('Test F2 (same-day collision): existing group with foreign draft id -> handler advances to "#2"', async () => {
+    // Pre-seed an asset--group named 'inoc 2026-05-22' whose notes trailer
+    // belongs to a DIFFERENT draft. Handler must skip and create '#2'.
+    const client = makeSessionMockClient({
+      knownGroupsByName: {
+        'inoc 2026-05-22': {
+          id: 'group-foreign',
+          attributes: {
+            name: 'inoc 2026-05-22',
+            notes: { value: 'mushy:draft:OTHER_DRAFT', format: 'plain_text' },
+          },
+        },
+      },
+    });
+    const r = await commitSeedingSession(client, draftFor(MAY22_FIXTURE, 'd-collision'), {});
+    expect(r.ok).toBe(true);
+
+    // Exactly one NEW group POST (the foreign one was pre-seeded, not POSTed).
+    expect(client._created.groups.length).toBe(1);
+    expect(client._created.groups[0].name).toBe('inoc 2026-05-22 #2');
+    expect(client._created.groups[0].payload.data.attributes.name).toBe('inoc 2026-05-22 #2');
+
+    // asset_ids[0] is the NEW session group id (not the foreign one).
+    expect(r.asset_ids[0]).toBe(client._created.groups[0].id);
+    expect(r.asset_ids[0]).not.toBe('group-foreign');
+  });
+
+  it('Test H (Phase 51 idempotency under new shape): replaying same draft reuses session group + assets + seeding logs; activity log POSTED again (creation-only)', async () => {
     const client = makeSessionMockClient();
     const r1 = await commitSeedingSession(client, draftFor(MAY22_FIXTURE), {});
     expect(r1.ok).toBe(true);
-    const assetsAfterFirst = client._created.assets.length;   // 16
-    const logsAfterFirst = client._created.logs.length;       // 11
+    const groupsAfterFirst = client._created.groups.length;     // 1
+    const assetsAfterFirst = client._created.assets.length;     // 16
+    const seedingLogsAfterFirst = client._created.logs.filter((l) => l.type === 'seeding').length;  // 11
+    const activityLogsAfterFirst = client._created.activityLogs.length; // 1
 
     const r2 = await commitSeedingSession(client, draftFor(MAY22_FIXTURE), {});
     expect(r2.ok).toBe(true);
-    // No new POSTs on replay — every upsert hits an existing asset/log and
-    // is either patched (notes draft-trailer merge) or noop.
+
+    // No new group POST -- reused via draft-id trailer match.
+    expect(client._created.groups.length).toBe(groupsAfterFirst);
+    // No new fungi POSTs -- upsertFungiAsset returns reused/noop.
     expect(client._created.assets.length).toBe(assetsAfterFirst);
-    expect(client._created.logs.length).toBe(logsAfterFirst);
-    // r2 returns the same set of assetIds + logIds (every upsert returned an id;
-    // createdAssetIds only tracks 'created' outcome, so on replay it's empty).
+    // No new seeding log POSTs -- upsertLog returns patched/noop.
+    expect(client._created.logs.filter((l) => l.type === 'seeding').length).toBe(seedingLogsAfterFirst);
+    // BUT: activity log is creation-only per 52-CONTEXT.md -- one new POST.
+    expect(client._created.activityLogs.length).toBe(activityLogsAfterFirst + 1);
+
+    // r2.asset_ids does NOT include the session group (outcome=reused).
+    // createdAssetIds is also empty on replay.
     expect(r2.asset_ids).toEqual([]);
-    expect(r2.log_ids.length).toBe(logsAfterFirst);
+    // log_ids[0] is the new (second) membership log; rest are the 11 reused seeding log ids.
+    expect(r2.log_ids.length).toBe(12);
   });
 
   it('Test G (router dispatch): commit(client, draft) with draft.log_type=seeding_session routes to commitSeedingSession', async () => {
     expect(typeof commitRouter.DISPATCH.seeding_session).toBe('function');
-    // Same function reference -- confirms the router import is wired to this
-    // module (not a typo'd path).
     expect(commitRouter.DISPATCH.seeding_session).toBe(commitSeedingSession);
   });
 });
