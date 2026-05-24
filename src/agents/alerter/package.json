@@ -8,7 +8,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "eval:extraction": "jest --config test/eval/extraction/jest.config.js --runInBand",
-    "test:eval-ingestion": "jest --config test/eval/ingestion/jest.config.js --runInBand"
+    "test:eval-ingestion": "jest --config test/eval/ingestion/jest.config.js --runInBand",
+    "test:eval": "EVAL_RUN_LIVE=1 jest --config test/eval/ingestion/jest.config.js --runInBand test/eval/ingestion/notebook-2025.test.js test/eval/ingestion/sessions.test.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
