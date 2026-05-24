@@ -32,24 +32,20 @@ const EXPECTED = JSON.parse(
 );
 
 describe('seeding-session commit pipeline -- May 22 happy path (Phase 48 Plan 05 Task 1)', () => {
-  it('5 groups / 11 children: 17 asset POSTs + 11 log POSTs; child parent[] = [source, session]; commitDb -> committed; outcome ack dispatched once', async () => {
+  it('5 groups / 11 children: 16 asset POSTs + 11 log POSTs; child parent[] = [source]; commitDb -> committed; outcome ack dispatched once', async () => {
     const { watchdog, commitDb, farmosClient, auditLogger, outboundConfirm, row } = buildHarness();
 
     await watchdog.tickOnce();
 
     // ----- asset / log counts -----
-    expect(farmosClient._created.assets.length).toBe(EXPECTED.happy_path.asset_post_count); // 17
+    // 2026-05-24: session-asset shape on hold pending farm_group module enable
+    // + asset--group design. Counts dropped by 1 (no session asset). Children
+    // commit with parent=[sourceBlockId] only.
+    expect(farmosClient._created.assets.length).toBe(EXPECTED.happy_path.asset_post_count); // 16
     expect(farmosClient._created.logs.length).toBe(EXPECTED.happy_path.log_post_count);    // 11
     expect(farmosClient._deletes.length).toBe(0);
 
-    // ----- session asset is FIRST, named correctly, allowNoFungiType applied -----
-    const sessionAsset = farmosClient._created.assets[0];
-    expect(sessionAsset.name).toBe(EXPECTED.happy_path.session_asset_name); // 'inoc 2026-05-22'
-    expect(sessionAsset.payload.data.relationships.fungi_type).toBeUndefined();
-    expect(sessionAsset.payload.data.relationships.fungi_xing).toBeDefined();
-    const sessionId = sessionAsset.id;
-
-    // ----- lineage: every child block's parent[] has length 2; data[1] = sessionId -----
+    // ----- lineage: every child block's parent[] has length 1 (the source block) -----
     const childAssets = farmosClient._created.assets.filter((a) => /^260522_/.test(a.name));
     expect(childAssets.length).toBe(11);
     const sourceBlockNames = new Set(EXPECTED.happy_path.source_block_names);
@@ -58,17 +54,14 @@ describe('seeding-session commit pipeline -- May 22 happy path (Phase 48 Plan 05
     expect(sourceIds.size).toBe(5);
     for (const c of childAssets) {
       const parents = c.payload.data.relationships.parent.data;
-      expect(parents.length).toBe(2);
-      // primary parent is one of the 5 source blocks
+      expect(parents.length).toBe(1);
       expect(sourceIds.has(parents[0].id)).toBe(true);
-      // secondary parent is the session asset
-      expect(parents[1].id).toBe(sessionId);
     }
 
     // ----- pipeline state: signal_draft row marked committed -----
     const finalRow = commitDb._drafts.get(row.id);
     expect(finalRow.status).toBe('committed');
-    expect(finalRow.farmos_response.asset_ids.length).toBe(17);
+    expect(finalRow.farmos_response.asset_ids.length).toBe(16);
     expect(finalRow.farmos_response.log_ids.length).toBe(11);
 
     // ----- audit -----
@@ -112,20 +105,18 @@ describe('seeding-session commit pipeline -- May 22 happy path (Phase 48 Plan 05
 
     await watchdog.tickOnce();
 
-    expect(farmosClient._created.assets.length).toBe(EXPECTED.single_parent_legacy.asset_post_count); // 7
+    expect(farmosClient._created.assets.length).toBe(EXPECTED.single_parent_legacy.asset_post_count); // 6
     expect(farmosClient._created.logs.length).toBe(EXPECTED.single_parent_legacy.log_post_count);     // 5
 
-    // 1 session + 1 source + 5 children
-    const session = farmosClient._created.assets[0];
-    expect(session.name).toBe('inoc 2026-05-22');
-    const sourceAsset = farmosClient._created.assets[1];
+    // 1 source + 5 children (no session asset; interim no-session shape)
+    const sourceAsset = farmosClient._created.assets[0];
     expect(sourceAsset.name).toBe('260118_KOY_12');
 
     const childAssets = farmosClient._created.assets.filter((a) => /^260522_KOY_[1-5]$/.test(a.name));
     expect(childAssets.length).toBe(5);
     for (const c of childAssets) {
       const parents = c.payload.data.relationships.parent.data;
-      expect(parents.map((p) => p.id)).toEqual([sourceAsset.id, session.id]);
+      expect(parents.map((p) => p.id)).toEqual([sourceAsset.id]);
     }
 
     const finalRow = commitDb._drafts.get('d-single-parent-inoc-04');
