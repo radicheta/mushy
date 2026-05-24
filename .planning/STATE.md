@@ -1,13 +1,13 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.8
-milestone_name: Event-gate + Durable signal_outbound (tenant-aware)
-status: v1.9 SHIPPED 2026-05-23 (autonomous run). All four v1.9 phases (47/48/49/50) closed in sequence. Phase 50 (Signal-native quote threading) delivers 3 new schema cols + outbound quote payload + inbound resolution with CONTEXT D-04 algorithm + fail-open posture + numbered-ask-back fallback. QUOT-01..06 hermetic-attested (1024/1033 alerter tests green). Three operator-deferred runbooks pending: 48-LIVE-FIRE (Phase 48 commit handler against farmOS dev), 49-SHIP-GATE (May 22 reprocess + discard failed drafts), 50-LIVE-FIRE (quote thread round-trip). v1.9 milestone shape complete.
-last_updated: "2026-05-24T00:30:00.000Z"
+milestone: v1.10
+milestone_name: Order-Independent Writes (upsert-by-stable-identity)
+status: v1.9 CLOSED end-to-end 2026-05-24. Phase 48 LIVE-FIRE PASS on dev (16 assets + 11 logs; session-asset shape reversed in-flight — anonymous fungi 422'd against real farmOS field config; design pivot filed as Phase 51 + asset--group note for farmos team). Phase 49 SHIP-GATE A2 PARTIAL — prod-timescale discard applied on the May-22 inoc draft; live-fire extraction Step 6 confirmed Plan 04 deferred the harness; closed-with-deviation. Phase 50 LIVE-FIRE in progress (Step 1+2 prereqs green, awaiting farmer phone for Steps 3-8). May-22 inoc landed in PROD farmOS via stub-then-write (4 ancestors stubbed with structured backfill marker; 11 children + 11 seeding logs landed via live-fire-48.js; lineage walks match fixture exactly). v1.10 Phase 51 (upsert layer) filed as the architectural follow-up that makes the stub strategy long-term sound + 2025-paper-scan backfill order-independent.
+last_updated: "2026-05-24T14:15:00.000Z"
 last_activity: 2026-05-24
 progress:
-  total_phases: 26
-  completed_phases: 9
+  total_phases: 27
+  completed_phases: 12
   total_plans: 78
   completed_plans: 55
   percent: 80
@@ -20,7 +20,53 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 46 SHIPPED 2026-05-21. Next up: choose between Phase 44 (v1.8 first phase) and the sht30 watchdog structural fix.
+**Current focus:** v1.9 closed end-to-end 2026-05-24. The 2026-05-22 inoc session is now in PROD farmOS — 11 child blocks + 11 seeding logs + 4 stub ancestors. Phase 50 LIVE-FIRE running this session; v1.10 Phase 51 (upsert-by-stable-identity) is the architectural follow-up that makes the stub strategy long-term sound + the 2025-paper-scan backfill order-independent.
+
+## Today's Closeout (2026-05-24)
+
+**48-LIVE-FIRE on dev (DONE — commit `d3bb6a3`):**
+- First attempt 422'd — real farmOS field config enforces `fungi_type NOT NULL`, falsifying Phase 48's Gray Area A LOCK ("anonymous fungi session asset"). The Plan 02 design didn't survive contact with real farmOS schema.
+- User's framing: "session is to block like Playlist is to version on shotgrid" — different kinds, both first-class. Right shape is `asset--group` (stock `farm_group` module, not currently enabled on either dev or prod farmOS).
+- Interim pivot: removed session-asset preflight entirely; children commit with `parent=[sourceBlock]` only. 13/13 hermetic tests green at new counts (16 assets / 11 logs; legacy 6/5; partial-fail 8 DELETEs).
+- Re-run live-fire dev: PASS in 4.4s. 16 assets + 11 seeding logs. Lineage walks clean.
+- Design note for farmos team dropped at `.planning/notes/2026-05-24-session-as-asset-group-design.md`; mirrored into farmos repo, committed there as `3049cb0`.
+
+**49-SHIP-GATE A2 partial (DONE — commit `7ac92ea`):**
+- Discard applied to `6edaaba` (May-22 seeding draft, was `expired`) via `discard-drafts.js`.
+- Companion `e3a564` already discarded 2026-05-23 (Phase 45 ack-debt sweep), reason NULL; left as-is.
+- Live-fire extraction (Step 6) NOT RUN — Plan 04's `EVAL_RUN_LIVE=1` branch in `sessions.test.js` is an explicit no-op (`return` early). The "live-fire" was documented but not implemented; building it would be scope expansion.
+
+**May-22 inoc in PROD farmOS (DONE — commit `24b8fab`):**
+- 4 ancestor parents stubbed via direct API POST with structured notes marker `STUB - awaits 2025-paper-scan backfill; ... upsert layer (Phase 51) will enrich in-place on backfill arrival.`
+- `260304_SHI_5` = `5de992ca-...`, `260118_SHI_23` = `5d70eaec-...`, `260118_SHI_26` = `92f83fe6-...`, `260118_KOY_12` = `91459b30-...`. `260425_KOY_4` pre-existed.
+- `scripts/live-fire-48.js` (corrected harness) against prod: 11 children + 11 seeding logs in 3.5s. Zero source-block duplicates (findAssetByName reused all 5).
+- Sample lineage walks (verified): `260522_SHI_1 -> 260304_SHI_5`, `260522_KOY_7 -> 260118_KOY_12`, `260522_KOY_11 -> 260425_KOY_4` — matches fixture.
+- Paper trail: `.planning/notes/2026-05-24-prod-write-receipt.md` + `2026-05-24-prod-write-receipt-uuids.json`.
+
+**v1.10 milestone + Phase 51 filed (in `24b8fab`):**
+- ROADMAP.md gains v1.10 "Order-Independent Writes (upsert-by-stable-identity)" milestone.
+- Phase 51 specifies: `upsertFungiAsset` + `upsertLog` + set-union merge per array field + conflict-surfacing on scalars + etag-on-PATCH concurrency + property-test gates (order independence + stub enrichment + conflict surfacing).
+- Driver: tonight's stub strategy works under current `findAssetByName` lookup, but the stubs only get enriched (rather than just reused) once Phase 51 lands the merge layer. Independently, this makes the 2025-paper-scan backfill safe in any order vs. live captures, and makes observation-of-unknown-asset (today's UAT principle) a real path.
+
+**Phase 50 LIVE-FIRE Step 3 (BLOCKED on wire-level quote rendering — 4 findings filed):**
+- Hermetic still green (1032 pass / 9 skipped / 0 fail). Schema columns all present. Alerter healthy.
+- Triggered the runbook trigger ("harvest of nothing"); LLM extracted as observation (not commit_failed as runbook anticipated) — went through `extraction_preview` + later (via Santi-driven retry with "999999_FAKE_99") `commit_outcome_ack` after YES.
+- **The `commit_outcome_ack` IS quote-wired and dispatched cleanly (no warn logs); but on Santi's phone it rendered as a plain bubble with NO QUOTE attachment.** Controlled curl probe (manual /v2/send with a valid quote payload) reproduced the same — REST 201 OK, capabilities advertise `quotes`, but client renders unquoted.
+- Disposition: **DEFER to the alerter-Python port** (`.planning/todos/pending/2026-05-14-port-alerter-to-farm-agent-python.md`). Patching this in the current Node+REST+signal-cli stack means forking a Go wrapper that's being replaced anyway. Phase 50 stays HERMETIC-ATTESTED ONLY; live-fire QUOT-01..06 attestation moves to the Python port's wire-level smoke.
+
+## Findings filed 2026-05-24 (Phase 50 LIVE-FIRE byproducts)
+
+All in `.planning/todos/pending/`:
+1. **`...phase50-quote-rendering-broken-end-to-end.md`** (CRITICAL, defer-to-python-port) — REST returns 201 on quote-bearing sends but no quote bubble renders on Signal clients. Affects every QUOT-* requirement.
+2. **`...signal-capture-missing-followup-messages.md`** (HIGH) — Inbound farmer messages after the first one in a draft thread don't land in `signal_capture`. The bot processes them (draft gets edited, YES gets handled) but the rows are missing. Breaks Phase 50 quote routing AND Phase 51 stub-merge audit.
+3. **`...phase50-quote-thread-missing-on-extraction-preview-and-ask-back.md`** (high) — Phase 50 wired only `commit_outcome_ack` + `confirm_ack`; the highest-traffic farmer-ack (`extraction_preview`) and the disambiguator (`ask_back`) are unwired.
+4. **`...phase50-extraction-preview-related-draft-id-null.md`** (medium) — `extraction_preview` outbound rows land with `related_draft_id=NULL` despite the draft existing at dispatch time. Forensic blocker.
+
+## Pending operator runbooks
+
+- **Phase 50 LIVE-FIRE Steps 3-8** — DEFERRED end-of-2026-05-24 (wire-level bug; rolling into Python port).
+
+## Previously: Phase 46 close-out (kept for context)
 
 ## Current Position
 
