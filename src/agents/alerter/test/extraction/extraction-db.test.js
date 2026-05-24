@@ -4,6 +4,7 @@ const {
   initDb,
   insertDraft,
   getInFlightForSender,
+  getDraftsForCapture,
   updateDraftStatus,
   advanceAskbackTurn,
   expireIdle,
@@ -201,6 +202,26 @@ describe('extraction-db', () => {
       expect(sql).toMatch(/askback_turns = askback_turns \+ 1/);
       expect(sql).toMatch(/RETURNING askback_turns/);
       expect(params).toEqual(['abc']);
+    });
+  });
+
+  describe('getDraftsForCapture (Phase 54 Plan 02)', () => {
+    test('queries via source_capture_ids @> ARRAY[$1] ordered ASC', async () => {
+      const rows = [{ id: 'd1' }, { id: 'd2' }, { id: 'd3' }];
+      pool.query.mockResolvedValueOnce({ rows, rowCount: rows.length });
+      const r = await getDraftsForCapture(pool, 'cap-1');
+      expect(r).toEqual(rows);
+      const [sql, params] = pool.query.mock.calls[0];
+      expect(sql).toMatch(/SELECT \* FROM signal_draft/);
+      expect(sql).toMatch(/source_capture_ids @> ARRAY\[\$1\]::text\[\]/);
+      expect(sql).toMatch(/ORDER BY created_at ASC/);
+      expect(params).toEqual(['cap-1']);
+    });
+
+    test('returns [] on query error (never-throw)', async () => {
+      pool.query.mockRejectedValueOnce(new Error('boom'));
+      const r = await getDraftsForCapture(pool, 'cap-x');
+      expect(r).toEqual([]);
     });
   });
 

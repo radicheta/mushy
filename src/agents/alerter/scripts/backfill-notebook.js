@@ -42,6 +42,13 @@
 const fs = require('fs');
 const path = require('path');
 
+const RUN_DIR_ROOT = '.planning/backfill/2025-notebook';
+// Phase 54 Plan 02: canonical confirmed-state constant used by confirm-state-machine
+// CONFIRMED ('confirmed') + farmos/commit-db ("WHERE status='confirmed'"). The
+// backfill harness short-circuits the live YES-prompt round-trip by flipping
+// drafts straight to this status before invoking the commit-router.
+const DRAFT_STATUS_CONFIRMED = 'confirmed';
+
 const CORPUS_DEFAULT = '/mnt/slime-kingdom/shared/mushdatadump/jpeg';
 const PAGE_REGEX = /^IMG_3(7[7-9][0-9]|8[0-5][0-9]|86[0-1])\.jpg$/;
 const UN_TRANSCRIBED_REGEX = /^IMG_3(86[2-9]|87[0-9]|88[0-4])\.jpg$/;
@@ -189,13 +196,13 @@ async function insertSyntheticCapture(pool, row) {
 async function dispatchPage({ pool, pipeline, page, runId, sender, corpusContext, dryRun }) {
   const captureId = `backfill-${runId}-${path.basename(page, '.jpg')}`;
   if (dryRun) {
-    return { captureId, pagePath: page, ok: 'dry-run', draftIds: [] };
+    return { captureId, pagePath: page, ok: 'dry-run', draftIds: [], commits: [] };
   }
   const row = buildSyntheticCapture({ page, runId, sender });
   try {
     await insertSyntheticCapture(pool, row);
   } catch (e) {
-    return { captureId, pagePath: page, ok: false, reason: `capture_insert_failed: ${e.message}`, draftIds: [] };
+    return { captureId, pagePath: page, ok: false, reason: `capture_insert_failed: ${e.message}`, draftIds: [], commits: [] };
   }
   let result;
   try {
@@ -207,7 +214,7 @@ async function dispatchPage({ pool, pipeline, page, runId, sender, corpusContext
     });
   } catch (e) {
     // pipeline.enqueue is documented as never-throw; defense-in-depth.
-    return { captureId, pagePath: page, ok: false, reason: `enqueue_threw: ${e.message}`, draftIds: [] };
+    return { captureId, pagePath: page, ok: false, reason: `enqueue_threw: ${e.message}`, draftIds: [], commits: [] };
   }
   return {
     captureId,
@@ -215,7 +222,156 @@ async function dispatchPage({ pool, pipeline, page, runId, sender, corpusContext
     ok: !!(result && result.ok),
     reason: result && result.reason,
     draftIds: [],
+    commits: [],
   };
+}
+
+// ============================================================================
+// Phase 54 Plan 02: auto-confirm short-circuit + commit-router dispatch +
+// summaries.log writer. All santi-only; defense-in-depth in-loop assertion.
+// ============================================================================
+
+function assertSantiInLoop(opts) {
+  // T-54-05: even if opts.farmer is mutated mid-loop, the per-iteration check
+  // refuses to short-circuit for anyone other than santi.
+  if (opts && opts.bulkBackfill && opts.farmer !== 'santi') {
+    const err = new Error('santi-only');
+    err.code = 'FARMER_GATE';
+    err.attemptedFarmer = opts && opts.farmer;
+    throw err;
+  }
+}
+
+async function flipDraftToConfirmed(pool, draftId, { extractionDb } = {}) {
+  // Phase 54 Plan 02: bulk-backfill short-circuit. Skips the live confirm
+  // YES-round-trip by writing the canonical 'confirmed' status with an audit
+  // marker in needs_review_reason.
+  const db = extractionDb || require('../src/extraction/extraction-db');
+  return db.updateDraftStatus(pool, draftId, DRAFT_STATUS_CONFIRMED, {
+    needs_review_reason: 'bulk_backfill_santi',
+  });
+}
+
+function buildSummaryLine({ ts, page, captureId, draftId, logType, ok, assetCount, logCount, reason }) {
+  // ASCII-only; no em-dashes per [[feedback_no_em_dashes_in_artifacts]].
+  const parts = [
+    ts,
+    `page=${page}`,
+    `capture=${captureId}`,
+    `draft=${draftId}`,
+    `log_type=${logType || 'unknown'}`,
+    `ok=${ok}`,
+    `assets=${assetCount || 0}`,
+    `logs=${logCount || 0}`,
+  ];
+  if (reason && ok !== true) {
+    // Strip stray em-dashes from upstream reason strings; replace with '--'.
+    const safe = String(reason).replace(/[–—]/g, '--');
+    parts.push(`reason=${safe}`);
+  }
+  return parts.join(' ');
+}
+
+function openSummariesLog(runDir) {
+  fs.mkdirSync(runDir, { recursive: true });
+  return fs.openSync(path.join(runDir, 'summaries.log'), 'a');
+}
+
+function appendSummaryLine(fd, line) {
+  fs.writeSync(fd, line + '\n');
+}
+
+async function processDraftsForCapture({
+  pool, client, captureId, pagePath, opts, summariesFd, extractionDb, commitRouter, dryRun,
+}) {
+  // Hard re-assertion per T-54-05.
+  assertSantiInLoop(opts);
+
+  const db = extractionDb || require('../src/extraction/extraction-db');
+  const router = commitRouter || require('../src/farmos/commits/commit-router');
+  const drafts = await db.getDraftsForCapture(pool, captureId);
+  const commits = [];
+
+  for (const draft of drafts) {
+    const ts = new Date().toISOString();
+    const draftId = draft.id;
+    const logType = draft.log_type;
+    let entry;
+
+    if (dryRun) {
+      entry = { draftId, log_type: logType, ok: 'dry-run', asset_ids: [], log_ids: [] };
+      commits.push(entry);
+      if (summariesFd != null) {
+        appendSummaryLine(summariesFd, buildSummaryLine({
+          ts, page: path.basename(pagePath), captureId, draftId, logType,
+          ok: 'dry-run', assetCount: 0, logCount: 0,
+        }));
+      }
+      continue;
+    }
+
+    if (!opts.bulkBackfill) {
+      // No short-circuit; leave draft in its pending/awaiting_farmer state.
+      entry = { draftId, log_type: logType, ok: 'skipped', asset_ids: [], log_ids: [], reason: 'no_bulk_backfill' };
+      commits.push(entry);
+      if (summariesFd != null) {
+        appendSummaryLine(summariesFd, buildSummaryLine({
+          ts, page: path.basename(pagePath), captureId, draftId, logType,
+          ok: false, assetCount: 0, logCount: 0, reason: 'no_bulk_backfill',
+        }));
+      }
+      continue;
+    }
+
+    // 1. Flip draft to 'confirmed' (bulk_backfill_santi audit marker).
+    const flip = await flipDraftToConfirmed(pool, draftId, { extractionDb: db });
+    if (!flip || flip.ok !== true) {
+      entry = {
+        draftId, log_type: logType, ok: false, asset_ids: [], log_ids: [],
+        reason: `draft_flip_failed: ${(flip && flip.reason) || 'unknown'}`,
+      };
+      commits.push(entry);
+      if (summariesFd != null) {
+        appendSummaryLine(summariesFd, buildSummaryLine({
+          ts, page: path.basename(pagePath), captureId, draftId, logType,
+          ok: false, assetCount: 0, logCount: 0, reason: entry.reason,
+        }));
+      }
+      continue;
+    }
+
+    // 2. Dispatch via commit-router.
+    let commitResult;
+    try {
+      commitResult = await router.commit(client, draft, { auditLogger: { logCommit: async () => {} } });
+    } catch (e) {
+      // commit-router is documented never-throw; defense-in-depth.
+      commitResult = { ok: false, reason: `commit_threw: ${e.message}`, asset_ids: [], log_ids: [] };
+    }
+
+    entry = {
+      draftId, log_type: logType,
+      ok: !!commitResult.ok,
+      asset_ids: commitResult.asset_ids || [],
+      log_ids: commitResult.log_ids || [],
+      reason: commitResult.reason,
+    };
+    commits.push(entry);
+
+    if (summariesFd != null) {
+      appendSummaryLine(summariesFd, buildSummaryLine({
+        ts, page: path.basename(pagePath), captureId, draftId, logType,
+        ok: entry.ok, assetCount: entry.asset_ids.length, logCount: entry.log_ids.length,
+        reason: entry.reason,
+      }));
+    }
+  }
+
+  return { drafts, commits };
+}
+
+function computeRunDir(runId) {
+  return path.join(RUN_DIR_ROOT, runId);
 }
 
 function printUsage() {
@@ -227,6 +383,9 @@ async function main(argv = process.argv.slice(2), {
   logger = console,
   poolFactory = null,
   pipelineFactory = null,
+  clientFactory = null,
+  extractionDb = null,
+  commitRouter = null,
   now = null,
 } = {}) {
   const opts = parseArgs(argv);
@@ -305,18 +464,58 @@ async function main(argv = process.argv.slice(2), {
 
   const sender = env.BACKFILL_SENDER_E164 || BACKFILL_SENDER_DEFAULT;
   const corpusContext = { default_year: 2025, source: 'paper_log' };
-  const runSummary = [];
-  for (const page of selected) {
-    const entry = await dispatchPage({
-      pool, pipeline, page, runId, sender, corpusContext, dryRun: false,
-    });
-    runSummary.push(entry);
-    logger.log && logger.log(
-      `[backfill] page=${path.basename(page)} ok=${entry.ok} reason=${entry.reason || ''}`
-    );
+
+  // Plan 02: runDir + summaries.log open before any dispatch (audit-first).
+  const runDir = computeRunDir(runId);
+  let summariesFd = null;
+  let client = null;
+  if (opts.bulkBackfill) {
+    summariesFd = openSummariesLog(runDir);
+    if (clientFactory) {
+      client = await clientFactory({ env, logger });
+    } else {
+      try {
+        const { createFarmosClient } = require('../src/farmos/client');
+        client = createFarmosClient({
+          farmosUrl: env.FARMOS_URL,
+          username: env.FARMOS_USERNAME,
+          password: env.FARMOS_PASSWORD,
+          logger,
+        });
+      } catch (e) {
+        logger.error && logger.error(`[backfill] createFarmosClient failed: ${e.message}`);
+        if (summariesFd != null) fs.closeSync(summariesFd);
+        return { code: 1 };
+      }
+    }
   }
 
-  return { code: 0, runId, runSummary };
+  const runSummary = [];
+  try {
+    for (const page of selected) {
+      const entry = await dispatchPage({
+        pool, pipeline, page, runId, sender, corpusContext, dryRun: false,
+      });
+      if (entry.ok === true) {
+        const { drafts, commits } = await processDraftsForCapture({
+          pool, client, captureId: entry.captureId, pagePath: page,
+          opts, summariesFd, extractionDb, commitRouter, dryRun: false,
+        });
+        entry.draftIds = drafts.map((d) => d.id);
+        entry.commits = commits;
+      }
+      runSummary.push(entry);
+      logger.log && logger.log(
+        `[backfill] page=${path.basename(page)} ok=${entry.ok} drafts=${entry.draftIds.length} reason=${entry.reason || ''}`
+      );
+    }
+  } finally {
+    if (summariesFd != null) {
+      try { fs.closeSync(summariesFd); } catch (_e) {}
+    }
+  }
+
+  return { code: 0, runId, runDir, runSummary };
 }
 
 module.exports = {
@@ -330,6 +529,16 @@ module.exports = {
   buildSyntheticCapture,
   insertSyntheticCapture,
   dispatchPage,
+  // Plan 02
+  assertSantiInLoop,
+  flipDraftToConfirmed,
+  buildSummaryLine,
+  openSummariesLog,
+  appendSummaryLine,
+  processDraftsForCapture,
+  computeRunDir,
+  DRAFT_STATUS_CONFIRMED,
+  RUN_DIR_ROOT,
   main,
   // Constants.
   PAGE_REGEX,

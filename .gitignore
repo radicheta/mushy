@@ -49,3 +49,8 @@ tenants/*/.env
 # Claude Code auto-memory (symlinked from ~/.claude/projects/-mnt-slime-kingdom-opt-mushy/memory/)
 # Lives in-tree for greppability but stays per-machine.
 .planning/memory/
+
+# Phase 54: per-run paid-LLM JSONL + summaries.log + receipts (operator-local).
+# Canonical Cycle 1/2 attestation receipts are committed manually under
+# .planning/phases/54-.../54-CYCLE-N-RECEIPT.md.
+.planning/backfill/

@@ -19,6 +19,13 @@ const {
   computeRunId,
   buildSyntheticCapture,
   dispatchPage,
+  assertSantiInLoop,
+  buildSummaryLine,
+  openSummariesLog,
+  appendSummaryLine,
+  processDraftsForCapture,
+  computeRunDir,
+  DRAFT_STATUS_CONFIRMED,
   main,
   CORPUS_DEFAULT,
 } = require('./backfill-notebook');
@@ -312,5 +319,266 @@ describe('main (integration of helpers)', () => {
     );
     expect(r.code).toBe(5);
     expect(logger._lines.error.some((m) => /MISSING env/.test(m))).toBe(true);
+  });
+});
+
+// ============================================================================
+// Phase 54 Plan 02 tests: auto-confirm + commit-router dispatch + summaries.log
+// ============================================================================
+
+const fs = require('fs');
+const os = require('os');
+const path2 = require('path');
+
+describe('assertSantiInLoop (Plan 02)', () => {
+  test('throws when bulkBackfill+farmer mutated to vikki mid-loop', () => {
+    expect(() => assertSantiInLoop({ bulkBackfill: true, farmer: 'vikki' })).toThrow('santi-only');
+  });
+
+  test('passes on santi', () => {
+    expect(() => assertSantiInLoop({ bulkBackfill: true, farmer: 'santi' })).not.toThrow();
+  });
+
+  test('passes when bulkBackfill=false', () => {
+    expect(() => assertSantiInLoop({ bulkBackfill: false, farmer: 'vikki' })).not.toThrow();
+  });
+});
+
+describe('DRAFT_STATUS_CONFIRMED', () => {
+  test('matches the canonical confirm-state-machine value', () => {
+    expect(DRAFT_STATUS_CONFIRMED).toBe('confirmed');
+  });
+});
+
+describe('buildSummaryLine', () => {
+  test('emits ASCII-only line in the documented shape', () => {
+    const line = buildSummaryLine({
+      ts: '2026-05-24T19:30:00.000Z',
+      page: 'IMG_3775.jpg',
+      captureId: 'backfill-r1-IMG_3775',
+      draftId: 'd1',
+      logType: 'seeding',
+      ok: true,
+      assetCount: 5,
+      logCount: 11,
+    });
+    expect(line).toBe('2026-05-24T19:30:00.000Z page=IMG_3775.jpg capture=backfill-r1-IMG_3775 draft=d1 log_type=seeding ok=true assets=5 logs=11');
+    expect(line).not.toMatch(/[–—]/);
+  });
+
+  test('includes reason= when ok!=true', () => {
+    const line = buildSummaryLine({
+      ts: '2026-05-24T00:00:00.000Z',
+      page: 'IMG_3775.jpg', captureId: 'c', draftId: 'd', logType: 'seeding',
+      ok: false, assetCount: 0, logCount: 0, reason: 'commit_failed',
+    });
+    expect(line).toMatch(/reason=commit_failed$/);
+  });
+
+  test('strips em-dashes from reason text', () => {
+    const line = buildSummaryLine({
+      ts: 't', page: 'p', captureId: 'c', draftId: 'd', logType: 'x',
+      ok: false, assetCount: 0, logCount: 0,
+      reason: 'fungi—type missing',
+    });
+    expect(line).not.toMatch(/[–—]/);
+    expect(line).toMatch(/fungi--type missing/);
+  });
+
+  test('omits reason= when ok=true', () => {
+    const line = buildSummaryLine({
+      ts: 't', page: 'p', captureId: 'c', draftId: 'd', logType: 'x',
+      ok: true, assetCount: 1, logCount: 1, reason: 'ignored',
+    });
+    expect(line).not.toMatch(/reason=/);
+  });
+});
+
+describe('summaries.log writer', () => {
+  let tmpDir;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path2.join(os.tmpdir(), 'bf-test-'));
+  });
+
+  test('openSummariesLog creates runDir + file; append writes one line + \\n', () => {
+    const runDir = path2.join(tmpDir, 'rd');
+    const fd = openSummariesLog(runDir);
+    appendSummaryLine(fd, 'line1');
+    appendSummaryLine(fd, 'line2');
+    fs.closeSync(fd);
+    const got = fs.readFileSync(path2.join(runDir, 'summaries.log'), 'utf8');
+    expect(got).toBe('line1\nline2\n');
+  });
+});
+
+describe('computeRunDir', () => {
+  test('joins under .planning/backfill/2025-notebook/<runId>', () => {
+    expect(computeRunDir('2026-05-24T00-00-00-000Z')).toBe(
+      '.planning/backfill/2025-notebook/2026-05-24T00-00-00-000Z'
+    );
+  });
+});
+
+describe('processDraftsForCapture (Plan 02 core)', () => {
+  let tmpDir;
+  let fd;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path2.join(os.tmpdir(), 'bf-pd-'));
+    fd = fs.openSync(path2.join(tmpDir, 'summaries.log'), 'a');
+  });
+  afterEach(() => {
+    try { fs.closeSync(fd); } catch (_e) {}
+  });
+
+  function readLog() {
+    return fs.readFileSync(path2.join(tmpDir, 'summaries.log'), 'utf8').trim().split('\n').filter(Boolean);
+  }
+
+  test('bulk-backfill+santi: flips each draft to confirmed and dispatches commit-router', async () => {
+    const drafts = [
+      { id: 'd1', log_type: 'seeding' },
+      { id: 'd2', log_type: 'seeding' },
+      { id: 'd3', log_type: 'observation' },
+    ];
+    const updateDraftStatus = jest.fn().mockResolvedValue({ ok: true, rowCount: 1 });
+    const extractionDb = {
+      getDraftsForCapture: jest.fn().mockResolvedValue(drafts),
+      updateDraftStatus,
+    };
+    const commitRouter = {
+      commit: jest.fn().mockResolvedValue({ ok: true, asset_ids: ['a1', 'a2'], log_ids: ['l1'] }),
+    };
+
+    const r = await processDraftsForCapture({
+      pool: {}, client: {}, captureId: 'cap-1', pagePath: '/c/IMG_3775.jpg',
+      opts: { bulkBackfill: true, farmer: 'santi' },
+      summariesFd: fd, extractionDb, commitRouter, dryRun: false,
+    });
+
+    expect(r.drafts).toEqual(drafts);
+    expect(r.commits).toHaveLength(3);
+    expect(r.commits.every((c) => c.ok === true)).toBe(true);
+    expect(updateDraftStatus).toHaveBeenCalledTimes(3);
+    // Each flip uses canonical 'confirmed' status with bulk_backfill_santi marker.
+    for (const call of updateDraftStatus.mock.calls) {
+      expect(call[2]).toBe('confirmed');
+      expect(call[3]).toEqual({ needs_review_reason: 'bulk_backfill_santi' });
+    }
+    expect(commitRouter.commit).toHaveBeenCalledTimes(3);
+
+    const lines = readLog();
+    expect(lines).toHaveLength(3);
+    for (const line of lines) {
+      expect(line).toMatch(/ok=true assets=2 logs=1/);
+      expect(line).not.toMatch(/[–—]/);
+    }
+  });
+
+  test('dry-run: zero flips, zero commits, summary lines emit ok=dry-run', async () => {
+    const drafts = [{ id: 'd1', log_type: 'seeding' }, { id: 'd2', log_type: 'seeding' }];
+    const updateDraftStatus = jest.fn();
+    const extractionDb = {
+      getDraftsForCapture: jest.fn().mockResolvedValue(drafts),
+      updateDraftStatus,
+    };
+    const commitRouter = { commit: jest.fn() };
+
+    const r = await processDraftsForCapture({
+      pool: {}, client: {}, captureId: 'cap-1', pagePath: '/c/IMG_3775.jpg',
+      opts: { bulkBackfill: true, farmer: 'santi' },
+      summariesFd: fd, extractionDb, commitRouter, dryRun: true,
+    });
+
+    expect(updateDraftStatus).not.toHaveBeenCalled();
+    expect(commitRouter.commit).not.toHaveBeenCalled();
+    expect(r.commits.every((c) => c.ok === 'dry-run')).toBe(true);
+    const lines = readLog();
+    expect(lines).toHaveLength(2);
+    expect(lines.every((l) => /ok=dry-run/.test(l))).toBe(true);
+  });
+
+  test('without --bulk-backfill: drafts stay pending, commit-router NOT called', async () => {
+    const drafts = [{ id: 'd1', log_type: 'seeding' }];
+    const extractionDb = {
+      getDraftsForCapture: jest.fn().mockResolvedValue(drafts),
+      updateDraftStatus: jest.fn(),
+    };
+    const commitRouter = { commit: jest.fn() };
+
+    await processDraftsForCapture({
+      pool: {}, client: {}, captureId: 'cap-1', pagePath: '/c/IMG_3775.jpg',
+      opts: { bulkBackfill: false, farmer: 'santi' },
+      summariesFd: fd, extractionDb, commitRouter, dryRun: false,
+    });
+
+    expect(extractionDb.updateDraftStatus).not.toHaveBeenCalled();
+    expect(commitRouter.commit).not.toHaveBeenCalled();
+    const lines = readLog();
+    expect(lines[0]).toMatch(/reason=no_bulk_backfill/);
+  });
+
+  test('in-loop santi assertion: opts.farmer mutated to vikki after Task-1 gate trips exit 4 path', async () => {
+    const drafts = [{ id: 'd1', log_type: 'seeding' }];
+    const extractionDb = {
+      getDraftsForCapture: jest.fn().mockResolvedValue(drafts),
+      updateDraftStatus: jest.fn(),
+    };
+    const commitRouter = { commit: jest.fn() };
+
+    await expect(processDraftsForCapture({
+      pool: {}, client: {}, captureId: 'cap-1', pagePath: '/c/IMG_3775.jpg',
+      opts: { bulkBackfill: true, farmer: 'vikki' },
+      summariesFd: fd, extractionDb, commitRouter, dryRun: false,
+    })).rejects.toThrow('santi-only');
+    expect(commitRouter.commit).not.toHaveBeenCalled();
+  });
+
+  test('draft_flip_failed: continues to next draft and stamps reason in summary', async () => {
+    const drafts = [{ id: 'd1', log_type: 'seeding' }, { id: 'd2', log_type: 'seeding' }];
+    const extractionDb = {
+      getDraftsForCapture: jest.fn().mockResolvedValue(drafts),
+      updateDraftStatus: jest.fn()
+        .mockResolvedValueOnce({ ok: false, reason: 'db_down' })
+        .mockResolvedValueOnce({ ok: true, rowCount: 1 }),
+    };
+    const commitRouter = {
+      commit: jest.fn().mockResolvedValue({ ok: true, asset_ids: ['a1'], log_ids: ['l1'] }),
+    };
+
+    const r = await processDraftsForCapture({
+      pool: {}, client: {}, captureId: 'cap-1', pagePath: '/c/IMG_3775.jpg',
+      opts: { bulkBackfill: true, farmer: 'santi' },
+      summariesFd: fd, extractionDb, commitRouter, dryRun: false,
+    });
+
+    expect(r.commits[0].ok).toBe(false);
+    expect(r.commits[0].reason).toMatch(/draft_flip_failed: db_down/);
+    expect(r.commits[1].ok).toBe(true);
+    expect(commitRouter.commit).toHaveBeenCalledTimes(1);
+  });
+
+  test('commit-router ok:false: summary line ok=false reason carried, loop continues', async () => {
+    const drafts = [{ id: 'd1', log_type: 'seeding' }, { id: 'd2', log_type: 'seeding' }];
+    const extractionDb = {
+      getDraftsForCapture: jest.fn().mockResolvedValue(drafts),
+      updateDraftStatus: jest.fn().mockResolvedValue({ ok: true, rowCount: 1 }),
+    };
+    const commitRouter = {
+      commit: jest.fn()
+        .mockResolvedValueOnce({ ok: false, asset_ids: [], log_ids: [], reason: 'http_422' })
+        .mockResolvedValueOnce({ ok: true, asset_ids: ['a1'], log_ids: ['l1'] }),
+    };
+
+    const r = await processDraftsForCapture({
+      pool: {}, client: {}, captureId: 'cap-1', pagePath: '/c/IMG_3775.jpg',
+      opts: { bulkBackfill: true, farmer: 'santi' },
+      summariesFd: fd, extractionDb, commitRouter, dryRun: false,
+    });
+
+    expect(r.commits[0].ok).toBe(false);
+    expect(r.commits[1].ok).toBe(true);
+    const lines = readLog();
+    expect(lines[0]).toMatch(/ok=false.*reason=http_422/);
+    expect(lines[1]).toMatch(/ok=true/);
   });
 });
