@@ -233,7 +233,7 @@ Honors locked schema (B5 SEQ per-session per 2026-05-22 clarification in farmos 
 - [x] 53-01-PLAN.md — BACK-01 corpus_context JSONB column + pipeline/extractor plumbing (SHIPPED 2026-05-24, `bf721e2` + `9d25ec7`)
 - [x] 53-02-PLAN.md — BACK-02 small-N multi-draft routing heuristic (drafts>5 OR conf<0.7 → batch; else N per-draft confirms) + DT-tubs regression (SHIPPED 2026-05-24, `9835caf`)
 - [x] 53-03-PLAN.md — BACK-03 capture_kind prompt-only classifier (Option 1) + envelope schema + 2 new few-shots (SHIPPED 2026-05-24, `52f0874` + `673c413`)
-- [ ] 53-04-PLAN.md — BACK-04 hermetic eval gate on 5-10 hand-labeled 2025 notebook pages (Phase 54 unblocking gate) — SCAFFOLDED 2026-05-24 (`a2467ea`); BLOCKED on operator fixture labels
+- [x] 53-04-PLAN.md — BACK-04 hermetic eval gate on 5-10 hand-labeled 2025 notebook pages (Phase 54 unblocking gate) — SHIPPED 2026-05-24 (scaffolding `a2467ea` + 8-fixture corpus `cc95c8d`); 8/8 hermetic fixtures green; Phase 54 UNBLOCKED
 
 ### Phase 54: Backfill harness + dev-farmOS smoke (≤20 pages)
 
