@@ -204,6 +204,26 @@ async function expireIdle(pool, gapMinutes) {
 }
 
 /**
+ * Phase 54 Plan 02: read all drafts whose source_capture_ids array contains the
+ * given captureId. Used by the backfill harness to auto-confirm every draft
+ * produced from one synthetic capture before moving to the next page.
+ * Ordered by created_at ASC. Returns [] on error (never-throw).
+ */
+async function getDraftsForCapture(pool, captureId) {
+  try {
+    const r = await pool.query(
+      `SELECT * FROM signal_draft
+       WHERE source_capture_ids @> ARRAY[$1]::text[]
+       ORDER BY created_at ASC`,
+      [captureId],
+    );
+    return r.rows || [];
+  } catch (_e) {
+    return [];
+  }
+}
+
+/**
  * Fetch a single draft row by primary-key id. Returns the row or null.
  * Added for Phase 47 Plan 03 handleStartingSeqReply: ask-back reply needs
  * to re-load the draft, mutate child_block_names + needs_input, then
@@ -225,6 +245,7 @@ module.exports = {
   initDb,
   insertDraft,
   getInFlightForSender,
+  getDraftsForCapture,
   getDraftById,
   updateDraftStatus,
   advanceAskbackTurn,
