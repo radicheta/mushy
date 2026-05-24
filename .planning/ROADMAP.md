@@ -229,6 +229,11 @@ Honors locked schema (B5 SEQ per-session per 2026-05-22 clarification in farmos 
 - BACK-03: Photo-vs-paper-log classifier reins in eagerness (closes `2026-05-24-phase38-photo-vs-paper-log-classifier-too-eager.md`).
 - BACK-04: Hermetic eval on 5-10 hand-labeled 2025 notebook pages PASSES before any batch run.
 **Touches:** `src/agents/alerter/src/extraction/`, eval fixtures, possibly `signal_capture.corpus_context` column.
+**Plans:** 4 plans
+- [ ] 53-01-PLAN.md — BACK-01 corpus_context JSONB column + pipeline/extractor plumbing
+- [ ] 53-02-PLAN.md — BACK-02 small-N multi-draft routing heuristic (drafts>5 OR conf<0.7 → batch; else N per-draft confirms) + DT-tubs regression
+- [ ] 53-03-PLAN.md — BACK-03 capture_kind prompt-only classifier (Option 1) + envelope schema + 2 new few-shots
+- [ ] 53-04-PLAN.md — BACK-04 hermetic eval gate on 5-10 hand-labeled 2025 notebook pages (Phase 54 unblocking gate)
 
 ### Phase 54: Backfill harness + dev-farmOS smoke (≤20 pages)
 
