@@ -71,6 +71,8 @@ function makeMockClient({
     _created: created,
     _calls: calls,
     _byId,
+    _idByName,
+    _logsByAssetId,
     _force412,
 
     get: jest.fn(async (path, opts) => {
