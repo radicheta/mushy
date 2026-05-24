@@ -201,7 +201,12 @@ Honors locked schema (B5 SEQ per-session per 2026-05-22 clarification in farmos 
 - Honors the substrate log-only lock — group asset is not a substrate, doesn't collide.
 - Optional follow-on: backfill the 11 dev children from today's 48-LIVE-FIRE into a retro group (per the farmos-side note's open item #5). Not gating; can be done as a one-liner script during/after Phase 52 ships.
 
-**Plans:** TBD during plan-phase. Likely 3 plans: group-asset + membership-log primitives + tests; commit-handler integration + collision naming + idempotency; live-fire attestation.
+**Plans:** 5 plans
+- [ ] 52-01-PLAN.md — groupAssets.js module (findGroupAssetByName + upsertGroupAsset + deleteGroupAsset)
+- [ ] 52-02-PLAN.md — activityLogs.js module (createGroupAssignmentLog with is_group_assignment=true)
+- [ ] 52-03-PLAN.md — re-introduce session preflight + membership log + collision naming + expanded rollback in commit-seeding-session.js
+- [ ] 52-04-PLAN.md — hermetic integration tests at 17 assets + 12 logs; partial-failure + membership-log-failure + collision scenarios
+- [ ] 52-05-PLAN.md — scripts/live-fire-52.js dev-farmOS ship-gate harness + 52-LIVE-FIRE.md runbook (operator-attested)
 
 ---
 
