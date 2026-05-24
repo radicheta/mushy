@@ -1,0 +1,141 @@
+{
+  "drafts": [
+    {
+      "draft": {
+        "type": "seeding_session",
+        "event_date": "2025-04-06",
+        "groups": [
+          {
+            "parent": {
+              "value": "NO_PARENT",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "SHI",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "NO_PARENT",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "SHI",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "NO_PARENT",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "SHI",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "NO_PARENT",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "SHI",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          }
+        ],
+        "notes": "GRAIN DRY/WET LOGS BARK 240104 | GRAIN DRY/WET LOGS BARK 240104 | SAWDUST DRYER/WETTER | SAWDUST DRYER/WETTER"
+      }
+    }
+  ]
+}

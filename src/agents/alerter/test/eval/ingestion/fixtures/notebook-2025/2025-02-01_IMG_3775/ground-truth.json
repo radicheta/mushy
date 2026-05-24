@@ -1,0 +1,780 @@
+{
+  "drafts": [
+    {
+      "draft": {
+        "type": "seeding_session",
+        "event_date": "2025-02-01",
+        "groups": [
+          {
+            "parent": {
+              "value": "1-08-23",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "CAS",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "1-08-23",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "CAS",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "12-15-28",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "LIMA",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "12-15-28",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "LIMA",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "12-15-28",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "LIMA",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "12-15-28",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "LIMA",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "12-9-21",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "SHI",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "12-06-2",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "CAS",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "12-06-2",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "CAS",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "12-06-2",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "CAS",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "01-8-12",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "CAS",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "01-8-12",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "CAS",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "01-16-35",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "POY",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "01-16-35",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "POY",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "01-16-35",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "POY",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "12-15-29",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "CAZ",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "12-15-29",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "CAZ",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "12-15-29",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "CAZ",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "12-15-29",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "CAZ",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "12-15-29",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "CAZ",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "12-15-29",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "CAZ",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "12-15-29",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "CAZ",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "12-15-29",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "CAZ",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "12-15-29",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "CAZ",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

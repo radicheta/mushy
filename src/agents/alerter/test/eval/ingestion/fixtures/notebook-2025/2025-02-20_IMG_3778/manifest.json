@@ -1,0 +1,16 @@
+{
+  "name": "2025-02-20_IMG_3778",
+  "year": 2025,
+  "source_image": "IMG_3778.jpg",
+  "corpus_context": {
+    "default_year": 2025,
+    "source": "paper_log"
+  },
+  "expected_capture_kind": "paper_log",
+  "regression_guard": true,
+  "entry_count": 8,
+  "dates_covered": [
+    "2025-02-20"
+  ],
+  "notes": "Small/sparse page (8 entries CAZ/CAS/SHI). Date header reads \"25-0220\" (compact format with 2-digit year)."
+}

@@ -1,0 +1,17 @@
+{
+  "name": "2025-05-27_IMG_3785",
+  "year": 2025,
+  "source_image": "IMG_3785.jpg",
+  "corpus_context": {
+    "default_year": 2025,
+    "source": "paper_log"
+  },
+  "expected_capture_kind": "paper_log",
+  "regression_guard": true,
+  "entry_count": 18,
+  "dates_covered": [
+    "2025-05-27",
+    "2025-05-28"
+  ],
+  "notes": "YEAR-ABSENT page covering two dates: \"0527\" (14 KOY/CAS entries) + \"0528\" (4 KOY entries). Both BACK-01 cases. Entries on 05-27 are grouped under brace notation by parent batch."
+}

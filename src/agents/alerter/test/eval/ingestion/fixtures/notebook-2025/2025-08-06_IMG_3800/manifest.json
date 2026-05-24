@@ -1,0 +1,16 @@
+{
+  "name": "2025-08-06_IMG_3800",
+  "year": 2025,
+  "source_image": "IMG_3800.jpg",
+  "corpus_context": {
+    "default_year": 2025,
+    "source": "paper_log"
+  },
+  "expected_capture_kind": "paper_log",
+  "regression_guard": true,
+  "entry_count": 21,
+  "dates_covered": [
+    "2025-08-06"
+  ],
+  "notes": "YEAR-ABSENT page -- header reads \"08 06\". Single-strain bulk (DT/CAS/SHI), 21 entries grouped by brace notation. BACK-01 case."
+}

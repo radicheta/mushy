@@ -1,0 +1,16 @@
+{
+  "name": "2025-04-06_IMG_3782",
+  "year": 2025,
+  "source_image": "IMG_3782.jpg",
+  "corpus_context": {
+    "default_year": 2025,
+    "source": "paper_log"
+  },
+  "expected_capture_kind": "paper_log",
+  "regression_guard": true,
+  "entry_count": 4,
+  "dates_covered": [
+    "2025-04-06"
+  ],
+  "notes": "Sparse experimental page (4 SHI entries, substrate notes GRAIN DRY/WET + SAWDUST DRYER/WETTER). Date header reads \"250406\" (compact). Source field is blank for all rows -> parent=\"NO_PARENT\" per schema."
+}

@@ -1,0 +1,16 @@
+{
+  "name": "2025-02-04_IMG_3776",
+  "year": 2025,
+  "source_image": "IMG_3776.jpg",
+  "corpus_context": {
+    "default_year": 2025,
+    "source": "paper_log"
+  },
+  "expected_capture_kind": "paper_log",
+  "regression_guard": true,
+  "entry_count": 17,
+  "dates_covered": [
+    "2025-02-04"
+  ],
+  "notes": "Mid-size multi-strain page (17 entries: CAS/POY/SHI/LIMA/KOY). Date header reads \"2025-02-04\" (fully dated, no year-shim needed)."
+}

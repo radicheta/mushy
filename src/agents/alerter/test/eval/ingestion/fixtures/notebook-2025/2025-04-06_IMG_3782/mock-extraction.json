@@ -1,0 +1,181 @@
+{
+  "id": "msg_mock_53_04_2025-04-06_IMG_3782",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-4-mock",
+  "content": [
+    {
+      "type": "tool_use",
+      "id": "toolu_mock_2025-04-06_IMG_3782",
+      "name": "submit_extraction",
+      "input": {
+        "drafts": [
+          {
+            "draft": {
+              "type": "seeding_session",
+              "event_date": "2025-04-06",
+              "groups": [
+                {
+                  "parent": {
+                    "value": "NO_PARENT",
+                    "sources": [
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.9
+                  },
+                  "species": {
+                    "value": "SHI",
+                    "sources": [
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.9
+                  },
+                  "qty": {
+                    "value": 1,
+                    "sources": [
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.95
+                  },
+                  "child_block_names": {
+                    "value": [
+                      "NEEDS_SEQ"
+                    ],
+                    "sources": [
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.7
+                  }
+                },
+                {
+                  "parent": {
+                    "value": "NO_PARENT",
+                    "sources": [
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.9
+                  },
+                  "species": {
+                    "value": "SHI",
+                    "sources": [
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.9
+                  },
+                  "qty": {
+                    "value": 1,
+                    "sources": [
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.95
+                  },
+                  "child_block_names": {
+                    "value": [
+                      "NEEDS_SEQ"
+                    ],
+                    "sources": [
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.7
+                  }
+                },
+                {
+                  "parent": {
+                    "value": "NO_PARENT",
+                    "sources": [
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.9
+                  },
+                  "species": {
+                    "value": "SHI",
+                    "sources": [
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.9
+                  },
+                  "qty": {
+                    "value": 1,
+                    "sources": [
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.95
+                  },
+                  "child_block_names": {
+                    "value": [
+                      "NEEDS_SEQ"
+                    ],
+                    "sources": [
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.7
+                  }
+                },
+                {
+                  "parent": {
+                    "value": "NO_PARENT",
+                    "sources": [
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.9
+                  },
+                  "species": {
+                    "value": "SHI",
+                    "sources": [
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.9
+                  },
+                  "qty": {
+                    "value": 1,
+                    "sources": [
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.95
+                  },
+                  "child_block_names": {
+                    "value": [
+                      "NEEDS_SEQ"
+                    ],
+                    "sources": [
+                      "paper_log_photo"
+                    ],
+                    "confidence": 0.7
+                  }
+                }
+              ],
+              "notes": "GRAIN DRY/WET LOGS BARK 240104 | GRAIN DRY/WET LOGS BARK 240104 | SAWDUST DRYER/WETTER | SAWDUST DRYER/WETTER"
+            },
+            "per_field_confidence": {
+              "event_date": 0.95,
+              "groups.0.parent": 0.9,
+              "groups.0.species": 0.95,
+              "groups.0.qty": 0.95,
+              "groups.0.child_block_names": 0.7,
+              "groups.1.parent": 0.9,
+              "groups.1.species": 0.95,
+              "groups.1.qty": 0.95,
+              "groups.1.child_block_names": 0.7,
+              "groups.2.parent": 0.9,
+              "groups.2.species": 0.95,
+              "groups.2.qty": 0.95,
+              "groups.2.child_block_names": 0.7,
+              "groups.3.parent": 0.9,
+              "groups.3.species": 0.95,
+              "groups.3.qty": 0.95,
+              "groups.3.child_block_names": 0.7
+            }
+          }
+        ],
+        "continuity": "start_new",
+        "continuity_reason": "Fresh notebook page (2025-04-06); no prior in-flight draft.",
+        "capture_kind": "paper_log"
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "usage": {
+    "input_tokens": 1000,
+    "output_tokens": 500
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "2025-11-08_IMG_3825",
+  "year": 2025,
+  "source_image": "IMG_3825.jpg",
+  "corpus_context": {
+    "default_year": 2025,
+    "source": "paper_log"
+  },
+  "expected_capture_kind": "paper_log",
+  "regression_guard": true,
+  "entry_count": 22,
+  "dates_covered": [
+    "2025-11-08"
+  ],
+  "notes": "YEAR-ABSENT page -- header reads only \"1108\". Multi-strain (SHI/CCM/MALI/BP), 22 entries grouped by brace notation. BACK-01 case: extractor must use corpus_context.default_year=2025. Entries 21-22 have blank source -> parent=\"NO_PARENT\"."
+}
