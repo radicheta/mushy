@@ -1,0 +1,596 @@
+{
+  "drafts": [
+    {
+      "draft": {
+        "type": "seeding_session",
+        "event_date": "2025-05-27",
+        "groups": [
+          {
+            "parent": {
+              "value": "0505-9",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "KOY",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "0505-9",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "KOY",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "0505-9",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "KOY",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "0505-9",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "KOY",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "0505-9",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "KOY",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "0505-9",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "KOY",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "0505-9",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "KOY",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "0419-6",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "KOY",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "0419-6",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "KOY",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "0419-6",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "KOY",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "0419-6",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "KOY",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "NO_PARENT",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "CAS",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "NO_PARENT",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "CAS",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "NO_PARENT",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "CAS",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          }
+        ]
+      }
+    },
+    {
+      "draft": {
+        "type": "seeding_session",
+        "event_date": "2025-05-28",
+        "groups": [
+          {
+            "parent": {
+              "value": "0419-4",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "KOY",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "0419-4",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "KOY",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "0419-4",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "KOY",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          },
+          {
+            "parent": {
+              "value": "0419-4",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "species": {
+              "value": "KOY",
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.9
+            },
+            "qty": {
+              "value": 1,
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.95
+            },
+            "child_block_names": {
+              "value": [
+                "NEEDS_SEQ"
+              ],
+              "sources": [
+                "paper_log_photo"
+              ],
+              "confidence": 0.7
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

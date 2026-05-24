@@ -1,0 +1,16 @@
+{
+  "name": "2025-02-01_IMG_3775",
+  "year": 2025,
+  "source_image": "IMG_3775.jpg",
+  "corpus_context": {
+    "default_year": 2025,
+    "source": "paper_log"
+  },
+  "expected_capture_kind": "paper_log",
+  "regression_guard": true,
+  "entry_count": 24,
+  "dates_covered": [
+    "2025-02-01"
+  ],
+  "notes": "First page of the notebook. Multi-strain (CAS/LIMA/SHI/POY/CAZ), 24 entries. Date header reads \"2-01-1\" (page format ambiguity -- extractor must infer year=2025 from corpus_context)."
+}
