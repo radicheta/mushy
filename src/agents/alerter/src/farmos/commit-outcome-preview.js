@@ -199,7 +199,30 @@ function renderOutcomeAck(draftRow, options) {
   const outcome = opts.outcome;
   const senderName = row.sender_name;
   const logType = row.log_type;
-  const target = row.target;
+  // Hotfix 2026-05-24: row.target is never populated anywhere in the
+  // codebase, so the "saved X for Y" branch below was dead code and every
+  // successful commit fell through to "general farm note" even when an
+  // asset WAS matched. Read asset_ref / qr_codes / source_block_refs from
+  // draft_json as the canonical target source. Multi-target commits show
+  // the first ref; downstream phases can refine if needed.
+  function resolveTarget() {
+    if (row.target != null && String(row.target).trim() !== '') return row.target;
+    const dj = row.draft_json || {};
+    if (typeof dj.asset_ref === 'string' && dj.asset_ref.trim() !== '' && dj.asset_ref !== '<UNKNOWN>') {
+      return dj.asset_ref.trim();
+    }
+    if (Array.isArray(dj.qr_codes) && dj.qr_codes.length > 0 && typeof dj.qr_codes[0] === 'string') {
+      return dj.qr_codes[0];
+    }
+    if (Array.isArray(dj.source_block_refs) && dj.source_block_refs.length > 0 && typeof dj.source_block_refs[0] === 'string') {
+      return dj.source_block_refs[0];
+    }
+    if (Array.isArray(dj.source_qr_codes) && dj.source_qr_codes.length > 0 && typeof dj.source_qr_codes[0] === 'string') {
+      return dj.source_qr_codes[0];
+    }
+    return null;
+  }
+  const target = resolveTarget();
   const label = labelFor(logType);
   const hi = greeting(senderName);
   const what = buildDisambiguator(row, label);

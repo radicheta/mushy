@@ -324,6 +324,83 @@ describe('renderOutcomeAck (Phase 45 Plan 02)', () => {
       expect(out).toBe('Hi Santi, saved seeding for 260512_SHI_4. Open in farmOS: https://farmos.example/log/1001');
     });
 
+    // Hotfix 2026-05-24: row.target is never populated by the pipeline,
+    // so the renderer must derive target from draft_json.{asset_ref|qr_codes}
+    // instead. Pre-hotfix, every successful observation commit (with a real
+    // block match!) fell through to "general farm note" -- misleading the
+    // farmer that the block wasn't matched when it actually was.
+    it('hotfix-2026-05-24: success ack derives target from draft_json.asset_ref when row.target absent', () => {
+      const out = renderOutcomeAck(
+        {
+          id: 'bb34475403',
+          sender_name: 'Santi',
+          log_type: 'observation',
+          // NO row.target -- only draft_json.asset_ref (production shape)
+          draft_json: {
+            type: 'observation',
+            asset_ref: '260519_DT_1',
+            state: 'mycelium visible, colonization in progress',
+            event_timestamp: '2026-05-19T00:00:00Z',
+          },
+        },
+        { outcome: 'success' }
+      );
+      expect(out).toContain('260519_DT_1');
+      expect(out).not.toContain('general farm note');
+      expect(out).not.toContain("couldn't match a block");
+    });
+
+    it('hotfix-2026-05-24: success ack derives target from draft_json.qr_codes (post-normalize)', () => {
+      const out = renderOutcomeAck(
+        {
+          id: 'aabbccddee',
+          sender_name: 'Vikki',
+          log_type: 'observation',
+          draft_json: {
+            type: 'observation',
+            qr_codes: ['260512_SHI_4'], // post-normalize shape
+            state: 'fruiting',
+            event_timestamp: '2026-05-12T12:00:00Z',
+          },
+        },
+        { outcome: 'success' }
+      );
+      expect(out).toContain('260512_SHI_4');
+      expect(out).not.toContain('general farm note');
+    });
+
+    it('hotfix-2026-05-24: success ack falls back to general farm note when no target available', () => {
+      const out = renderOutcomeAck(
+        {
+          id: '1fb28e7091',
+          sender_name: 'Santi',
+          log_type: 'activity',
+          draft_json: {
+            type: 'activity',
+            // genuinely no asset_ref / qr_codes -- prior-style farm-level activity
+            event_timestamp: '2026-05-15T12:00:00Z',
+            notes: 'general farm work',
+          },
+        },
+        { outcome: 'success' }
+      );
+      // Preserves the original no-target fallback for legitimately farm-level events
+      expect(out).toContain('general farm note');
+    });
+
+    it('hotfix-2026-05-24: <UNKNOWN> sentinel does not become a fake target', () => {
+      const out = renderOutcomeAck(
+        {
+          log_type: 'observation',
+          sender_name: 'Santi',
+          draft_json: { type: 'observation', asset_ref: '<UNKNOWN>' },
+        },
+        { outcome: 'success' }
+      );
+      expect(out).not.toContain('<UNKNOWN>');
+      expect(out).toContain('general farm note'); // sentinel = no-target
+    });
+
     it('Test G: no em-dash, no en-dash, no emoji in any seeding_session ack', () => {
       const cases = [
         { outcome: 'success' },
