@@ -122,6 +122,42 @@ function sumGroupQtys(groups) {
   return total;
 }
 
+// Phase 53 BACK-02: walk the nested per_field_confidence object and return the
+// min numeric leaf. Empty / missing-leaf objects return 0 (forces batch-review --
+// conservative: we'd rather over-route to the operator-summary path than spam
+// the farmer with N confirm prompts based on zero confidence signal).
+function minLeafConfidence(obj) {
+  if (!obj || typeof obj !== 'object') return 0;
+  let min = Infinity;
+  let saw = false;
+  const walk = (v) => {
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      saw = true;
+      if (v < min) min = v;
+      return;
+    }
+    if (v && typeof v === 'object') {
+      for (const k of Object.keys(v)) walk(v[k]);
+    }
+  };
+  walk(obj);
+  return saw ? min : 0;
+}
+
+// Phase 53 BACK-02: routing heuristic locked per D-BACK-02.
+// drafts.length > 5  OR  min over drafts of minLeafConfidence(per_field_confidence) < 0.7
+// -> existing runBatchMode (operator summary, needs_review marking).
+// Otherwise -> small-N fan-out (N independent send_confirm_prompt dispatches).
+function shouldBatchReview(draftsArr) {
+  if (!Array.isArray(draftsArr) || draftsArr.length === 0) return false;
+  if (draftsArr.length > 5) return true;
+  for (const item of draftsArr) {
+    const c = minLeafConfidence(item && item.per_field_confidence);
+    if (c < 0.7) return true;
+  }
+  return false;
+}
+
 function createExtractionPipeline({
   pool,
   extractor,
@@ -334,15 +370,126 @@ function createExtractionPipeline({
       // Don Santiago. See discuss with Don Santiago 2026-05-12.
       const draftsArr = Array.isArray(extractResult.drafts) ? extractResult.drafts : [];
       if (draftsArr.length > 1) {
-        return await runBatchMode({
-          draftsArr,
-          captureCtx,
-          sender,
-          captureId,
-          sourceCaptureIdsBase: [captureId],
-          nowMs,
-          inFlight,
-        });
+        // Phase 53 BACK-02: route small-N high-confidence multi-draft captures
+        // (e.g. "DT tubs 0519 1 and 2") through N independent confirm prompts
+        // instead of the operator-channel batch-review queue. Heuristic locked
+        // per D-BACK-02: drafts.length > 5 OR min per-draft confidence < 0.7
+        // -> runBatchMode (unchanged). seeding_session in the mix falls
+        // through to runBatchMode (safe default; small-N path is for
+        // observation/activity shapes, not session shapes).
+        const hasSeedingSession = draftsArr.some(
+          (d) => d && d.draft && d.draft.type === 'seeding_session'
+        );
+        if (shouldBatchReview(draftsArr) || hasSeedingSession) {
+          return await runBatchMode({
+            draftsArr,
+            captureCtx,
+            sender,
+            captureId,
+            sourceCaptureIdsBase: [captureId],
+            nowMs,
+            inFlight,
+          });
+        }
+        // Small-N high-conf fan-out: each draft -> its own normal confirm flow.
+        // Expire prior in-flight once (a multi-draft capture resets the
+        // conversational state, mirroring runBatchMode's behavior).
+        if (inFlight) {
+          const exp = await extractionDb.updateDraftStatus(pool, inFlight.id, DRAFT_STATUS.EXPIRED);
+          if (!exp.ok) {
+            logger.warn && logger.warn(`[extraction] multi_confirm: expire prior draft failed: ${exp.reason}`);
+          }
+        }
+        const results = [];
+        const sideEffectsAll = [];
+        for (let i = 0; i < draftsArr.length; i += 1) {
+          const item = draftsArr[i] || {};
+          const dDraft = item.draft || null;
+          const dPfc = item.per_field_confidence || {};
+          const dLogType = dDraft && dDraft.type;
+          const dDraftId = extractionDb.computeDraftId([captureId], i);
+          // Insert as PENDING.
+          const ins = await extractionDb.insertDraft(pool, {
+            id: dDraftId,
+            sender_e164: sender,
+            farmos_person: captureCtx.farmosPerson || null,
+            source_capture_ids: [captureId],
+            status: DRAFT_STATUS.PENDING,
+            log_type: dLogType || null,
+            draft_json: dDraft,
+            per_field_confidence: dPfc,
+            askback_turns: 0,
+            reply_target_kind: captureCtx.replyTargetKind || null,
+            group_id: captureCtx.groupId || null,
+          });
+          if (!ins.ok) {
+            logger.warn && logger.warn(`[extraction] multi_confirm: insertDraft idx=${i} failed: ${ins.reason}`);
+            continue;
+          }
+          // Run state-machine with full maxAskbackTurns; high-conf path
+          // typically produces send_confirm_prompt directly (no ask-back).
+          const transition = stateMachine.transition(
+            { status: DRAFT_STATUS.PENDING, askback_turns: 0, last_updated_at_ms: nowMs },
+            {
+              type: 'extraction_result',
+              draft: dDraft,
+              perFieldConfidence: dPfc,
+              threshold: config.extractionConfidenceThreshold,
+              maxAskbackTurns: config.maxAskbackTurns,
+              now_ms: nowMs,
+            },
+          );
+          const dExtras = {};
+          const dNeedsPreview = transition.side_effects.includes('send_ask_back')
+            || transition.side_effects.includes('send_needs_review_ping')
+            || transition.side_effects.includes('send_confirm_prompt');
+          if (dNeedsPreview) {
+            try {
+              const required = REQUIRED_FIELDS[dDraft && dDraft.type] || [];
+              dExtras.farmer_facing_preview = previewBuilder.buildPreview({
+                draft: dDraft,
+                perFieldConfidence: dPfc,
+                threshold: config.extractionConfidenceThreshold,
+                requiredFields: required,
+              });
+            } catch (e) {
+              logger.warn && logger.warn(`[extraction] multi_confirm: preview build failed: ${e.message}`);
+            }
+          }
+          const finalUpd = await extractionDb.updateDraftStatus(pool, dDraftId, transition.nextStatus, dExtras);
+          if (!finalUpd.ok) {
+            logger.warn && logger.warn(`[extraction] multi_confirm: final status update idx=${i} failed: ${finalUpd.reason}`);
+          }
+          // Build per-draft draftRow and dispatch each side effect independently.
+          const dDraftRow = {
+            id: dDraftId,
+            sender_e164: sender,
+            farmos_person: captureCtx.farmosPerson || null,
+            status: transition.nextStatus,
+            draft_json: dDraft,
+            farmer_facing_preview: dExtras.farmer_facing_preview || null,
+            reply_target_kind: captureCtx.replyTargetKind || null,
+            group_id: captureCtx.groupId || null,
+            source_capture_ids: [captureId],
+            askback_turns: transition.nextAskbackTurns || 0,
+          };
+          for (const effect of transition.side_effects) {
+            try {
+              outboundDispatcher.dispatch(effect, dDraftRow);
+              sideEffectsAll.push(effect);
+            } catch (e) {
+              logger.warn && logger.warn(`[extraction] multi_confirm: dispatch ${effect} failed: ${e.message}`);
+            }
+          }
+          results.push({ id: dDraftId, status: transition.nextStatus });
+        }
+        return {
+          ok: true,
+          mode: 'multi_confirm',
+          count: results.length,
+          draftIds: results.map((r) => r.id),
+          sideEffects: sideEffectsAll,
+        };
       }
 
       // 4. resolve continuity
