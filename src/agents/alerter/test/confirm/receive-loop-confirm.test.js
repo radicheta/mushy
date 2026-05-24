@@ -291,6 +291,24 @@ describe('receive-loop confirm branch (Phase 39 D-01)', () => {
       expect(w.editHandler.handleEdit).not.toHaveBeenCalled();
     });
 
+    // Hotfix 2026-05-23: stale commit_failed drafts must not trap fresh captures.
+    // The SQL-side fix in confirm-db.findActiveDraftsForSender ages them out.
+    // This test mirrors the live-fire failure (Santi sent "DT tubs 0519 1 and 2"
+    // with 5 stale commit_failed drafts from May 13-21); the receive-loop sees
+    // an EMPTY activeDrafts list (mocked here) and falls through to capture.
+    it('hotfix-2026-05-23: fresh capture with NO stale-active drafts -> capture pipeline runs', async () => {
+      const w = makeWiring({ findResult: null, activeDrafts: [] }); // post-hotfix view
+      const capture = { handle: jest.fn() };
+      const sig = makeSignalClient([makeEnvelope({ source: SENDER, text: 'DT tubs 0519 1 and 2' })]);
+      const loop = createReceiveLoop({
+        signalClient: sig, dispatch: jest.fn(), config: baseConfig, capturePipeline: capture, logger: silentLogger(), ...w,
+      });
+      await runOneTick(loop);
+      const askBack = w.confirmOutbound.dispatch.mock.calls.find((c) => c[0] === 'send_ask_back');
+      expect(askBack).toBeUndefined();
+      expect(capture.handle).toHaveBeenCalledTimes(1);
+    });
+
     // Terminal-draft polite ack: quote resolves to committed -> send_quote_closed; no mutation.
     it('quote resolves to a terminal (committed) draft -> send_quote_closed; no mutation', async () => {
       const dTerm = { id: 'd-old', sender_e164: SENDER, status: 'committed', log_type: 'seeding', draft_json: { name: 'inoc' }, created_at: new Date('2026-05-13T12:00:00Z') };

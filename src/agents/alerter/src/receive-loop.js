@@ -279,6 +279,9 @@ function createReceiveLoop({
             }
             if (activeDrafts.length > 1 && !quoteResolved) {
               // Numbered ask-back: one-shot response, no state tracking.
+              // Hotfix 2026-05-23: staleness filter lives in confirm-db
+              // (findActiveDraftsForSender ages out commit_failed >6h old)
+              // so 10-day-old ack-debt drafts no longer trap fresh captures.
               await confirmOutbound.dispatch('send_ask_back', null, {
                 activeDrafts,
                 senderE164: source,
