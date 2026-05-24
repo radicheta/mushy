@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.10
 milestone_name: Order-Independent Writes (upsert-by-stable-identity)
-status: Roadmap queued — v1.10.1/v1.11/v1.12/v1.13 scaffolded, awaiting milestone kickoff
-last_updated: "2026-05-24T22:30:00.000Z"
-last_activity: 2026-05-24 — v1.10.1 (session-entity adoption via asset--group), v1.11 (2025-notebook backfill), v1.12 (Python farm-agent port), v1.13 (auto-commit narrowing) added to ROADMAP.md; farmos team enabled farm_group module on dev+prod (commit 1857037 farmos repo)
+status: Awaiting next milestone
+last_updated: "2026-05-24T22:16:32.390Z"
+last_activity: 2026-05-24 — Milestone v1.10 completed and archived
 progress:
-  total_phases: 23
-  completed_phases: 10
-  total_plans: 83
-  completed_plans: 56
-  percent: 43
+  total_phases: 28
+  completed_phases: 11
+  total_plans: 88
+  completed_plans: 61
+  percent: 39
 ---
 
 # Project State
@@ -76,10 +76,19 @@ All in `.planning/todos/pending/`:
 
 ## Current Position
 
-Phase: Milestone v1.10 complete
-Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-05-24 — Milestone v1.10 completed and archived
+Phase: 52 — Session entity via asset--group + activity-log membership (v1.10.1)
+Plan: 05 — live-fire awaits operator
+Status: Plans 01-04 shipped; live-fire ship-gate pending operator
+Last activity: 2026-05-24 — Phase 52 Plans 01-04 committed; live-fire script + runbook ready
+
+**Phase 52 commit chain:**
+- 52-01 (groupAssets.js primitives): `96dabcc`
+- 52-02 (activityLogs.js membership log): `7ca0639`
+- 52-03 (commit-seeding-session.js rewire): `8a6601a`
+- 52-04 (hermetic tests at new counts): `a180635`
+- 52-05 (live-fire-52.js + runbook; awaits operator): `a5b40ba`
+
+Operator action: `cd src/agents/alerter && FARMOS_URL=http://10.68.155.50:18080 FARMOS_USERNAME=mushy-bot FARMOS_PASSWORD=... node scripts/live-fire-52.js` then paste the JSON receipt into 52-LIVE-FIRE.md.
 
 ## Previous Milestones
 
@@ -215,10 +224,11 @@ Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (for
   (c) treat env-var as a hard floor that globals cannot exceed. Decision
   required before CD-02/CD-03 fully close. See 46-03-SMOKE.md "D-09 finding".
 
-- **Phase 25 R1 unproven:** signal-cli receive returns HTTP 400 today (linked-secondary device limitation); without R1, none of the capture channel's downstream value is reachable. Requires SIM-bearing 4G router for primary re-registration spike.
+- **Phase 25 R1 unproven:** signal-cli receive returns HTTP 400 today (linked-secondary device limitation); without R1, of the capture channel's downstream value is reachable. Requires SIM-bearing 4G router for primary re-registration spike.
 - Phase 17: Signal primary-account registration on 4G router SIM is a manual pre-phase step (~1-2h); cannot begin coding until complete
 - Phase 19: FarmOS admin actions (FC-1 asset, farmos_agent permissions) depend on farm team availability — document proxy-around path at phase start if admin access is delayed
 - Phase 20: Cannot begin cooldown tuning until Phase 17 has been live for ≥1 week
+- Phase 52 live-fire-52.js awaits operator run on dev farmOS :18080; see .planning/phases/52-.../52-LIVE-FIRE.md
 
 ### Quick Tasks Completed
 
@@ -271,7 +281,7 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 ## Session Continuity
 
-Last session: 2026-05-23T17:00:00.000Z
+Last session: 2026-05-24T22:16:22.096Z
 Next up: Phase 45 (NORTH-STAR commit_failed ack + replay outstanding silent-failure drafts `b8a1e586` Vikki Rambo + `1fb28e70` Santi LIMA). Optional: 24-h v1.8 soak observation before starting Phase 45 scope work. v1.8 cutover already complete (alerter recreated 01:41:58 ART; bridge already on Phase 46 code).
 
 Previously: kick off v1.8 Phase 1 (event-gate + signal_outbound). Plan-01 = 100-capture hand-classification smoke from mushdatadump-prod, BEFORE spec-locking the gate. Reference notes:
