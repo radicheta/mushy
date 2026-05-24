@@ -92,7 +92,7 @@ describe('upsertLog (Phase 51 UPSERT-02)', () => {
         if (m) {
           return { ok: true, status: 200, body: { data: seedLogs } };
         }
-        m = /^\/api\/log\/seeding\/([A-Za-z0-9-]+)$/.exec(path);
+        m = /^\/api\/log\/seeding\/([A-Za-z0-9_-]+)$/.exec(path);
         if (m) {
           const id = m[1];
           if (logsById[id]) return { ok: true, status: 200, body: { data: logsById[id] } };
@@ -107,7 +107,7 @@ describe('upsertLog (Phase 51 UPSERT-02)', () => {
       }),
       patch: jest.fn(async (path, body, opts) => {
         calls.push({ method: 'PATCH', path, body, headers: opts && opts.headers });
-        const m = /^\/api\/log\/[a-z_]+\/([A-Za-z0-9-]+)$/.exec(path);
+        const m = /^\/api\/log\/[a-z_]+\/([A-Za-z0-9_-]+)$/.exec(path);
         const id = m ? m[1] : null;
         if (id && _force412.has(id)) {
           _force412.delete(id);
