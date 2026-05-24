@@ -14,6 +14,7 @@
 - 🚧 **v1.7 Multimodal Signal → FarmOS Events** — Phases 36–43 (effectively shipped 2026-05-16; Phase 42 calendar-deferred — biological lifecycle)
 - ✅ **v1.8 Event-gate + Durable `signal_outbound` (tenant-aware)** — Phases 44–46 (shipped 2026-05-23; OSS-Foray Option α — every PR ships tenant_id-aware from day one)
 - ✅ **v1.9 Inoc-Session Correctness** — Phases 47–50 (shipped 2026-05-23; INOC-01..07 + QUOT-01..06 hermetic-attested; live-fire & May-22 reprocess operator-deferred via runbooks)
+- 🚧 **v1.10 Order-Independent Writes (upsert-by-stable-identity)** — Phase 51 + carry-overs (filed 2026-05-24 from 48-LIVE-FIRE + 2025-scan-backfill conversation; makes final farmOS state a function of *which* events happened, not *what order* the pipeline saw them)
 
 ## Phases
 
@@ -163,6 +164,36 @@ Honors locked schema (B5 SEQ per-session per 2026-05-22 clarification in farmos 
 - [x] **Phase 50: Signal-native quote threading for ack and reply routing (5/5 plans)** — SHIPPED 2026-05-23. Three new schema columns (`signal_outbound.signal_msg_ts`, `signal_capture.signal_msg_ts`, `signal_capture.{quote_msg_ts, quote_author_e164}`) plus a partial index on outbound. `signal.js send()` carries `quote:{timestamp, author, message}` payload through to /v2/send (spike-verified `0.14.2`); on success persists native ts. Outbound dispatch at the two highest-traffic acks (`send_commit_outcome_ack` + `send_confirm_ack`) fetches source capture quote target via `tryBuildQuoteForDraft`; FAIL-OPEN — null capture/ts logs warning, sends unquoted (no exception). Inbound receive-loop persists native + quote columns at capture time. New `findDraftByQuotedMsgTs` resolver. Routing patch in `receive-loop.js` implements CONTEXT D-04 algorithm verbatim: quote→actionable routes to that draft; quote→terminal dispatches `send_quote_closed` polite-close; quote→orphan or no-quote falls through; >1 active AND no quote fires `send_ask_back` numbered fallback. T-50-04-01 sender-equality spoof guard. 1024/1033 alerter tests green. QUOT-01..06 hermetic-attested. `50-LIVE-FIRE.md` operator runbook ready (10 numbered steps; 4 round-trip scenarios). Live-fire operator-deferred. Implements QUOT-01..06.
 
 </details>
+
+### Phase 51: Order-independent farmOS writes — upsert-by-stable-identity + set-union merge
+
+**Goal:** Make every farmOS write a content-addressable upsert keyed by the entity's natural identity, so processing events out of order produces the same final farmOS state as processing them chronologically. Backfill of the 2025-paper-log scan can land in any sequence relative to live captures; observations on yet-to-be-logged assets backfill instead of failing; partial stubs (today's May-22 ancestor placeholders) enrich in-place when the real history arrives.
+
+**Driver:** 2026-05-24 conversation while running 48-LIVE-FIRE. The May-22 prod write needed 4 ancestor parent blocks (260304_SHI_5, 260118_SHI_23, 260118_SHI_26, 260118_KOY_12) that don't exist in prod farmOS because their Jan/Mar inoc sessions live in the 2025 paper notebook and haven't been scanned yet. Silently minting them now creates assets the future 2025-scan-backfill will collide with. The fix isn't a stub strategy — the fix is that ALL writes become merge-by-default so out-of-order arrival is structurally safe. Cross-refs: `[[feedback_farmer_is_reality_source_of_truth]]` (today's observation-of-unknown-asset principle), `.planning/notes/2026-05-24-v1.9-uat-findings.md` (observation-backfill todo), `.planning/notes/2026-05-24-session-as-asset-group-design.md` (composes with the asset--group work).
+
+**Requirements:**
+- UPSERT-01: `assets.upsertFungiAsset(client, opts)` — lookup by name → if found, PATCH merged fields → if not, POST. Returns same shape as `createFungiAsset`. All existing callers (`commit-seeding-session`, `commit-observation`, `commit-seeding`, future ones) route through this.
+- UPSERT-02: `logs.upsertLog(client, type, opts)` — lookup by stable key (per-type rule, see below) → PATCH merged or POST. Seeding logs key = `(type='seeding', asset.id)` (B5: one inoc event per child).
+- UPSERT-03: Merge rules per field type, codified in a `_mergeAssetFields(existing, incoming)` function. Array-valued ref fields (parent[], qr_codes[], farm_id_tag[]) = set-union. Scalar identity fields (name, type) = never mutated. Scalar non-identity (fungi_type, fungi_xing, status) = conflict-surface if differs, no silent overwrite. Notes = append-with-dedup OR structured notes_entries list (decide in plan).
+- UPSERT-04: Optimistic concurrency via etag — PATCH carries `If-Match: <attrs.drupal_internal__revision_id or fetched etag>`; on 412 retry the GET + merge cycle once before failing.
+- UPSERT-05: Stub-detection contract — assets minted as ancestor placeholders (today: notes contains "STUB awaits 2025-scan") are findable by a structured query. The upsert layer treats them as fully-mergeable on next encounter; no special STUB handling needed at the asset code path. Worth documenting that the marker exists so the 2025-scan-backfill author knows to look for it.
+- UPSERT-06: Hermetic ship-gate. Property tests:
+  - Order independence: for a randomized permutation of {May-22 inoc, Jan-18 inoc, Mar-04 inoc} writes, final farmOS state (asset count + parent[] sets + log count) is identical to the chronological order.
+  - Stub enrichment: stub-then-real produces same final state as real-only.
+  - Conflict surfacing: incoming `fungi_type=KOY` against existing `fungi_type=SHI` returns a structured conflict, not a silent overwrite.
+- UPSERT-07: Live-fire ship-gate. Replay May-22 against dev with the stubs already in place (the 4 dev stubs after today's session, if we add the STUB marker); assert children's parent[] resolves to the existing stubs (no duplicates).
+
+**Depends on:** none active. Composes with the asset--group design (Phase 52+ candidate); that work also flows through `upsertFungiAsset` / `logs.upsertLog`.
+
+**Touches:** `src/agents/alerter/src/farmos/assets.js`, `src/agents/alerter/src/farmos/logs.js`, `src/agents/alerter/src/farmos/commits/commit-seeding-session.js`, `src/agents/alerter/src/farmos/commits/commit-observation.js`, `src/agents/alerter/src/farmos/commits/commit-seeding.js` (legacy), the audit log shape if upsert outcome (created/patched/noop) becomes a logged dimension, tests across `test/farmos/`.
+
+**Constraints:**
+- Honors `[[feedback_farmer_is_reality_source_of_truth]]` — observation on unknown asset becomes a real upsert path, not an error.
+- Honors substrate log-only lock and C4 (lineage = log, not field) — the upsert is at the *asset+log* granularity, not at a lineage graph.
+- Idempotency on `signal_draft.id` (Phase 40 audit) stays in place as a coarser safety net.
+- farmOS JSON:API etag-on-PATCH is the concurrency primitive — no custom version columns.
+
+**Plans:** TBD during plan-phase. Likely 5-7 plans.
 
 ### Phase 47: Multi-source extraction fusion + groups-shape inoc draft
 
