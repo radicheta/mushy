@@ -50,6 +50,12 @@ async function initDb(pool) {
   await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS signal_msg_ts bigint`);
   await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS quote_msg_ts bigint`);
   await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS quote_author_e164 text`);
+  // Phase 53 BACK-01: year-context shim for the Phase 54 backfill harness.
+  // JSONB nullable; live captures never set it. Bulk-backfill rows set
+  // {default_year:2025, source:'paper_log'} so the extractor stops hallucinating
+  // years on undated 2025-notebook pages. Wired through pipeline.enqueue ->
+  // extractor.extract({corpusContext}) at extractor.js:67 (already accepts it).
+  await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS corpus_context jsonb`);
   await pool.query(`
     CREATE OR REPLACE VIEW v_llm_cost_daily AS
     SELECT
@@ -76,8 +82,8 @@ async function insertCapture(pool, row) {
   // All three default NULL when caller omits them (back-compat).
   await pool.query(
     `INSERT INTO signal_capture
-       (id, captured_at, sender, message_type, raw_text, attachment_paths, transcript, llm_session_tag, llm_reply, degraded, group_id, farmos_person, reply_target_kind, signal_msg_ts, quote_msg_ts, quote_author_e164)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+       (id, captured_at, sender, message_type, raw_text, attachment_paths, transcript, llm_session_tag, llm_reply, degraded, group_id, farmos_person, reply_target_kind, signal_msg_ts, quote_msg_ts, quote_author_e164, corpus_context)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
     [
       row.id,
       row.captured_at,
@@ -95,6 +101,9 @@ async function insertCapture(pool, row) {
       row.signal_msg_ts ?? null,
       row.quote_msg_ts ?? null,
       row.quote_author_e164 ?? null,
+      // Phase 53 BACK-01: JSONB blob; null on every live-capture caller.
+      // node-postgres serializes plain objects to JSONB natively.
+      row.corpus_context ?? null,
     ]
   );
 }
