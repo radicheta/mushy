@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.10
 milestone_name: Order-Independent Writes (upsert-by-stable-identity)
-status: Phase 51 complete
-last_updated: "2026-05-24T19:33:58.930Z"
-last_activity: 2026-05-24
+status: Awaiting next milestone
+last_updated: "2026-05-24T19:53:42.716Z"
+last_activity: 2026-05-24 — Milestone v1.10 completed and archived
 progress:
   total_phases: 23
   completed_phases: 10
-  total_plans: 87
+  total_plans: 83
   completed_plans: 56
   percent: 43
 ---
@@ -76,75 +76,10 @@ All in `.planning/todos/pending/`:
 
 ## Current Position
 
-Phase: 51 — COMPLETE
-
-**v1.8 ship cutover COMPLETE 2026-05-23:**
-
-- alerter container recreated 01:41:58 ART (1s after `8b36d36`); image carries node-cron `^3.0.3`, capture.js event-gate dispatch at line 150, signal_outbound TEXT-typed columns
-- bridge container running 0919f83 fc1LastMsgTs (recreated 2026-05-21 10:11 ART, post-Phase-46)
-- runtime verified: alerter healthy, sending Signal, retention sweep firing; `signal_outbound` table present in postgres with tenant_id/intent/related_*_id TEXT
-
-Phase: 46 — **SHIPPED 2026-05-21.** Live-fire attested Round 3 at T0+3min32s. Two extra bugs found and fixed in-flight: D-09 globals-shadow (`86d4340`) + D-10 oobN/oobWindowMin gate (`5f90cc7`). Two backlog items left as todos.
-Plan: 1 of 6
-Milestone: v1.7 -- Multimodal Signal to FarmOS Events. **Effectively shipped.** Phases 36-43 all complete; only Phase 42 (SHI-on-Sawdust pilot) remains as a calendar-bound human-driven run (3-4wk colonize). Re-audited 2026-05-15.
-Last activity: 2026-05-24
-
-**Phase 46 close-out (final):**
-
-- 46-01 shipped 2026-05-21 (bridge fc1LastMsgTs aggregator; 241/241 tests)
-- 46-02 shipped 2026-05-21 (alerter chamber-dark wiring; 720/728 tests)
-- 46-03 shipped 2026-05-21 with 3-round live-fire:
-  - Round 1 (16:27Z–16:54Z): exposed wiring bug (`index.js:227` destructure-drop); fixed in `206f202`. Surfaced D-09 (globals shadow env).
-  - Round 2 (18:02Z–18:08Z): D-09 fix shipped (`86d4340`, hard 3-min threshold for fc1LastMsgTs branch). Attestation initially declared PASS but RETRACTED (`52c1d50`) — the 91-char send was sht30 boot-watchdog, not chamber-dark pi. Surfaced D-10 (oobN/oobWindowMin gate blocks fast pi FIRING).
-  - Round 3 (23:11Z–23:28Z): D-10 fix shipped (`5f90cc7`, piCfg override). 148-char chamber-dark message at T0+3min32s; ZERO per-sensor sends in silence window; 85-char recovery message on fc1 republish. Farmer paste-back of message body verified verbatim 2026-05-21 ~23:30Z. CD-01..CD-04 all ATTESTED. **Ship-gate RELEASED.**
-
-**Backlog from Phase 46 (do not block ship):**
-
-- `.planning/todos/pending/2026-05-21-alerter-tz-montevideo-and-local-time-rendering.md` — TZ Toronto→Montevideo + hhmm() local-time rendering (currently `@ HH:MM` in chamber-dark message is UTC)
-- `[[project_alerter_watchdog_quiet_topic_bug]]` — sht30 structural fix (band-aid restored 2026-05-21 to 1440min)
-- Captured memories: `[[project-phase46-d09-globals-shadow-env]]`, `[[feedback-unit-tests-dont-catch-wiring]]`, `[[feedback-verify-signal-send-attribution]]`, `[[project-alerter-tz-toronto-legacy]]`
-- Operator-window protocol superseded by live-fire log in 46-03-SMOKE.md
-  "Live-fire Attestation" section.
-
-- Don Santiago was the farmer for this smoke (`+59892893012` per
-  `[[project_farmer_phone_map]]`); responded "Great" to a sht30 noise alert
-  at 16:41:42Z; no out-of-band farmer-paste needed.
-
-**Next milestone (v1.8) is scoped + locked** per 2026-05-17 findings discussion:
-
-1. Phase 1: Event-gate + durable `signal_outbound` table (bundles findings 7 + 1b; ~4-5d). Plan-01 task is the 100-capture hand-classification smoke from `mushdatadump-prod` (per [[smoke-before-expensive-batch]]).
-2. Phase 2+: NORTH-STAR commit_failed silent-reply ack fix (finding 3); replay outstanding silent-failure drafts `b8a1e586` (Vikki Rambo) + `1fb28e70` (Santi LIMA) as live-fire UAT.
-
-Reference: [[project_2026_05_17_findings_discussion_decisions]] memory + `.planning/notes/2026-05-17-*.md` research notes.
-
-**Phase 43 (Schema Normalizer) shipped 2026-05-16** — 700 tests green, SCHEMA-01..04 PASS, REVIEW + VERIFICATION artifacts committed.
-
-**Overnight research kicked off as background agents** (results expected by morning):
-
-- `.planning/notes/2026-05-16-schema-audit.md` (Agent A: Phase 38<->Phase 40 schema diff per log_type)
-- `.planning/notes/2026-05-16-farmos-no-target-and-strain-coverage.md` (Agent B: farmOS no-target patterns + active-strain coverage gap)
-
-Phase 38 close audit (Plan 09 trail):
-
-- Plan 09 ran 96-fixture re-eval (95 curated + 1 real prod session) -> PASS at 95.8% schema conformance
-- Bugs fixed in cycle: whisper GPU drift (restart + cache volume), pipeline image-wire (a04a6bc), fake-green whisper /health (deep probe), extractor maxTokens 2048 -> 16384 default, species-vocab gap (winecap->WIN), harness-pipeline parity (loadImageBlocks exported), real-session fixture in ship-gate denominator, whisper hallucination tail (VAD filter)
-- Plan 08 (prod-log advisory eval) superseded by Plan 09
-- Total Plan 09 spend: ## Current Position
-
-0.91 paid Anthropic ($5.65 FAIL run-1 + $0.51 smoke + $4.75 PASS run-2)
-
-- Paper trail in .planning/phases/38-extraction-pipeline/38-EVAL-REPORT-plan07.md | -plan09-smoke.md | -plan09-run1-FAIL.md | -plan09-run2-PASS.md
-- Prod inoc session corpus at /mnt/mossrock/shared/mushdatadump-prod/2026-05-12_inoc_santi/
-
-Autonomous task #2 (Phase 39 -> 42 v1.7 close): READY to resume; awaiting user signal to re-launch (session has been long, user may want a break).
-
-Phase 37 Plan 04 remains PARTIAL — Tasks 1+2 shipped (7b7256c, 7bff438); Task 3 live attestations deferred to operator per 37-RUNBOOK.md.
-
-Plan 04 progress:
-
-- Task 1 (index.js wire-up + compose env plumbing) — commit 7b7256c
-- Task 2 (37-RUNBOOK.md authored) — commit 7bff438
-- Task 3 (live attestations A/B/C/D + Phase 33 E) — DEFERRED to operator (cannot be automated; requires three live farmers + operator-authored .env)
+Phase: Milestone v1.10 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-05-24 — Milestone v1.10 completed and archived
 
 ## Previous Milestones
 
@@ -361,3 +296,7 @@ v1.7 phase order (hard sequencing):
 **Last completed:** Phase 35 (vps-tierA-backup) SHIPPED 2026-05-11
 
 **Planned Phase:** 37 (multi-farmer-routing) — 4 plans — 2026-05-11T20:23:31.281Z
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone
