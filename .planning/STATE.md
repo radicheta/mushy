@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.10
 milestone_name: Order-Independent Writes (upsert-by-stable-identity)
-status: v1.9 CLOSED end-to-end 2026-05-24. Phase 48 LIVE-FIRE PASS on dev (16 assets + 11 logs; session-asset shape reversed in-flight — anonymous fungi 422'd against real farmOS field config; design pivot filed as Phase 51 + asset--group note for farmos team). Phase 49 SHIP-GATE A2 PARTIAL — prod-timescale discard applied on the May-22 inoc draft; live-fire extraction Step 6 confirmed Plan 04 deferred the harness; closed-with-deviation. Phase 50 LIVE-FIRE in progress (Step 1+2 prereqs green, awaiting farmer phone for Steps 3-8). May-22 inoc landed in PROD farmOS via stub-then-write (4 ancestors stubbed with structured backfill marker; 11 children + 11 seeding logs landed via live-fire-48.js; lineage walks match fixture exactly). v1.10 Phase 51 (upsert layer) filed as the architectural follow-up that makes the stub strategy long-term sound + 2025-paper-scan backfill order-independent.
-last_updated: "2026-05-24T17:58:18.890Z"
-last_activity: 2026-05-24 -- Phase 51 execution started
+status: Phase 51 complete
+last_updated: "2026-05-24T18:42:50.970Z"
+last_activity: 2026-05-24 -- Phase 51 marked complete
 progress:
   total_phases: 23
-  completed_phases: 9
-  total_plans: 83
-  completed_plans: 50
-  percent: 39
+  completed_phases: 10
+  total_plans: 87
+  completed_plans: 56
+  percent: 43
 ---
 
 # Project State
@@ -76,7 +76,7 @@ All in `.planning/todos/pending/`:
 
 ## Current Position
 
-Phase: 51 (order-independent-farmos-writes-upsert-by-stable-identity-se) — EXECUTING
+Phase: 51 — COMPLETE
 
 **v1.8 ship cutover COMPLETE 2026-05-23:**
 
@@ -87,7 +87,7 @@ Phase: 51 (order-independent-farmos-writes-upsert-by-stable-identity-se) — EXE
 Phase: 46 — **SHIPPED 2026-05-21.** Live-fire attested Round 3 at T0+3min32s. Two extra bugs found and fixed in-flight: D-09 globals-shadow (`86d4340`) + D-10 oobN/oobWindowMin gate (`5f90cc7`). Two backlog items left as todos.
 Plan: 1 of 6
 Milestone: v1.7 -- Multimodal Signal to FarmOS Events. **Effectively shipped.** Phases 36-43 all complete; only Phase 42 (SHI-on-Sawdust pilot) remains as a calendar-bound human-driven run (3-4wk colonize). Re-audited 2026-05-15.
-Last activity: 2026-05-24 -- Phase 51 execution started
+Last activity: 2026-05-24 -- Phase 51 marked complete
 
 **Phase 46 close-out (final):**
 
