@@ -163,12 +163,26 @@ function makeFakePool() {
 
     // Phase 45 Plan 04 follow-on: findAwaitingForSender now matches
     // status IN ('awaiting_farmer','commit_failed') with awaiting_farmer
-    // preferred. Match both shapes (old single-status + new IN-list).
-    if (/SELECT \*\s+FROM signal_draft/i.test(s) && /sender_e164/.test(s) && /status\s+IN\s*\(\s*'awaiting_farmer'\s*,\s*'commit_failed'\s*\)/i.test(s)) {
+    // preferred. Hotfix 2026-05-23 (findActiveDraftsForSender variant): the
+    // list-shape query uses `status='awaiting_farmer' OR (status='commit_failed'
+    // AND updated_at > now() - interval '6 hours')` to age out stale ack-debt
+    // drafts. Match both shapes (legacy IN-list and the new disjunction).
+    const isListVariantHotfix = /sender_e164/.test(s)
+      && /status\s*=\s*'awaiting_farmer'/.test(s)
+      && /status\s*=\s*'commit_failed'\s+AND\s+updated_at\s*>/i.test(s);
+    const isLegacyInList = /status\s+IN\s*\(\s*'awaiting_farmer'\s*,\s*'commit_failed'\s*\)/i.test(s);
+    if (/SELECT \*\s+FROM signal_draft/i.test(s) && /sender_e164/.test(s) && (isLegacyInList || isListVariantHotfix)) {
       const sender = params[0];
-      const matches = Array.from(drafts.values()).filter(
-        (r) => r.sender_e164 === sender && (r.status === 'awaiting_farmer' || r.status === 'commit_failed')
-      );
+      const sixHrsAgoMs = _now() - 6 * 60 * 60 * 1000;
+      const matches = Array.from(drafts.values()).filter((r) => {
+        if (r.sender_e164 !== sender) return false;
+        if (r.status === 'awaiting_farmer') return true;
+        if (r.status === 'commit_failed') {
+          if (!isListVariantHotfix) return true; // legacy IN-list: no staleness filter
+          return new Date(r.updated_at).getTime() > sixHrsAgoMs;
+        }
+        return false;
+      });
       // awaiting_farmer wins over commit_failed; within status, newer updated_at wins.
       matches.sort((a, b) => {
         const ra = a.status === 'awaiting_farmer' ? 0 : 1;

@@ -265,11 +265,20 @@ async function findAwaitingForSender(pool, senderE164) {
 // updated_at wins). Used by receive-loop to detect the >1-active ambiguity
 // case and emit a numbered ask-back per CONTEXT D-04.
 async function findActiveDraftsForSender(pool, senderE164) {
+  // Hotfix 2026-05-23: stale commit_failed drafts (>6h old) are excluded
+  // from the ambiguity calculation. awaiting_farmer is never aged out (the
+  // farmer hasn't replied yet). commit_failed older than 6h is treated as
+  // out-of-band -- if the farmer wants to EDIT it, Phase 50 quote-threading
+  // routes them by Signal quote (bypassing this gate). Without this filter,
+  // 10-day-old ack-debt drafts trap every fresh capture in numbered ask-back.
   try {
     const r = await pool.query(
       `SELECT * FROM signal_draft
         WHERE sender_e164=$1
-          AND status IN ('awaiting_farmer','commit_failed')
+          AND (
+            status = 'awaiting_farmer'
+            OR (status = 'commit_failed' AND updated_at > now() - interval '6 hours')
+          )
         ORDER BY CASE status WHEN 'awaiting_farmer' THEN 0 ELSE 1 END ASC,
                  updated_at DESC`,
       [senderE164]

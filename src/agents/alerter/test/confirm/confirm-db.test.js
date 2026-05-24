@@ -263,11 +263,14 @@ describe('confirm-db (Phase 39 D-07/D-07a)', () => {
       expect(r).toEqual([]);
     });
 
-    it('returns all awaiting_farmer + commit_failed drafts; awaiting_farmer first', async () => {
+    it('returns all awaiting_farmer + recent commit_failed; awaiting_farmer first', async () => {
       const pool = makeFakePool();
-      const tA = new Date('2026-05-22T12:00:00Z');
-      const tB = new Date('2026-05-21T12:00:00Z');
-      const tF = new Date('2026-05-23T12:00:00Z');
+      // awaiting_farmer is never aged out; commit_failed must be <6h old to count.
+      // Use offsets from the fake-pool's "now" so the test is time-independent.
+      const now = Date.now();
+      const tA = new Date(now - 60 * 60 * 1000);  // 1h ago
+      const tB = new Date(now - 90 * 60 * 1000);  // 1.5h ago
+      const tF = new Date(now - 30 * 60 * 1000);  // 30min ago (within 6h window)
       pool.seedDraft({ id: 'd-A', sender_e164: '+15550008888', status: 'awaiting_farmer', updated_at: tA });
       pool.seedDraft({ id: 'd-B', sender_e164: '+15550008888', status: 'awaiting_farmer', updated_at: tB });
       pool.seedDraft({ id: 'd-F', sender_e164: '+15550008888', status: 'commit_failed',   updated_at: tF });
@@ -275,6 +278,18 @@ describe('confirm-db (Phase 39 D-07/D-07a)', () => {
       pool.seedDraft({ id: 'd-other', sender_e164: '+15559999999', status: 'awaiting_farmer', updated_at: tF });
       const r = await confirmDb.findActiveDraftsForSender(pool, '+15550008888');
       expect(r.map((d) => d.id)).toEqual(['d-A', 'd-B', 'd-F']);
+    });
+
+    // Hotfix 2026-05-23: stale commit_failed (>6h) excluded from active list.
+    it('hotfix-2026-05-23: stale commit_failed (>6h old) excluded; awaiting_farmer never aged out', async () => {
+      const pool = makeFakePool();
+      const now = Date.now();
+      const tOldAwaiting = new Date(now - 30 * 24 * 60 * 60 * 1000); // 30 days ago
+      const tStaleFail = new Date(now - 10 * 24 * 60 * 60 * 1000);   // 10 days ago
+      pool.seedDraft({ id: 'd-old-await', sender_e164: '+15550008888', status: 'awaiting_farmer', updated_at: tOldAwaiting });
+      pool.seedDraft({ id: 'd-stale-fail', sender_e164: '+15550008888', status: 'commit_failed', updated_at: tStaleFail });
+      const r = await confirmDb.findActiveDraftsForSender(pool, '+15550008888');
+      expect(r.map((d) => d.id)).toEqual(['d-old-await']); // stale commit_failed dropped
     });
 
     it('returns [] on DB error (no exception escapes)', async () => {
