@@ -72,6 +72,145 @@ const captureCtx = {
   capturedAtMs: Date.parse('2026-05-18T12:00:00Z'),
 };
 
+// Phase 53 BACK-02: small-N high-confidence multi-draft routing.
+// drafts.length > 1 AND length <= 5 AND min(per-draft min-leaf confidence) >= 0.7
+// -> fan out as N independent per-draft confirm flows (send_confirm_prompt).
+// Else (>5 OR low-conf) -> existing runBatchMode (send_batch_review_summary).
+describe('extraction pipeline -- BACK-02 multi-draft routing', () => {
+  function makeBack02Deps({ drafts, transitionResults }) {
+    const dispatched = [];
+    const inserts = [];
+    const updates = [];
+    const pool = {
+      query: jest.fn(async () => ({ rows: [], rowCount: 1 })),
+    };
+    const extractor = {
+      extract: jest.fn(async () => ({
+        ok: true,
+        drafts,
+        continuity_decision: 'start_new',
+      })),
+    };
+    const extractionDb = {
+      getInFlightForSender: jest.fn(async () => null),
+      insertDraft: jest.fn(async (_p, row) => { inserts.push(row); return { ok: true }; }),
+      updateDraftStatus: jest.fn(async (_p, id, status, extras) => {
+        updates.push({ id, status, extras });
+        return { ok: true };
+      }),
+      advanceAskbackTurn: jest.fn(async () => ({ ok: true })),
+      computeDraftId: jest.fn((ids, idx) => `draft-${(ids || []).join('-')}-${idx || 0}`),
+    };
+    let txnIdx = 0;
+    const stateMachine = {
+      forceStartNewIfIdle: jest.fn(() => null),
+      transition: jest.fn(() => transitionResults
+        ? transitionResults[txnIdx++ % transitionResults.length]
+        : ({
+            nextStatus: DRAFT_STATUS.AWAITING_FARMER,
+            side_effects: ['send_confirm_prompt'],
+            nextAskbackTurns: 0,
+            reason: 'ok',
+            askBackInfo: { missingFields: [], lowConfFields: [] },
+          })),
+    };
+    const previewBuilder = { buildPreview: jest.fn(() => 'preview') };
+    const config = { draftIdleGapMin: 60, extractionConfidenceThreshold: 0.7, maxAskbackTurns: 3 };
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+    const outboundDispatcher = {
+      dispatch: jest.fn((effect, row) => { dispatched.push({ effect, row }); }),
+    };
+    const pipeline = createExtractionPipeline({
+      pool, extractor, extractionDb, stateMachine, previewBuilder, config, logger, outboundDispatcher,
+    });
+    return { pipeline, extractor, extractionDb, stateMachine, dispatched, inserts, updates, outboundDispatcher };
+  }
+
+  const ctxBack02 = {
+    captureId: '01KSCW771VB2FDWBPWNS4MEHAZ',
+    sender: '+59891840201',
+    farmosPerson: 'f1',
+    text: 'DT tubs 0519 1 and 2',
+    transcripts: [],
+    attachmentPaths: [],
+    replyTargetKind: 'dm',
+    groupId: null,
+    capturedAtMs: Date.parse('2026-05-19T22:00:00Z'),
+  };
+
+  test('DT tubs 0519 1 and 2 (capture 01KSCW771VB2FDWBPWNS4MEHAZ): 2 high-conf drafts -> 2 send_confirm_prompt, zero send_batch_review_summary', async () => {
+    const drafts = [
+      { draft: { type: 'activity', asset_ref: '260519_DT_1' }, per_field_confidence: { type: 0.95, asset_ref: 0.9 } },
+      { draft: { type: 'activity', asset_ref: '260519_DT_2' }, per_field_confidence: { type: 0.95, asset_ref: 0.9 } },
+    ];
+    const { pipeline, dispatched, inserts } = makeBack02Deps({ drafts });
+    const res = await pipeline.enqueue(ctxBack02);
+    expect(res.ok).toBe(true);
+    expect(res.mode).toBe('multi_confirm');
+    expect(res.count).toBe(2);
+    const confirmCalls = dispatched.filter((d) => d.effect === 'send_confirm_prompt');
+    const batchSummary = dispatched.filter((d) => d.effect === 'send_batch_review_summary');
+    expect(confirmCalls).toHaveLength(2);
+    expect(batchSummary).toHaveLength(0);
+    expect(inserts).toHaveLength(2);
+    // Each insert lands as PENDING with distinct ids
+    expect(inserts[0].id).not.toEqual(inserts[1].id);
+  });
+
+  test('2-draft multi with one draft confidence 0.5: routes to runBatchMode (send_batch_review_summary)', async () => {
+    const drafts = [
+      { draft: { type: 'activity', asset_ref: 'A' }, per_field_confidence: { type: 0.95, asset_ref: 0.9 } },
+      { draft: { type: 'activity', asset_ref: 'B' }, per_field_confidence: { type: 0.5, asset_ref: 0.9 } },
+    ];
+    const { pipeline, dispatched } = makeBack02Deps({ drafts });
+    const res = await pipeline.enqueue(ctxBack02);
+    expect(res.ok).toBe(true);
+    expect(res.mode).toBe('batch');
+    expect(dispatched.filter((d) => d.effect === 'send_batch_review_summary')).toHaveLength(1);
+    expect(dispatched.filter((d) => d.effect === 'send_confirm_prompt')).toHaveLength(0);
+  });
+
+  test('6 high-conf drafts (>5 threshold): routes to runBatchMode', async () => {
+    const drafts = Array.from({ length: 6 }, (_, i) => ({
+      draft: { type: 'activity', asset_ref: `R${i}` },
+      per_field_confidence: { type: 0.95, asset_ref: 0.9 },
+    }));
+    const { pipeline, dispatched } = makeBack02Deps({ drafts });
+    const res = await pipeline.enqueue(ctxBack02);
+    expect(res.ok).toBe(true);
+    expect(res.mode).toBe('batch');
+    expect(dispatched.filter((d) => d.effect === 'send_batch_review_summary')).toHaveLength(1);
+  });
+
+  test('multi-draft including a seeding_session: falls through to runBatchMode (safe default)', async () => {
+    const drafts = [
+      { draft: { type: 'activity', asset_ref: 'A' }, per_field_confidence: { type: 0.95 } },
+      { draft: { type: 'seeding_session', event_date: '2025-05-19', groups: [] }, per_field_confidence: { type: 0.95 } },
+    ];
+    const { pipeline, dispatched } = makeBack02Deps({ drafts });
+    const res = await pipeline.enqueue(ctxBack02);
+    expect(res.ok).toBe(true);
+    expect(res.mode).toBe('batch');
+    expect(dispatched.filter((d) => d.effect === 'send_batch_review_summary')).toHaveLength(1);
+  });
+
+  test('small-N path expires prior in-flight before fan-out', async () => {
+    const drafts = [
+      { draft: { type: 'activity', asset_ref: 'A' }, per_field_confidence: { type: 0.95 } },
+      { draft: { type: 'activity', asset_ref: 'B' }, per_field_confidence: { type: 0.95 } },
+    ];
+    const { pipeline, extractionDb } = makeBack02Deps({ drafts });
+    // Override getInFlightForSender to return an existing draft
+    extractionDb.getInFlightForSender.mockResolvedValueOnce({ id: 'OLD-DRAFT', source_capture_ids: ['x'], askback_turns: 0 });
+    await pipeline.enqueue(ctxBack02);
+    // First updateDraftStatus call should be EXPIRED on OLD-DRAFT
+    const expireCall = extractionDb.updateDraftStatus.mock.calls.find(
+      (c) => c[1] === 'OLD-DRAFT' && c[2] === DRAFT_STATUS.EXPIRED
+    );
+    expect(expireCall).toBeDefined();
+  });
+});
+
 // Phase 53 BACK-01 Task 2: corpus_context plumbing.
 // captureCtx.corpusContext -> extractor.extract({corpusContext:...}). Null/absent
 // preserves pre-Phase-53 behavior (back-compat with every existing live caller).

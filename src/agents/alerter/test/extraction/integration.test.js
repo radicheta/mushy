@@ -359,9 +359,13 @@ describe('createExtractionPipeline', () => {
       return out;
     }
 
-    test('(B1) 3 clean drafts -> 3 inserts, no send_ask_back, one send_batch_review_summary', async () => {
+    // Phase 53 BACK-02 update: small-N (<=5) high-conf multi-draft now fans
+    // out to per-draft confirm prompts. The batch-mode path now triggers on
+    // drafts.length > 5 OR min(per-draft confidence) < 0.7. This existing
+    // test stays as the >5 regression guard (6 clean drafts -> batch).
+    test('(B1) 6 clean drafts (>5 threshold) -> 6 inserts, no send_ask_back, one send_batch_review_summary', async () => {
       pool = makePool(null);
-      const drafts = batchDraftsArr(3);
+      const drafts = batchDraftsArr(6);
       extractor = makeExtractor({
         ok: true,
         drafts,
@@ -379,12 +383,12 @@ describe('createExtractionPipeline', () => {
       const res = await pipeline.enqueue(baseCaptureCtx());
       expect(res.ok).toBe(true);
       expect(res.mode).toBe('batch');
-      expect(res.count).toBe(3);
-      expect(res.cleanCount).toBe(3);
+      expect(res.count).toBe(6);
+      expect(res.cleanCount).toBe(6);
       expect(res.needsReviewCount).toBe(0);
 
       const insertCalls = pool.query.mock.calls.filter((c) => /INSERT INTO signal_draft/i.test(c[0]));
-      expect(insertCalls).toHaveLength(3);
+      expect(insertCalls).toHaveLength(6);
 
       const effects = outboundDispatcher.dispatch.mock.calls.map((c) => c[0]);
       expect(effects).not.toContain('send_ask_back');
@@ -394,9 +398,14 @@ describe('createExtractionPipeline', () => {
       expect(effects.filter((e) => e === 'send_batch_review_summary')).toHaveLength(1);
     });
 
+    // Phase 53 BACK-02 update: bumped 5 -> 6 drafts so length>5 triggers batch
+    // mode; otherwise BACK-02 would route a 5-row high-conf input to per-draft
+    // confirm fan-out. The mixed-clean/dirty semantics being tested here
+    // (clean -> AWAITING_FARMER, dirty -> NEEDS_REVIEW inside runBatchMode)
+    // are unchanged by BACK-02.
     test('(B2) mixed drafts: clean rows -> AWAITING_FARMER, dirty rows -> NEEDS_REVIEW (never ask-back)', async () => {
       pool = makePool(null);
-      const drafts = batchDraftsArr(5, { dirtyAt: [1, 3] });
+      const drafts = batchDraftsArr(6, { dirtyAt: [1, 3] });
       extractor = makeExtractor({
         ok: true,
         drafts,
@@ -412,8 +421,8 @@ describe('createExtractionPipeline', () => {
       });
       const res = await pipeline.enqueue(baseCaptureCtx());
       expect(res.ok).toBe(true);
-      expect(res.count).toBe(5);
-      expect(res.cleanCount).toBe(3);
+      expect(res.count).toBe(6);
+      expect(res.cleanCount).toBe(4);
       expect(res.needsReviewCount).toBe(2);
 
       const effects = outboundDispatcher.dispatch.mock.calls.map((c) => c[0]);
