@@ -38,11 +38,13 @@ describe('seeding-session commit pipeline -- May 22 happy path (Phase 48 Plan 05
     await watchdog.tickOnce();
 
     // ----- asset / log counts -----
-    // 2026-05-24: session-asset shape on hold pending farm_group module enable
-    // + asset--group design. Counts dropped by 1 (no session asset). Children
-    // commit with parent=[sourceBlockId] only.
-    expect(farmosClient._created.assets.length).toBe(EXPECTED.happy_path.asset_post_count); // 16
-    expect(farmosClient._created.logs.length).toBe(EXPECTED.happy_path.log_post_count);    // 11
+    // Phase 52: session entity restored as asset--group + membership
+    // log--activity with is_group_assignment=true. 16 fungi + 1 group = 17
+    // asset writes; 11 seeding + 1 activity = 12 log writes.
+    expect(farmosClient._created.assets.length).toBe(EXPECTED.happy_path.asset_post_count); // 16 fungi
+    expect(farmosClient._created.groups.length).toBe(EXPECTED.happy_path.group_post_count); // 1
+    expect(farmosClient._created.logs.length).toBe(EXPECTED.happy_path.log_post_count);     // 12 (11 seeding + 1 activity)
+    expect(farmosClient._created.activityLogs.length).toBe(EXPECTED.happy_path.log_breakdown.activity_with_flag); // 1
     expect(farmosClient._deletes.length).toBe(0);
 
     // ----- lineage: every child block's parent[] has length 1 (the source block) -----
@@ -59,10 +61,11 @@ describe('seeding-session commit pipeline -- May 22 happy path (Phase 48 Plan 05
     }
 
     // ----- pipeline state: signal_draft row marked committed -----
+    // asset_ids = [sessionGroupId, ...16 fungi] = 17; log_ids = [membership, ...11 seeding] = 12
     const finalRow = commitDb._drafts.get(row.id);
     expect(finalRow.status).toBe('committed');
-    expect(finalRow.farmos_response.asset_ids.length).toBe(16);
-    expect(finalRow.farmos_response.log_ids.length).toBe(11);
+    expect(finalRow.farmos_response.asset_ids.length).toBe(17);
+    expect(finalRow.farmos_response.log_ids.length).toBe(12);
 
     // ----- audit -----
     const events = auditLogger._events.map((e) => e.event);
@@ -105,10 +108,11 @@ describe('seeding-session commit pipeline -- May 22 happy path (Phase 48 Plan 05
 
     await watchdog.tickOnce();
 
-    expect(farmosClient._created.assets.length).toBe(EXPECTED.single_parent_legacy.asset_post_count); // 6
-    expect(farmosClient._created.logs.length).toBe(EXPECTED.single_parent_legacy.log_post_count);     // 5
+    expect(farmosClient._created.assets.length).toBe(EXPECTED.single_parent_legacy.asset_post_count); // 6 fungi
+    expect(farmosClient._created.groups.length).toBe(EXPECTED.single_parent_legacy.group_post_count); // 1 session group
+    expect(farmosClient._created.logs.length).toBe(EXPECTED.single_parent_legacy.log_post_count);     // 6 (5 seeding + 1 activity)
 
-    // 1 source + 5 children (no session asset; interim no-session shape)
+    // 1 source + 5 children
     const sourceAsset = farmosClient._created.assets[0];
     expect(sourceAsset.name).toBe('260118_KOY_12');
 
