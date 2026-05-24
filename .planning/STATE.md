@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.10
 milestone_name: Order-Independent Writes (upsert-by-stable-identity)
 status: v1.9 CLOSED end-to-end 2026-05-24. Phase 48 LIVE-FIRE PASS on dev (16 assets + 11 logs; session-asset shape reversed in-flight — anonymous fungi 422'd against real farmOS field config; design pivot filed as Phase 51 + asset--group note for farmos team). Phase 49 SHIP-GATE A2 PARTIAL — prod-timescale discard applied on the May-22 inoc draft; live-fire extraction Step 6 confirmed Plan 04 deferred the harness; closed-with-deviation. Phase 50 LIVE-FIRE in progress (Step 1+2 prereqs green, awaiting farmer phone for Steps 3-8). May-22 inoc landed in PROD farmOS via stub-then-write (4 ancestors stubbed with structured backfill marker; 11 children + 11 seeding logs landed via live-fire-48.js; lineage walks match fixture exactly). v1.10 Phase 51 (upsert layer) filed as the architectural follow-up that makes the stub strategy long-term sound + 2025-paper-scan backfill order-independent.
-last_updated: "2026-05-24T14:15:00.000Z"
-last_activity: 2026-05-24
+last_updated: "2026-05-24T17:58:18.890Z"
+last_activity: 2026-05-24 -- Phase 51 execution started
 progress:
-  total_phases: 27
-  completed_phases: 12
-  total_plans: 78
-  completed_plans: 55
-  percent: 80
+  total_phases: 23
+  completed_phases: 9
+  total_plans: 83
+  completed_plans: 50
+  percent: 39
 ---
 
 # Project State
@@ -20,11 +20,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** v1.9 closed end-to-end 2026-05-24. The 2026-05-22 inoc session is now in PROD farmOS — 11 child blocks + 11 seeding logs + 4 stub ancestors. Phase 50 LIVE-FIRE running this session; v1.10 Phase 51 (upsert-by-stable-identity) is the architectural follow-up that makes the stub strategy long-term sound + the 2025-paper-scan backfill order-independent.
+**Current focus:** Phase 51 — order-independent-farmos-writes-upsert-by-stable-identity-se
 
 ## Today's Closeout (2026-05-24)
 
 **48-LIVE-FIRE on dev (DONE — commit `d3bb6a3`):**
+
 - First attempt 422'd — real farmOS field config enforces `fungi_type NOT NULL`, falsifying Phase 48's Gray Area A LOCK ("anonymous fungi session asset"). The Plan 02 design didn't survive contact with real farmOS schema.
 - User's framing: "session is to block like Playlist is to version on shotgrid" — different kinds, both first-class. Right shape is `asset--group` (stock `farm_group` module, not currently enabled on either dev or prod farmOS).
 - Interim pivot: removed session-asset preflight entirely; children commit with `parent=[sourceBlock]` only. 13/13 hermetic tests green at new counts (16 assets / 11 logs; legacy 6/5; partial-fail 8 DELETEs).
@@ -32,11 +33,13 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 - Design note for farmos team dropped at `.planning/notes/2026-05-24-session-as-asset-group-design.md`; mirrored into farmos repo, committed there as `3049cb0`.
 
 **49-SHIP-GATE A2 partial (DONE — commit `7ac92ea`):**
+
 - Discard applied to `6edaaba` (May-22 seeding draft, was `expired`) via `discard-drafts.js`.
 - Companion `e3a564` already discarded 2026-05-23 (Phase 45 ack-debt sweep), reason NULL; left as-is.
 - Live-fire extraction (Step 6) NOT RUN — Plan 04's `EVAL_RUN_LIVE=1` branch in `sessions.test.js` is an explicit no-op (`return` early). The "live-fire" was documented but not implemented; building it would be scope expansion.
 
 **May-22 inoc in PROD farmOS (DONE — commit `24b8fab`):**
+
 - 4 ancestor parents stubbed via direct API POST with structured notes marker `STUB - awaits 2025-paper-scan backfill; ... upsert layer (Phase 51) will enrich in-place on backfill arrival.`
 - `260304_SHI_5` = `5de992ca-...`, `260118_SHI_23` = `5d70eaec-...`, `260118_SHI_26` = `92f83fe6-...`, `260118_KOY_12` = `91459b30-...`. `260425_KOY_4` pre-existed.
 - `scripts/live-fire-48.js` (corrected harness) against prod: 11 children + 11 seeding logs in 3.5s. Zero source-block duplicates (findAssetByName reused all 5).
@@ -44,11 +47,13 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 - Paper trail: `.planning/notes/2026-05-24-prod-write-receipt.md` + `2026-05-24-prod-write-receipt-uuids.json`.
 
 **v1.10 milestone + Phase 51 filed (in `24b8fab`):**
+
 - ROADMAP.md gains v1.10 "Order-Independent Writes (upsert-by-stable-identity)" milestone.
 - Phase 51 specifies: `upsertFungiAsset` + `upsertLog` + set-union merge per array field + conflict-surfacing on scalars + etag-on-PATCH concurrency + property-test gates (order independence + stub enrichment + conflict surfacing).
 - Driver: tonight's stub strategy works under current `findAssetByName` lookup, but the stubs only get enriched (rather than just reused) once Phase 51 lands the merge layer. Independently, this makes the 2025-paper-scan backfill safe in any order vs. live captures, and makes observation-of-unknown-asset (today's UAT principle) a real path.
 
 **Phase 50 LIVE-FIRE Step 3 (BLOCKED on wire-level quote rendering — 4 findings filed):**
+
 - Hermetic still green (1032 pass / 9 skipped / 0 fail). Schema columns all present. Alerter healthy.
 - Triggered the runbook trigger ("harvest of nothing"); LLM extracted as observation (not commit_failed as runbook anticipated) — went through `extraction_preview` + later (via Santi-driven retry with "999999_FAKE_99") `commit_outcome_ack` after YES.
 - **The `commit_outcome_ack` IS quote-wired and dispatched cleanly (no warn logs); but on Santi's phone it rendered as a plain bubble with NO QUOTE attachment.** Controlled curl probe (manual /v2/send with a valid quote payload) reproduced the same — REST 201 OK, capabilities advertise `quotes`, but client renders unquoted.
@@ -57,6 +62,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 ## Findings filed 2026-05-24 (Phase 50 LIVE-FIRE byproducts)
 
 All in `.planning/todos/pending/`:
+
 1. **`...phase50-quote-rendering-broken-end-to-end.md`** (CRITICAL, defer-to-python-port) — REST returns 201 on quote-bearing sends but no quote bubble renders on Signal clients. Affects every QUOT-* requirement.
 2. **`...signal-capture-missing-followup-messages.md`** (HIGH) — Inbound farmer messages after the first one in a draft thread don't land in `signal_capture`. The bot processes them (draft gets edited, YES gets handled) but the rows are missing. Breaks Phase 50 quote routing AND Phase 51 stub-merge audit.
 3. **`...phase50-quote-thread-missing-on-extraction-preview-and-ask-back.md`** (high) — Phase 50 wired only `commit_outcome_ack` + `confirm_ack`; the highest-traffic farmer-ack (`extraction_preview`) and the disambiguator (`ask_back`) are unwired.
@@ -70,17 +76,18 @@ All in `.planning/todos/pending/`:
 
 ## Current Position
 
-Phase: 44 — **7/7 COMPLETE 2026-05-23.** Plan-04 event-gate shipped; operator-attested live-fire PASS 8/10 (at floor) with cache empirically verified (1/10 write, 9/10 read, ~$0.05). One bug surfaced live and fixed: Anthropic SDK contract — `signal` belongs in request-options arg, not body params (commit `1429684`).
+Phase: 51 (order-independent-farmos-writes-upsert-by-stable-identity-se) — EXECUTING
 
 **v1.8 ship cutover COMPLETE 2026-05-23:**
+
 - alerter container recreated 01:41:58 ART (1s after `8b36d36`); image carries node-cron `^3.0.3`, capture.js event-gate dispatch at line 150, signal_outbound TEXT-typed columns
 - bridge container running 0919f83 fc1LastMsgTs (recreated 2026-05-21 10:11 ART, post-Phase-46)
 - runtime verified: alerter healthy, sending Signal, retention sweep firing; `signal_outbound` table present in postgres with tenant_id/intent/related_*_id TEXT
 
 Phase: 46 — **SHIPPED 2026-05-21.** Live-fire attested Round 3 at T0+3min32s. Two extra bugs found and fixed in-flight: D-09 globals-shadow (`86d4340`) + D-10 oobN/oobWindowMin gate (`5f90cc7`). Two backlog items left as todos.
-Plan: 3 of 3 complete (46-01, 46-02, 46-03)
+Plan: 1 of 6
 Milestone: v1.7 -- Multimodal Signal to FarmOS Events. **Effectively shipped.** Phases 36-43 all complete; only Phase 42 (SHI-on-Sawdust pilot) remains as a calendar-bound human-driven run (3-4wk colonize). Re-audited 2026-05-15.
-Last activity: 2026-05-22
+Last activity: 2026-05-24 -- Phase 51 execution started
 
 **Phase 46 close-out (final):**
 
