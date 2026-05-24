@@ -193,7 +193,7 @@ Honors locked schema (B5 SEQ per-session per 2026-05-22 clarification in farmos 
 - Idempotency on `signal_draft.id` (Phase 40 audit) stays in place as a coarser safety net.
 - farmOS JSON:API etag-on-PATCH is the concurrency primitive — no custom version columns.
 
-**Plans:** 5/6 plans executed
+**Plans:** 6/6 plans complete
 
 Plans:
 - [x] 51-01-wave0-infrastructure-PLAN.md — mock-client PATCH/delete/by-id/412 + client.js opts.headers + audit-logger outcome/conflicts/etag_source + fixture + dev-farmOS notes round-trip probe
@@ -201,7 +201,7 @@ Plans:
 - [x] 51-03-upsert-fungi-asset-PLAN.md — upsertFungiAsset + isStubAsset + STUB_BACKFILL_MARKER on assets.js with soft revision_id compare (UPSERT-04 degraded per RESEARCH)
 - [x] 51-04-upsert-log-seeding-PLAN.md — upsertLog seeding + LOG_STABLE_KEYS table + LogIdentityCollision; non-seeding types preserve POST-only
 - [x] 51-05-commit-migration-and-property-tests-PLAN.md — migrate commit-seeding-session + commit-seeding + commit-observation review; grep-gate clean; property tests (order-independence + stub-enrichment + conflict-surfacing, 20× permutations)
-- [ ] 51-06-live-fire-attestation-PLAN.md — scripts/live-fire-51.js sibling-copy of 48; human checkpoint to run against dev farmOS and commit receipt
+- [x] 51-06-live-fire-attestation-PLAN.md — scripts/live-fire-51.js sibling-copy of 48; human checkpoint to run against dev farmOS and commit receipt
 
 ### Phase 47: Multi-source extraction fusion + groups-shape inoc draft
 
