@@ -1,35 +1,55 @@
 ---
 created: 1779999000
-title: Mission Control — add VPD display + a few control buttons
+title: Mission Control — VPD + water-volume + digital-twin link + runtime config buttons (ship to Zoy)
 area: mission-control
 files:
   - src/openmct/  # (or wherever the OpenMCT dashboard configs live)
-  - src/bridge/   # (likely needs a new telemetry channel for VPD if not derived client-side)
+  - src/bridge/   # (likely needs a new telemetry channel + write-path for config buttons)
+  - src/simulation/  # digital twin / Gazebo chamber model
 ---
 
 ## Idea (captured 2026-05-24 from Santi)
 
 > "negative vapour pressure display and a few buttons would be a natural addition for MC next release — and they aren't gated i believe?"
+>
+> (follow-up) "yes VPD is what i meant. also estimated water volume. also link to digital twin of chamber — now that we have the real deal to model! ha. GUI can be sent to Zoy for rolling in their farmer app. for now expose simple runtime configuration values."
 
-Two pieces, both candidates for the next Mission Control increment:
+Four pieces, all candidates for the next Mission Control increment. GUI artifact is intentionally **handoff-shaped** — built so Zoy (farmer #2) can roll it into the farmer-facing app.
 
-### 1. VPD ("negative vapour pressure") display
+### 1. VPD display (confirmed)
 
-Read as: vapor pressure deficit (VPD) display panel. Worth confirming whether the framing is literally VPD (Tair, Tleaf, RH → deficit in kPa) or something else (negative pressure ventilation? sub-atmospheric chamber state?). Default working assumption: **VPD**, since it's the standard mushroom-fruiting-environment derived metric and the chamber already publishes the inputs (`fc1/temperature`, `fc1/humidity`).
+Vapor pressure deficit panel. The chamber already publishes the inputs (`fc1/temperature`, `fc1/humidity`).
 
 - Compute VPD from temperature + RH (client-side or in bridge — open question).
 - Display alongside current temp/humidity panels in MC.
 - Standard mushroom-grow VPD ranges: ~0.4-0.8 kPa for fruiting; expose target band in config if/when farmer requests.
 
-### 2. "A few buttons"
+### 2. Estimated water volume
 
-Open-ended — Santi to clarify which control surfaces. Likely candidates from prior conversations:
-- Humidifier on/off override
-- Fan PWM nudge (+/-)
-- Lights on/off override
-- "Refresh now" / "force re-sample" trigger
+Running total of humidifier water consumption (chamber-level). Inputs likely available:
+- Humidifier duty cycle (`fc1/actuators/humidifier`) — already a ROS topic.
+- Calibration constant (mL/sec of on-time) — needs a one-time bench measurement on fc1's actual humidifier OR a name-plate guess to start.
 
-These would need write-path wiring through the bridge → ROS2 services on fc1. Verify the existing bridge has a write path (most current MC is read-only).
+Output: a "water used today / since reset" counter on MC, plus an alert hook for "tank likely empty" (separate phase — note here, don't scope-creep).
+
+### 3. Link to digital twin of chamber
+
+Live link from MC to the Gazebo simulation. Now that there's real chamber data, the sim becomes a model that can be calibrated, not just a development scaffold.
+
+Initial scope (minimal): a clickable link or embedded view that opens the digital twin and shows the current chamber state side-by-side with the real one. Future scope (out of this todo): drive sim from real telemetry → divergence detection / predictive control.
+
+### 4. Runtime configuration buttons (the "few buttons")
+
+For now, **expose simple runtime config values** — not raw actuator overrides. Lower bridge complexity, lower farmer-foot-gun risk. Candidates:
+- RH target (currently runtime ros2 param, see memory `[[feedback_humidity_runtime_param]]`)
+- RH tolerance / operating band
+- Light schedule on/off times
+- Temperature target
+- (later, when bridge has write-path) actuator overrides — humidifier/fan/lights manual on/off
+
+Pattern: each button is "set this config value" (ros2 param set + commit), not "fire this actuator." Keeps it within the existing config-edit-then-deploy mental model the farmer already has, just with fewer steps.
+
+**Master chamber on/off switch** (Santi follow-up): a single top-level "chamber active / chamber paused" toggle that gates all actuators at once — humidifier, fan, lights. Pause-state should be visible across MC + alerter (so alerter doesn't fire "chamber uncontrolled" alarms while operator-paused). Pattern: a ROS-level `chamber_active` boolean param read by `fc_controller.py` before any actuator command goes out; alerter subscribes to the same and suppresses chamber-dark / pi-offline-style alarms when paused. **Caveat:** this is one of the higher-blast-radius buttons — needs a confirm-dialog gate ("Pause chamber? Crop will drift.") and probably an auto-resume timeout (e.g. "pause for 1h / 4h / 24h / indefinite") so a forgotten pause doesn't silently brick the chamber.
 
 ## Gating
 
