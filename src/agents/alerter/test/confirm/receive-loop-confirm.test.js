@@ -6,11 +6,13 @@ function silentLogger() {
   return { info: jest.fn(), warn: jest.fn(), debug: jest.fn() };
 }
 
-function makeEnvelope({ source = '+15550001234', text = 'YES' } = {}) {
+function makeEnvelope({ source = '+15550001234', text = 'YES', quote = null } = {}) {
+  const dataMessage = { message: text, attachments: [] };
+  if (quote) dataMessage.quote = quote;
   return {
     envelope: {
       source,
-      dataMessage: { message: text, attachments: [] },
+      dataMessage,
     },
   };
 }
@@ -30,10 +32,25 @@ const baseConfig = {
   maxEditTurns: 3,
 };
 
-function makeWiring({ findResult = null, confirmResult = { ok: true, rowCount: 1 }, discardResult = { ok: true, rowCount: 1 }, editHandlerResult = { ok: true, sideEffect: 'send_preview_resend', newPreview: 'NEW' }, parserOverride = null } = {}) {
+function makeWiring({
+  findResult = null,
+  confirmResult = { ok: true, rowCount: 1 },
+  discardResult = { ok: true, rowCount: 1 },
+  editHandlerResult = { ok: true, sideEffect: 'send_preview_resend', newPreview: 'NEW' },
+  parserOverride = null,
+  // Phase 50 Plan-04: list-shape sibling + quote resolver. Default to the
+  // single-row findResult shape (returned as a 1-element array) so existing
+  // tests work unchanged. Tests can override to inject multiple drafts or a
+  // quote-resolved draft.
+  activeDrafts = undefined,
+  quoteResolveResult = null,
+} = {}) {
   const pool = {};
+  const list = activeDrafts !== undefined ? activeDrafts : (findResult ? [findResult] : []);
   const confirmDb = {
     findAwaitingForSender: jest.fn().mockResolvedValue(findResult),
+    findActiveDraftsForSender: jest.fn().mockResolvedValue(list),
+    findDraftByQuotedMsgTs: jest.fn().mockResolvedValue(quoteResolveResult),
     confirmDraft: jest.fn().mockResolvedValue(confirmResult),
     discardDraft: jest.fn().mockResolvedValue(discardResult),
     expireDraft: jest.fn().mockResolvedValue({ ok: true, rowCount: 1 }),
@@ -178,5 +195,209 @@ describe('receive-loop confirm branch (Phase 39 D-01)', () => {
     });
     await runOneTick(loop);
     expect(w.confirmDb.findAwaitingForSender).not.toHaveBeenCalled();
+  });
+
+  // ============================================================
+  // Phase 50 Plan-04 — quote-first routing + numbered ask-back
+  // QUOT-06 four-case matrix + terminal-draft polite ack + orphan quote.
+  // ============================================================
+
+  describe('Phase 50 Plan-04: quote-first routing + numbered ask-back', () => {
+    const SENDER = '+15550001234';
+    const SENDER_OTHER = '+15559999999';
+    const BOT = '+15550009999';
+
+    function quoteShape(targetTs) {
+      return { id: targetTs, author: BOT, authorNumber: BOT, text: 'previous bot ack' };
+    }
+
+    // Case (1-active, no quote): route to that single draft (existing behavior).
+    it('(QUOT-06 case 1) 1 active draft + no quote -> route to that draft (unchanged behavior)', async () => {
+      const d1 = { id: 'd1', sender_e164: SENDER, status: 'awaiting_farmer' };
+      const w = makeWiring({ findResult: d1, activeDrafts: [d1] });
+      const capture = { handle: jest.fn() };
+      const sig = makeSignalClient([makeEnvelope({ source: SENDER, text: 'YES' })]);
+      const loop = createReceiveLoop({
+        signalClient: sig, dispatch: jest.fn(), config: baseConfig, capturePipeline: capture, logger: silentLogger(), ...w,
+      });
+      await runOneTick(loop);
+      expect(w.confirmDb.findDraftByQuotedMsgTs).not.toHaveBeenCalled();
+      expect(w.confirmDb.confirmDraft).toHaveBeenCalledWith({}, 'd1');
+      expect(w.confirmOutbound.dispatch).toHaveBeenCalledWith('send_confirm_ack', expect.any(Object));
+    });
+
+    // Case (1-active + quote resolves): quote-resolved draft wins.
+    it('(QUOT-06 case 2) 1 active draft + quote resolves to actionable -> route to QUOTED draft', async () => {
+      const dOther = { id: 'd-mostrecent', sender_e164: SENDER, status: 'awaiting_farmer' };
+      const dQuoted = { id: 'd-quoted', sender_e164: SENDER, status: 'awaiting_farmer' };
+      const w = makeWiring({
+        findResult: dOther,
+        activeDrafts: [dOther],
+        quoteResolveResult: dQuoted,
+      });
+      const capture = { handle: jest.fn() };
+      const sig = makeSignalClient([makeEnvelope({
+        source: SENDER, text: 'YES', quote: quoteShape(1779562666675),
+      })]);
+      const loop = createReceiveLoop({
+        signalClient: sig, dispatch: jest.fn(), config: baseConfig, capturePipeline: capture, logger: silentLogger(), ...w,
+      });
+      await runOneTick(loop);
+      expect(w.confirmDb.findDraftByQuotedMsgTs).toHaveBeenCalledWith({}, 1779562666675);
+      expect(w.confirmDb.confirmDraft).toHaveBeenCalledWith({}, 'd-quoted');
+      // findActiveDraftsForSender should NOT be needed when quote resolves.
+      expect(w.confirmDb.findActiveDraftsForSender).not.toHaveBeenCalled();
+    });
+
+    // Case (>1 active + quote): quote wins; no ask-back; route to quoted.
+    it('(QUOT-06 case 3) >1 active + quote resolves -> route to QUOTED draft; NO ask-back', async () => {
+      const dA = { id: 'd-A', sender_e164: SENDER, status: 'awaiting_farmer' };
+      const dB = { id: 'd-B', sender_e164: SENDER, status: 'awaiting_farmer' };
+      const dQuoted = { id: 'd-B', sender_e164: SENDER, status: 'awaiting_farmer' };
+      const w = makeWiring({
+        findResult: dA,
+        activeDrafts: [dA, dB],
+        quoteResolveResult: dQuoted,
+      });
+      const capture = { handle: jest.fn() };
+      const sig = makeSignalClient([makeEnvelope({
+        source: SENDER, text: 'EDIT shelf B5', quote: quoteShape(1779562666675),
+      })]);
+      const loop = createReceiveLoop({
+        signalClient: sig, dispatch: jest.fn(), config: baseConfig, capturePipeline: capture, logger: silentLogger(), ...w,
+      });
+      await runOneTick(loop);
+      expect(w.editHandler.handleEdit).toHaveBeenCalledWith(dQuoted, 'shelf B5');
+      const askBack = w.confirmOutbound.dispatch.mock.calls.find((c) => c[0] === 'send_ask_back');
+      expect(askBack).toBeUndefined();
+    });
+
+    // Case (>1 active + no quote): emit numbered ask-back; no draft mutation.
+    it('(QUOT-06 case 4) >1 active + no quote -> emit send_ask_back; NO confirm/discard/edit', async () => {
+      const dA = { id: 'd-A', sender_e164: SENDER, status: 'awaiting_farmer', log_type: 'observation', draft_json: { event_timestamp: '2026-05-22T12:00:00Z', notes: 'block A note' }, created_at: new Date('2026-05-22T12:00:00Z') };
+      const dB = { id: 'd-B', sender_e164: SENDER, status: 'commit_failed',   log_type: 'seeding',     draft_json: { event_timestamp: '2026-05-21T12:00:00Z', name: 'inoc' },        created_at: new Date('2026-05-21T12:00:00Z') };
+      const w = makeWiring({ findResult: dA, activeDrafts: [dA, dB] });
+      const capture = { handle: jest.fn() };
+      const sig = makeSignalClient([makeEnvelope({ source: SENDER, text: 'YES' })]);
+      const loop = createReceiveLoop({
+        signalClient: sig, dispatch: jest.fn(), config: baseConfig, capturePipeline: capture, logger: silentLogger(), ...w,
+      });
+      await runOneTick(loop);
+      const askBack = w.confirmOutbound.dispatch.mock.calls.find((c) => c[0] === 'send_ask_back');
+      expect(askBack).toBeDefined();
+      expect(askBack[2]).toMatchObject({ activeDrafts: [dA, dB], senderE164: SENDER });
+      expect(w.confirmDb.confirmDraft).not.toHaveBeenCalled();
+      expect(w.confirmDb.discardDraft).not.toHaveBeenCalled();
+      expect(w.editHandler.handleEdit).not.toHaveBeenCalled();
+    });
+
+    // Hotfix 2026-05-23: stale commit_failed drafts must not trap fresh captures.
+    // The SQL-side fix in confirm-db.findActiveDraftsForSender ages them out.
+    // This test mirrors the live-fire failure (Santi sent "DT tubs 0519 1 and 2"
+    // with 5 stale commit_failed drafts from May 13-21); the receive-loop sees
+    // an EMPTY activeDrafts list (mocked here) and falls through to capture.
+    it('hotfix-2026-05-23: fresh capture with NO stale-active drafts -> capture pipeline runs', async () => {
+      const w = makeWiring({ findResult: null, activeDrafts: [] }); // post-hotfix view
+      const capture = { handle: jest.fn() };
+      const sig = makeSignalClient([makeEnvelope({ source: SENDER, text: 'DT tubs 0519 1 and 2' })]);
+      const loop = createReceiveLoop({
+        signalClient: sig, dispatch: jest.fn(), config: baseConfig, capturePipeline: capture, logger: silentLogger(), ...w,
+      });
+      await runOneTick(loop);
+      const askBack = w.confirmOutbound.dispatch.mock.calls.find((c) => c[0] === 'send_ask_back');
+      expect(askBack).toBeUndefined();
+      expect(capture.handle).toHaveBeenCalledTimes(1);
+    });
+
+    // Terminal-draft polite ack: quote resolves to committed -> send_quote_closed; no mutation.
+    it('quote resolves to a terminal (committed) draft -> send_quote_closed; no mutation', async () => {
+      const dTerm = { id: 'd-old', sender_e164: SENDER, status: 'committed', log_type: 'seeding', draft_json: { name: 'inoc' }, created_at: new Date('2026-05-13T12:00:00Z') };
+      const w = makeWiring({ findResult: null, activeDrafts: [], quoteResolveResult: dTerm });
+      const capture = { handle: jest.fn() };
+      const sig = makeSignalClient([makeEnvelope({
+        source: SENDER, text: 'EDIT actually 10 not 5', quote: quoteShape(1779000000000),
+      })]);
+      const loop = createReceiveLoop({
+        signalClient: sig, dispatch: jest.fn(), config: baseConfig, capturePipeline: capture, logger: silentLogger(), ...w,
+      });
+      await runOneTick(loop);
+      const closed = w.confirmOutbound.dispatch.mock.calls.find((c) => c[0] === 'send_quote_closed');
+      expect(closed).toBeDefined();
+      expect(closed[1]).toBe(dTerm);
+      expect(w.editHandler.handleEdit).not.toHaveBeenCalled();
+      expect(w.confirmDb.confirmDraft).not.toHaveBeenCalled();
+    });
+
+    // Orphan quote (resolves to null) + 1 active -> falls through to single active draft.
+    it('orphan quote (resolves null) + 1 active -> falls through to that draft', async () => {
+      const d1 = { id: 'd1', sender_e164: SENDER, status: 'awaiting_farmer' };
+      const w = makeWiring({ findResult: d1, activeDrafts: [d1], quoteResolveResult: null });
+      const capture = { handle: jest.fn() };
+      const sig = makeSignalClient([makeEnvelope({
+        source: SENDER, text: 'YES', quote: quoteShape(9999999999999),
+      })]);
+      const loop = createReceiveLoop({
+        signalClient: sig, dispatch: jest.fn(), config: baseConfig, capturePipeline: capture, logger: silentLogger(), ...w,
+      });
+      await runOneTick(loop);
+      expect(w.confirmDb.findDraftByQuotedMsgTs).toHaveBeenCalled();
+      expect(w.confirmDb.confirmDraft).toHaveBeenCalledWith({}, 'd1');
+    });
+
+    // Orphan quote + >1 active -> numbered ask-back (orphan-quote-with-ambiguous-fallback).
+    it('orphan quote + >1 active -> numbered ask-back (no silent route)', async () => {
+      const dA = { id: 'd-A', sender_e164: SENDER, status: 'awaiting_farmer' };
+      const dB = { id: 'd-B', sender_e164: SENDER, status: 'awaiting_farmer' };
+      const w = makeWiring({ findResult: dA, activeDrafts: [dA, dB], quoteResolveResult: null });
+      const capture = { handle: jest.fn() };
+      const sig = makeSignalClient([makeEnvelope({
+        source: SENDER, text: 'NO', quote: quoteShape(9999999999999),
+      })]);
+      const loop = createReceiveLoop({
+        signalClient: sig, dispatch: jest.fn(), config: baseConfig, capturePipeline: capture, logger: silentLogger(), ...w,
+      });
+      await runOneTick(loop);
+      const askBack = w.confirmOutbound.dispatch.mock.calls.find((c) => c[0] === 'send_ask_back');
+      expect(askBack).toBeDefined();
+      expect(w.confirmDb.discardDraft).not.toHaveBeenCalled();
+    });
+
+    // T-50-04-01: quote resolves to a draft owned by a different sender -> spoof guard.
+    it('T-50-04-01: quote resolves to a draft owned by ANOTHER sender -> drop; no route', async () => {
+      const dSpoofed = { id: 'd-spoofed', sender_e164: SENDER_OTHER, status: 'awaiting_farmer' };
+      const w = makeWiring({ findResult: null, activeDrafts: [], quoteResolveResult: dSpoofed });
+      const capture = { handle: jest.fn().mockResolvedValue(null) };
+      const sig = makeSignalClient([makeEnvelope({
+        source: SENDER, text: 'NO', quote: quoteShape(1779562666675),
+      })]);
+      const loop = createReceiveLoop({
+        signalClient: sig, dispatch: jest.fn(), config: baseConfig, capturePipeline: capture, logger: silentLogger(), ...w,
+      });
+      await runOneTick(loop);
+      // No route to spoofed draft.
+      expect(w.confirmDb.discardDraft).not.toHaveBeenCalled();
+      expect(w.editHandler.handleEdit).not.toHaveBeenCalled();
+      // No quote-closed (different sender) and no ask-back (0 active for THIS sender).
+      const closed = w.confirmOutbound.dispatch.mock.calls.find((c) => c[0] === 'send_quote_closed');
+      expect(closed).toBeUndefined();
+      // Falls through to capture (treated as orphan + 0-active).
+      expect(capture.handle).toHaveBeenCalledTimes(1);
+    });
+
+    it('quote-bearing envelope reads dm.quote.timestamp when dm.quote.id is absent', async () => {
+      const d1 = { id: 'd-quoted', sender_e164: SENDER, status: 'awaiting_farmer' };
+      const w = makeWiring({ findResult: null, activeDrafts: [], quoteResolveResult: d1 });
+      const capture = { handle: jest.fn() };
+      const sig = makeSignalClient([makeEnvelope({
+        source: SENDER, text: 'YES',
+        quote: { timestamp: 1779560222000, authorNumber: BOT, text: 'older bot ack' },
+      })]);
+      const loop = createReceiveLoop({
+        signalClient: sig, dispatch: jest.fn(), config: baseConfig, capturePipeline: capture, logger: silentLogger(), ...w,
+      });
+      await runOneTick(loop);
+      expect(w.confirmDb.findDraftByQuotedMsgTs).toHaveBeenCalledWith({}, 1779560222000);
+      expect(w.confirmDb.confirmDraft).toHaveBeenCalledWith({}, 'd-quoted');
+    });
   });
 });

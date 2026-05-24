@@ -48,7 +48,22 @@ function makeCommitDb(initial) {
       if (r) { r.status = 'confirmed'; r.committed_at_attempt = null; }
       return { ok: true, rowCount: 1 };
     },
+    // Phase 45 Plan 01 / Plan 04: idempotent CAS claim for terminal-state ack.
+    // Tracks which draft ids have been claimed in an in-memory Set so concurrent
+    // ticks converge to exactly one ok=true return.
+    _ackClaimed: new Set(),
+    async tryMarkOutcomeAckSent(pool, id) {
+      calls.push({ fn: 'tryMarkOutcomeAckSent', id });
+      if (!drafts.has(id)) return { ok: false, reason: 'not_found' };
+      if (this._ackClaimed.has(id)) return { ok: false, reason: 'already_claimed' };
+      this._ackClaimed.add(id);
+      return { ok: true, id, claimed_at: new Date() };
+    },
   };
+}
+
+function makeOutboundConfirm() {
+  return { dispatch: jest.fn().mockResolvedValue({ ok: true }) };
 }
 
 function makeAudit() {
@@ -59,7 +74,7 @@ function makeAudit() {
   };
 }
 
-function build({ routerImpl, drafts, releaseStaleImpl, configOverride } = {}) {
+function build({ routerImpl, drafts, releaseStaleImpl, configOverride, outboundConfirm } = {}) {
   const commitDb = makeCommitDb(drafts);
   if (releaseStaleImpl) commitDb.releaseStaleLocks = releaseStaleImpl;
   const auditLogger = makeAudit();
@@ -73,6 +88,7 @@ function build({ routerImpl, drafts, releaseStaleImpl, configOverride } = {}) {
   }, configOverride || {});
   const wd = createCommitWatchdog({
     pool: {}, commitDb, farmosClient: {}, commitRouter, ctx: {}, config, auditLogger,
+    outboundConfirm: outboundConfirm || null,
     logger: { info() {}, warn() {} },
     clock: { now: () => 100000 },
   });
@@ -197,6 +213,195 @@ describe('commit-watchdog (Phase 40 Plan 05)', () => {
     const callsAfter = commitDb._calls.length;
     expect(callsAfter).toBeGreaterThan(callsBefore);
     wd.stop();
+  });
+
+  // -----------------------------------------------------------------------
+  // Phase 45 Plan 04: terminal-state ack dispatch (T4 + T6) + ACK-04 idempotency
+  // -----------------------------------------------------------------------
+
+  it('T4 commit_success: dispatches send_commit_outcome_ack once with outcome=success', async () => {
+    const outboundConfirm = makeOutboundConfirm();
+    const { wd, commitDb } = build({
+      drafts: [['d1', { id: 'd1', status: 'confirmed', log_type: 'seeding', sender_e164: '+15550001234' }]],
+      outboundConfirm,
+    });
+    await wd.tickOnce();
+    expect(outboundConfirm.dispatch).toHaveBeenCalledTimes(1);
+    const args = outboundConfirm.dispatch.mock.calls[0];
+    expect(args[0]).toBe('send_commit_outcome_ack');
+    expect(args[1].id).toBe('d1');
+    expect(args[2]).toEqual({ outcome: 'success' });
+    // tryMarkOutcomeAckSent called exactly once
+    expect(commitDb._calls.filter((c) => c.fn === 'tryMarkOutcomeAckSent').length).toBe(1);
+  });
+
+  it('T6 commit_failed (terminal 4xx): dispatches send_commit_outcome_ack once with outcome=failed + reason', async () => {
+    const outboundConfirm = makeOutboundConfirm();
+    const { wd, commitDb } = build({
+      drafts: [['d1', { id: 'd1', status: 'confirmed', log_type: 'observation', sender_e164: '+15550001234', commit_attempt_count: 0 }]],
+      routerImpl: async () => ({ ok: false, http_status: 422, reason: 'observation_requires_target', asset_ids: [], log_ids: [], file_ids: [] }),
+      outboundConfirm,
+    });
+    await wd.tickOnce();
+    expect(commitDb._drafts.get('d1').status).toBe('commit_failed');
+    expect(outboundConfirm.dispatch).toHaveBeenCalledTimes(1);
+    const args = outboundConfirm.dispatch.mock.calls[0];
+    expect(args[0]).toBe('send_commit_outcome_ack');
+    expect(args[2]).toEqual({ outcome: 'failed', reason: 'observation_requires_target' });
+    expect(commitDb._calls.filter((c) => c.fn === 'tryMarkOutcomeAckSent').length).toBe(1);
+  });
+
+  it('ACK-04 idempotency: two concurrent ticks on same draft -> exactly one ack dispatch', async () => {
+    // Simulated by two sequential tickOnce calls; the second tick's claim returns
+    // ok=false because the in-memory ack-claimed Set already contains the draft id.
+    // We force the watchdog to "see" the row again on tick 2 by resetting status
+    // back to 'confirmed' after tick 1 (mirroring a hypothetical race where a
+    // duplicate detector mistakenly re-queues a committed row).
+    const outboundConfirm = makeOutboundConfirm();
+    const { wd, commitDb } = build({
+      drafts: [['d1', { id: 'd1', status: 'confirmed', log_type: 'seeding', sender_e164: '+15550001234' }]],
+      outboundConfirm,
+    });
+    await wd.tickOnce();
+    // Reset draft status so tickOnce sees a fresh confirmed row again. The CAS
+    // claim still remembers d1 has been claimed.
+    const row = commitDb._drafts.get('d1');
+    row.status = 'confirmed';
+    row.commit_attempt_count = 0;
+    row.committed_at_attempt = null;
+    await wd.tickOnce();
+    // Total ack dispatches across both ticks must be EXACTLY 1.
+    expect(outboundConfirm.dispatch).toHaveBeenCalledTimes(1);
+    // tryMarkOutcomeAckSent was attempted twice; second attempt returned ok=false.
+    expect(commitDb._calls.filter((c) => c.fn === 'tryMarkOutcomeAckSent').length).toBe(2);
+  });
+
+  it('T5 commit_attempt_retry (transient): NO ack dispatch on retry path', async () => {
+    const outboundConfirm = makeOutboundConfirm();
+    const { wd, auditLogger } = build({
+      drafts: [['d1', { id: 'd1', status: 'confirmed', log_type: 'seeding', sender_e164: '+15550001234', commit_attempt_count: 0 }]],
+      routerImpl: async () => ({ ok: false, http_status: 500, reason: 'http_500', asset_ids: [], log_ids: [], file_ids: [] }),
+      outboundConfirm,
+    });
+    await wd.tickOnce();
+    expect(auditLogger._events.map((e) => e.event)).toContain('commit_attempt_retry');
+    expect(outboundConfirm.dispatch).not.toHaveBeenCalled();
+  });
+
+  it('graceful degrade: outboundConfirm absent -> no crash, no dispatch, commit still succeeds', async () => {
+    const { wd, commitDb } = build({
+      drafts: [['d1', { id: 'd1', status: 'confirmed', log_type: 'seeding', sender_e164: '+15550001234' }]],
+      // outboundConfirm intentionally omitted
+    });
+    await wd.tickOnce();
+    expect(commitDb._drafts.get('d1').status).toBe('committed');
+    // tryMarkOutcomeAckSent IS still called (claim won) -- accepted trade-off
+    // per plan: "A crash between mark and send leaves the draft marked".
+    expect(commitDb._calls.filter((c) => c.fn === 'tryMarkOutcomeAckSent').length).toBe(1);
+  });
+
+  // -----------------------------------------------------------------------
+  // Phase 48 Plan 04: seeding_session rides the Phase 45 ack contract
+  // -----------------------------------------------------------------------
+
+  it('Phase 48: seeding_session success dispatches send_commit_outcome_ack with outcome=success', async () => {
+    const outboundConfirm = makeOutboundConfirm();
+    const { wd, commitDb } = build({
+      drafts: [['sess1', {
+        id: 'sess1',
+        status: 'confirmed',
+        log_type: 'seeding_session',
+        sender_e164: '+59891000001',
+        commit_attempt_count: 0,
+        draft_json: { type: 'seeding_session', event_date: '2026-05-22', groups: [{ child_block_names: { value: ['a','b','c'] } }] },
+      }]],
+      routerImpl: async () => ({
+        ok: true,
+        asset_ids: ['s1','b1','c1','c2','c3'],
+        log_ids: ['l1','l2','l3'],
+        file_ids: [],
+        http_status: 201,
+        latency_ms: 42,
+      }),
+      outboundConfirm,
+    });
+    await wd.tickOnce();
+    expect(commitDb._drafts.get('sess1').status).toBe('committed');
+    expect(outboundConfirm.dispatch).toHaveBeenCalledTimes(1);
+    const args = outboundConfirm.dispatch.mock.calls[0];
+    expect(args[0]).toBe('send_commit_outcome_ack');
+    expect(args[1].id).toBe('sess1');
+    expect(args[1].log_type).toBe('seeding_session');
+    expect(args[2]).toEqual({ outcome: 'success' });
+  });
+
+  it('Phase 48: seeding_session terminal failure dispatches send_commit_outcome_ack with outcome=failed + reason=partial_commit_failed', async () => {
+    const outboundConfirm = makeOutboundConfirm();
+    const { wd, commitDb } = build({
+      drafts: [['sess1', {
+        id: 'sess1',
+        status: 'confirmed',
+        log_type: 'seeding_session',
+        sender_e164: '+59891000001',
+        commit_attempt_count: 0,
+      }]],
+      // 422 is terminal (4xx, not transient) -> markFailed on first attempt
+      routerImpl: async () => ({ ok: false, http_status: 422, reason: 'partial_commit_failed', asset_ids: [], log_ids: [], file_ids: [] }),
+      outboundConfirm,
+    });
+    await wd.tickOnce();
+    expect(commitDb._drafts.get('sess1').status).toBe('commit_failed');
+    expect(outboundConfirm.dispatch).toHaveBeenCalledTimes(1);
+    const args = outboundConfirm.dispatch.mock.calls[0];
+    expect(args[0]).toBe('send_commit_outcome_ack');
+    expect(args[1].log_type).toBe('seeding_session');
+    expect(args[2]).toEqual({ outcome: 'failed', reason: 'partial_commit_failed' });
+  });
+
+  it('Phase 48: idempotent no-op for already-committed seeding_session (no ack dispatch)', async () => {
+    const outboundConfirm = makeOutboundConfirm();
+    const { wd, commitDb, auditLogger } = build({
+      drafts: [['sess1', {
+        id: 'sess1',
+        status: 'confirmed',
+        log_type: 'seeding_session',
+        sender_e164: '+59891000001',
+      }]],
+      outboundConfirm,
+    });
+    // Probe sees status=committed already -> early return before any lock or ack dispatch.
+    commitDb.getCachedResponse = async () => ({
+      ok: true,
+      status: 'committed',
+      farmos_response: { asset_ids: ['s1','c1','c2','c3'], log_ids: ['l1','l2','l3'] },
+    });
+    await wd.tickOnce();
+    expect(outboundConfirm.dispatch).not.toHaveBeenCalled();
+    expect(auditLogger._events[0].event).toBe('commit_idempotent_noop');
+    // CAS not even attempted (early return before _maybeDispatchOutcomeAck)
+    expect(commitDb._calls.filter((c) => c.fn === 'tryMarkOutcomeAckSent').length).toBe(0);
+  });
+
+  it('Phase 48: commit_failed seeding_session is not re-fetched on subsequent ticks (no double ack)', async () => {
+    // findConfirmedCandidates filters on status='confirmed'; commit_failed rows
+    // never re-enter the loop, so a second tick is a no-op for ack purposes.
+    const outboundConfirm = makeOutboundConfirm();
+    const { wd, commitDb } = build({
+      drafts: [['sess1', {
+        id: 'sess1',
+        status: 'confirmed',
+        log_type: 'seeding_session',
+        sender_e164: '+59891000001',
+        commit_attempt_count: 0,
+      }]],
+      routerImpl: async () => ({ ok: false, http_status: 422, reason: 'session_fungi_type_term_missing', asset_ids: [], log_ids: [], file_ids: [] }),
+      outboundConfirm,
+    });
+    await wd.tickOnce(); // marks failed + dispatches ack #1
+    expect(commitDb._drafts.get('sess1').status).toBe('commit_failed');
+    expect(outboundConfirm.dispatch).toHaveBeenCalledTimes(1);
+    await wd.tickOnce(); // no candidates returned (status !== 'confirmed')
+    expect(outboundConfirm.dispatch).toHaveBeenCalledTimes(1);
   });
 
   it('row exception isolated; second row still processes', async () => {

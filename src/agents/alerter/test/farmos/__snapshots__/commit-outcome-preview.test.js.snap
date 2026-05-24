@@ -1,0 +1,27 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`renderOutcomeAck (Phase 45 Plan 02) 13 template snapshots failed: activity / no_target_asset_for_activity 1`] = `"Hi Vikki, about the activity: couldn't save it because no asset to attach this activity to. Send EDIT to fix or NO to drop."`;
+
+exports[`renderOutcomeAck (Phase 45 Plan 02) 13 template snapshots failed: harvest / duplicate_log 1`] = `"Hi Santi, about the harvest: couldn't save it because already logged. Send EDIT to fix or NO to drop."`;
+
+exports[`renderOutcomeAck (Phase 45 Plan 02) 13 template snapshots failed: input / taxonomy_term_missing 1`] = `"Hi Santi, about the input log: couldn't save it because missing a taxonomy term. Send EDIT to fix or NO to drop."`;
+
+exports[`renderOutcomeAck (Phase 45 Plan 02) 13 template snapshots failed: observation / observation_requires_target 1`] = `"Hi Vikki, about the observation: couldn't save it because couldn't match a block. Send EDIT to fix or NO to drop."`;
+
+exports[`renderOutcomeAck (Phase 45 Plan 02) 13 template snapshots failed: seeding / schema_invalid 1`] = `"Hi Santi, about the seeding: couldn't save it because data format issue. Send EDIT to fix or NO to drop."`;
+
+exports[`renderOutcomeAck (Phase 45 Plan 02) 13 template snapshots success no-target: activity farm-level 1`] = `"Hi Santi, saved that activity as a general farm note since I couldn't match a specific block. Send EDIT to attach a block if you want."`;
+
+exports[`renderOutcomeAck (Phase 45 Plan 02) 13 template snapshots success no-target: input farm-level 1`] = `"Hi Selina, saved that input log as a general farm note since I couldn't match a specific block. Send EDIT to attach a block if you want."`;
+
+exports[`renderOutcomeAck (Phase 45 Plan 02) 13 template snapshots success no-target: observation farm-level 1`] = `"Hi Vikki, saved that observation as a general farm note since I couldn't match a specific block. Send EDIT to attach a block if you want."`;
+
+exports[`renderOutcomeAck (Phase 45 Plan 02) 13 template snapshots success: activity with target 1`] = `"Hi Vikki, saved activity for 260512_SHI_4. Open in farmOS: https://farmos.example/log/1002"`;
+
+exports[`renderOutcomeAck (Phase 45 Plan 02) 13 template snapshots success: harvest with target 1`] = `"Hi Santi, saved harvest for H260520_SHI_A. Open in farmOS: https://farmos.example/log/1005"`;
+
+exports[`renderOutcomeAck (Phase 45 Plan 02) 13 template snapshots success: input with target 1`] = `"Hi Selina, saved input log for 260512_SHI_4. Open in farmOS: https://farmos.example/log/1003"`;
+
+exports[`renderOutcomeAck (Phase 45 Plan 02) 13 template snapshots success: observation with target 1`] = `"Hi Santi, saved observation for 260512_SHI_4. Open in farmOS: https://farmos.example/log/1004"`;
+
+exports[`renderOutcomeAck (Phase 45 Plan 02) 13 template snapshots success: seeding with target 1`] = `"Hi Santi, saved seeding for 260512_SHI_4. Open in farmOS: https://farmos.example/log/1001"`;

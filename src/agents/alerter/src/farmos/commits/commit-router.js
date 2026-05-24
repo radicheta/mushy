@@ -11,6 +11,7 @@ const commitActivity = require('./commit-activity');
 const commitInput = require('./commit-input');
 const commitObservation = require('./commit-observation');
 const commitHarvest = require('./commit-harvest');
+const commitSeedingSession = require('./commit-seeding-session');
 
 const DISPATCH = {
   seeding: commitSeeding,
@@ -18,6 +19,7 @@ const DISPATCH = {
   input: commitInput,
   observation: commitObservation,
   harvest: commitHarvest,
+  seeding_session: commitSeedingSession,
 };
 
 async function commit(client, draft, ctx) {

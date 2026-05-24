@@ -1,5 +1,40 @@
 # Milestones
 
+## v1.10 Order-Independent Writes (upsert-by-stable-identity) (Shipped: 2026-05-24)
+
+**Phases shipped:** 1 (Phase 51)
+**Plans:** 6 (4 waves)
+**Timeline:** 2026-05-24 (single-day phase)
+**Tag:** `v1.10`
+**Audit:** `.planning/milestones/v1.10-MILESTONE-AUDIT.md` (status: `tech_debt` — 7/7 requirements satisfied; bookkeeping debt: no v1.10 section in REQUIREMENTS.md, stale `51-VALIDATION.md` frontmatter)
+
+### Highlights
+
+- **Pure `_mergeAssetFields` module** — `src/agents/alerter/src/farmos/merge.js`: 7-case rule table (array→set-union, scalar identity protected, scalar non-identity→conflict-surface, notes→dedup-and-preserve). Zero client/network deps. 7 unit tests green.
+- **`upsertFungiAsset` + `isStubAsset` + `STUB_BACKFILL_MARKER`** in `assets.js`. Lookup-merge-or-create primitive. Soft revision_id concurrency check (degraded UPSERT-04 — farmOS does not honor `If-Match` per RESEARCH §3). 23 asset tests green.
+- **`upsertLog(seeding)` + `LOG_STABLE_KEYS` table** in `logs.js`. B5 invariant: one seeding log per child asset → `(type='seeding', asset.id == assetIds[0])` unambiguous stable key. Belt-and-suspenders collision surfacing (return value + audit event). Other log types fall through to create-only.
+- **Commit-path migration + grep gate** — every `createFungiAsset` / `resolveOrCreateAsset` call site under `src/agents/alerter/src/farmos/commits/` migrated to upsert primitives. `commit-harvest.js` bag asset caught and migrated in-flight as a blocking auto-fix.
+- **Property tests** — 3 properties × 20 random permutations green: order-independence on multi-parent inoc, stub-mint-then-real enrichment field-equivalence, structured scalar conflict surfacing.
+- **UPSERT-07 live-fire ship gate** — `scripts/live-fire-51.js` executed against dev farmOS at 10.68.155.50:18080. **16 assets PATCHed / 0 created, 11 logs PATCHed / 0 created, zero duplicate UUIDs, 11/11 lineage walks green, 4 stub UUIDs byte-identical pre/post.** Elapsed 8.2s.
+- **Notes round-trip probe** — `\n---\n` separator attested byte-identical through Drupal text-field normalization on dev farmOS (Wave-0 receipt at `.planning/notes/2026-05-24-phase-51-notes-roundtrip-probe.md`).
+
+### What Got Carried Forward
+
+- **UPSERT-04 → soft-compare** (planner-accepted DEGRADED per RESEARCH §3). Semantic equivalent preserved: one-shot retry budget + structured non-throwing surface + `etag_source: 'soft_compare' | 'absent'` audit field.
+- **Non-`fungi` / non-`seeding` log paths still POST-only** — commit-input, commit-activity, commit-observation, commit-harvest harvest-log. Explicitly out of scope per SPEC UPSERT-02 boundary.
+- **Planning bookkeeping debt** — UPSERT-01..07 live only in `51-SPEC.md`, not in REQUIREMENTS.md. Future milestone may backfill traceability if useful.
+- **`51-VALIDATION.md` frontmatter stale** — empirical compliance high (all sampling-rate cadences observed, live-fire receipt committed), but `nyquist_compliant: false` flag was never flipped. Bookkeeping only.
+
+### Known deferred items at close
+
+19 open backlog items (1 debug session, 2 quick tasks, 5 todos, 10 seeds, 1 verification gap) acknowledged at close — all pre-existing items unrelated to v1.10 scope. See `.planning/STATE.md` Deferred Items section for history.
+
+### Driver
+
+Tonight's (2026-05-24) prod stub strategy ([4 ancestor stubs minted via direct API POST in commit `24b8fab`]) works under current `findAssetByName` lookup. Phase 51 makes the stubs *enriched* (not just reused) when the real history arrives. Independently, this makes the 2025-paper-scan backfill safe in any order vs. live captures, and unblocks observation-of-unknown-asset as a real path ([feedback_farmer_is_reality_source_of_truth]).
+
+---
+
 ## v1.5 Analog Humidity Control & Condensation/Evaporation Forcing (Shipped: 2026-05-09)
 
 **Phases shipped:** 5 (27, 28, 29, 30, 31)

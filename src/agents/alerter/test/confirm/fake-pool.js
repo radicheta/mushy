@@ -24,7 +24,10 @@
 function makeFakePool() {
   const drafts = new Map(); // id -> row
   const events = []; // {draft_id, seq, event, payload, created_at}
+  const captures = new Map(); // id -> row (Phase 50 Plan 03)
+  const outbounds = []; // array of {signal_msg_ts, related_draft_id, sent_at, ...} (Phase 50 Plan 04)
   let nowMs = Date.now();
+  let captureSelectShouldThrow = false; // Plan 50-03: simulate DB error on capture lookup
 
   function _now() {
     return new Date(nowMs);
@@ -73,9 +76,64 @@ function makeFakePool() {
     return events.filter((e) => e.draft_id === draftId);
   }
 
+  // Plan 50-03: signal_capture seed/lookup helpers.
+  function seedCapture(row) {
+    const full = Object.assign(
+      {
+        id: row.id,
+        sender: row.sender || '+15550001234',
+        signal_msg_ts: row.signal_msg_ts == null ? null : row.signal_msg_ts,
+        raw_text: row.raw_text == null ? null : row.raw_text,
+      },
+      row
+    );
+    captures.set(full.id, full);
+    return full;
+  }
+  function setCaptureSelectThrow(v) {
+    captureSelectShouldThrow = !!v;
+  }
+
+  // Plan 50-04: signal_outbound seed for findDraftByQuotedMsgTs.
+  function seedOutbound(row) {
+    const full = Object.assign(
+      {
+        signal_msg_ts: row.signal_msg_ts == null ? null : row.signal_msg_ts,
+        related_draft_id: row.related_draft_id == null ? null : row.related_draft_id,
+        sent_at: row.sent_at || _now(),
+      },
+      row
+    );
+    outbounds.push(full);
+    return full;
+  }
+
   async function query(sql, params) {
     params = params || [];
     const s = String(sql);
+
+    // Plan 50-04: signal_outbound JOIN signal_draft for findDraftByQuotedMsgTs.
+    // Match: SELECT d.* FROM signal_outbound o JOIN signal_draft d ON d.id = o.related_draft_id WHERE o.signal_msg_ts = $1 ORDER BY o.sent_at DESC LIMIT 1
+    if (/FROM\s+signal_outbound/i.test(s) && /JOIN\s+signal_draft/i.test(s) && /signal_msg_ts/.test(s)) {
+      const ts = params[0];
+      const matches = outbounds
+        .filter((o) => o.signal_msg_ts === ts && o.related_draft_id != null && drafts.has(o.related_draft_id))
+        .sort((a, b) => new Date(b.sent_at) - new Date(a.sent_at));
+      const out = matches[0];
+      if (!out) return { rows: [], rowCount: 0 };
+      const draft = drafts.get(out.related_draft_id);
+      return { rows: [draft], rowCount: 1 };
+    }
+
+    // Plan 50-03: signal_capture SELECT for getCaptureQuoteTarget.
+    if (/FROM\s+signal_capture/i.test(s) && /signal_msg_ts/.test(s) && /WHERE\s+id\s*=\s*\$1/i.test(s)) {
+      if (captureSelectShouldThrow) {
+        throw new Error('simulated capture select failure');
+      }
+      const id = params[0];
+      const row = captures.get(id);
+      return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
+    }
 
     if (/^\s*ALTER TABLE/i.test(s)) return { rows: [], rowCount: 0 };
     if (/^\s*CREATE TABLE/i.test(s)) return { rows: [], rowCount: 0 };
@@ -103,7 +161,44 @@ function makeFakePool() {
       return { rows: [{ seq }], rowCount: 1 };
     }
 
-    // SELECT * FROM signal_draft WHERE sender_e164=$1 AND status='awaiting_farmer' ORDER BY updated_at DESC LIMIT 1
+    // Phase 45 Plan 04 follow-on: findAwaitingForSender now matches
+    // status IN ('awaiting_farmer','commit_failed') with awaiting_farmer
+    // preferred. Hotfix 2026-05-23 (findActiveDraftsForSender variant): the
+    // list-shape query uses `status='awaiting_farmer' OR (status='commit_failed'
+    // AND updated_at > now() - interval '6 hours')` to age out stale ack-debt
+    // drafts. Match both shapes (legacy IN-list and the new disjunction).
+    const isListVariantHotfix = /sender_e164/.test(s)
+      && /status\s*=\s*'awaiting_farmer'/.test(s)
+      && /status\s*=\s*'commit_failed'\s+AND\s+updated_at\s*>/i.test(s);
+    const isLegacyInList = /status\s+IN\s*\(\s*'awaiting_farmer'\s*,\s*'commit_failed'\s*\)/i.test(s);
+    if (/SELECT \*\s+FROM signal_draft/i.test(s) && /sender_e164/.test(s) && (isLegacyInList || isListVariantHotfix)) {
+      const sender = params[0];
+      const sixHrsAgoMs = _now() - 6 * 60 * 60 * 1000;
+      const matches = Array.from(drafts.values()).filter((r) => {
+        if (r.sender_e164 !== sender) return false;
+        if (r.status === 'awaiting_farmer') return true;
+        if (r.status === 'commit_failed') {
+          if (!isListVariantHotfix) return true; // legacy IN-list: no staleness filter
+          return new Date(r.updated_at).getTime() > sixHrsAgoMs;
+        }
+        return false;
+      });
+      // awaiting_farmer wins over commit_failed; within status, newer updated_at wins.
+      matches.sort((a, b) => {
+        const ra = a.status === 'awaiting_farmer' ? 0 : 1;
+        const rb = b.status === 'awaiting_farmer' ? 0 : 1;
+        if (ra !== rb) return ra - rb;
+        return new Date(b.updated_at) - new Date(a.updated_at);
+      });
+      // Phase 50 Plan-04: list-shape variant (findActiveDraftsForSender) has no
+      // LIMIT 1 clause -- return all matches. Single-row variant keeps LIMIT 1.
+      if (/LIMIT\s+1/i.test(s)) {
+        const row = matches[0] || null;
+        return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
+      }
+      return { rows: matches, rowCount: matches.length };
+    }
+    // Legacy: SELECT * FROM signal_draft WHERE sender_e164=$1 AND status='awaiting_farmer' ORDER BY updated_at DESC LIMIT 1
     if (/SELECT \*\s+FROM signal_draft/i.test(s) && /sender_e164/.test(s) && /status='awaiting_farmer'/.test(s)) {
       const sender = params[0];
       const matches = Array.from(drafts.values()).filter(
@@ -144,6 +239,14 @@ function makeFakePool() {
       const id = params[0];
       const row = drafts.get(id);
       if (!row) return { rows: [], rowCount: 0 };
+
+      // Plan 45-03 Option X: commit_failed -> awaiting_farmer transition (re-activate for EDIT).
+      if (/status='awaiting_farmer'/.test(s) && /status='commit_failed'/.test(s)) {
+        if (row.status !== 'commit_failed') return { rows: [], rowCount: 0 };
+        row.status = 'awaiting_farmer';
+        row.updated_at = _now();
+        return { rows: [{ id: row.id }], rowCount: 1 };
+      }
 
       // edit_turn_count increment (bumpEditTurn) -- detect first since it includes RETURNING edit_turn_count
       if (/edit_turn_count = edit_turn_count \+ 1/.test(s)) {
@@ -228,8 +331,12 @@ function makeFakePool() {
     seedDraft,
     getDraft,
     getEvents,
+    seedCapture,
+    setCaptureSelectThrow,
+    seedOutbound,
     _drafts: drafts,
     _events: events,
+    _outbounds: outbounds,
   };
 }
 

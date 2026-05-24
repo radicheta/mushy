@@ -10,6 +10,54 @@
 //
 // Style locks: no em-dashes (sanitizeFarmerText sweep in preview.js), fmtNum
 // for numbers, named address. Never throws.
+//
+// Phase 45 Plan 04: registers `send_commit_outcome_ack` side-effect. The body
+// is built by `renderOutcomeAck` (commit-outcome-preview.js, Plan 02). Sent
+// with intent='commit_outcome_ack', which causes signal.js's single-hook
+// signal_outbound persistence (Phase 44 Plan-02 D-14) to write a row tagged
+// with tenant_id='mossrock', related_draft_id=draftRow.id. Logging is
+// best-effort in signal.js (fail-open per D-03); we add no extra outboundDb
+// write here.
+
+const { renderOutcomeAck, buildDisambiguator, labelFor } = require('../farmos/commit-outcome-preview');
+
+// Phase 50 Plan-04: numbered ask-back body for the >1-active no-quote case.
+// One-shot semantics: this is a single response. We do NOT track an
+// "awaiting numbered reply" state -- next inbound from the farmer goes through
+// the same routing logic again (quote wins if attached; or current parser
+// handles "1" / "EDIT block ..." text). Capped at 5 entries to keep body sane.
+function renderNumberedAskBack(activeDrafts) {
+  const rows = (activeDrafts || []).slice(0, 5);
+  const lines = rows.map((d, i) => {
+    const label = labelFor(d && d.log_type);
+    const what = buildDisambiguator(d || {}, label);
+    return `${i + 1}. ${what}`;
+  });
+  return [
+    'Which one are you replying about?',
+    ...lines,
+    'Reply with the number, or quote the original message.',
+  ].join('\n');
+}
+
+// Phase 50 Plan-04: polite "that one is already closed" ack when a farmer
+// quote-replies a bot ack that targets a draft already in a terminal state
+// (committed / discarded / expired). Plan-06 disambiguator shape so the reply
+// names WHICH log they referenced. ASCII-only; no em-dashes.
+function renderQuoteClosed(draftRow) {
+  const d = draftRow || {};
+  const label = labelFor(d.log_type);
+  const what = buildDisambiguator(d, label);
+  const status = d.status || 'closed';
+  // Status word that reads naturally to a farmer.
+  const statusWord = status === 'committed' ? 'saved'
+    : status === 'discarded' ? 'discarded'
+    : status === 'expired' ? 'expired'
+    : status === 'needs_review' ? 'pending review'
+    : status === 'confirmed' ? 'saved'
+    : 'closed';
+  return `That ${what} is already ${statusWord}. n/a`;
+}
 
 function truncId(id) {
   if (typeof id !== 'string') return '';
@@ -23,27 +71,77 @@ function createConfirmOutbound({
   // eslint-disable-next-line no-unused-vars
   operatorRecipient,
   logger = console,
+  // Phase 50 Plan 03: pool + confirmDb needed to resolve quote targets for
+  // send_commit_outcome_ack and send_confirm_ack. Both are OPTIONAL -- when
+  // missing, dispatch degrades to unquoted acks (no crash, no behavior change
+  // from pre-Plan-03 callers).
+  pool = null,
+  confirmDb = null,
 }) {
   if (!signalClient || typeof signalClient.send !== 'function') {
     throw new Error('createConfirmOutbound: signalClient.send required');
   }
 
-  async function safeSend(body, target, draftId) {
+  async function safeSend(body, target, draftId, intentOverride, quote) {
     try {
       // Phase 44 Plan-03 D-13/D-16: confirm-loop sends go through the wrapped
       // send with intent='confirm_prompt' so the signal_outbound row carries
       // the canonical enum + relatedDraftId for auditing.
-      const res = await signalClient.send(body, {
+      // Phase 45 Plan 04: callers may override intent (e.g. 'commit_outcome_ack')
+      // so the signal_outbound row carries the terminal-state ack intent.
+      // Phase 50 Plan 03: callers may pass a quote payload; signal.js validates
+      // it and falls back to unquoted send if invalid. Undefined means no quote.
+      const opts = {
         to: target,
-        intent: 'confirm_prompt',
+        intent: intentOverride || 'confirm_prompt',
         relatedDraftId: draftId || null,
         sourceModule: 'outbound-confirm.js',
-      });
+      };
+      if (quote) opts.quote = quote;
+      const res = await signalClient.send(body, opts);
       return res || { ok: true };
     } catch (e) {
       logger.warn && logger.warn(`[outbound-confirm] signal send failed: ${e.message}`);
       return { ok: false, reason: e.message };
     }
+  }
+
+  // Phase 50 Plan 03: resolve the first source-capture's Signal-native ts +
+  // sender into a quote payload. Returns null on EVERY failure mode
+  // (missing pool/confirmDb, missing draftRow, empty source_capture_ids,
+  // capture row missing, NULL signal_msg_ts, DB error). When the lookup
+  // was *attempted* but yielded nothing (capture row missing OR NULL ts OR
+  // DB error), a warn is emitted; the empty-source-capture-ids path stays
+  // silent (that is the expected shape for ack-without-capture flows).
+  async function tryBuildQuoteForDraft(draftRow) {
+    if (!draftRow) return null;
+    if (!pool || !confirmDb || typeof confirmDb.getCaptureQuoteTarget !== 'function') {
+      return null;
+    }
+    const captureIds = Array.isArray(draftRow.source_capture_ids)
+      ? draftRow.source_capture_ids
+      : [];
+    if (captureIds.length === 0) return null;
+    const captureId = captureIds[0];
+    let tgt = null;
+    try {
+      tgt = await confirmDb.getCaptureQuoteTarget(pool, captureId);
+    } catch (_e) {
+      tgt = null;
+    }
+    if (!tgt || tgt.signal_msg_ts == null) {
+      logger.warn &&
+        logger.warn(
+          `[outbound-confirm] no quote target for draft=${truncId(draftRow.id)} capture=${truncId(captureId)} -- sending unquoted ack`
+        );
+      return null;
+    }
+    const trimmed = String(tgt.raw_text || '').slice(0, 200);
+    return {
+      timestamp: Number(tgt.signal_msg_ts),
+      author: tgt.sender,
+      message: trimmed,
+    };
   }
 
   function dmTarget(draftRow) {
@@ -76,10 +174,23 @@ function createConfirmOutbound({
       const dm = dmTarget(draftRow || {});
 
       switch (sideEffect) {
-        case 'send_confirm_ack':
+        case 'send_confirm_ack': {
+          // Phase 50 Plan 03: quote-aware ack. Best-effort -- lookup failure
+          // degrades to unquoted ack rather than blocking (CONTEXT D-05,
+          // [[feedback_no_silent_failure_after_farmer_confirm]]).
           body = previewBuilderConfirm.buildConfirmAck((draftRow && draftRow.id) || '');
           target = dm;
-          break;
+          if (target == null) {
+            logger.warn && logger.warn(`[outbound-confirm] ${sideEffect}: no_target draft=${truncId(draftRow && draftRow.id)}`);
+            return { ok: false, reason: 'no_target' };
+          }
+          const quote = await tryBuildQuoteForDraft(draftRow || null);
+          const res = await safeSend(body, target, draftRow && draftRow.id, undefined, quote);
+          if (res.ok) {
+            logger.info && logger.info(`[outbound-confirm] ${sideEffect} sent draft=${truncId(draftRow && draftRow.id)}`);
+          }
+          return res;
+        }
         case 'send_confirm_idempotent_ack':
           body = previewBuilderConfirm.buildIdempotentAck();
           target = dm;
@@ -107,6 +218,80 @@ function createConfirmOutbound({
           body = extras.newPreview || (draftRow && draftRow.farmer_facing_preview) || '';
           target = groupAwareTarget(draftRow || {});
           break;
+        case 'send_commit_outcome_ack': {
+          // Phase 45 Plan 04: terminal-state ack (T4 commit_success, T6 commit_failed).
+          // DM-only (per-farmer ack, never group). signal_outbound row is written
+          // by signal.js's single-hook persistence with intent='commit_outcome_ack',
+          // tenant_id='mossrock' (default), related_draft_id=draftRow.id. Best-effort
+          // (fail-open per D-03); logging failure does NOT unwind the ack send.
+          if (!extras.outcome) {
+            logger.warn && logger.warn(`[outbound-confirm] send_commit_outcome_ack missing outcome draft=${truncId(draftRow && draftRow.id)}`);
+            return { ok: false, reason: 'missing_outcome' };
+          }
+          let farmosLink;
+          const resp = draftRow && draftRow.farmos_response;
+          if (resp && typeof resp === 'object' && typeof resp.link === 'string' && resp.link.trim() !== '') {
+            farmosLink = resp.link.trim();
+          }
+          if (dm == null) {
+            logger.warn && logger.warn(`[outbound-confirm] send_commit_outcome_ack: no_target draft=${truncId(draftRow && draftRow.id)}`);
+            return { ok: false, reason: 'no_target' };
+          }
+          body = renderOutcomeAck(draftRow || {}, {
+            outcome: extras.outcome,
+            reason: extras.reason,
+            farmosLink,
+          });
+          // Phase 50 Plan 03: quote-aware ack on the highest-traffic terminal
+          // ack site. Best-effort -- lookup failure degrades to unquoted ack.
+          const quote = await tryBuildQuoteForDraft(draftRow || null);
+          const res = await safeSend(body, dm, draftRow && draftRow.id, 'commit_outcome_ack', quote);
+          if (res && res.ok) {
+            logger.info && logger.info(`[outbound-confirm] send_commit_outcome_ack sent outcome=${extras.outcome} draft=${truncId(draftRow && draftRow.id)}`);
+          }
+          return res;
+        }
+        case 'send_ask_back': {
+          // Phase 50 Plan-04 (CONTEXT D-06): emitted only when >1 active draft
+          // AND inbound carried no quote. DM-only; never quotes. extras must
+          // carry { activeDrafts, senderE164 }. draftRow is null for this case
+          // because there is no single resolved draft yet -- routing target is
+          // the sender directly.
+          const activeDrafts = Array.isArray(extras.activeDrafts) ? extras.activeDrafts : [];
+          const sender = extras.senderE164 || (draftRow && draftRow.sender_e164);
+          if (!sender) {
+            logger.warn && logger.warn(`[outbound-confirm] send_ask_back: no_target`);
+            return { ok: false, reason: 'no_target' };
+          }
+          if (activeDrafts.length < 2) {
+            logger.warn && logger.warn(`[outbound-confirm] send_ask_back: <2 drafts (${activeDrafts.length}); skipping`);
+            return { ok: false, reason: 'insufficient_drafts' };
+          }
+          const askBody = renderNumberedAskBack(activeDrafts);
+          // intent='ask_back' so signal_outbound row carries the canonical
+          // label for audit. No quote, no related_draft_id (it's deliberately
+          // not pinned to a single draft).
+          const res = await safeSend(askBody, sender, null, 'ask_back', null);
+          if (res && res.ok) {
+            logger.info && logger.info(`[outbound-confirm] send_ask_back sent n=${activeDrafts.length} sender=${truncId(sender)}`);
+          }
+          return res;
+        }
+        case 'send_quote_closed': {
+          // Phase 50 Plan-04 (CONTEXT D-04 step 2c): farmer quote-replied a
+          // bot ack whose draft is already terminal. Polite single-line ack;
+          // does NOT mutate the draft (terminal state stands).
+          if (dm == null) {
+            logger.warn && logger.warn(`[outbound-confirm] send_quote_closed: no_target draft=${truncId(draftRow && draftRow.id)}`);
+            return { ok: false, reason: 'no_target' };
+          }
+          const closedBody = renderQuoteClosed(draftRow || {});
+          const res = await safeSend(closedBody, dm, draftRow && draftRow.id, 'quote_closed', null);
+          if (res && res.ok) {
+            logger.info && logger.info(`[outbound-confirm] send_quote_closed sent draft=${truncId(draftRow && draftRow.id)} status=${draftRow && draftRow.status}`);
+          }
+          return res;
+        }
         default:
           logger.warn && logger.warn(`[outbound-confirm] unknown side_effect=${sideEffect}`);
           return { ok: false, reason: 'unknown_side_effect' };

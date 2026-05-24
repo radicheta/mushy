@@ -74,11 +74,16 @@ function createFarmosClient({
   async function _doFetch(method, path, body, opts) {
     opts = opts || {};
     const url = path.startsWith('http') ? path : `${farmosUrl}${path}`;
-    const headers = {
+    // Phase 51 UPSERT-04 (degraded): client honors opts.headers so callers may
+    // send If-Match. Soft revision_id compare lives at the call site
+    // (assets.js upsertFungiAsset); farmOS does not currently return 412 on
+    // If-Match mismatch (see 51-RESEARCH.md A4) but plumbing exists for future
+    // Drupal versions. Caller-supplied headers WIN over defaults.
+    const headers = Object.assign({
       Accept: 'application/vnd.api+json',
       Cookie: _session.cookie || '',
       'X-CSRF-Token': _session.csrf || '',
-    };
+    }, (opts && opts.headers) || {});
     let fetchBody = undefined;
     if (method !== 'GET' && method !== 'HEAD') {
       if (opts.binary) {
@@ -172,6 +177,10 @@ function createFarmosClient({
     return _request('POST', path, bytes, opts);
   }
   async function head(path, opts) { return _request('HEAD', path, null, opts); }
+  // Phase 48 Plan 02: orphan cleanup after partial commit failure in
+  // commit-seeding-session. farmOS returns 204 on a successful asset delete
+  // (no body), which _request still surfaces as ok=true.
+  async function del(path, opts) { return _request('DELETE', path, null, opts); }
 
   return {
     get,
@@ -179,6 +188,7 @@ function createFarmosClient({
     patch,
     postBinary,
     head,
+    delete: del,
     _session, // test introspection
   };
 }

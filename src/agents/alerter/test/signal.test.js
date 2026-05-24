@@ -515,4 +515,211 @@ describe('signal.js', () => {
       expect(result.ok).toBe(true);
     });
   });
+
+  describe('Phase 50 Plan-02: quote pass-through + signal_msg_ts persistence', () => {
+    function makeFakeOutboundDb() {
+      return { insertOutbound: jest.fn().mockResolvedValue({ ok: true }) };
+    }
+    function makeFakePool() {
+      return { query: jest.fn() };
+    }
+
+    it('valid quote opts → /v2/send body includes top-level quote: {timestamp, author, message}', async () => {
+      const result = await client.send('ack body', {
+        intent: 'send_commit_outcome_ack',
+        quote: { timestamp: 1779562666675, author: '+59891840205', message: 'original farmer text' },
+      });
+      expect(result.ok).toBe(true);
+      expect(server.sent).toHaveLength(1);
+      expect(server.sent[0]).toMatchObject({
+        message: 'ack body',
+        number: SENDER,
+        recipients: [RECIPIENT],
+        quote: { timestamp: 1779562666675, author: '+59891840205', message: 'original farmer text' },
+      });
+    });
+
+    it('no quote opt → /v2/send body has NO quote key (back-compat for ~14 callers)', async () => {
+      await client.send('plain ack', { intent: 'rh_alert' });
+      expect(server.sent).toHaveLength(1);
+      expect(server.sent[0]).not.toHaveProperty('quote');
+    });
+
+    it('quote: null → /v2/send body has NO quote key', async () => {
+      await client.send('plain ack', { intent: 'rh_alert', quote: null });
+      expect(server.sent[0]).not.toHaveProperty('quote');
+    });
+
+    it('invalid quote (non-numeric timestamp) → logger.warn + send proceeds without quote', async () => {
+      const logLines = [];
+      const logger = {
+        info: () => {},
+        warn: (...a) => logLines.push(a.join(' ')),
+        error: () => {},
+      };
+      const c = createSignalClient({
+        apiUrl: server.url,
+        sender: SENDER,
+        recipient: RECIPIENT,
+        maxSendsPerHour: 20,
+        logger,
+      });
+      const result = await c.send('ack', {
+        intent: 'send_commit_outcome_ack',
+        quote: { timestamp: 'notanumber', author: '+59891840205', message: 'hi' },
+      });
+      expect(result.ok).toBe(true);
+      expect(server.sent[0]).not.toHaveProperty('quote');
+      expect(logLines.some((l) => /invalid quote/i.test(l))).toBe(true);
+    });
+
+    it('invalid quote (missing author) → warn + unquoted send', async () => {
+      const logLines = [];
+      const logger = { info: () => {}, warn: (...a) => logLines.push(a.join(' ')), error: () => {} };
+      const c = createSignalClient({
+        apiUrl: server.url, sender: SENDER, recipient: RECIPIENT, maxSendsPerHour: 20, logger,
+      });
+      await c.send('ack', { intent: 'rh_alert', quote: { timestamp: 1779562666675, message: 'x' } });
+      expect(server.sent[0]).not.toHaveProperty('quote');
+      expect(logLines.some((l) => /invalid quote/i.test(l))).toBe(true);
+    });
+
+    it('invalid quote (non-string message) → warn + unquoted send', async () => {
+      const logLines = [];
+      const logger = { info: () => {}, warn: (...a) => logLines.push(a.join(' ')), error: () => {} };
+      const c = createSignalClient({
+        apiUrl: server.url, sender: SENDER, recipient: RECIPIENT, maxSendsPerHour: 20, logger,
+      });
+      await c.send('ack', { intent: 'rh_alert', quote: { timestamp: 1, author: '+5', message: 12345 } });
+      expect(server.sent[0]).not.toHaveProperty('quote');
+      expect(logLines.some((l) => /invalid quote/i.test(l))).toBe(true);
+    });
+
+    it('valid quote where message is empty string → quote IS included (Signal accepts empty)', async () => {
+      await client.send('ack', {
+        intent: 'rh_alert',
+        quote: { timestamp: 100, author: '+5', message: '' },
+      });
+      expect(server.sent[0]).toHaveProperty('quote');
+      expect(server.sent[0].quote).toEqual({ timestamp: 100, author: '+5', message: '' });
+    });
+
+    it('quote.timestamp as numeric string is coerced via Number() in payload', async () => {
+      await client.send('ack', {
+        intent: 'rh_alert',
+        quote: { timestamp: '1779562666675', author: '+59891840205', message: 'hi' },
+      });
+      expect(server.sent[0].quote).toEqual({
+        timestamp: 1779562666675, author: '+59891840205', message: 'hi',
+      });
+    });
+
+    it('on successful send (non-quote path), insertOutbound row.signal_msg_ts = Number(json.timestamp)', async () => {
+      const outboundDb = makeFakeOutboundDb();
+      const pool = makeFakePool();
+      const c = createSignalClient({
+        apiUrl: server.url, sender: SENDER, recipient: RECIPIENT, maxSendsPerHour: 20,
+        outboundDb, pool, tenantId: 'mossrock',
+      });
+      await c.send('hi', { intent: 'rh_alert' });
+      expect(outboundDb.insertOutbound).toHaveBeenCalledTimes(1);
+      const row = outboundDb.insertOutbound.mock.calls[0][1];
+      // fake server returns Date.now() (number) — must be a finite number, not null.
+      expect(typeof row.signal_msg_ts).toBe('number');
+      expect(Number.isFinite(row.signal_msg_ts)).toBe(true);
+    });
+
+    it('on successful send (quote path), insertOutbound row.signal_msg_ts is the returned ts', async () => {
+      const outboundDb = makeFakeOutboundDb();
+      const pool = makeFakePool();
+      const c = createSignalClient({
+        apiUrl: server.url, sender: SENDER, recipient: RECIPIENT, maxSendsPerHour: 20,
+        outboundDb, pool, tenantId: 'mossrock',
+      });
+      await c.send('hi', {
+        intent: 'send_commit_outcome_ack',
+        quote: { timestamp: 1779562666675, author: '+59891840205', message: 'x' },
+      });
+      const row = outboundDb.insertOutbound.mock.calls[0][1];
+      expect(typeof row.signal_msg_ts).toBe('number');
+      expect(Number.isFinite(row.signal_msg_ts)).toBe(true);
+    });
+
+    it('stringified json.timestamp from signal-cli is Number()-coerced into row.signal_msg_ts', async () => {
+      // Real signal-cli 0.14.2 returns {"timestamp":"1779562666675"} (stringified).
+      // Build a spy http server returning the stringified form.
+      const http = require('http');
+      const sent = [];
+      const spy = http.createServer((req, res) => {
+        if (req.method === 'POST' && req.url === '/v2/send') {
+          let body = '';
+          req.on('data', (c) => { body += c; });
+          req.on('end', () => {
+            sent.push(JSON.parse(body));
+            res.writeHead(201, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ timestamp: '1779562666675' }));
+          });
+          return;
+        }
+        res.writeHead(404); res.end();
+      });
+      await new Promise((r) => spy.listen(0, '127.0.0.1', r));
+      const { port } = spy.address();
+
+      const outboundDb = makeFakeOutboundDb();
+      const pool = makeFakePool();
+      const c = createSignalClient({
+        apiUrl: `http://127.0.0.1:${port}`,
+        sender: SENDER, recipient: RECIPIENT, maxSendsPerHour: 20,
+        outboundDb, pool, tenantId: 'mossrock',
+      });
+      const result = await c.send('hi', { intent: 'rh_alert' });
+      await new Promise((r) => spy.close(r));
+      expect(result.ok).toBe(true);
+      const row = outboundDb.insertOutbound.mock.calls[0][1];
+      expect(row.signal_msg_ts).toBe(1779562666675); // coerced number, not string
+      expect(typeof row.signal_msg_ts).toBe('number');
+    });
+
+    it('signal-cli response without json.timestamp → row.signal_msg_ts is null (best-effort)', async () => {
+      const http = require('http');
+      const spy = http.createServer((req, res) => {
+        if (req.method === 'POST' && req.url === '/v2/send') {
+          req.on('data', () => {});
+          req.on('end', () => {
+            res.writeHead(201, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({})); // no timestamp field
+          });
+          return;
+        }
+        res.writeHead(404); res.end();
+      });
+      await new Promise((r) => spy.listen(0, '127.0.0.1', r));
+      const { port } = spy.address();
+
+      const outboundDb = makeFakeOutboundDb();
+      const pool = makeFakePool();
+      const c = createSignalClient({
+        apiUrl: `http://127.0.0.1:${port}`,
+        sender: SENDER, recipient: RECIPIENT, maxSendsPerHour: 20,
+        outboundDb, pool, tenantId: 'mossrock',
+      });
+      const result = await c.send('hi', { intent: 'rh_alert' });
+      await new Promise((r) => spy.close(r));
+      expect(result.ok).toBe(true);
+      const row = outboundDb.insertOutbound.mock.calls[0][1];
+      expect(row.signal_msg_ts).toBeNull();
+    });
+
+    it('send() return value unchanged: { ok, timestamp }', async () => {
+      const result = await client.send('hi', {
+        intent: 'rh_alert',
+        quote: { timestamp: 1779562666675, author: '+59891840205', message: 'x' },
+      });
+      expect(result.ok).toBe(true);
+      expect(typeof result.timestamp).toBe('number');
+      // No extra keys leak into the public return shape.
+      expect(Object.keys(result).sort()).toEqual(['ok', 'timestamp']);
+    });
+  });
 });

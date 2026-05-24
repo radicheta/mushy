@@ -42,6 +42,14 @@ async function initDb(pool) {
   // Phase 44 Plan-04 D-04: event-gate audit column. VARCHAR(32) per locked D-04
   // decision (NOT downgraded to `text` — D-04 enum longest value 'skipped_rule_neg' is 16 chars).
   await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS extraction_gate VARCHAR(32)`);
+  // Phase 50 Plan-01 D-02: three nullable columns for Signal-native quote threading.
+  // signal_msg_ts  = ms-since-epoch of the inbound message (what the bot will quote on outbound acks).
+  // quote_msg_ts   = ms-since-epoch of the bot message the farmer's incoming msg is quoting (resolved via signal_outbound.signal_msg_ts).
+  // quote_author_e164 = e164 of the original quoted author (the bot's number when farmer quote-replies an ack).
+  // Plan 04 owns the receive-loop write path; this plan only lands the columns.
+  await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS signal_msg_ts bigint`);
+  await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS quote_msg_ts bigint`);
+  await pool.query(`ALTER TABLE signal_capture ADD COLUMN IF NOT EXISTS quote_author_e164 text`);
   await pool.query(`
     CREATE OR REPLACE VIEW v_llm_cost_daily AS
     SELECT
@@ -63,10 +71,13 @@ async function initDb(pool) {
 }
 
 async function insertCapture(pool, row) {
+  // Phase 50 Plan-04: signal_msg_ts (every inbound msg ts), quote_msg_ts +
+  // quote_author_e164 (set only when farmer used Signal's quote/reply UI).
+  // All three default NULL when caller omits them (back-compat).
   await pool.query(
     `INSERT INTO signal_capture
-       (id, captured_at, sender, message_type, raw_text, attachment_paths, transcript, llm_session_tag, llm_reply, degraded, group_id, farmos_person, reply_target_kind)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+       (id, captured_at, sender, message_type, raw_text, attachment_paths, transcript, llm_session_tag, llm_reply, degraded, group_id, farmos_person, reply_target_kind, signal_msg_ts, quote_msg_ts, quote_author_e164)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
     [
       row.id,
       row.captured_at,
@@ -81,6 +92,9 @@ async function insertCapture(pool, row) {
       row.group_id ?? null,
       row.farmos_person ?? null,
       row.reply_target_kind ?? null,
+      row.signal_msg_ts ?? null,
+      row.quote_msg_ts ?? null,
+      row.quote_author_e164 ?? null,
     ]
   );
 }

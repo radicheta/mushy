@@ -115,6 +115,31 @@ describe('buildPreview', () => {
   });
 });
 
+// Phase 48-03 NOTE: the Phase 47-04 placeholder branch tests previously lived
+// here. They were moved to preview-builder-session.test.js when the production
+// renderSeedingSession() shipped. The single regression assertion that legacy
+// 5-log-type previews are unaffected by the dispatch-branch change is below
+// (under "buildPreview: legacy 5-type regression").
+
+describe('buildPreview: legacy 5-type regression (Phase 48-03 guard)', () => {
+  test('seeding renders the same field-listing body after the dispatch-branch change', () => {
+    const out = buildPreview({
+      draft: {
+        type: 'seeding', species: 'SHI', block_name: '260512_SHI_4',
+        qty: 10, event_timestamp: '2026-05-12T10:00:00.000Z',
+      },
+      perFieldConfidence: { species: 0.9, block_name: 0.9, qty: 0.9, event_timestamp: 0.9 },
+      threshold: 0.7,
+      requiredFields: SEEDING_REQUIRED,
+    });
+    expect(out).toMatch(/type:\s*seeding(\s|$)/m);
+    expect(out).toMatch(/block_name:\s*260512_SHI_4/);
+    expect(out).not.toMatch(/Inoc session/);
+    expect(out).not.toMatch(/blocks across/);
+    expect(out).not.toMatch(/YES to commit/);
+  });
+});
+
 // ---- buildTopQuestion ----
 
 describe('buildTopQuestion', () => {

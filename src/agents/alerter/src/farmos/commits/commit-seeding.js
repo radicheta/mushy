@@ -46,16 +46,19 @@ async function commitSeeding(client, draft, ctx) {
 
     const blockName = dj.block_name;
     if (!blockName) return { ok: false, reason: 'missing_block_name' };
-    const blockRes = await assets.createFungiAsset(client, {
+    // Phase 51 UPSERT-01: route through upsertFungiAsset so a re-run against a
+    // populated farmOS is idempotent. Only track in createdAssets when
+    // outcome==='created' (patched/noop assets must not be rolled back).
+    const blockRes = await assets.upsertFungiAsset(client, {
       name: blockName,
       fungiTypeName: strain,
       fungiXingName: 'block',
       qrCodes: pathAQrs,
       draftId,
     });
-    if (!blockRes.ok) return { ok: false, reason: blockRes.reason || 'block_create_failed', http_status: blockRes.http_status };
+    if (!blockRes.ok) return { ok: false, reason: blockRes.reason || 'block_upsert_failed', http_status: blockRes.http_status };
     blockId = blockRes.assetId;
-    createdAssets.push(blockId);
+    if (blockRes.outcome === 'created') createdAssets.push(blockId);
   }
 
   // Seeding log. batch_name preserved in notes (pasteurization log not
@@ -66,14 +69,14 @@ async function commitSeeding(client, draft, ctx) {
   if (batchName) noteParts.push('sterilization_batch: ' + batchName);
   const notes = noteParts.join('\n');
 
-  const logRes = await logs.createLog(client, 'seeding', {
+  const logRes = await logs.upsertLog(client, 'seeding', {
     name: 'Inoc ' + (dj.block_name || blockId),
     timestamp,
     assetIds: [blockId],
     notes,
     draftId,
   });
-  if (!logRes.ok) return { ok: false, reason: logRes.reason || 'log_create_failed', http_status: logRes.http_status, asset_ids: createdAssets };
+  if (!logRes.ok) return { ok: false, reason: logRes.reason || 'log_upsert_failed', http_status: logRes.http_status, asset_ids: createdAssets };
 
   return {
     ok: true,

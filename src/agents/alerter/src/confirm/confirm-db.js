@@ -235,10 +235,20 @@ async function updateDraftAfterEdit(pool, draftId, fields) {
 
 async function findAwaitingForSender(pool, senderE164) {
   try {
+    // Phase 45 Plan 04 follow-on (Plan 03 hand-off): include commit_failed in
+    // the active-draft lookup so EDIT replies from a farmer on a failed commit
+    // actually reach the edit-handler (which now accepts commit_failed per
+    // Plan 03's Option X). Without this extension the EDIT-from-commit_failed
+    // path is wired in code but unreachable at runtime from a real Signal reply.
+    // Ordering: awaiting_farmer wins over commit_failed when both exist for the
+    // same sender (most recent active confirm beats a leftover failed draft);
+    // within the same status, most recent updated_at wins.
     const r = await pool.query(
       `SELECT * FROM signal_draft
-        WHERE sender_e164=$1 AND status='awaiting_farmer'
-        ORDER BY updated_at DESC
+        WHERE sender_e164=$1
+          AND status IN ('awaiting_farmer','commit_failed')
+        ORDER BY CASE status WHEN 'awaiting_farmer' THEN 0 ELSE 1 END ASC,
+                 updated_at DESC
         LIMIT 1`,
       [senderE164]
     );
@@ -246,6 +256,36 @@ async function findAwaitingForSender(pool, senderE164) {
   } catch (e) {
     // Defensive: bubble null so caller falls through; matches Phase 38 conventions.
     return null;
+  }
+}
+
+// Phase 50 Plan-04: list-shape sibling of findAwaitingForSender. Returns ALL
+// active drafts (awaiting_farmer + commit_failed) for a sender; same ordering
+// as the single-row variant (awaiting_farmer wins; within status, newer
+// updated_at wins). Used by receive-loop to detect the >1-active ambiguity
+// case and emit a numbered ask-back per CONTEXT D-04.
+async function findActiveDraftsForSender(pool, senderE164) {
+  // Hotfix 2026-05-23: stale commit_failed drafts (>6h old) are excluded
+  // from the ambiguity calculation. awaiting_farmer is never aged out (the
+  // farmer hasn't replied yet). commit_failed older than 6h is treated as
+  // out-of-band -- if the farmer wants to EDIT it, Phase 50 quote-threading
+  // routes them by Signal quote (bypassing this gate). Without this filter,
+  // 10-day-old ack-debt drafts trap every fresh capture in numbered ask-back.
+  try {
+    const r = await pool.query(
+      `SELECT * FROM signal_draft
+        WHERE sender_e164=$1
+          AND (
+            status = 'awaiting_farmer'
+            OR (status = 'commit_failed' AND updated_at > now() - interval '6 hours')
+          )
+        ORDER BY CASE status WHEN 'awaiting_farmer' THEN 0 ELSE 1 END ASC,
+                 updated_at DESC`,
+      [senderE164]
+    );
+    return r.rows || [];
+  } catch (_e) {
+    return [];
   }
 }
 
@@ -280,6 +320,69 @@ async function findExpireCandidates(pool, timeoutMin) {
   }
 }
 
+// ----- Plan 50-03: outbound quote-threading lookup -----
+
+// getCaptureQuoteTarget(pool, captureId)
+//   -> { signal_msg_ts, sender, raw_text } when the capture row exists AND
+//      signal_msg_ts is non-null.
+//   -> null in every other case (missing captureId, missing row, NULL ts,
+//      ANY DB error). Never throws.
+//
+// This drives the outbound-confirm dispatcher's quote payload for
+// send_commit_outcome_ack + send_confirm_ack. Per CONTEXT D-05 and memory
+// [[feedback_no_silent_failure_after_farmer_confirm]] the dispatcher MUST
+// degrade to an unquoted ack rather than block when this returns null --
+// a vague ack beats no ack.
+async function getCaptureQuoteTarget(pool, captureId) {
+  if (!captureId) return null;
+  if (!pool || typeof pool.query !== 'function') return null;
+  try {
+    const r = await pool.query(
+      'SELECT signal_msg_ts, sender, raw_text FROM signal_capture WHERE id = $1 LIMIT 1',
+      [captureId]
+    );
+    const row = r && r.rows && r.rows[0];
+    if (!row || row.signal_msg_ts == null) return null;
+    return {
+      signal_msg_ts: row.signal_msg_ts,
+      sender: row.sender,
+      raw_text: row.raw_text == null ? '' : row.raw_text,
+    };
+  } catch (_e) {
+    return null;
+  }
+}
+
+// ----- Plan 50-04: inbound quote-resolution -----
+
+// findDraftByQuotedMsgTs(pool, quoteMsgTs)
+//   -> the joined signal_draft row when an outbound row exists with the given
+//      signal_msg_ts AND that outbound's related_draft_id resolves to a draft.
+//   -> null in every other case (null arg, no outbound match, related_draft_id
+//      NULL, DB error). Never throws.
+//
+// ORDER BY sent_at DESC LIMIT 1 guards the (rare) case where two outbound rows
+// collide on the same Signal ms-ts -- pick the most recent. Leverages the
+// idx_signal_outbound_msg_ts partial index from Plan 50-01.
+async function findDraftByQuotedMsgTs(pool, quoteMsgTs) {
+  if (quoteMsgTs == null) return null;
+  if (!pool || typeof pool.query !== 'function') return null;
+  try {
+    const r = await pool.query(
+      `SELECT d.*
+         FROM signal_outbound o
+         JOIN signal_draft d ON d.id = o.related_draft_id
+        WHERE o.signal_msg_ts = $1
+        ORDER BY o.sent_at DESC
+        LIMIT 1`,
+      [quoteMsgTs]
+    );
+    return (r && r.rows && r.rows[0]) || null;
+  } catch (_e) {
+    return null;
+  }
+}
+
 module.exports = {
   initDb,
   confirmDraft,
@@ -293,4 +396,7 @@ module.exports = {
   findAwaitingForSender,
   findNudgeCandidates,
   findExpireCandidates,
+  getCaptureQuoteTarget,
+  findDraftByQuotedMsgTs,
+  findActiveDraftsForSender,
 };

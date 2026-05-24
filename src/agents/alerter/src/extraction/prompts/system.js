@@ -66,6 +66,53 @@ const SYSTEM_PROMPT = [
   '    drafts, this is usually 1.',
   '  - event_timestamp: ISO 8601 with timezone (Z or +00:00).',
   '',
+  'Session vs single-event seeding:',
+  '  - When a capture describes MORE THAN ONE child block (audio enumerates many',
+  '    bags in one breath, or a paper-log photo shows a multi-row page with the',
+  '    same event_date), emit ONE draft of type=seeding_session with groups[],',
+  '    NOT N separate seeding drafts.',
+  '  - Cardinality rule: total children across all groups > 1 => type=seeding_session.',
+  '    total children == 1 AND no session context => legacy type=seeding.',
+  '  - groups[] carries the per-parent rows: each group is {parent, species, qty,',
+  '    child_block_names}. A single-parent multi-child session still emits',
+  '    groups.length === 1 (the session shape is the canonical batch shape, not',
+  '    the per-bag shape).',
+  '  - event_date is day-grain YYYY-MM-DD on the seeding_session draft; per-bag',
+  '    timestamps are derived downstream at commit time.',
+  '',
+  'Provenance (groups-shape only):',
+  '  - On seeding_session, EVERY provenanced field is the object',
+  '    {value, confidence, sources[]}. This applies to group.parent, group.species,',
+  '    group.qty, and group.child_block_names. event_date, notes, type, conflicts,',
+  '    and needs_input are NOT provenanced (single-source by construction).',
+  '  - sources[] is a non-empty subset of:',
+  '      audio, paper_log_photo, bag_label_photo, text, model_inference',
+  '  - When multiple sources agree on a value, list ALL of them in sources[].',
+  '  - When only one source contributed, list just that one.',
+  '  - confidence is 0..1, your own estimate of how certain this fused value is.',
+  '',
+  'Conflict resolution (groups-shape only):',
+  '  - When audio and paper_log_photo disagree on a value, PHOTO WINS silently.',
+  '    Set the field .value to the photo value, include BOTH sources in .sources[],',
+  '    set .confidence to the photo confidence.',
+  '  - ALSO push an entry into draft.conflicts[]:',
+  '      { path: "groups[i].<field>.value",',
+  '        candidates: [ {value, source, confidence}, {value, source, confidence} ],',
+  '        resolution: "photo_wins_implicit" }',
+  '  - conflicts[] is internal forensics. NEVER mention conflicts in any human-',
+  '    readable text. The farmer must never see the disagreement.',
+  '',
+  'Missing SEQ ask-back:',
+  '  - When child block_names have no source (NO paper_log_photo AND audio did',
+  '    not enumerate SEQ numbers), do NOT guess a starting SEQ.',
+  '  - Emit child_block_names.value as an array of the literal string "NEEDS_SEQ"',
+  '    with length === qty.value for that group.',
+  '  - Set draft.needs_input = "starting_seq". The pipeline asks the farmer back',
+  '    and fills the real block_names from their reply.',
+  '  - If parent cannot be identified from any source (e.g. fresh-grain inoc with',
+  '    no parent batch), set group.parent.value = "NO_PARENT". Sources[] still',
+  '    reflects which source(s) confirmed the absence (usually ["audio"]).',
+  '',
   'Year handling (CRITICAL):',
   '  - If the page shows no year, use corpus_context.default_year if supplied.',
   '  - If neither the page nor the corpus context provides a year, set per_field_',
@@ -178,11 +225,113 @@ const FEW_SHOT = [
       },
     ],
   },
-  // (3) Continuity = replace (correction to in-flight draft).
+  // (3) Multi-parent multi-species seeding_session (Phase 47 Plan 02).
+  // Canonical May-22 shape: 11 children across 5 groups (3 SHI singletons + 2 KOY
+  // multi-child groups). Session-wide SEQ counter: SHI_1..3, KOY_4..7, KOY_8..11.
+  // Demonstrates: (a) type=seeding_session emitted instead of N separate seeding
+  // drafts, (b) inline {value, confidence, sources[]} provenance on every group
+  // field, (c) photo_wins_implicit conflict resolution with conflicts[] entry,
+  // (d) child_block_names sources = ['paper_log_photo'] when SEQ comes from photo.
   {
     role: 'user',
     content: [
       { type: 'tool_result', tool_use_id: 'tu_fewshot_2', content: [{ type: 'text', text: 'accepted' }] },
+      { type: 'text', text: 'corpus_context: {"default_year": 2026}' },
+      { type: 'text', text: 'In-flight draft: none' },
+      {
+        type: 'text',
+        text: [
+          'Audio transcript: "May 22, inoc day, 11 blocks total. Three shiitakes,',
+          'one from 260103_SHI_5, one from 260210_SHI_8, one from 260318_SHI_12.',
+          'Then eight king oysters, four from 260118_KOY_23, four from 260425_KOY_4."',
+          'Paper-log photo (multi-row page, header dated 22/5):',
+          '  Row 1: SHI, parent 260103_SHI_5, qty 1, block 260522_SHI_1',
+          '  Row 2: SHI, parent 260210_SHI_8, qty 1, block 260522_SHI_2',
+          '  Row 3: SHI, parent 260318_SHI_12, qty 1, block 260522_SHI_3',
+          '  Row 4: KOY, parent 260118_KOY_25, qty 4, blocks 260522_KOY_4..7',
+          '  Row 5: KOY, parent 260425_KOY_4, qty 4, blocks 260522_KOY_8..11',
+          'Note: audio says KOY parent is 260118_KOY_23 but photo shows 260118_KOY_25.',
+        ].join('\n'),
+      },
+    ],
+  },
+  {
+    role: 'assistant',
+    content: [
+      {
+        type: 'tool_use',
+        id: 'tu_fewshot_4',
+        name: 'submit_extraction',
+        input: {
+          drafts: [
+            {
+              draft: {
+                type: 'seeding_session',
+                event_date: '2026-05-22',
+                groups: [
+                  {
+                    parent: { value: '260103_SHI_5', confidence: 0.95, sources: ['audio', 'paper_log_photo'] },
+                    species: { value: 'SHI', confidence: 0.98, sources: ['audio', 'paper_log_photo'] },
+                    qty: { value: 1, confidence: 0.98, sources: ['audio', 'paper_log_photo'] },
+                    child_block_names: { value: ['260522_SHI_1'], confidence: 0.95, sources: ['paper_log_photo'] },
+                  },
+                  {
+                    parent: { value: '260210_SHI_8', confidence: 0.95, sources: ['audio', 'paper_log_photo'] },
+                    species: { value: 'SHI', confidence: 0.98, sources: ['audio', 'paper_log_photo'] },
+                    qty: { value: 1, confidence: 0.98, sources: ['audio', 'paper_log_photo'] },
+                    child_block_names: { value: ['260522_SHI_2'], confidence: 0.95, sources: ['paper_log_photo'] },
+                  },
+                  {
+                    parent: { value: '260318_SHI_12', confidence: 0.95, sources: ['audio', 'paper_log_photo'] },
+                    species: { value: 'SHI', confidence: 0.98, sources: ['audio', 'paper_log_photo'] },
+                    qty: { value: 1, confidence: 0.98, sources: ['audio', 'paper_log_photo'] },
+                    child_block_names: { value: ['260522_SHI_3'], confidence: 0.95, sources: ['paper_log_photo'] },
+                  },
+                  {
+                    // Conflict: audio said 260118_KOY_23, photo said 260118_KOY_25. Photo wins.
+                    parent: { value: '260118_KOY_25', confidence: 0.95, sources: ['audio', 'paper_log_photo'] },
+                    species: { value: 'KOY', confidence: 0.98, sources: ['audio', 'paper_log_photo'] },
+                    qty: { value: 4, confidence: 0.98, sources: ['audio', 'paper_log_photo'] },
+                    child_block_names: { value: ['260522_KOY_4', '260522_KOY_5', '260522_KOY_6', '260522_KOY_7'], confidence: 0.95, sources: ['paper_log_photo'] },
+                  },
+                  {
+                    parent: { value: '260425_KOY_4', confidence: 0.95, sources: ['audio', 'paper_log_photo'] },
+                    species: { value: 'KOY', confidence: 0.98, sources: ['audio', 'paper_log_photo'] },
+                    qty: { value: 4, confidence: 0.98, sources: ['audio', 'paper_log_photo'] },
+                    child_block_names: { value: ['260522_KOY_8', '260522_KOY_9', '260522_KOY_10', '260522_KOY_11'], confidence: 0.95, sources: ['paper_log_photo'] },
+                  },
+                ],
+                conflicts: [
+                  {
+                    path: 'groups[3].parent.value',
+                    candidates: [
+                      { value: '260118_KOY_23', source: 'audio', confidence: 0.7 },
+                      { value: '260118_KOY_25', source: 'paper_log_photo', confidence: 0.95 },
+                    ],
+                    resolution: 'photo_wins_implicit',
+                  },
+                ],
+              },
+              per_field_confidence: {
+                event_date: 0.98,
+                'groups[0].parent': 0.95,
+                'groups[0].child_block_names': 0.95,
+                'groups[3].parent': 0.95,
+                'groups[4].child_block_names': 0.95,
+              },
+            },
+          ],
+          continuity: 'start_new',
+          continuity_reason: 'Multi-parent inoc session with no in-flight draft.',
+        },
+      },
+    ],
+  },
+  // (4) Continuity = replace (correction to in-flight draft).
+  {
+    role: 'user',
+    content: [
+      { type: 'tool_result', tool_use_id: 'tu_fewshot_4', content: [{ type: 'text', text: 'accepted' }] },
       { type: 'text', text: 'corpus_context: {"default_year": 2026}' },
       { type: 'text', text: 'In-flight draft: {"type":"seeding","species":"shiitake","block_name":"260512_SHI_1","qty":12,"event_timestamp":"2026-05-12T00:00:00Z"}' },
       { type: 'text', text: 'New farmer text: correction, it was 14 not 12' },

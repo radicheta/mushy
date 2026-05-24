@@ -1,0 +1,102 @@
+{
+  "type": "seeding_session",
+  "event_date": "2026-05-22",
+  "groups": [
+    {
+      "parent": {
+        "value": "260304_SHI_5",
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "species": {
+        "value": "SHI",
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "qty": {
+        "value": 1,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "child_block_names": {
+        "value": ["260522_SHI_1"],
+        "sources": ["paper_log_photo"]
+      }
+    },
+    {
+      "parent": {
+        "value": "260118_SHI_23",
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "species": {
+        "value": "SHI",
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "qty": {
+        "value": 1,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "child_block_names": {
+        "value": ["260522_SHI_2"],
+        "sources": ["paper_log_photo"]
+      }
+    },
+    {
+      "parent": {
+        "value": "260118_SHI_26",
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "species": {
+        "value": "SHI",
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "qty": {
+        "value": 1,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "child_block_names": {
+        "value": ["260522_SHI_3"],
+        "sources": ["paper_log_photo"]
+      }
+    },
+    {
+      "parent": {
+        "value": "260118_KOY_12",
+        "sources": ["paper_log_photo"]
+      },
+      "species": {
+        "value": "KOY",
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "qty": {
+        "value": 4,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "child_block_names": {
+        "value": ["260522_KOY_4", "260522_KOY_5", "260522_KOY_6", "260522_KOY_7"],
+        "sources": ["paper_log_photo"]
+      }
+    },
+    {
+      "parent": {
+        "value": "260425_KOY_4",
+        "sources": ["paper_log_photo"]
+      },
+      "species": {
+        "value": "KOY",
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "qty": {
+        "value": 4,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "child_block_names": {
+        "value": ["260522_KOY_8", "260522_KOY_9", "260522_KOY_10", "260522_KOY_11"],
+        "sources": ["paper_log_photo"]
+      }
+    }
+  ],
+  "meta": {
+    "capture_date": "2026-05-22",
+    "source_path": "/mnt/mossrock/shared/mushdatadump-prod/2026-05-12_inoc_santi/",
+    "regression_guard": true,
+    "notes": "Named regression guard for Phase 49. The May-22 capture (audio HOZad9ymvNJTXmRREgcW.m4a + photo XAbzzUidkLR3irhVmjea.jpg) was misfiled under the 2026-05-12_inoc_santi/ folder during Phase 47 live-fire intake; the transcript content + paper-log photo confirm the May-22 session. 5 groups, 11 children, parents include 260304_SHI_5, 260118_SHI_23, 260118_SHI_26, 260118_KOY_12, 260425_KOY_4. SHI parents are primarily audio-sourced (voice-named bag IDs); KOY parents are paper-log-sourced (drawn from the operator notebook page). Audio + photo present in fixture as symlinks to the prod corpus; do not copy the raw bytes into the repo."
+  }
+}

@@ -61,7 +61,25 @@ function createSignalClient({ apiUrl, sender, recipient, defaultTarget, maxSends
   // shim (RESEARCH Pitfall 3) during the Plan-02→Plan-03 rollout window.
   // Group sends encode recipient as `group:<id>` prefix in recipient_e164
   // (operator decision 2026-05-21 per 44-group-send-encoding-decision.md — path b).
-  async function send(body, { bypassCap = false, to, intent, relatedCaptureId, relatedDraftId, sourceModule } = {}) {
+  // Phase 50 Plan-02: validate quote opt. Locked shape (CONTEXT D-01, spike
+  // 2026-05-23, signal-cli REST 0.14.2): { timestamp, author, message }.
+  // timestamp may be a finite number OR a numeric string (signal-cli returns
+  // ms-ts stringified). author non-empty e164 string. message a string (empty
+  // allowed -- Signal accepts empty body). Invalid shapes log warn and the
+  // send proceeds WITHOUT the quote field (fail-open per CONTEXT D-05;
+  // [[feedback_no_silent_failure_after_farmer_confirm]] -- vague ack beats no ack).
+  function isValidQuote(q) {
+    return (
+      q !== null &&
+      typeof q === 'object' &&
+      Number.isFinite(Number(q.timestamp)) &&
+      typeof q.author === 'string' &&
+      q.author.length > 0 &&
+      typeof q.message === 'string'
+    );
+  }
+
+  async function send(body, { bypassCap = false, to, intent, relatedCaptureId, relatedDraftId, sourceModule, quote } = {}) {
     const now = Date.now();
     pruneHistory(now);
     const cap = currentCap();
@@ -93,13 +111,32 @@ function createSignalClient({ apiUrl, sender, recipient, defaultTarget, maxSends
       ? [target]
       : [`group.${resolvedGroupId}`];
 
+    // Phase 50 Plan-02: build payload with optional quote.
+    // - quote === undefined or null  -> no quote key in payload (back-compat)
+    // - quote present + valid        -> nested {timestamp:Number,author,message}
+    // - quote present + invalid      -> warn + unquoted send (fail-open)
+    const payload = { message: body, number: sender, recipients };
+    if (quote !== undefined && quote !== null) {
+      if (isValidQuote(quote)) {
+        payload.quote = {
+          timestamp: Number(quote.timestamp),
+          author: quote.author,
+          message: quote.message,
+        };
+      } else {
+        let dump;
+        try { dump = JSON.stringify(quote); } catch (_) { dump = '[unstringifiable]'; }
+        logger.warn(`[signal] invalid quote arg, sending without quote: ${dump}`);
+      }
+    }
+
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
       const res = await fetch(`${apiUrl}/v2/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: body, number: sender, recipients }),
+        body: JSON.stringify(payload),
         signal: ctrl.signal,
       });
       if (!res.ok) {
@@ -143,6 +180,11 @@ function createSignalClient({ apiUrl, sender, recipient, defaultTarget, maxSends
             source_line: null,
             related_capture_id: relatedCaptureId ?? null,
             related_draft_id: relatedDraftId ?? null,
+            // Phase 50 Plan-02: persist Signal-native ms-ts so future inbound
+            // quotes can resolve quote.timestamp -> related_draft_id. signal-cli
+            // returns this stringified ("1779562666675") in 0.14.2 -- Number()
+            // coerces. Missing field -> NULL (best-effort; never invent ts).
+            signal_msg_ts: json.timestamp ? Number(json.timestamp) : null,
           });
           if (result && result.ok === false) {
             logger.warn(`[signal] outbound persist failed (fail-open): ${result.reason}`);

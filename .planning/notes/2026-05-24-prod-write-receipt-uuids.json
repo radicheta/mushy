@@ -1,0 +1,33 @@
+{
+  "elapsed_ms": 3482,
+  "draft_id": "live-fire-48-1779638630367",
+  "ok": true,
+  "asset_ids": [
+    "5dc1c155-c806-4377-81aa-bcd8b8d88474",
+    "302d0064-a45c-4f28-8852-a219160c211a",
+    "ec445750-a1b2-4ee6-b04c-42a88340196f",
+    "56c719d1-8367-4dfb-9fec-15ed1d8a5078",
+    "cb6befed-fd95-4b90-af62-2662b01b721b",
+    "8b06fae2-bbef-46e5-aeef-1a5fecc36bed",
+    "3eaa9b9d-d32d-4448-b8e7-dc95fb756da5",
+    "e9c9d5cc-615b-4b5b-9df1-02e97f5ebe68",
+    "83d5b434-731e-4177-9026-151b7dfd52e4",
+    "1692c7c8-0b14-4f10-933f-0868b3a25b08",
+    "65b71bef-4679-4310-a852-95ee0a9c8237"
+  ],
+  "log_ids": [
+    "810f2949-1946-4262-b212-228e72d0c71c",
+    "9b8681ed-aff5-414a-b729-ff30eed67832",
+    "5dccc8a9-94f5-479d-925a-f833e6157b0b",
+    "03a6e56e-7a8a-4d34-9cca-417fe63e0fd8",
+    "e43ecb57-f4df-4e9d-bb37-77e177989da1",
+    "d35411d7-cab6-4de0-be87-3533b62c1545",
+    "dcc4d370-ce5c-4795-94dc-eeeed8517f57",
+    "ce810b39-7886-41ca-8b84-25b1f7219f9e",
+    "17352763-f0b7-4066-8ee7-5d69594f745e",
+    "c7700c94-138a-4010-91af-2d0b751ada33",
+    "cd2ac920-da4a-4609-8ace-c16bc96977c0"
+  ],
+  "file_ids": [],
+  "http_status": 201
+}

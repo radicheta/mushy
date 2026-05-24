@@ -1,0 +1,102 @@
+{
+  "type": "seeding_session",
+  "event_date": "2026-04-25",
+  "groups": [
+    {
+      "parent": {
+        "value": "260118_SHI_25",
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "species": {
+        "value": "SHI",
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "qty": {
+        "value": 3,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "child_block_names": {
+        "value": ["260425_SHI_1", "260425_SHI_2", "260425_SHI_3"],
+        "sources": ["paper_log_photo"]
+      }
+    },
+    {
+      "parent": {
+        "value": "260118_KOY_7",
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "species": {
+        "value": "KOY",
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "qty": {
+        "value": 2,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "child_block_names": {
+        "value": ["260425_KOY_4", "260425_KOY_5"],
+        "sources": ["paper_log_photo"]
+      }
+    },
+    {
+      "parent": {
+        "value": "260323_WIN_3",
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "species": {
+        "value": "WIN",
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "qty": {
+        "value": 3,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "child_block_names": {
+        "value": ["260425_WIN_6", "260425_WIN_7", "260425_WIN_8"],
+        "sources": ["paper_log_photo"]
+      }
+    },
+    {
+      "parent": {
+        "value": "NO_PARENT",
+        "sources": ["audio"]
+      },
+      "species": {
+        "value": "DT",
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "qty": {
+        "value": 3,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "child_block_names": {
+        "value": ["260425_DT_9", "260425_DT_10", "260425_DT_11"],
+        "sources": ["paper_log_photo"]
+      }
+    },
+    {
+      "parent": {
+        "value": "NO_PARENT",
+        "sources": ["audio"]
+      },
+      "species": {
+        "value": "SHI",
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "qty": {
+        "value": 1,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "child_block_names": {
+        "value": ["260425_SHI_12"],
+        "sources": ["paper_log_photo"]
+      }
+    }
+  ],
+  "meta": {
+    "capture_date": "2026-05-12",
+    "source_path": "/mnt/mossrock/shared/mushdatadump-prod/2026-05-12_inoc_santi/",
+    "regression_guard": true,
+    "notes": "Named regression guard for Phase 49 derived from Phase 38 Plan-09 replay (.planning/phases/38-extraction-pipeline/38-EVAL-REPORT-plan09-run2-PASS.md + the prod-corpus replay-output.txt). The audio narration describes a single 2026-04-25 inoc session (12 children across 5 groups: SHI x3 from 260118_SHI_25, KOY x2 from 260118_KOY_7, WIN x3 from 260323_WIN_3, DT x3 no parent, SHI x1 outdoor no parent). The capture occurred 2026-05-12; the inoc event_date is 2026-04-25 per the voice narration. Two groups use the 'NO_PARENT' sentinel (per the seeding-session schema's ParentRef contract) because the audio did not name a parent for the DT bags or the outdoor-shiitake bag. Audio + paper-log photo present in fixture as symlinks: audio.aac -> om01IyuHnLBohp1r_F_m.aac (per Plan-02 instruction; note that the prod-corpus MANIFEST.md flags this file as a butt-dial -- the actual narration audio HOZad9ymvNJTXmRREgcW.m4a was symlinked under the 2026-05-22 fixture by Plan-01, so May-12 picks up the remaining .aac); paper-log.jpg -> YkBwglxBTAFiQE5JbRwr.jpg (the unused paper-log photo from the prod corpus). For hermetic CI runs the mock-extractor returns mock-extraction.json regardless of which physical file is symlinked here; live-fire EVAL_RUN_LIVE=1 path is Plan 04 scope and must re-validate file selection before invocation. Plan 09 corrected the audio's WIN-vs-CAS coding bug; ground-truth uses WIN per the post-fix replay."
+  }
+}

@@ -18,9 +18,9 @@ describe('extraction-db', () => {
   });
 
   describe('initDb', () => {
-    test('issues exactly 4 queries: CREATE TABLE + 2 CREATE INDEX + 1 ALTER TABLE ADD COLUMN IF NOT EXISTS', async () => {
+    test('issues exactly 6 queries: CREATE TABLE + 2 CREATE INDEX + 3 ALTER TABLE ADD COLUMN IF NOT EXISTS', async () => {
       await initDb(pool);
-      expect(pool.query).toHaveBeenCalledTimes(4);
+      expect(pool.query).toHaveBeenCalledTimes(6);
       const sql0 = pool.query.mock.calls[0][0];
       expect(sql0).toMatch(/CREATE TABLE IF NOT EXISTS signal_draft/);
       // Required columns from CONTEXT D-02/D-02a/D-02b
@@ -39,7 +39,13 @@ describe('extraction-db', () => {
       expect(sql2).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS idx_signal_draft_in_flight_per_sender/);
 
       const sql3 = pool.query.mock.calls[3][0];
-      expect(sql3).toMatch(/ALTER TABLE signal_draft ADD COLUMN IF NOT EXISTS/);
+      expect(sql3).toMatch(/ALTER TABLE signal_draft ADD COLUMN IF NOT EXISTS needs_review_reason text/);
+
+      // Phase 49 Plan 01: discarded_reason + discarded_at for the discard-drafts script.
+      const sql4 = pool.query.mock.calls[4][0];
+      expect(sql4).toMatch(/ALTER TABLE signal_draft ADD COLUMN IF NOT EXISTS discarded_reason text/);
+      const sql5 = pool.query.mock.calls[5][0];
+      expect(sql5).toMatch(/ALTER TABLE signal_draft ADD COLUMN IF NOT EXISTS discarded_at timestamptz/);
     });
 
     test('partial unique index restricts to in-flight statuses (D-02c)', async () => {
@@ -48,13 +54,22 @@ describe('extraction-db', () => {
       expect(sql2).toMatch(/WHERE status IN \('pending','awaiting_farmer'\)/);
     });
 
-    test('is idempotent -- second invocation yields 8 total queries with same shape', async () => {
+    test('is idempotent -- second invocation yields 12 total queries with same shape', async () => {
       await initDb(pool);
       await initDb(pool);
-      expect(pool.query).toHaveBeenCalledTimes(8);
-      const secondAllSql = pool.query.mock.calls.slice(4).map((c) => c[0]).join('\n');
+      expect(pool.query).toHaveBeenCalledTimes(12);
+      const secondAllSql = pool.query.mock.calls.slice(6).map((c) => c[0]).join('\n');
       expect(secondAllSql).toMatch(/CREATE TABLE IF NOT EXISTS signal_draft/);
       expect(secondAllSql).toMatch(/idx_signal_draft_in_flight_per_sender/);
+      expect(secondAllSql).toMatch(/discarded_reason text/);
+      expect(secondAllSql).toMatch(/discarded_at timestamptz/);
+    });
+
+    test('Phase 49: discard columns added idempotently with IF NOT EXISTS', async () => {
+      await initDb(pool);
+      const allSql = pool.query.mock.calls.map((c) => c[0]).join('\n');
+      expect(allSql).toMatch(/ADD COLUMN IF NOT EXISTS discarded_reason text/);
+      expect(allSql).toMatch(/ADD COLUMN IF NOT EXISTS discarded_at timestamptz/);
     });
   });
 
