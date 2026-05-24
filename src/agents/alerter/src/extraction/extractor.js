@@ -18,6 +18,7 @@
 //
 // V2: ANTHROPIC_API_KEY only crosses into `new Anthropic({ apiKey })`; never logged.
 
+const crypto = require('crypto');
 const Anthropic = require('@anthropic-ai/sdk');
 const { Submission, SUBMISSION_JSON_SCHEMA } = require('./schemas');
 const { validateDraft, buildToolResultRetry } = require('./validator');
@@ -112,12 +113,65 @@ function createExtractor({
   // eval-two.js seed already used 16384 for the same reason.
   maxTokens = 16384,
   client: injectedClient = null,
+  // Phase 54 Plan 03: optional observer fired once per Anthropic call. Live
+  // capture sites omit this; only the backfill harness installs it to persist
+  // every paid response to <runDir>/responses.jsonl. Errors in the observer
+  // are caught + logged warn; they never propagate out of extract().
+  onLlmCall = null,
 } = {}) {
   const client = injectedClient || new Anthropic({ apiKey, maxRetries: 2 });
   const toolSpec = buildToolSpec();
 
+  // Wrap client.messages.create so the observer fires for both the initial
+  // call and the schema-retry call without duplicating the try/catch logic.
+  async function callWithObserver(req, captureId) {
+    const t0 = Date.now();
+    let resp;
+    let err;
+    try {
+      resp = await client.messages.create(req);
+    } catch (e) {
+      err = e;
+      throw e;
+    } finally {
+      if (typeof onLlmCall === 'function') {
+        try {
+          const usage = (resp && resp.usage) || {};
+          const requestHash = crypto.createHash('sha256')
+            .update(JSON.stringify({
+              model: req.model,
+              messages: req.messages,
+              tools: req.tools,
+              system: req.system,
+            }))
+            .digest('hex')
+            .slice(0, 16);
+          await onLlmCall({
+            ts: new Date().toISOString(),
+            model: req.model,
+            input_tokens: usage.input_tokens || 0,
+            output_tokens: usage.output_tokens || 0,
+            cache_creation_input_tokens: usage.cache_creation_input_tokens || 0,
+            cache_read_input_tokens: usage.cache_read_input_tokens || 0,
+            latency_ms: Date.now() - t0,
+            raw_response: resp || null,
+            request_hash: requestHash,
+            captureId: captureId || null,
+            error: err ? (err.message || String(err)) : null,
+          });
+        } catch (obsErr) {
+          logger.warn && logger.warn(`[extractor] onLlmCall observer threw: ${obsErr.message}`);
+        }
+      }
+    }
+    return resp;
+  }
+
   return {
     async extract({ captures, inFlightDraft, corpusContext, farmerCorrection } = {}) {
+      const captureId = Array.isArray(captures) && captures[0] && captures[0].captureId
+        ? captures[0].captureId
+        : null;
       try {
         const systemBlocks = CACHEABLE_SYSTEM_BLOCKS;
         const fewShot = cacheableFewShot();
@@ -135,7 +189,7 @@ function createExtractor({
 
         let resp;
         try {
-          resp = await client.messages.create(baseReq);
+          resp = await callWithObserver(baseReq, captureId);
         } catch (e) {
           logger.warn && logger.warn(`[extractor] degraded: ${e.message}`);
           return { ok: false, reason: e.message };
@@ -166,7 +220,7 @@ function createExtractor({
 
         let resp2;
         try {
-          resp2 = await client.messages.create(retryReq);
+          resp2 = await callWithObserver(retryReq, captureId);
         } catch (e) {
           logger.warn && logger.warn(`[extractor] retry degraded: ${e.message}`);
           return { ok: false, reason: e.message, usage: usage1 };

@@ -26,6 +26,11 @@ const {
   processDraftsForCapture,
   computeRunDir,
   DRAFT_STATUS_CONFIRMED,
+  runIdExistsGuard,
+  openResponsesJsonl,
+  buildResponsesLine,
+  makeResponsesObserver,
+  estimateCostUsd,
   main,
   CORPUS_DEFAULT,
 } = require('./backfill-notebook');
@@ -580,5 +585,147 @@ describe('processDraftsForCapture (Plan 02 core)', () => {
     const lines = readLog();
     expect(lines[0]).toMatch(/ok=false.*reason=http_422/);
     expect(lines[1]).toMatch(/ok=true/);
+  });
+});
+
+// ============================================================================
+// Phase 54 Plan 03 tests: responses.jsonl writer + run-id guard + cost calc.
+// ============================================================================
+
+describe('estimateCostUsd', () => {
+  test('Sonnet rate: 1M input + 1M output -> 18 USD', () => {
+    expect(estimateCostUsd('claude-sonnet-4-6', 1_000_000, 1_000_000)).toBeCloseTo(18, 4);
+  });
+
+  test('Haiku rate: 1M input + 1M output -> 4.80 USD', () => {
+    expect(estimateCostUsd('claude-haiku-3-5', 1_000_000, 1_000_000)).toBeCloseTo(4.80, 4);
+  });
+
+  test('zero tokens -> 0', () => {
+    expect(estimateCostUsd('claude-sonnet-4-6', 0, 0)).toBe(0);
+  });
+
+  test('case-insensitive haiku detection', () => {
+    expect(estimateCostUsd('CLAUDE-HAIKU-XYZ', 1_000_000, 0)).toBeCloseTo(0.80, 4);
+  });
+});
+
+describe('runIdExistsGuard', () => {
+  let tmpDir;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path2.join(os.tmpdir(), 'bf-guard-'));
+  });
+
+  test('passes on empty runDir', () => {
+    expect(() => runIdExistsGuard(tmpDir)).not.toThrow();
+  });
+
+  test('passes on nonexistent runDir', () => {
+    expect(() => runIdExistsGuard(path2.join(tmpDir, 'no'))).not.toThrow();
+  });
+
+  test('throws RUN_ID_EXISTS when responses.jsonl present', () => {
+    fs.writeFileSync(path2.join(tmpDir, 'responses.jsonl'), '{}\n');
+    let caught;
+    try { runIdExistsGuard(tmpDir); } catch (e) { caught = e; }
+    expect(caught).toBeTruthy();
+    expect(caught.code).toBe('RUN_ID_EXISTS');
+  });
+});
+
+describe('responses.jsonl writer (buildResponsesLine + makeResponsesObserver)', () => {
+  let tmpDir;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path2.join(os.tmpdir(), 'bf-rj-'));
+  });
+
+  test('observer writes exactly one line per call, valid JSON, all required keys', () => {
+    const fd = openResponsesJsonl(tmpDir);
+    const obs = makeResponsesObserver(fd);
+    obs({
+      ts: '2026-05-24T19:30:00.000Z',
+      captureId: 'backfill-r1-IMG_3775',
+      model: 'claude-sonnet-4-6',
+      input_tokens: 1234, output_tokens: 456,
+      cache_creation_input_tokens: 0, cache_read_input_tokens: 0,
+      latency_ms: 3210, request_hash: 'a1b2c3d4',
+      raw_response: { id: 'msg_1', usage: { input_tokens: 1234 } },
+    });
+    obs({
+      ts: '2026-05-24T19:30:05.000Z',
+      captureId: 'backfill-r1-IMG_3776',
+      model: 'claude-sonnet-4-6',
+      input_tokens: 2000, output_tokens: 800,
+      latency_ms: 4200, request_hash: 'deadbeef',
+      raw_response: {},
+    });
+    fs.closeSync(fd);
+    const lines = fs.readFileSync(path2.join(tmpDir, 'responses.jsonl'), 'utf8')
+      .trim().split('\n');
+    expect(lines).toHaveLength(2);
+    for (const line of lines) {
+      const obj = JSON.parse(line);
+      expect(obj).toHaveProperty('ts');
+      expect(obj).toHaveProperty('captureId');
+      expect(obj).toHaveProperty('model');
+      expect(obj).toHaveProperty('input_tokens');
+      expect(obj).toHaveProperty('output_tokens');
+      expect(obj).toHaveProperty('latency_ms');
+      expect(obj).toHaveProperty('cost_estimate_usd');
+      expect(obj).toHaveProperty('request_hash');
+      expect(obj).toHaveProperty('raw_response');
+    }
+    const first = JSON.parse(lines[0]);
+    expect(first.cost_estimate_usd).toBeCloseTo(
+      (1234 / 1e6) * 3 + (456 / 1e6) * 15, 6
+    );
+  });
+
+  test('append mode: re-opening preserves prior lines', () => {
+    const fd1 = openResponsesJsonl(tmpDir);
+    fs.writeSync(fd1, JSON.stringify({ ts: 't1' }) + '\n');
+    fs.closeSync(fd1);
+    const fd2 = openResponsesJsonl(tmpDir);
+    fs.writeSync(fd2, JSON.stringify({ ts: 't2' }) + '\n');
+    fs.closeSync(fd2);
+    const lines = fs.readFileSync(path2.join(tmpDir, 'responses.jsonl'), 'utf8')
+      .trim().split('\n');
+    expect(lines).toHaveLength(2);
+  });
+});
+
+describe('main: run-id collision (Plan 03)', () => {
+  let tmpDir;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path2.join(os.tmpdir(), 'bf-main-rj-'));
+  });
+
+  test('non-dry-run with existing responses.jsonl in --run-id dir exits 6', async () => {
+    // Pre-seed the runDir under the *expected* RUN_DIR_ROOT path. main() builds
+    // runDir from RUN_DIR_ROOT/<runId>; chdir into tmpDir so the relative path
+    // points there.
+    const cwd = process.cwd();
+    process.chdir(tmpDir);
+    try {
+      const runDir = path2.join(tmpDir, '.planning/backfill/2025-notebook/collide-run');
+      fs.mkdirSync(runDir, { recursive: true });
+      fs.writeFileSync(path2.join(runDir, 'responses.jsonl'), '{}\n');
+
+      const logger = { log: () => {}, warn: () => {}, error: jest.fn() };
+      const r = await main(
+        ['--bulk-backfill', '--farmer=santi', '--run-id=collide-run', '--limit=1'],
+        {
+          env: {
+            FARMOS_URL: 'http://10.68.155.50:18080',
+            FARMOS_USERNAME: 'x', FARMOS_PASSWORD: 'x', DATABASE_URL: 'x',
+          },
+          logger,
+        }
+      );
+      expect(r.code).toBe(6);
+      expect(logger.error).toHaveBeenCalledWith(expect.stringMatching(/REFUSING.*already has responses.jsonl/));
+    } finally {
+      process.chdir(cwd);
+    }
   });
 });
