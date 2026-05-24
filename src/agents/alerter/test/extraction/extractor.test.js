@@ -349,8 +349,9 @@ describe('Phase 47 Plan 02: FEW_SHOT includes May-22 multi-parent seeding_sessio
       const isFinal = k === toolUses.length - 1;
       if (isFinal) {
         // Final tool_use is closed by extractor.buildInitialUserContent's tool_result at runtime.
-        // Just assert the live-turn boundary contract: extractor.js currently expects tu_fewshot_3.
-        expect(id).toBe('tu_fewshot_3');
+        // Phase 53 BACK-03: live-turn boundary moved from tu_fewshot_3 to tu_fewshot_6
+        // (DT-tubs physical_object_photo few-shot is now the last in the chain).
+        expect(id).toBe('tu_fewshot_6');
         continue;
       }
       const nextUser = FEW_SHOT[idx + 1];
@@ -365,7 +366,7 @@ describe('Phase 47 Plan 02: FEW_SHOT includes May-22 multi-parent seeding_sessio
     }
   });
 
-  test('tu_fewshot_3 remains the LAST tool_use in FEW_SHOT (live-turn boundary invariant)', () => {
+  test('tu_fewshot_6 is the LAST tool_use in FEW_SHOT (live-turn boundary invariant; updated by Phase 53 BACK-03)', () => {
     const ids = [];
     for (const msg of FEW_SHOT) {
       if (msg.role !== 'assistant' || !Array.isArray(msg.content)) continue;
@@ -373,6 +374,6 @@ describe('Phase 47 Plan 02: FEW_SHOT includes May-22 multi-parent seeding_sessio
         if (b && b.type === 'tool_use') ids.push(b.id);
       }
     }
-    expect(ids[ids.length - 1]).toBe('tu_fewshot_3');
+    expect(ids[ids.length - 1]).toBe('tu_fewshot_6');
   });
 });

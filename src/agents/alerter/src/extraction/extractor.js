@@ -52,13 +52,17 @@ function buildToolSpec() {
 
 function buildInitialUserContent({ captures, inFlightDraft, corpusContext, farmerCorrection }) {
   // Capture set -> a single user turn with: corpus context, in-flight summary, then per-capture text/transcript/images.
-  // Plan 07 bug fix (Rule 1): close the last few-shot tool_use (tu_fewshot_3) with a
-  // tool_result block. Anthropic rejects 400 if any tool_use lacks an immediately-following
+  // Plan 07 bug fix (Rule 1): close the last few-shot tool_use with a tool_result
+  // block. Anthropic rejects 400 if any tool_use lacks an immediately-following
   // tool_result in the next user message.
+  // Phase 53 BACK-03: last few-shot id is now tu_fewshot_6 (DT-tubs
+  // physical_object_photo counter-example). tu_fewshot_3 and tu_fewshot_5 are
+  // closed inline inside FEW_SHOT via leading tool_result blocks in the next
+  // user turn (see prompts/system.js).
   const blocks = [];
   blocks.push({
     type: 'tool_result',
-    tool_use_id: 'tu_fewshot_3',
+    tool_use_id: 'tu_fewshot_6',
     content: [{ type: 'text', text: 'accepted' }],
   });
   if (corpusContext && typeof corpusContext === 'object') {
@@ -203,6 +207,10 @@ function packResult(submission, usage) {
     // Legacy fields (single-event view).
     draft: first ? first.draft : null,
     per_field_confidence: first ? first.per_field_confidence : null,
+    // Phase 53 BACK-03: optional capture_kind passes through to callers
+    // (analytics + future routing refinement). Omitted -> null. Routing
+    // (BACK-02) does NOT consume this today -- back-compat lock.
+    capture_kind: submission.capture_kind != null ? submission.capture_kind : null,
     usage: usage || null,
   };
 }
