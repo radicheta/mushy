@@ -83,6 +83,23 @@ describe('commit-seeding (Option A hybrid)', () => {
     expect(r.reason).toBe('ambiguous_qr_seeding');
   });
 
+  it('Phase 51 idempotency: replaying the same seeding draft twice produces no duplicate asset/log', async () => {
+    const client = makeMockClient();
+    const r1 = await commitSeeding(client, draft(), {});
+    expect(r1.ok).toBe(true);
+    const a1 = client._created.assets.length; // 1
+    const l1 = client._created.logs.length;   // 1
+    const r2 = await commitSeeding(client, draft(), {});
+    expect(r2.ok).toBe(true);
+    // Second run: name lookup hits the existing asset; stable-key lookup hits
+    // the existing seeding log — no new POSTs.
+    expect(client._created.assets.length).toBe(a1);
+    expect(client._created.logs.length).toBe(l1);
+    // First run created 1 asset; second run upsert noop/patch so asset_ids empty.
+    expect(r2.asset_ids).toEqual([]);
+    expect(r2.log_ids.length).toBe(1);
+  });
+
   it('result envelope shape correctness (Path A)', async () => {
     const client = makeMockClient();
     const r = await commitSeeding(client, draft(), {});

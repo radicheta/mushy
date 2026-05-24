@@ -33,6 +33,7 @@ async function commitObservation(client, draft, ctx) {
     : { fileIds: [], skipped: [], failed: [] };
 
   const name = `observation ${new Date(timestamp * 1000).toISOString().slice(0, 10)}`;
+  // Phase 51 review: observation log stays POST-only (LOG_STABLE_KEYS.observation === null per CONTEXT.md).
   const r = await logs.createLog(client, 'observation', {
     name, timestamp, assetIds, fileIds: upRes.fileIds, notes: dj.notes || '', draftId,
   });
