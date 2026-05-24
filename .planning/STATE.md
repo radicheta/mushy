@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.10
 milestone_name: Order-Independent Writes (upsert-by-stable-identity)
-status: Awaiting next milestone
-last_updated: "2026-05-24T19:53:42.716Z"
-last_activity: 2026-05-24 — Milestone v1.10 completed and archived
+status: Roadmap queued — v1.10.1/v1.11/v1.12/v1.13 scaffolded, awaiting milestone kickoff
+last_updated: "2026-05-24T22:30:00.000Z"
+last_activity: 2026-05-24 — v1.10.1 (session-entity adoption via asset--group), v1.11 (2025-notebook backfill), v1.12 (Python farm-agent port), v1.13 (auto-commit narrowing) added to ROADMAP.md; farmos team enabled farm_group module on dev+prod (commit 1857037 farmos repo)
 progress:
   total_phases: 23
   completed_phases: 10
