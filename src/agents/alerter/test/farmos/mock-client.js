@@ -108,13 +108,40 @@ function makeMockClient({
         if (_byId[id]) return _ok(200, { data: _byId[id] });
         return _ok(404, { errors: [{ status: '404', title: 'Not Found' }] });
       }
-      // Phase 51 Wave 0: log GET-by-id
-      m = /^\/api\/log\/[a-z_]+\/([A-Za-z0-9-]+)$/.exec(path);
+      // Phase 51 Wave 0: log filter by asset.id (upsertLog stable-key lookup).
+      m = /^\/api\/log\/([a-z_]+)\?filter\[asset\.id\]\[value\]=([^&]+)/.exec(path);
       if (m) {
-        const id = m[1];
-        // Search _logsByAssetId mapping (value.id === id) for direct hit.
+        const logType = m[1];
+        const assetId = decodeURIComponent(m[2]);
+        const matches = [];
         for (const v of Object.values(_logsByAssetId)) {
-          if (v && v.id === id) return _ok(200, { data: { id, type: 'log--' + (v.type || 'seeding'), attributes: { drupal_internal__revision_id: 1 } } });
+          if (v && v.type === logType && Array.isArray(v.assetIds) && v.assetIds.includes(assetId)) {
+            matches.push({
+              id: v.id,
+              type: 'log--' + logType,
+              attributes: v.attributes || { drupal_internal__revision_id: 1 },
+              relationships: v.relationships || {},
+            });
+          }
+        }
+        return _ok(200, { data: matches });
+      }
+      // Phase 51 Wave 0: log GET-by-id
+      m = /^\/api\/log\/([a-z_]+)\/([A-Za-z0-9-]+)$/.exec(path);
+      if (m) {
+        const logType = m[1];
+        const id = m[2];
+        for (const v of Object.values(_logsByAssetId)) {
+          if (v && v.id === id) {
+            return _ok(200, {
+              data: {
+                id,
+                type: 'log--' + logType,
+                attributes: v.attributes || { drupal_internal__revision_id: 1 },
+                relationships: v.relationships || {},
+              },
+            });
+          }
         }
         return _ok(404, { errors: [{ status: '404', title: 'Not Found' }] });
       }
@@ -125,13 +152,36 @@ function makeMockClient({
       calls.push({ method: 'POST', path, body });
       if (path === '/api/asset/fungi') {
         const id = 'asset-' + (assetSeq++);
-        created.assets.push({ id, name: body.data.attributes.name, payload: body });
+        const name = body.data.attributes.name;
+        created.assets.push({ id, name, payload: body });
+        // Phase 51 idempotency support: register POSTed asset into _byId and
+        // _idByName so subsequent findAssetByName + GET-by-id hit and upsert
+        // replays converge instead of erroring 'lookup_missing_after_find'.
+        _idByName[name] = id;
+        _byId[id] = {
+          id,
+          type: 'asset--fungi',
+          attributes: Object.assign({ drupal_internal__revision_id: 1 }, body.data.attributes || {}),
+          relationships: (body.data && body.data.relationships) || {},
+        };
         return _ok(201, { data: { id, type: 'asset--fungi' } });
       }
       if (/^\/api\/log\//.test(path)) {
         const id = 'log-' + (logSeq++);
         const t = path.split('/').pop();
         created.logs.push({ id, type: t, payload: body });
+        // Register POSTed log so upsertLog stable-key lookup + GET-by-id hit.
+        const relAsset = body.data && body.data.relationships && body.data.relationships.asset;
+        const assetIds = (relAsset && Array.isArray(relAsset.data))
+          ? relAsset.data.map((r) => r && r.id).filter(Boolean)
+          : [];
+        _logsByAssetId[id] = {
+          id,
+          type: t,
+          assetIds,
+          attributes: Object.assign({ drupal_internal__revision_id: 1 }, body.data.attributes || {}),
+          relationships: (body.data && body.data.relationships) || {},
+        };
         return _ok(201, { data: { id, type: 'log--' + t } });
       }
       return _ok(404, {});
@@ -148,12 +198,26 @@ function makeMockClient({
     patch: jest.fn(async (path, body, opts) => {
       calls.push({ method: 'PATCH', path, body, headers: opts && opts.headers });
       let m = /^\/api\/asset\/fungi\/([A-Za-z0-9-]+)$/.exec(path);
-      if (!m) m = /^\/api\/log\/[a-z_]+\/([A-Za-z0-9-]+)$/.exec(path);
+      let isLog = false;
+      if (!m) {
+        m = /^\/api\/log\/([a-z_]+)\/([A-Za-z0-9-]+)$/.exec(path);
+        if (m) isLog = true;
+      }
       if (!m) return _ok(404, {});
-      const id = m[1];
+      const id = isLog ? m[2] : m[1];
       if (_force412.has(id)) {
         _force412.delete(id); // first PATCH fails; subsequent succeed
         return _ok(412, { errors: [{ status: '412', title: 'Precondition Failed' }] });
+      }
+      if (isLog) {
+        const logType = m[1];
+        const existingLog = _logsByAssetId[id] || {
+          id, type: logType, assetIds: [], attributes: { drupal_internal__revision_id: 1 }, relationships: {},
+        };
+        const mergedAttrs = Object.assign({}, existingLog.attributes || {}, (body.data && body.data.attributes) || {});
+        const mergedRels = Object.assign({}, existingLog.relationships || {}, (body.data && body.data.relationships) || {});
+        _logsByAssetId[id] = Object.assign({}, existingLog, { attributes: mergedAttrs, relationships: mergedRels });
+        return _ok(200, { data: { id, type: 'log--' + logType, attributes: mergedAttrs, relationships: mergedRels } });
       }
       const existing = _byId[id] || {
         id, type: 'asset--fungi', attributes: { drupal_internal__revision_id: 1 }, relationships: {},
