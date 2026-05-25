@@ -681,9 +681,31 @@ module.exports = {
   BACKFILL_SENDER_DEFAULT,
 };
 
-// Direct invocation entry-point.
+// Direct invocation entry-point. Wires the canonical pool + extraction-pipeline
+// bootstrap (lifted into createBackfillContext) so real runs work. main()
+// constructs the responses.jsonl onLlmCall observer and threads it into
+// pipelineFactory. --dry-run / --help short-circuit before either factory fires.
 if (require.main === module) {
-  main().then((r) => {
+  const argv = process.argv.slice(2);
+  const dryRunOrHelp = argv.includes('--dry-run') || argv.includes('--help') || argv.includes('-h');
+  let opts = {};
+  if (!dryRunOrHelp) {
+    // Lazily build the context on first factory call so main()'s prod-guard
+    // (exit 3), farmer-gate (exit 4), and missing-env (exit 5) checks run first.
+    let ctx = null;
+    const ctxOnce = () => {
+      if (!ctx) {
+        const { createBackfillContext } = require('./backfill-context');
+        ctx = createBackfillContext({ env: process.env, logger: console });
+      }
+      return ctx;
+    };
+    opts = {
+      poolFactory: () => ctxOnce().poolFactory(),
+      pipelineFactory: ({ pool, onLlmCall }) => ctxOnce().pipelineFactory({ pool, onLlmCall }),
+    };
+  }
+  main(argv, opts).then((r) => {
     process.exit(r && typeof r.code === 'number' ? r.code : 0);
   }).catch((e) => {
     console.error('FATAL', e && e.stack || e);
