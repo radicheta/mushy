@@ -216,7 +216,6 @@ function createExtractionPipeline({
 
       // Run state-machine with maxAskbackTurns=0 to force NEEDS_REVIEW path
       // instead of send_ask_back for any draft that has missing/low-conf fields.
-      // Clean drafts still take the AWAITING_FARMER + handoff_to_phase_39 path.
       const transition = stateMachine.transition(
         { status: DRAFT_STATUS.PENDING, askback_turns: 0, last_updated_at_ms: nowMs },
         {
@@ -229,15 +228,34 @@ function createExtractionPipeline({
         },
       );
 
+      // Cycle-1 finding 2026-05-25: batch mode never asks the farmer back (it
+      // sends ONE operator summary per page), so a CLEAN draft must NOT land in
+      // awaiting_farmer. Two reasons: (1) it would wait forever for a per-draft
+      // YES that batch mode never solicits; (2) awaiting_farmer is in the
+      // per-sender in-flight partial-unique-index set (extraction-db D-02c), so
+      // the first clean draft holds the slot and every sibling PENDING insert in
+      // the same page fails with in_flight_conflict -- silently dropping all but
+      // the first entry of a multi-entry page. Route clean batch drafts to
+      // needs_review too; the clean-vs-flagged split is preserved via
+      // needs_review_reason for the operator summary.
+      let nextStatus = transition.nextStatus;
       const extras = {};
       if (transition.reason === 'askback_cap') {
         extras.needs_review_reason = 'batch_mode_low_conf';
+      } else if (nextStatus === DRAFT_STATUS.AWAITING_FARMER) {
+        nextStatus = DRAFT_STATUS.NEEDS_REVIEW;
+        extras.needs_review_reason = 'batch_mode_clean';
       }
-      const finalUpd = await extractionDb.updateDraftStatus(pool, draftId, transition.nextStatus, extras);
+      const finalUpd = await extractionDb.updateDraftStatus(pool, draftId, nextStatus, extras);
       if (!finalUpd.ok) {
         logger_.warn && logger_.warn(`[extraction] batch: final status update idx=${i} failed: ${finalUpd.reason}`);
       }
-      persisted.push({ id: draftId, type: draft && draft.type, status: transition.nextStatus });
+      persisted.push({
+        id: draftId,
+        type: draft && draft.type,
+        status: nextStatus,
+        needs_review_reason: extras.needs_review_reason || null,
+      });
     }
 
     // One summary ping to the operator for the whole page.
@@ -260,8 +278,11 @@ function createExtractionPipeline({
       mode: 'batch',
       count: persisted.length,
       draftIds: persisted.map((d) => d.id),
-      cleanCount: persisted.filter((d) => d.status === DRAFT_STATUS.AWAITING_FARMER).length,
-      needsReviewCount: persisted.filter((d) => d.status === DRAFT_STATUS.NEEDS_REVIEW).length,
+      // Clean-vs-flagged split now keyed off needs_review_reason since both land
+      // in needs_review status (Cycle-1 finding 2026-05-25): 'batch_mode_clean'
+      // were high-confidence, 'batch_mode_low_conf' tripped the confidence gate.
+      cleanCount: persisted.filter((d) => d.needs_review_reason === 'batch_mode_clean').length,
+      needsReviewCount: persisted.filter((d) => d.needs_review_reason === 'batch_mode_low_conf').length,
     };
   }
 
