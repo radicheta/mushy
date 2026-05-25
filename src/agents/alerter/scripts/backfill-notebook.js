@@ -618,6 +618,25 @@ async function main(argv = process.argv.slice(2), {
     if (responsesFd != null) {
       try { fs.closeSync(responsesFd); } catch (_e) {}
     }
+    // Plan 04: always emit receipt.md so a crashed run still has an audit
+    // artifact (T-54-13 — repudiation mitigation).
+    if (opts.bulkBackfill) {
+      try {
+        const { buildReceipt } = require('./build-backfill-receipt');
+        const csvPath = env.MUSHROOM_LOG_CSV || '/mnt/slime-kingdom/shared/mushdatadump/mushroom_log.csv';
+        buildReceipt({
+          runDir,
+          runSummary,
+          csvPath,
+          runId,
+          cycleNumber: opts.cycle,
+          farmosUrl: env.FARMOS_URL,
+          elapsedSec: 0,
+        });
+      } catch (e) {
+        logger.warn && logger.warn(`[backfill] buildReceipt failed: ${e.message}`);
+      }
+    }
   }
 
   return { code: 0, runId, runDir, runSummary };
