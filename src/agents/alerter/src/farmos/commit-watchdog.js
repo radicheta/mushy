@@ -36,7 +36,7 @@ function createCommitWatchdog({
   // CAS claim (tryMarkOutcomeAckSent) for ACK-04 idempotency. Two concurrent
   // ticks on the same draft converge to exactly one ack send. A crash between
   // mark and send leaves the draft marked (accepted <=1 dropped ack trade-off).
-  async function _maybeDispatchOutcomeAck(lockedRow, outcome, reason) {
+  async function _maybeDispatchOutcomeAck(lockedRow, outcome, reason, attachmentsFailed) {
     if (typeof commitDb.tryMarkOutcomeAckSent !== 'function') {
       // commit-db without Plan 01 helper (older tests). Degrade silently.
       return;
@@ -64,7 +64,14 @@ function createCommitWatchdog({
           lockedRow.sender_name = slug[0].toUpperCase() + slug.slice(1);
         }
       }
-      const extras = outcome === 'failed' ? { outcome, reason } : { outcome };
+      const extras = { outcome };
+      if (outcome === 'failed') {
+        extras.reason = reason;
+      } else if (attachmentsFailed && attachmentsFailed > 0) {
+        // Only surfaced when photos actually failed, so clean commits keep a
+        // bare { outcome: 'success' } and the farmer ack stays unchanged.
+        extras.attachmentsFailed = attachmentsFailed;
+      }
       await outboundConfirm.dispatch('send_commit_outcome_ack', lockedRow, extras);
     } catch (e) {
       logger.warn && logger.warn(`[commit-watchdog] outcome ack dispatch failed draft=${lockedRow.id}: ${e.message}`);
@@ -115,7 +122,12 @@ function createCommitWatchdog({
       });
       await auditLogger.logCommit('commit_success', lockedRow, Object.assign({ attempt }, result));
       // Phase 45 Plan 04 T4: dispatch send_commit_outcome_ack (success).
-      await _maybeDispatchOutcomeAck(lockedRow, 'success');
+      // Pass the count of attachments that failed to upload so the ack tells the
+      // farmer "saved, but couldn't attach N photo(s)" instead of a clean "saved".
+      await _maybeDispatchOutcomeAck(
+        lockedRow, 'success', null,
+        Array.isArray(result.attachments_failed) ? result.attachments_failed.length : 0,
+      );
       return;
     }
 
