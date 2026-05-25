@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.11
 milestone_name: Extraction prereqs + 2025-paper backfill
-status: Phase 53 SHIPPED (all 4 plans); Phase 54 UNBLOCKED
-last_updated: "2026-05-24T23:30:00.000Z"
-last_activity: 2026-05-24 — Phase 53 BACK-04 closed: 8 hand-curated 2025-notebook fixtures populated (cc95c8d), hermetic gate GREEN, Phase 54 unblocked
+status: Phase 54 plans 01-04 SHIPPED (harness + receipt hermetic-green); plans 05-06 = operator runbooks authored, awaiting Cycle 1 real-run + farmer SIGN-OFF
+last_updated: "2026-05-25T00:30:00.000Z"
+last_activity: 2026-05-24 — Phase 54 plans 01-04 shipped: backfill-notebook CLI (bfcde26) + auto-confirm + commit-router (99e3f98) + responses.jsonl observer (f4923e4) + receipt builder + Cycle RUNBOOKs (31b31bf). 1232 alerter tests green; +81 vs Phase 53 baseline. Operator workflow next.
 progress:
   total_phases: 28
   completed_phases: 12
   total_plans: 96
-  completed_plans: 68
-  percent: 45
+  completed_plans: 72
+  percent: 47
 ---
 
 # Project State
@@ -21,6 +21,26 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
 **Current focus:** Phase 51 — order-independent-farmos-writes-upsert-by-stable-identity-se
+
+## Phase 54 Closeout (2026-05-24/25, plans 01-04)
+
+**Shipped autonomously, in sequence:**
+
+- **54-01 (`bfcde26`):** `scripts/backfill-notebook.js` — CLI surface, prod-guard (refuses ':8082'/'prod'), santi-only hard gate (exit 4), IMG_3775..IMG_3861 page-range filter, synthetic capture dispatcher. 29 hermetic tests.
+- **54-02 (`99e3f98`):** Auto-confirm short-circuit. New `extraction-db.getDraftsForCapture(captureId)`. Per-draft flip to `'confirmed'` with `needs_review_reason='bulk_backfill_santi'` audit marker (T-54-06). commit-router dispatch + summaries.log (ASCII-only, em-dash-scrubbed). In-loop santi assertion (T-54-05 defense-in-depth). Pulled forward `.planning/backfill/` to .gitignore. +18 tests.
+- **54-03 (`f4923e4`):** Extractor `onLlmCall` observer hook (opt-in; live capture paths unchanged). Fires for both initial + schema-retry calls with `{ts, captureId, model, in/out tokens, latency_ms, raw_response, request_hash, error}`. Observer throws caught + warn-logged. Backfill harness wires `makeResponsesObserver(fd)` writing append-only JSONL with 2026-05-24 cost rate table (Sonnet 3/15, Haiku 0.80/4.00 per MTok). `runIdExistsGuard` exits 6 on collision (T-54-10). +5 extractor tests + 8 backfill tests.
+- **54-04 (`31b31bf`):** `scripts/build-backfill-receipt.js` — parseCsv (quoted notes), computeCsvDiff (case-insensitive strain match), renderPageSection, computeAggregate with **Phase 51 intra-cycle upsert-stability check** (substitutes for N/A May-22 stub-enrichment per BACK-08 resolution), buildReceipt called from main() finally{} (T-54-13 crash-resilient audit). Cycle 1/2 RUNBOOKs authored. 19 hermetic tests.
+
+**Test baseline:** 1232 pass / 9 skipped / 0 fail (was 1151 pre-Phase-54). +81 net.
+
+**No deviations beyond:**
+
+- .gitignore .planning/backfill/ pulled forward to Plan 02 (Rule 2 — would have leaked per-run JSONLs into commits otherwise).
+- 54-CYCLE-1/2 RUNBOOKs authored as part of 54-04 (orchestrator-directed; the runbook artifacts are operator-facing docs, building them is non-disruptive).
+- DRAFT_STATUS_CONFIRMED literal is `'confirmed'` (matches Phase 39 / commit-db / confirm-state-machine canonical value), not `'confirmed_by_farmer'` (plan spec fall-back).
+- Real-run bootstrap (`createBackfillContext` lifting from src/index.js) NOT YET WIRED — documented in 54-CYCLE-1-RUNBOOK step 7 as ~30 min follow-on. Hermetic seams prove every behavior; the missing piece is connecting the canonical alerter bootstrap.
+
+**Operator next step:** before running Cycle 1, lift the canonical pool+pipeline bootstrap from `src/index.js` into a `createBackfillContext()` helper (or write a small `live-fire-54.js` driver that does the bootstrap inline), then follow `54-CYCLE-1-RUNBOOK.md` from step 1.
 
 ## Today's Closeout (2026-05-24)
 
@@ -76,8 +96,8 @@ All in `.planning/todos/pending/`:
 
 ## Current Position
 
-Phase: 53 — Extraction prerequisites — year-context shim + Phase 38 batch-mode fixes (v1.11) — SHIPPED
-Plan: 04 — BACK-04 eval-gate SHIPPED (8 hermetic fixtures green)
+Phase: 54 — Backfill harness + dev-farmOS smoke (≤20 pages, two cycles) (v1.11) — plans 01-04 SHIPPED; 05-06 pending operator real-run
+Plan: 04 — receipt builder SHIPPED (19 hermetic tests; intra-cycle upsert-stability substitutes for N/A May-22 stub-enrichment per BACK-08 resolution)
 Status: Phase 53 closed; Phase 54 (backfill harness) UNBLOCKED
 Last activity: 2026-05-24 — BACK-04 fixture corpus populated from /mnt/slime-kingdom/shared/mushdatadump/ (8 pages spanning Feb-Nov 2025); hermetic suite 8/8 green; full alerter 1151/0
 
