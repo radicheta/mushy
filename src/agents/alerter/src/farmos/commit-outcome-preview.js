@@ -193,6 +193,21 @@ function buildDisambiguator(draftRow, label) {
  *   - reason?:    one of the 8 reason codes (required when outcome='failed')
  *   - farmosLink?: string  (success-with-target only; surfaced as "Open in farmOS: <link>")
  */
+// Farmer-facing suffix appended to a success ack when one or more attachments
+// failed to upload. Attachments are best-effort and never block the commit, but
+// a dropped photo must not be swallowed behind a clean "saved" (no-silent-failure
+// after farmer confirm). Accepts a count or the raw failed[] array; returns ''
+// when nothing failed.
+function attachmentNoteFor(attachmentsFailed) {
+  const n = typeof attachmentsFailed === 'number'
+    ? attachmentsFailed
+    : (Array.isArray(attachmentsFailed) ? attachmentsFailed.length : 0);
+  if (!n || n < 1) return '';
+  const noun = n === 1 ? 'photo' : 'photos';
+  const them = n === 1 ? 'it' : 'them';
+  return ` Heads up: ${fmtNum(n)} ${noun} did not attach, you can re-send ${them}.`;
+}
+
 function renderOutcomeAck(draftRow, options) {
   const row = draftRow || {};
   const opts = options || {};
@@ -228,6 +243,7 @@ function renderOutcomeAck(draftRow, options) {
   const what = buildDisambiguator(row, label);
 
   if (outcome === 'success') {
+    const attachNote = attachmentNoteFor(opts.attachmentsFailed);
     // Phase 48 Plan 04: seeding_session has no single target asset (1 session +
     // N children). The legacy no-target template ("as a general farm note since
     // I couldn't match a specific block") is misleading here -- the session
@@ -238,7 +254,7 @@ function renderOutcomeAck(draftRow, options) {
       if (typeof opts.farmosLink === 'string' && opts.farmosLink.trim() !== '') {
         body += ` Open in farmOS: ${opts.farmosLink.trim()}`;
       }
-      return sanitizeFarmerText(body);
+      return sanitizeFarmerText(body + attachNote);
     }
     if (target != null && String(target).trim() !== '') {
       const tgt = fmtTarget(target);
@@ -246,11 +262,11 @@ function renderOutcomeAck(draftRow, options) {
       if (typeof opts.farmosLink === 'string' && opts.farmosLink.trim() !== '') {
         body += ` Open in farmOS: ${opts.farmosLink.trim()}`;
       }
-      return sanitizeFarmerText(body);
+      return sanitizeFarmerText(body + attachNote);
     }
     // Farm-level no-target success. Embeds disambiguator.
     const body = `${hi}saved that ${what} as a general farm note since I couldn't match a specific block. Send EDIT to attach a block if you want.`;
-    return sanitizeFarmerText(body);
+    return sanitizeFarmerText(body + attachNote);
   }
 
   if (outcome === 'failed') {

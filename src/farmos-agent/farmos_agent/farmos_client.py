@@ -7,7 +7,10 @@ Credentials are NEVER hardcoded here — load from env or caller config (T-13-02
 """
 
 from datetime import datetime
+import logging
 import requests
+
+_logger = logging.getLogger(__name__)
 
 # Module-level UUID cache to avoid re-querying FarmOS on every call
 _asset_uuid_cache: dict = {}
@@ -104,6 +107,14 @@ def upload_photo(
     )
     if resp.ok:
         return resp.json()['data']['id']
+    # Don't swallow the failure: log the status + body snippet so a 500 (e.g.
+    # the private:// file_private_path-unset case) is diagnosable instead of a
+    # silent photoless observation. Caller still continues without the image.
+    _logger.warning(
+        '[farmos] photo upload failed: HTTP %s %s',
+        resp.status_code,
+        (resp.text or '')[:200],
+    )
     return None
 
 

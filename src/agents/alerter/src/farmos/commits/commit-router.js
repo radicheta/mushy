@@ -45,6 +45,8 @@ async function commit(client, draft, ctx) {
       asset_ids: r.asset_ids || [],
       log_ids: r.log_ids || [],
       file_ids: r.file_ids || [],
+      attachments_failed: r.attachments_failed || [],
+      attachments_skipped: r.attachments_skipped || [],
       http_status: r.http_status,
       latency_ms: clock.now() - t0,
       reason: r.reason,

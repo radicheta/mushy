@@ -32,17 +32,37 @@ async function commitObservation(client, draft, ctx) {
     ? await files.uploadAttachments(client, paths, { logger: ctx && ctx.logger })
     : { fileIds: [], skipped: [], failed: [] };
 
+  // Attachments are best-effort (D-05a) and never fail the commit, but a failed
+  // upload must NOT be swallowed: surface it in the result so it reaches the
+  // audit log and the farmer ack instead of acking "saved" with photos dropped.
+  const attachmentsFailed = Array.isArray(upRes.failed) ? upRes.failed : [];
+  const attachmentsSkipped = Array.isArray(upRes.skipped) ? upRes.skipped : [];
+  if (attachmentsFailed.length > 0 && ctx && ctx.logger && ctx.logger.warn) {
+    ctx.logger.warn(`[commit-observation] ${attachmentsFailed.length} attachment(s) failed to upload draft=${draftId}: ${attachmentsFailed.map((f) => f.reason).join(', ')}`);
+  }
+
   const name = `observation ${new Date(timestamp * 1000).toISOString().slice(0, 10)}`;
   // Phase 51 review: observation log stays POST-only (LOG_STABLE_KEYS.observation === null per CONTEXT.md).
   const r = await logs.createLog(client, 'observation', {
     name, timestamp, assetIds, fileIds: upRes.fileIds, notes: dj.notes || '', draftId,
   });
-  if (!r.ok) return { ok: false, reason: r.reason, http_status: r.http_status, file_ids: upRes.fileIds };
+  if (!r.ok) {
+    return {
+      ok: false,
+      reason: r.reason,
+      http_status: r.http_status,
+      file_ids: upRes.fileIds,
+      attachments_failed: attachmentsFailed,
+      attachments_skipped: attachmentsSkipped,
+    };
+  }
   return {
     ok: true,
     asset_ids: [],
     log_ids: [r.logId],
     file_ids: upRes.fileIds,
+    attachments_failed: attachmentsFailed,
+    attachments_skipped: attachmentsSkipped,
     http_status: r.http_status,
   };
 }

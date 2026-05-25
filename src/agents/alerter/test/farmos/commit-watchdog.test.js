@@ -235,6 +235,23 @@ describe('commit-watchdog (Phase 40 Plan 05)', () => {
     expect(commitDb._calls.filter((c) => c.fn === 'tryMarkOutcomeAckSent').length).toBe(1);
   });
 
+  it('T4 commit_success: forwards attachmentsFailed count to the ack when uploads failed', async () => {
+    const outboundConfirm = makeOutboundConfirm();
+    const { wd } = build({
+      routerImpl: async () => ({
+        ok: true, asset_ids: [], log_ids: ['l1'], file_ids: [],
+        attachments_failed: [{ reason: 'http_500' }, { reason: 'http_500' }],
+        http_status: 201, latency_ms: 50,
+      }),
+      drafts: [['d1', { id: 'd1', status: 'confirmed', log_type: 'observation', sender_e164: '+15550001234' }]],
+      outboundConfirm,
+    });
+    await wd.tickOnce();
+    const args = outboundConfirm.dispatch.mock.calls[0];
+    expect(args[0]).toBe('send_commit_outcome_ack');
+    expect(args[2]).toEqual({ outcome: 'success', attachmentsFailed: 2 });
+  });
+
   it('T6 commit_failed (terminal 4xx): dispatches send_commit_outcome_ack once with outcome=failed + reason', async () => {
     const outboundConfirm = makeOutboundConfirm();
     const { wd, commitDb } = build({

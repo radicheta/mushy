@@ -240,6 +240,7 @@ function createConfirmOutbound({
           body = renderOutcomeAck(draftRow || {}, {
             outcome: extras.outcome,
             reason: extras.reason,
+            attachmentsFailed: extras.attachmentsFailed,
             farmosLink,
           });
           // Phase 50 Plan 03: quote-aware ack on the highest-traffic terminal

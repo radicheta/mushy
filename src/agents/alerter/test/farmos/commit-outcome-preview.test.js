@@ -104,6 +104,52 @@ describe('renderOutcomeAck (Phase 45 Plan 02)', () => {
     });
   });
 
+  describe('attachment-failure note (no-silent-failure)', () => {
+    it('success ack appends a heads-up when attachmentsFailed > 0 (count)', () => {
+      const out = renderOutcomeAck(
+        row({ log_type: 'observation', target: '260512_SHI_4' }),
+        { outcome: 'success', attachmentsFailed: 2, farmosLink: 'https://farmos.example/log/1' }
+      );
+      expect(out).toContain('saved'); // base success preserved
+      expect(out).toContain('2 photos did not attach');
+      expect(out).toContain('re-send them');
+    });
+
+    it('singular wording + accepts the raw failed[] array', () => {
+      const out = renderOutcomeAck(
+        row({ log_type: 'observation', target: '260512_SHI_4' }),
+        { outcome: 'success', attachmentsFailed: [{ reason: 'http_500' }] }
+      );
+      expect(out).toContain('1 photo did not attach');
+      expect(out).toContain('re-send it');
+    });
+
+    it('no heads-up when nothing failed (clean ack unchanged)', () => {
+      const out = renderOutcomeAck(
+        row({ log_type: 'observation', target: '260512_SHI_4' }),
+        { outcome: 'success', attachmentsFailed: 0 }
+      );
+      expect(out).not.toContain('did not attach');
+    });
+
+    it('failed outcome never shows an attachment note', () => {
+      const out = renderOutcomeAck(
+        row({ log_type: 'observation', target: null }),
+        { outcome: 'failed', reason: 'observation_requires_target', attachmentsFailed: 3 }
+      );
+      expect(out).not.toContain('did not attach');
+    });
+
+    it('the note carries no em-dash or en-dash', () => {
+      const out = renderOutcomeAck(
+        row({ log_type: 'observation', target: '260512_SHI_4' }),
+        { outcome: 'success', attachmentsFailed: 2 }
+      );
+      expect(out).not.toContain('—');
+      expect(out).not.toContain('–');
+    });
+  });
+
   describe('reasonMap fallback', () => {
     it('all 8 reason codes are present in reasonMap', () => {
       const expected = [
