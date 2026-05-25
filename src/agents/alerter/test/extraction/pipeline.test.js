@@ -211,6 +211,96 @@ describe('extraction pipeline -- BACK-02 multi-draft routing', () => {
   });
 });
 
+// Cycle-1 finding 2026-05-25: batch-mode in_flight_conflict regression.
+// The earlier BACK-02 tests mock insertDraft as always-ok, so they never
+// exercised extraction-db's partial unique index
+// (sender_e164) WHERE status IN ('pending','awaiting_farmer'). This block's fake
+// extractionDb MODELS that constraint, reproducing the bug where clean batch
+// drafts landed in awaiting_farmer, held the one-per-sender in-flight slot, and
+// every sibling PENDING insert failed -> only 1 of N entries per page persisted.
+describe('extraction pipeline -- batch mode in-flight-index regression', () => {
+  const IN_FLIGHT = new Set(['pending', 'awaiting_farmer']);
+
+  function makeConstraintDeps({ drafts }) {
+    const store = new Map(); // id -> { sender, status }
+    const inFlight = (sender) => [...store.values()]
+      .filter((r) => r.sender === sender && IN_FLIGHT.has(r.status)).length;
+    const insertResults = [];
+    const extractor = {
+      extract: jest.fn(async () => ({ ok: true, drafts, continuity_decision: 'start_new' })),
+    };
+    const extractionDb = {
+      getInFlightForSender: jest.fn(async () => null),
+      insertDraft: jest.fn(async (_p, row) => {
+        // Model the partial unique index: at most one in-flight draft per sender.
+        if (IN_FLIGHT.has(row.status) && inFlight(row.sender_e164) >= 1) {
+          const r = { ok: false, reason: 'in_flight_conflict' };
+          insertResults.push(r);
+          return r;
+        }
+        store.set(row.id, { sender: row.sender_e164, status: row.status });
+        const r = { ok: true };
+        insertResults.push(r);
+        return r;
+      }),
+      updateDraftStatus: jest.fn(async (_p, id, status) => {
+        const r = store.get(id);
+        if (r) r.status = status;
+        return { ok: true };
+      }),
+      advanceAskbackTurn: jest.fn(async () => ({ ok: true })),
+      computeDraftId: jest.fn((ids, idx) => `draft-${idx || 0}`),
+    };
+    const stateMachine = {
+      forceStartNewIfIdle: jest.fn(() => null),
+      // Clean, high-confidence draft -> awaiting_farmer (the real state machine's
+      // behavior; reason absent). The fix in runBatchMode must remap this to
+      // needs_review so the in-flight slot frees between sibling inserts.
+      transition: jest.fn(() => ({
+        nextStatus: DRAFT_STATUS.AWAITING_FARMER,
+        side_effects: ['handoff_to_phase_39'],
+        nextAskbackTurns: 0,
+        reason: 'ok',
+      })),
+    };
+    const pipeline = createExtractionPipeline({
+      pool: { query: jest.fn(async () => ({ rows: [], rowCount: 1 })) },
+      extractor,
+      extractionDb,
+      stateMachine,
+      previewBuilder: { buildPreview: jest.fn(() => 'preview') },
+      config: { draftIdleGapMin: 60, extractionConfidenceThreshold: 0.7, maxAskbackTurns: 3 },
+      logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+      outboundDispatcher: { dispatch: jest.fn() },
+    });
+    return { pipeline, extractionDb, store, insertResults };
+  }
+
+  const ctx = { sender: '+59891840205', captureId: 'CAP-batch', attachmentPaths: ['/x.jpg'] };
+
+  test('6 clean drafts from one page all persist (no in_flight_conflict drops)', async () => {
+    const drafts = Array.from({ length: 6 }, (_, i) => ({
+      draft: { type: 'observation', asset_ref: `R${i}` },
+      per_field_confidence: { type: 0.95, asset_ref: 0.9 },
+    }));
+    const { pipeline, store, insertResults } = makeConstraintDeps({ drafts });
+    const res = await pipeline.enqueue(ctx);
+
+    expect(res.ok).toBe(true);
+    expect(res.mode).toBe('batch');
+    // All 6 entries persisted -- the bug dropped 5 of them to in_flight_conflict.
+    expect(res.count).toBe(6);
+    expect(store.size).toBe(6);
+    expect(insertResults.filter((r) => r.reason === 'in_flight_conflict')).toHaveLength(0);
+    // Clean batch drafts now land in needs_review (not awaiting_farmer).
+    const statuses = [...store.values()].map((r) => r.status);
+    expect(statuses.every((s) => s === DRAFT_STATUS.NEEDS_REVIEW)).toBe(true);
+    // Clean-vs-flagged split preserved via reason marker.
+    expect(res.cleanCount).toBe(6);
+    expect(res.needsReviewCount).toBe(0);
+  });
+});
+
 // Phase 53 BACK-01 Task 2: corpus_context plumbing.
 // captureCtx.corpusContext -> extractor.extract({corpusContext:...}). Null/absent
 // preserves pre-Phase-53 behavior (back-compat with every existing live caller).
