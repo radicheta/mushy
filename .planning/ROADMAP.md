@@ -247,12 +247,12 @@ Honors locked schema (B5 SEQ per-session per 2026-05-22 clarification in farmos 
 **Plans:** 6 plans
 
 Plans:
-- [ ] 54-01-PLAN.md — backfill-notebook.js CLI core, prod-guard, santi-gate, page-range filter, synthetic-capture dispatch (BACK-05)
-- [ ] 54-02-PLAN.md — bulk-backfill short-circuit: auto-flip drafts to confirmed + commit-router dispatch + summaries.log audit (BACK-06)
-- [ ] 54-03-PLAN.md — paid-LLM observer hook on extractor + append-only responses.jsonl per run-id (BACK-07)
-- [ ] 54-04-PLAN.md — receipt.md builder: per-page + aggregate + Phase 51 upsert-stability check (BACK-08 part 1)
-- [ ] 54-05-PLAN.md — Cycle 1 (5 pages) operator runbook + farmer checkpoint (BACK-08 part 2)
-- [ ] 54-06-PLAN.md — Cycle 2 (20 pages) operator runbook + farmer checkpoint + Phase 55 unlock decision (BACK-08 part 3)
+- [x] 54-01-PLAN.md — backfill-notebook.js CLI core, prod-guard, santi-gate, page-range filter, synthetic-capture dispatch (BACK-05) — SHIPPED 2026-05-24 (`bfcde26`)
+- [x] 54-02-PLAN.md — bulk-backfill short-circuit: auto-flip drafts to confirmed + commit-router dispatch + summaries.log audit (BACK-06) — SHIPPED 2026-05-24 (`99e3f98`)
+- [x] 54-03-PLAN.md — paid-LLM observer hook on extractor + append-only responses.jsonl per run-id (BACK-07) — SHIPPED 2026-05-24 (`f4923e4`)
+- [x] 54-04-PLAN.md — receipt.md builder: per-page + aggregate + Phase 51 upsert-stability check (BACK-08 part 1) — SHIPPED 2026-05-24 (`31b31bf`); BACK-08 stub-enrichment resolved as N/A, substituted intra-cycle upsert-stability
+- [ ] 54-05-PLAN.md — Cycle 1 (5 pages) operator runbook + farmer checkpoint (BACK-08 part 2) — RUNBOOK authored 2026-05-24 (`31b31bf`); awaits operator real-run + farmer SIGN-OFF
+- [ ] 54-06-PLAN.md — Cycle 2 (20 pages) operator runbook + farmer checkpoint + Phase 55 unlock decision (BACK-08 part 3) — RUNBOOK authored 2026-05-24 (`31b31bf`); blocked on Cycle 1 SIGN-OFF
 
 ### Phase 55: Full corpus run + receipt
 
