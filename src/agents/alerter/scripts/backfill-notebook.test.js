@@ -31,6 +31,7 @@ const {
   buildResponsesLine,
   makeResponsesObserver,
   estimateCostUsd,
+  buildUnknownStrainMessage,
   main,
   CORPUS_DEFAULT,
 } = require('./backfill-notebook');
@@ -782,6 +783,99 @@ describe('processDraftsForCapture (Plan 54.1-02 strain-gate)', () => {
     // No hold when curated set is empty
     expect(r.heldUnknownCodes).toHaveLength(0);
     expect(commitRouter.commit).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ============================================================================
+// Phase 54.1 Plan 02 Task 2 tests: buildUnknownStrainMessage + batched send
+// ============================================================================
+
+describe('buildUnknownStrainMessage', () => {
+  test('single unknown code with nearest: message lists code and nearest, no em-dash', () => {
+    const unknowns = [{ code: 'LIM', nearest: 'LIMA', draftIds: ['d1'] }];
+    const msg = buildUnknownStrainMessage(unknowns);
+    expect(typeof msg).toBe('string');
+    expect(msg).toContain('LIM');
+    expect(msg).toContain('LIMA');
+    // No em-dash per [[feedback_no_em_dashes_in_artifacts]]
+    expect(/[–—]/.test(msg)).toBe(false);
+  });
+
+  test('two unknown codes: message contains both codes', () => {
+    const unknowns = [
+      { code: 'LIM', nearest: 'LIMA', draftIds: ['d1'] },
+      { code: 'SHITAKE', nearest: 'SHI', draftIds: ['d2'] },
+    ];
+    const msg = buildUnknownStrainMessage(unknowns);
+    expect(msg).toContain('LIM');
+    expect(msg).toContain('SHITAKE');
+    expect(msg).toContain('LIMA');
+    expect(msg).toContain('SHI');
+    expect(/[–—]/.test(msg)).toBe(false);
+  });
+
+  test('code without nearest: no crash, code still appears', () => {
+    const unknowns = [{ code: 'MYSTERY', nearest: null, draftIds: ['d1'] }];
+    const msg = buildUnknownStrainMessage(unknowns);
+    expect(msg).toContain('MYSTERY');
+    expect(/[–—]/.test(msg)).toBe(false);
+  });
+});
+
+// NOTE: The {sendUnknownStrainBatch} helper is the testable unit for Task 2 signal+file logic.
+// main() calls it after the page loop; these tests cover the batch helper directly.
+const { sendUnknownStrainBatch } = require('./backfill-notebook');
+
+describe('sendUnknownStrainBatch (Plan 54.1-02 Task 2)', () => {
+  let tmpDir;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path2.join(os.tmpdir(), 'bf-sb-'));
+  });
+
+  test('two held unknowns: exactly ONE send; pending-strain-confirm.json written with both codes + draftIds', async () => {
+    const runDir = path2.join(tmpDir, 'run1');
+    fs.mkdirSync(runDir, { recursive: true });
+    const signalSend = jest.fn().mockResolvedValue({ ok: true });
+    const unknowns = [
+      { code: 'LIM', nearest: 'LIMA', draftIds: ['d1'] },
+      { code: 'SHITAKE', nearest: 'SHI', draftIds: ['d2'] },
+    ];
+
+    await sendUnknownStrainBatch({ unknowns, runDir, runId: 'run1', signalSend, recipient: '+599999999' });
+
+    expect(signalSend).toHaveBeenCalledTimes(1);
+    const pendingPath = path2.join(runDir, 'pending-strain-confirm.json');
+    expect(fs.existsSync(pendingPath)).toBe(true);
+    const pending = JSON.parse(fs.readFileSync(pendingPath, 'utf8'));
+    expect(pending.runId).toBe('run1');
+    expect(Array.isArray(pending.unknowns)).toBe(true);
+    const codes = pending.unknowns.map((u) => u.code);
+    expect(codes).toContain('LIM');
+    expect(codes).toContain('SHITAKE');
+    expect(pending.unknowns.find((u) => u.code === 'LIM').draftIds).toContain('d1');
+  });
+
+  test('zero unknowns: no send, no pending file', async () => {
+    const runDir = path2.join(tmpDir, 'run2');
+    fs.mkdirSync(runDir, { recursive: true });
+    const signalSend = jest.fn();
+
+    await sendUnknownStrainBatch({ unknowns: [], runDir, runId: 'run2', signalSend, recipient: '+599999999' });
+
+    expect(signalSend).not.toHaveBeenCalled();
+    expect(fs.existsSync(path2.join(runDir, 'pending-strain-confirm.json'))).toBe(false);
+  });
+
+  test('send failure: pending file still written (best-effort)', async () => {
+    const runDir = path2.join(tmpDir, 'run3');
+    fs.mkdirSync(runDir, { recursive: true });
+    const signalSend = jest.fn().mockRejectedValue(new Error('network error'));
+    const unknowns = [{ code: 'POY', nearest: 'KOY', draftIds: ['d3'] }];
+
+    // Must not throw even when send rejects
+    await expect(sendUnknownStrainBatch({ unknowns, runDir, runId: 'run3', signalSend, recipient: '+599999999' })).resolves.not.toThrow();
+    // pending file still written
+    expect(fs.existsSync(path2.join(runDir, 'pending-strain-confirm.json'))).toBe(true);
   });
 });
 
