@@ -379,6 +379,7 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
     confirmParser: confirm.parser,
     confirmOutbound,
     editHandler,
+    extractionDb,
   });
 
   // Periodic tick to keep Pi-offline and humidifier-stuck detectors alive during quiet periods
