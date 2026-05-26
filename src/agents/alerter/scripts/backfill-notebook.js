@@ -283,14 +283,19 @@ function appendSummaryLine(fd, line) {
 
 async function processDraftsForCapture({
   pool, client, captureId, pagePath, opts, summariesFd, extractionDb, commitRouter, dryRun,
+  curatedStrains,
 }) {
   // Hard re-assertion per T-54-05.
   assertSantiInLoop(opts);
 
+  const { resolveStrain } = require('../src/farmos/strain-resolver');
   const db = extractionDb || require('../src/extraction/extraction-db');
   const router = commitRouter || require('../src/farmos/commits/commit-router');
   const drafts = await db.getDraftsForCapture(pool, captureId);
   const commits = [];
+  // Collection of held unknown codes: [{ code, nearest, draftIds }].
+  // Accumulated across drafts in this capture; caller merges across pages.
+  const heldUnknownCodes = [];
 
   for (const draft of drafts) {
     const ts = new Date().toISOString();
@@ -321,6 +326,46 @@ async function processDraftsForCapture({
         }));
       }
       continue;
+    }
+
+    // 1a. Strain-gate (T-54.1-03): resolve the extracted strain code against the
+    // curated set BEFORE flipping to confirmed. An unknown code is held as
+    // needs_review with reason 'strain_unknown_pending_confirm' and never committed.
+    // Only fires when curatedStrains is non-empty (empty = legacy/hermetic test mode).
+    if (curatedStrains && curatedStrains.length > 0) {
+      const dj = (draft && draft.draft_json) || {};
+      const rawStrain = dj.species_code || dj.species || dj.strain || dj.fungi_type || null;
+      if (rawStrain) {
+        const resolved = resolveStrain(rawStrain, curatedStrains);
+        if (!resolved.known) {
+          // Hold this draft -- do NOT flip to confirmed, do NOT commit.
+          await db.updateDraftStatus(pool, draftId, 'needs_review', {
+            needs_review_reason: 'strain_unknown_pending_confirm',
+          });
+          // Accumulate into the per-run held-codes collection (deduped by code in main()).
+          let existing = heldUnknownCodes.find((h) => h.code === resolved.code);
+          if (!existing) {
+            existing = { code: resolved.code, nearest: resolved.nearest || null, draftIds: [] };
+            heldUnknownCodes.push(existing);
+          }
+          existing.draftIds.push(draftId);
+          entry = {
+            draftId, log_type: logType,
+            ok: 'held', reason: 'strain_unknown_pending_confirm',
+            strain_codes: [resolved.code],
+            block_name: dj.block_name || null,
+            asset_ids: [], log_ids: [],
+          };
+          commits.push(entry);
+          if (summariesFd != null) {
+            appendSummaryLine(summariesFd, buildSummaryLine({
+              ts, page: path.basename(pagePath), captureId, draftId, logType,
+              ok: false, assetCount: 0, logCount: 0, reason: 'strain_unknown_pending_confirm',
+            }));
+          }
+          continue;
+        }
+      }
     }
 
     // 1. Flip draft to 'confirmed' (bulk_backfill_santi audit marker).
@@ -386,7 +431,7 @@ async function processDraftsForCapture({
     }
   }
 
-  return { drafts, commits };
+  return { drafts, commits, heldUnknownCodes };
 }
 
 function computeRunDir(runId) {
