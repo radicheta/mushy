@@ -50,4 +50,28 @@ async function getFungiTypeUuid(client, typeName) {
   return { ok: true, uuid };
 }
 
-module.exports = { getFungiTypeUuid, _clear };
+// Phase 54 Cycle-1: resolve a fungi_type term, minting it if it doesn't exist
+// yet. Honors farmer-as-source-of-truth ([[feedback_farmer_is_reality_source_of_truth]]):
+// a strain code in the (santi-attested) notebook IS real, so back the backfill
+// commit by creating the taxonomy term rather than failing fungi_type_not_found.
+// create defaults false -- live capture must NOT auto-mint terms from extraction
+// typos; only the bulk-backfill path (santi-gated) opts in. Only an honest
+// not-found is auto-created; taxonomy-missing / HTTP errors are infra problems
+// and pass through unchanged.
+async function ensureFungiTypeUuid(client, typeName, { create = false } = {}) {
+  const existing = await getFungiTypeUuid(client, typeName);
+  if (existing.ok) return existing;
+  if (!create || existing.reason !== 'fungi_type_not_found') return existing;
+  const r = await client.post('/api/taxonomy_term/fungi_type', {
+    data: { type: 'taxonomy_term--fungi_type', attributes: { name: typeName } },
+  });
+  if (!r.ok) {
+    return { ok: false, reason: 'fungi_type_create_http_' + (r.status || 'network'), typeName };
+  }
+  const uuid = r.body && r.body.data && r.body.data.id;
+  if (!uuid) return { ok: false, reason: 'fungi_type_create_no_id', typeName };
+  _set(typeName, uuid);
+  return { ok: true, uuid, created: true };
+}
+
+module.exports = { getFungiTypeUuid, ensureFungiTypeUuid, _clear };
