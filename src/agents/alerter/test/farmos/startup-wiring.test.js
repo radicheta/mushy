@@ -122,3 +122,20 @@ describe('Phase 40 startup wiring (Plan 06)', () => {
     stack.commitWatchdog.stop();
   });
 });
+
+describe('Phase 54.1 startup wiring (Plan 03 live strain ask-back)', () => {
+  // The live strain-pending intercept in receive-loop.js is dead unless
+  // src/index.js forwards extractionDb into createReceiveLoop. Unit tests
+  // inject extractionDb directly, so they cannot catch a boot-wiring drop.
+  // This source-level guard asserts the real index.js call site, per the
+  // gap caught in 54.1-VERIFICATION.md.
+  const fs = require('fs');
+  const path = require('path');
+  const indexSrc = fs.readFileSync(path.join(__dirname, '../../src/index.js'), 'utf8');
+
+  it('src/index.js forwards extractionDb into createReceiveLoop', () => {
+    const call = indexSrc.match(/createReceiveLoop\(\{([\s\S]*?)\}\)/);
+    expect(call).not.toBeNull();
+    expect(call[1]).toMatch(/(^|[\s,{])extractionDb\s*[,}]/);
+  });
+});
