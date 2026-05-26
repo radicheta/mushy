@@ -110,7 +110,17 @@ function createCommitWatchdog({
 
     await auditLogger.logCommit('commit_attempt', lockedRow, { attempt });
 
-    const result = await commitRouter.commit(farmosClient, lockedRow, ctx);
+    // Phase 54.1 Plan 03 Task 3: per-draft createMissingFungiType authorization.
+    // The shared ctx.createMissingFungiType defaults false (live path). A draft
+    // whose needs_review_reason === 'strain_confirm_approved' (set by the
+    // receive-loop YES handler) is the ONLY path that flips it true for that row.
+    // T-54.1-06: elevation-of-privilege mitigation -- this is the sole write site.
+    const rowCtx = Object.assign({}, ctx, {
+      createMissingFungiType: !!(ctx && ctx.createMissingFungiType) ||
+        lockedRow.needs_review_reason === 'strain_confirm_approved',
+    });
+
+    const result = await commitRouter.commit(farmosClient, lockedRow, rowCtx);
 
     if (result.ok) {
       await commitDb.markCommitted(pool, lockedRow.id, {
