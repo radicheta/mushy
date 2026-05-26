@@ -479,6 +479,36 @@ describe('processDraftsForCapture (Plan 02 core)', () => {
     }
   });
 
+  test('attaches strain_codes + block_name to commit entries and passes createMissingFungiType ctx', async () => {
+    const drafts = [
+      { id: 'd1', log_type: 'seeding', draft_json: { species: 'cas', block_name: '250201_CAS_1' } },
+      { id: 'd2', log_type: 'seeding', draft_json: { species_code: 'POY', block_name: '250201_POY_3' } },
+    ];
+    const extractionDb = {
+      getDraftsForCapture: jest.fn().mockResolvedValue(drafts),
+      updateDraftStatus: jest.fn().mockResolvedValue({ ok: true, rowCount: 1 }),
+    };
+    const commitRouter = {
+      commit: jest.fn().mockResolvedValue({ ok: true, asset_ids: ['a1'], log_ids: ['l1'] }),
+    };
+
+    const r = await processDraftsForCapture({
+      pool: {}, client: {}, captureId: 'cap-1', pagePath: '/c/IMG_3775.jpg',
+      opts: { bulkBackfill: true, farmer: 'santi' },
+      summariesFd: fd, extractionDb, commitRouter, dryRun: false,
+    });
+
+    // strain_codes uppercased (CSV diff matches case-insensitively); block_name preserved.
+    expect(r.commits[0].strain_codes).toEqual(['CAS']);
+    expect(r.commits[0].block_name).toBe('250201_CAS_1');
+    expect(r.commits[1].strain_codes).toEqual(['POY']);
+    // Blind-mint is OFF: unknown strains get a farmer double-check before their
+    // fungi_type term is minted (Cycle-1 finding B 2026-05-25), not auto-created.
+    for (const call of commitRouter.commit.mock.calls) {
+      expect(call[2].createMissingFungiType).toBe(false);
+    }
+  });
+
   test('dry-run: zero flips, zero commits, summary lines emit ok=dry-run', async () => {
     const drafts = [{ id: 'd1', log_type: 'seeding' }, { id: 'd2', log_type: 'seeding' }];
     const updateDraftStatus = jest.fn();

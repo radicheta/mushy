@@ -55,6 +55,9 @@ async function commitSeeding(client, draft, ctx) {
       fungiXingName: 'block',
       qrCodes: pathAQrs,
       draftId,
+      // Backfill (santi source-of-truth) mints unknown strain terms; live capture
+      // leaves this unset so the live commit-watchdog never auto-creates taxonomy.
+      createMissingFungiType: !!(ctx && ctx.createMissingFungiType),
     });
     if (!blockRes.ok) return { ok: false, reason: blockRes.reason || 'block_upsert_failed', http_status: blockRes.http_status };
     blockId = blockRes.assetId;

@@ -341,20 +341,39 @@ async function processDraftsForCapture({
     }
 
     // 2. Dispatch via commit-router.
+    // createMissingFungiType is intentionally OFF: blind-minting unknown strains
+    // pollutes the shared taxonomy with extraction variants (Cycle-1 validation
+    // 2026-05-25 minted LIM/SHITAKE/OYS for LIMA/SHI/POY). Per Santi, an unknown
+    // strain must get a batched farmer double-check ("new strain XYZ?") before its
+    // fungi_type term is minted. Until that confirm flow lands, unknown strains
+    // fail fungi_type_not_found rather than auto-minting. The ensureFungiTypeUuid
+    // mechanism stays in place for the confirm flow to call once a strain is
+    // farmer-confirmed. See .planning/todos -> strain-confirm-before-mint.
     let commitResult;
     try {
-      commitResult = await router.commit(client, draft, { auditLogger: { logCommit: async () => {} } });
+      commitResult = await router.commit(client, draft, {
+        auditLogger: { logCommit: async () => {} },
+        createMissingFungiType: false,
+      });
     } catch (e) {
       // commit-router is documented never-throw; defense-in-depth.
       commitResult = { ok: false, reason: `commit_threw: ${e.message}`, asset_ids: [], log_ids: [] };
     }
 
+    // strain_codes + block_name carried onto the commit entry so the receipt's
+    // CSV diff + upsert-stability check can match against ground truth (Cycle-1
+    // finding A 2026-05-25). The strain lives in draft_json; the receipt reads
+    // c.strain_codes / c.block_name off each commit entry.
+    const dj = (draft && draft.draft_json) || {};
+    const strain = dj.species_code || dj.species || dj.strain || dj.fungi_type || null;
     entry = {
       draftId, log_type: logType,
       ok: !!commitResult.ok,
       asset_ids: commitResult.asset_ids || [],
       log_ids: commitResult.log_ids || [],
       reason: commitResult.reason,
+      strain_codes: strain ? [String(strain).toUpperCase()] : [],
+      block_name: dj.block_name || null,
     };
     commits.push(entry);
 

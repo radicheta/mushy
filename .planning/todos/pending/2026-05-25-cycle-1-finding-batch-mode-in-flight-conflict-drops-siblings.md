@@ -54,12 +54,36 @@ index against a sequence of clean drafts. Classic producer->consumer wiring seam
 Recommend option 1 (fixes prod + backfill), with a regression test that inserts
 >1 clean draft for one sender in a single batch and asserts all persist.
 
-## Secondary finding (IMG_3778)
+## RESOLVED 2026-05-25 (primary)
 
-The single surviving draft committed as `log_type=seeding` and failed with
-`fungi_type_not_found` on 1 of 5 pages. Re-evaluate once option-1 fix lands and the
-full entry set actually persists. Relates to the Phase 48 `fungi_type NOT NULL`
-schema reality (see [[project_v111_backfill_harness_shape]] / 48-LIVE-FIRE notes).
+Fix committed `82c129c`: runBatchMode routes clean batch drafts to needs_review
+(reason `batch_mode_clean`) instead of awaiting_farmer. Regression test added that
+models the real partial unique index. Validated via free replay of the cached
+Cycle-1 responses (scripts/replay-backfill-responses.js + replay seam): all
+**80 entries persist** (24/17/17/8/14) vs 5 before. Full suite 1248 pass / 0 fail.
+Then replay-with-commit pushed them to dev farmOS (run 2026-05-25T23-32-41-774Z):
+62 assets + 66 logs, duplicate_asset_count=0, upsert unstable=0.
+
+## TWO follow-on findings surfaced by the full-entry receipt (still open)
+
+**(A) Receipt CSV-diff reports 0 hit / all miss on every page** — a receipt-builder
+wiring gap, NOT an extraction miss. The drafts DO carry the strain
+(`draft_json.species='CAS'`, `block_name='250201_CAS_1'`), but
+`build-backfill-receipt.js:strainSetFromCommits` reads `c.strain_codes` off each
+commit entry, and the harness (`backfill-notebook.js processDraftsForCapture`) never
+attaches it (the function's own comment says callers should). Fix: derive
+`strain_codes` from `draft_json.species` (or block_name prefix) and attach to each
+commit entry in processDraftsForCapture. Until then the receipt's extraction-accuracy
+gate (>=80% CSV hit) is non-functional and Cycle 1 cannot be meaningfully signed off.
+
+**(B) `fungi_type_not_found` on 15 of 80 commits** (IMG_3775:8, 3776:1, 3777:1,
+3778:4). Some species codes from the 2025 corpus aren't registered as fungi_type
+terms in dev farmOS. Relates to the Phase 48 `fungi_type NOT NULL` reality
+(see [[project_v111_backfill_harness_shape]] / 48-LIVE-FIRE notes). Decide: pre-seed
+the missing taxonomy terms in dev farmOS, or have the commit path mint them.
+
+NOTE: the run 2026-05-25T23-32-41-774Z receipt shows `total_cost_usd: 0.2542 across
+5 LLM calls` -- that is the ORIGINAL paid run's cached cost; the replay spent $0.
 
 ## Cleanup done
 

@@ -74,12 +74,16 @@ async function _buildAssetBody(client, opts) {
     qrCodes = [],
     notes = null,
     allowNoFungiType = false,
+    // Phase 54 Cycle-1: backfill (santi source-of-truth) opts in to minting an
+    // unknown strain's fungi_type term instead of failing fungi_type_not_found.
+    // Live capture leaves this false so extraction typos never pollute the taxonomy.
+    createMissingFungiType = false,
   } = opts;
   if (!allowNoFungiType && !fungiTypeName) return { ok: false, reason: 'missing_fungi_type_name' };
   if (!fungiXingName) return { ok: false, reason: 'missing_fungi_xing_name' };
   let ft = null;
   if (fungiTypeName) {
-    ft = await fungiTypeCache.getFungiTypeUuid(client, fungiTypeName);
+    ft = await fungiTypeCache.ensureFungiTypeUuid(client, fungiTypeName, { create: createMissingFungiType });
     if (!ft.ok) return { ok: false, reason: ft.reason, fungiTypeName };
   }
   const fx = await fungiXingCache.getFungiXingUuid(client, fungiXingName);
