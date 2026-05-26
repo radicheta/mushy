@@ -439,6 +439,67 @@ function computeRunDir(runId) {
 }
 
 // ============================================================================
+// Phase 54.1 Plan 02 Task 2: batched Signal message for unknown strains.
+// ============================================================================
+
+/**
+ * Build a farmer-facing Signal message listing all unknown strain codes collected
+ * during the run, with nearest-known suggestions for each.
+ *
+ * Rules: no em-dashes ([[feedback_no_em_dashes_in_artifacts]]), plain ASCII only.
+ * @param {{ code: string, nearest: string|null, draftIds: string[] }[]} unknowns
+ * @returns {string}
+ */
+function buildUnknownStrainMessage(unknowns) {
+  const codeList = unknowns.map((u) => u.code).join(', ');
+  const suggestions = unknowns
+    .filter((u) => u.nearest)
+    .map((u) => `${u.code} -> ${u.nearest}`)
+    .join(', ');
+  const hint = suggestions
+    ? `Nearest known: ${suggestions}.`
+    : '';
+  // No em-dashes; use plain ASCII punctuation.
+  const msg = `Backfill found unknown strain codes: ${codeList}. Real new strains, or typos? ${hint} Reply: NEW <code> to mint, or <bad>=<good> to remap.`;
+  // Strip any stray em-dashes from upstream data that may have leaked into code/nearest values.
+  return msg.replace(/[–—]/g, '--');
+}
+
+/**
+ * After the page loop, if any unknown strain codes were held: send ONE batched
+ * Signal message and write pending-strain-confirm.json to runDir.
+ *
+ * Best-effort: a send failure is logged but never throws; the pending file is
+ * always written so the follow-up pass can run regardless.
+ *
+ * @param {{ unknowns, runDir, runId, signalSend, recipient, logger }} opts
+ */
+async function sendUnknownStrainBatch({ unknowns, runDir, runId, signalSend, recipient, logger }) {
+  if (!unknowns || unknowns.length === 0) return;
+
+  const pendingPath = path.join(runDir, 'pending-strain-confirm.json');
+  const pending = { runId, unknowns };
+
+  // Write pending file FIRST so the follow-up pass can run even if send fails.
+  try {
+    fs.mkdirSync(runDir, { recursive: true });
+    fs.writeFileSync(pendingPath, JSON.stringify(pending, null, 2) + '\n');
+  } catch (e) {
+    logger && logger.warn && logger.warn(`[backfill] pending-strain-confirm.json write failed: ${e.message}`);
+  }
+
+  // Build message and send -- best-effort.
+  const msg = buildUnknownStrainMessage(unknowns);
+  if (signalSend && recipient) {
+    try {
+      await signalSend(msg, { to: recipient, intent: 'ask_back', sourceModule: 'backfill-notebook' });
+    } catch (e) {
+      logger && logger.warn && logger.warn(`[backfill] strain-confirm signal send failed: ${e.message}`);
+    }
+  }
+}
+
+// ============================================================================
 // Phase 54 Plan 03: paid-LLM responses.jsonl writer + onLlmCall observer +
 // run-id collision guard. Honors [[feedback_persist_paid_results_default]]
 // and [[feedback_never_overwrite_paid_live_api_results]].
@@ -727,6 +788,9 @@ module.exports = {
   computeRunDir,
   DRAFT_STATUS_CONFIRMED,
   RUN_DIR_ROOT,
+  // Plan 54.1-02 Task 2
+  buildUnknownStrainMessage,
+  sendUnknownStrainBatch,
   // Plan 03
   runIdExistsGuard,
   openResponsesJsonl,
