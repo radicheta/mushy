@@ -20,6 +20,8 @@
 // write here.
 
 const { renderOutcomeAck, buildDisambiguator, labelFor } = require('../farmos/commit-outcome-preview');
+// Phase 54.1 Plan 03 Task 2: per-encounter strain ask-back renderer.
+const { renderStrainAskBack } = require('./strain-ask-back');
 
 // Phase 50 Plan-04: numbered ask-back body for the >1-active no-quote case.
 // One-shot semantics: this is a single response. We do NOT track an
@@ -275,6 +277,21 @@ function createConfirmOutbound({
           const res = await safeSend(askBody, sender, null, 'ask_back', null);
           if (res && res.ok) {
             logger.info && logger.info(`[outbound-confirm] send_ask_back sent n=${activeDrafts.length} sender=${truncId(sender)}`);
+          }
+          return res;
+        }
+        case 'send_strain_ask_back': {
+          // Phase 54.1 Plan 03 Task 2: per-encounter strain ask-back. DM-only;
+          // no quote (mirrors send_ask_back). extras must carry { seenCode, nearest }.
+          // Missing target -> { ok:false, reason:'no_target' }. Best-effort; never throws.
+          if (dm == null) {
+            logger.warn && logger.warn(`[outbound-confirm] send_strain_ask_back: no_target draft=${truncId(draftRow && draftRow.id)}`);
+            return { ok: false, reason: 'no_target' };
+          }
+          const strainBody = renderStrainAskBack(extras.seenCode, extras.nearest || null);
+          const res = await safeSend(strainBody, dm, draftRow && draftRow.id, 'ask_back', null);
+          if (res && res.ok) {
+            logger.info && logger.info(`[outbound-confirm] send_strain_ask_back sent seenCode=${extras.seenCode} nearest=${extras.nearest} draft=${truncId(draftRow && draftRow.id)}`);
           }
           return res;
         }
