@@ -619,6 +619,173 @@ describe('processDraftsForCapture (Plan 02 core)', () => {
 });
 
 // ============================================================================
+// Phase 54.1 Plan 02 Task 1 tests: strain-gate in processDraftsForCapture
+// ============================================================================
+
+describe('processDraftsForCapture (Plan 54.1-02 strain-gate)', () => {
+  // Curated set matches tenants/mossrock/strains.yaml (14 codes).
+  const CURATED = ['SHI', 'SH2', 'KOY', 'MAI', 'MALI', 'KOS', 'DT', 'CAS', 'CAZ', 'WIN', 'ALM', 'MOR', 'BP', 'LIMA'];
+  let tmpDir;
+  let fd;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path2.join(os.tmpdir(), 'bf-sg-'));
+    fd = fs.openSync(path2.join(tmpDir, 'summaries.log'), 'a');
+  });
+  afterEach(() => {
+    try { fs.closeSync(fd); } catch (_e) {}
+  });
+
+  function readLog() {
+    return fs.readFileSync(path2.join(tmpDir, 'summaries.log'), 'utf8').trim().split('\n').filter(Boolean);
+  }
+
+  test('unknown-strain draft is held as needs_review, NOT flipped to confirmed, NOT committed', async () => {
+    // POY is NOT in the curated 14-code set -> must be held.
+    const drafts = [{ id: 'd1', log_type: 'seeding', draft_json: { species_code: 'POY' } }];
+    const updateDraftStatus = jest.fn().mockResolvedValue({ ok: true, rowCount: 1 });
+    const extractionDb = {
+      getDraftsForCapture: jest.fn().mockResolvedValue(drafts),
+      updateDraftStatus,
+    };
+    const commitRouter = { commit: jest.fn() };
+
+    const r = await processDraftsForCapture({
+      pool: {}, client: {}, captureId: 'cap-1', pagePath: '/c/IMG_3775.jpg',
+      opts: { bulkBackfill: true, farmer: 'santi' },
+      summariesFd: fd, extractionDb, commitRouter, dryRun: false,
+      curatedStrains: CURATED,
+    });
+
+    // commit-router must NOT be called
+    expect(commitRouter.commit).not.toHaveBeenCalled();
+    // updateDraftStatus must be called once with needs_review (not confirmed)
+    expect(updateDraftStatus).toHaveBeenCalledTimes(1);
+    const [, , status, extras] = updateDraftStatus.mock.calls[0];
+    expect(status).toBe('needs_review');
+    expect(extras).toMatchObject({ needs_review_reason: 'strain_unknown_pending_confirm' });
+    // commit entry reflects held state
+    expect(r.commits).toHaveLength(1);
+    expect(r.commits[0].ok).toBe('held');
+    expect(r.commits[0].reason).toBe('strain_unknown_pending_confirm');
+    // held codes returned from processDraftsForCapture
+    expect(r.heldUnknownCodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'POY' }),
+    ]));
+  });
+
+  test('known-strain draft (SHI) proceeds: confirmed + committed, NOT held', async () => {
+    const drafts = [{ id: 'd2', log_type: 'seeding', draft_json: { species_code: 'SHI' } }];
+    const updateDraftStatus = jest.fn().mockResolvedValue({ ok: true, rowCount: 1 });
+    const extractionDb = {
+      getDraftsForCapture: jest.fn().mockResolvedValue(drafts),
+      updateDraftStatus,
+    };
+    const commitRouter = {
+      commit: jest.fn().mockResolvedValue({ ok: true, asset_ids: ['a1'], log_ids: ['l1'] }),
+    };
+
+    const r = await processDraftsForCapture({
+      pool: {}, client: {}, captureId: 'cap-1', pagePath: '/c/IMG_3775.jpg',
+      opts: { bulkBackfill: true, farmer: 'santi' },
+      summariesFd: fd, extractionDb, commitRouter, dryRun: false,
+      curatedStrains: CURATED,
+    });
+
+    // Should flip to confirmed and commit (known path unchanged)
+    const statusCalls = updateDraftStatus.mock.calls.filter((c) => c[2] === 'confirmed');
+    expect(statusCalls).toHaveLength(1);
+    expect(commitRouter.commit).toHaveBeenCalledTimes(1);
+    expect(commitRouter.commit.mock.calls[0][2].createMissingFungiType).toBe(false);
+    expect(r.commits[0].ok).toBe(true);
+    expect(r.heldUnknownCodes).toHaveLength(0);
+  });
+
+  test('mixed: known CAS committed, unknown LIM held; heldUnknownCodes has LIM+nearest', async () => {
+    const drafts = [
+      { id: 'd1', log_type: 'seeding', draft_json: { species_code: 'CAS' } },
+      { id: 'd2', log_type: 'seeding', draft_json: { species_code: 'LIM' } },
+    ];
+    const updateDraftStatus = jest.fn().mockResolvedValue({ ok: true, rowCount: 1 });
+    const extractionDb = {
+      getDraftsForCapture: jest.fn().mockResolvedValue(drafts),
+      updateDraftStatus,
+    };
+    const commitRouter = {
+      commit: jest.fn().mockResolvedValue({ ok: true, asset_ids: ['a1'], log_ids: ['l1'] }),
+    };
+
+    const r = await processDraftsForCapture({
+      pool: {}, client: {}, captureId: 'cap-1', pagePath: '/c/IMG_3775.jpg',
+      opts: { bulkBackfill: true, farmer: 'santi' },
+      summariesFd: fd, extractionDb, commitRouter, dryRun: false,
+      curatedStrains: CURATED,
+    });
+
+    // CAS committed; LIM held
+    expect(commitRouter.commit).toHaveBeenCalledTimes(1);
+    expect(r.commits[0].ok).toBe(true);   // CAS
+    expect(r.commits[1].ok).toBe('held'); // LIM
+    // heldUnknownCodes includes LIM with nearest=LIMA
+    expect(r.heldUnknownCodes).toHaveLength(1);
+    expect(r.heldUnknownCodes[0].code).toBe('LIM');
+    expect(r.heldUnknownCodes[0].nearest).toBe('LIMA');
+    expect(r.heldUnknownCodes[0].draftIds).toContain('d2');
+  });
+
+  test('draft with NO strain: existing behavior (no hold gate)', async () => {
+    // No strain at all -> goes through the known path (commit may fail for other reasons);
+    // the strain-gate only intercepts UNKNOWN codes, not absent ones.
+    const drafts = [{ id: 'd1', log_type: 'seeding', draft_json: {} }];
+    const updateDraftStatus = jest.fn().mockResolvedValue({ ok: true, rowCount: 1 });
+    const extractionDb = {
+      getDraftsForCapture: jest.fn().mockResolvedValue(drafts),
+      updateDraftStatus,
+    };
+    const commitRouter = {
+      commit: jest.fn().mockResolvedValue({ ok: true, asset_ids: [], log_ids: [] }),
+    };
+
+    const r = await processDraftsForCapture({
+      pool: {}, client: {}, captureId: 'cap-1', pagePath: '/c/IMG_3775.jpg',
+      opts: { bulkBackfill: true, farmer: 'santi' },
+      summariesFd: fd, extractionDb, commitRouter, dryRun: false,
+      curatedStrains: CURATED,
+    });
+
+    // With no strain present, the gate does not hold the draft (no-strain is not the same as unknown)
+    expect(r.heldUnknownCodes).toHaveLength(0);
+    // draft goes through existing flip+commit path
+    expect(commitRouter.commit).toHaveBeenCalledTimes(1);
+  });
+
+  test('empty curatedStrains (default []): no drafts held (no gate, legacy behavior)', async () => {
+    // Existing tests call processDraftsForCapture without curatedStrains -> defaults to []
+    // -> resolveStrain with empty set -> known:false but we don't hold when curatedStrains is empty
+    // (hermetic test backward-compat).
+    const drafts = [{ id: 'd1', log_type: 'seeding', draft_json: { species_code: 'ANYTHING' } }];
+    const updateDraftStatus = jest.fn().mockResolvedValue({ ok: true, rowCount: 1 });
+    const extractionDb = {
+      getDraftsForCapture: jest.fn().mockResolvedValue(drafts),
+      updateDraftStatus,
+    };
+    const commitRouter = {
+      commit: jest.fn().mockResolvedValue({ ok: true, asset_ids: [], log_ids: [] }),
+    };
+
+    const r = await processDraftsForCapture({
+      pool: {}, client: {}, captureId: 'cap-1', pagePath: '/c/IMG_3775.jpg',
+      opts: { bulkBackfill: true, farmer: 'santi' },
+      summariesFd: fd, extractionDb, commitRouter, dryRun: false,
+      // no curatedStrains -> defaults to []
+    });
+
+    // No hold when curated set is empty
+    expect(r.heldUnknownCodes).toHaveLength(0);
+    expect(commitRouter.commit).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ============================================================================
 // Phase 54 Plan 03 tests: responses.jsonl writer + run-id guard + cost calc.
 // ============================================================================
 
