@@ -2,6 +2,9 @@
 
 const { parseSnoozeCommand } = require('./snooze');
 const { parseExperimentCommand } = require('./experiment_commands');
+// Phase 54.1 Plan 03 Task 3: per-encounter strain ask-back reply parser + resolver.
+const { parseStrainAskBackReply } = require('./confirm/strain-ask-back');
+const { resolveStrain } = require('./farmos/strain-resolver');
 
 // Phase 37 D-06/D-09 — pure helper for unit-testable trigger evaluation.
 // Defensive against both envelope wrapper shapes (env.envelope.dataMessage AND
@@ -60,6 +63,10 @@ function createReceiveLoop({
   confirmParser = null,
   confirmOutbound = null,
   editHandler = null,
+  // Phase 54.1 Plan 03: extractionDb.updateDraftStatus for strain-pending
+  // draft authorization (approval marker) and correction remap. Optional;
+  // when absent the strain-pending branch degrades to the normal YES path.
+  extractionDb = null,
 }) {
   let timer = null;
 
@@ -291,6 +298,64 @@ function createReceiveLoop({
             draftRow = activeDrafts[0] || null;
           }
           if (draftRow) {
+            // Phase 54.1 Plan 03 Task 3: strain-pending intercept.
+            // When the draft is held for farmer strain confirmation, route the
+            // reply through parseStrainAskBackReply instead of the standard
+            // confirmParser.parseReply YES path.
+            if (draftRow.needs_review_reason === 'strain_unknown_pending_confirm' &&
+                extractionDb && typeof extractionDb.updateDraftStatus === 'function') {
+              const strainReply = parseStrainAskBackReply(text);
+              if (strainReply.kind === 'confirm_new') {
+                // YES -> set approval marker so commit-watchdog passes createMissingFungiType=true
+                await extractionDb.updateDraftStatus(
+                  pool, draftRow.id, draftRow.status,
+                  { needs_review_reason: 'strain_confirm_approved' }
+                );
+                const r = await confirmDb.confirmDraft(pool, draftRow.id);
+                if (r.ok && r.rowCount === 1) {
+                  await confirmOutbound.dispatch('send_confirm_ack', draftRow);
+                } else if (r.ok && r.rowCount === 0) {
+                  await confirmOutbound.dispatch('send_confirm_idempotent_ack', draftRow);
+                } else {
+                  logger.warn(`[receive] strain confirm error: ${r.reason}`);
+                }
+                continue;
+              } else if (strainReply.kind === 'correction') {
+                // Validate the correction target against the curated set.
+                const curatedSet = (config && Array.isArray(config.strains)) ? config.strains : [];
+                const resolved = resolveStrain(strainReply.code, curatedSet);
+                if (resolved.known) {
+                  // Rewrite draft_json.species_code to the canonical curated code.
+                  // Preserve all other draft_json fields (logs, attachments, etc.).
+                  const updatedDraftJson = Object.assign({}, draftRow.draft_json || {}, {
+                    species_code: resolved.code,
+                  });
+                  await extractionDb.updateDraftStatus(
+                    pool, draftRow.id, draftRow.status,
+                    { draft_json: updatedDraftJson }
+                  );
+                  // Confirm WITHOUT approval marker -- no mint.
+                  const r = await confirmDb.confirmDraft(pool, draftRow.id);
+                  if (r.ok && r.rowCount === 1) {
+                    await confirmOutbound.dispatch('send_confirm_ack', draftRow);
+                  } else if (r.ok && r.rowCount === 0) {
+                    await confirmOutbound.dispatch('send_confirm_idempotent_ack', draftRow);
+                  } else {
+                    logger.warn(`[receive] strain correction confirm error: ${r.reason}`);
+                  }
+                  continue;
+                } else {
+                  // Non-curated correction target: re-ask (do not confirm, do not mint).
+                  const seenCode = (draftRow.draft_json && draftRow.draft_json.species_code) || strainReply.code;
+                  await confirmOutbound.dispatch('send_strain_ask_back', draftRow, {
+                    seenCode,
+                    nearest: resolved.nearest || null,
+                  });
+                  continue;
+                }
+              }
+              // strainReply.kind === 'unknown': fall through to NOOP -> capture pipeline.
+            }
             const parsed = confirmParser.parseReply(text);
             if (parsed.kind === 'YES') {
               const r = await confirmDb.confirmDraft(pool, draftRow.id);

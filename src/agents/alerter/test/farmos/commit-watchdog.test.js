@@ -441,3 +441,77 @@ describe('commit-watchdog (Phase 40 Plan 05)', () => {
     expect(commitDb._drafts.get('d2').status).toBe('committed');
   });
 });
+
+// =====================================================================
+// Phase 54.1 Plan 03 Task 3: per-draft createMissingFungiType authorization
+// =====================================================================
+
+describe('Phase 54.1 Plan 03: per-draft mint authorization via strain_confirm_approved', () => {
+  function buildWithCtx(draftRow, sharedCtx = {}) {
+    const commitDb = makeCommitDb([[draftRow.id, draftRow]]);
+    const auditLogger = makeAudit();
+    const capturedCtxs = [];
+    const commitRouter = {
+      commit: jest.fn(async (client, row, ctx) => {
+        capturedCtxs.push({ row_id: row.id, createMissingFungiType: ctx && ctx.createMissingFungiType });
+        return { ok: true, asset_ids: ['a1'], log_ids: ['l1'], file_ids: [], http_status: 201, latency_ms: 10 };
+      }),
+    };
+    const config = {
+      commitWatchdogIntervalMs: 30000,
+      commitWatchdogBatchCap: 10,
+      commitRetryMax: 3,
+      commitRetryBackoffMs: [1000],
+      commitLockStaleMin: 5,
+    };
+    const wd = createCommitWatchdog({
+      pool: {}, commitDb, farmosClient: {}, commitRouter,
+      ctx: sharedCtx, config, auditLogger,
+      logger: { info() {}, warn() {} },
+      clock: { now: () => 100000 },
+    });
+    return { wd, capturedCtxs };
+  }
+
+  it('strain_confirm_approved draft -> commitRouter called with createMissingFungiType=true', async () => {
+    const draftRow = {
+      id: 'approved-draft',
+      status: 'confirmed',
+      needs_review_reason: 'strain_confirm_approved',
+      log_type: 'seeding',
+      commit_attempt_count: 0,
+    };
+    const { wd, capturedCtxs } = buildWithCtx(draftRow, { createMissingFungiType: false });
+    await wd.tickOnce();
+    expect(capturedCtxs.length).toBe(1);
+    expect(capturedCtxs[0].createMissingFungiType).toBe(true);
+  });
+
+  it('normal draft (no strain marker) -> commitRouter called with createMissingFungiType=false', async () => {
+    const draftRow = {
+      id: 'normal-draft',
+      status: 'confirmed',
+      needs_review_reason: null,
+      log_type: 'seeding',
+      commit_attempt_count: 0,
+    };
+    const { wd, capturedCtxs } = buildWithCtx(draftRow, { createMissingFungiType: false });
+    await wd.tickOnce();
+    expect(capturedCtxs.length).toBe(1);
+    expect(capturedCtxs[0].createMissingFungiType).toBe(false);
+  });
+
+  it('shared ctx createMissingFungiType=true passes through for any draft (backfill path)', async () => {
+    const draftRow = {
+      id: 'backfill-draft',
+      status: 'confirmed',
+      needs_review_reason: null,
+      log_type: 'seeding',
+      commit_attempt_count: 0,
+    };
+    const { wd, capturedCtxs } = buildWithCtx(draftRow, { createMissingFungiType: true });
+    await wd.tickOnce();
+    expect(capturedCtxs.length).toBe(1);
+    expect(capturedCtxs[0].createMissingFungiType).toBe(true);
+  });
+});
