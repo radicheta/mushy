@@ -479,3 +479,72 @@ describe('Phase 50 Plan-04: send_ask_back + send_quote_closed', () => {
     }
   });
 });
+
+// =====================================================================
+// Phase 54.1 Plan 03 Task 2: send_strain_ask_back side-effect
+// =====================================================================
+
+describe('Phase 54.1 Plan 03: send_strain_ask_back dispatch', () => {
+  function makeStrainDraft(extra = {}) {
+    return Object.assign({
+      id: 'strain-draft-001',
+      sender_e164: '+15550001234',
+    }, extra);
+  }
+
+  it('sends exactly one DM to sender_e164 with seenCode and nearest in body', async () => {
+    const signal = makeSignal();
+    const d = createConfirmOutbound({
+      signalClient: signal, previewBuilderConfirm, operatorRecipient: '+x', logger: silentLogger(),
+    });
+    const draftRow = makeStrainDraft();
+    const r = await d.dispatch('send_strain_ask_back', draftRow, { seenCode: 'XYZ', nearest: 'SHI' });
+    expect(r.ok).toBe(true);
+    expect(signal.send).toHaveBeenCalledTimes(1);
+    const [body, opts] = signal.send.mock.calls[0];
+    expect(body).toContain('XYZ');
+    expect(body).toContain('SHI');
+    expect(opts).toMatchObject({ to: '+15550001234', intent: 'ask_back' });
+  });
+
+  it('relatedDraftId is set to draftRow.id', async () => {
+    const signal = makeSignal();
+    const d = createConfirmOutbound({
+      signalClient: signal, previewBuilderConfirm, operatorRecipient: '+x', logger: silentLogger(),
+    });
+    const draftRow = makeStrainDraft({ id: 'specific-draft-id' });
+    await d.dispatch('send_strain_ask_back', draftRow, { seenCode: 'LIM', nearest: 'LIMA' });
+    const opts = signal.send.mock.calls[0][1];
+    expect(opts.relatedDraftId).toBe('specific-draft-id');
+  });
+
+  it('works when nearest is null (no "did you mean" clause)', async () => {
+    const signal = makeSignal();
+    const d = createConfirmOutbound({
+      signalClient: signal, previewBuilderConfirm, operatorRecipient: '+x', logger: silentLogger(),
+    });
+    const draftRow = makeStrainDraft();
+    const r = await d.dispatch('send_strain_ask_back', draftRow, { seenCode: 'POY', nearest: null });
+    expect(r.ok).toBe(true);
+    expect(signal.send.mock.calls[0][0]).toContain('POY');
+  });
+
+  it('missing sender_e164 -> ok:false, no_target, no throw', async () => {
+    const signal = makeSignal();
+    const d = createConfirmOutbound({
+      signalClient: signal, previewBuilderConfirm, operatorRecipient: '+x', logger: silentLogger(),
+    });
+    const r = await d.dispatch('send_strain_ask_back', { id: 'x' }, { seenCode: 'ABC', nearest: null });
+    expect(r).toEqual({ ok: false, reason: 'no_target' });
+    expect(signal.send).not.toHaveBeenCalled();
+  });
+
+  it('body contains no em-dashes (ASCII guard)', async () => {
+    const signal = makeSignal();
+    const d = createConfirmOutbound({
+      signalClient: signal, previewBuilderConfirm, operatorRecipient: '+x', logger: silentLogger(),
+    });
+    await d.dispatch('send_strain_ask_back', makeStrainDraft(), { seenCode: 'XYZ', nearest: 'SHI' });
+    expect(signal.send.mock.calls[0][0]).not.toMatch(/[—–]/);
+  });
+});
