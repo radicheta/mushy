@@ -507,9 +507,12 @@ No new test files needed -- all new tests go into the existing `build-backfill-r
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All three resolved during Phase 55 planning (2026-05-25); the chosen approaches are reflected in 55-01-PLAN.md and 55-02-FULL-CORPUS-RUNBOOK.md.
 
 1. **Skip-list handling in --all-pages mode**
+   - RESOLVED: Document the 3 known-bad pages (IMG_3790/3810/3820) in the RUNBOOK as acceptable extraction failures (they surface in the per-page receipt, do not crash the run). No auto-skip flag added — simpler path chosen.
    - What we know: IMG_3790, IMG_3810, IMG_3820 are operator-known-bad. The corpus enumeration does NOT skip them -- `listCorpusPages()` returns all PAGE_REGEX matches including these.
    - What's unclear: Should `--all-pages` auto-skip the known-bad pages, or should the operator use `--resume-from` to skip ranges?
    - Recommendation: Add an optional `--skip-pages=IMG_3790.jpg,IMG_3810.jpg,IMG_3820.jpg` flag to `parseArgs()` and filter in `listCorpusPages()`. 3-line addition. Alternatively, document in RUNBOOK that those 3 pages will likely produce extraction failures but won't crash the run (failure reasons will appear in the per-page receipt section). Either is fine; the latter is simpler.
@@ -518,11 +521,13 @@ No new test files needed -- all new tests go into the existing `build-backfill-r
    - What we know: A crash at page 50/73 leaves 50 pages in run-A and requires resume with run-B from page 51.
    - What's unclear: Should the Phase 55 RUNBOOK define a `merge-receipts.js` helper, or just accept two partial receipts?
    - Recommendation: Accept two partial run dirs for now. The final BACK-09 receipt can be authored manually by concatenating the two partial receipts. Automating the merge is deferred unless Cycle-2 demonstrates the need.
+   - RESOLVED: Accept two partial run dirs; no `merge-receipts.js` helper this phase. RUNBOOK documents the concat-by-hand path. Deferred pending Cycle-2 evidence of need.
 
 3. **Throwaway postgres provisioning -- Docker vs pg_isready**
    - What we know: elder-plops has Docker (docker compose v2 in use). A fresh postgres container on port 5433 is Option A for isolation.
    - What's unclear: Does elder-plops have port 5433 free? Is there a running service on 5433?
    - Recommendation: RUNBOOK pre-flight step 0: `lsof -i :5433 || echo "port 5433 free"`. If occupied, use port 5434 or choose Option B (stop alerter).
+   - RESOLVED: RUNBOOK pre-flight includes the `lsof -i :5433` check with the port-5434-or-Option-B fallback. Operator decides per-run.
 
 ---
 
