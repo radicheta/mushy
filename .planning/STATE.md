@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.11
 milestone_name: Extraction prereqs + 2025-paper backfill
-status: Phase 54 plans 01-04 SHIPPED (harness + receipt hermetic-green); plans 05-06 = operator runbooks authored, awaiting Cycle 1 real-run + farmer SIGN-OFF
-last_updated: "2026-05-25T00:30:00.000Z"
-last_activity: 2026-05-24 — Phase 54 plans 01-04 shipped: backfill-notebook CLI (bfcde26) + auto-confirm + commit-router (99e3f98) + responses.jsonl observer (f4923e4) + receipt builder + Cycle RUNBOOKs (31b31bf). 1232 alerter tests green; +81 vs Phase 53 baseline. Operator workflow next.
+status: executing
+last_updated: "2026-05-26T01:28:09.784Z"
+last_activity: 2026-05-26
 progress:
-  total_phases: 28
-  completed_phases: 12
-  total_plans: 96
-  completed_plans: 72
-  percent: 47
+  total_phases: 5
+  completed_phases: 1
+  total_plans: 13
+  completed_plans: 9
+  percent: 20
 ---
 
 # Project State
@@ -20,7 +20,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 51 — order-independent-farmos-writes-upsert-by-stable-identity-se
+**Current focus:** Phase 54.1 — strain-confirm-before-mint
 
 ## Phase 54 Closeout (2026-05-24/25, plans 01-04)
 
@@ -96,10 +96,10 @@ All in `.planning/todos/pending/`:
 
 ## Current Position
 
-Phase: 54 — Backfill harness + dev-farmOS smoke (≤20 pages, two cycles) (v1.11) — plans 01-04 SHIPPED; 05-06 pending operator real-run
-Plan: 04 — receipt builder SHIPPED (19 hermetic tests; intra-cycle upsert-stability substitutes for N/A May-22 stub-enrichment per BACK-08 resolution)
-Status: Phase 53 closed; Phase 54 (backfill harness) UNBLOCKED
-Last activity: 2026-05-24 — BACK-04 fixture corpus populated from /mnt/slime-kingdom/shared/mushdatadump/ (8 pages spanning Feb-Nov 2025); hermetic suite 8/8 green; full alerter 1151/0
+Phase: 54.1 (strain-confirm-before-mint) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-05-26
 
 **Phase 53 commit chain:**
 
@@ -324,7 +324,7 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 ## Session Continuity
 
-Last session: 2026-05-24T22:16:22.096Z
+Last session: 2026-05-26T01:28:09.775Z
 Next up: Phase 45 (NORTH-STAR commit_failed ack + replay outstanding silent-failure drafts `b8a1e586` Vikki Rambo + `1fb28e70` Santi LIMA). Optional: 24-h v1.8 soak observation before starting Phase 45 scope work. v1.8 cutover already complete (alerter recreated 01:41:58 ART; bridge already on Phase 46 code).
 
 Previously: kick off v1.8 Phase 1 (event-gate + signal_outbound). Plan-01 = 100-capture hand-classification smoke from mushdatadump-prod, BEFORE spec-locking the gate. Reference notes:
