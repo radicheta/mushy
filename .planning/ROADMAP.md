@@ -274,6 +274,12 @@ Plans:
 - BACK-10: Per-shape confirm-accuracy stats computed from the run (input to v1.13). Reports n_per_shape and YES rate (auto-YES counts here are not signal for v1.13 — v1.13 needs human-YES; bulk-backfill receipts are tagged accordingly).
 - BACK-11: Prod-promotion decision documented (default: dev-only; prod write only if operator opts in per-session-class).
 
+**Plans:** 2 plans (1 wave; both autonomous, doc-only run is operator-triggered per GA2)
+
+Plans:
+- [ ] 55-01-PLAN.md — harness --all-pages flag + build-backfill-receipt buildUuidJsonl/computePerShapeStats + .planning/notes/ copy-out + tagged BACK-10 section (BACK-09, BACK-10)
+- [ ] 55-02-PLAN.md — 55-FULL-CORPUS-RUNBOOK.md (GA1 isolation pre-flight + smoke-before-full + crash recovery) + 55-PROMOTION-DECISION.md dev-only default (BACK-11)
+
 ### Phase 55b: TBD if needed (per-tenant backfill story, observation-of-unknown-asset path)
 
 ---
