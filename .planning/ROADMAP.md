@@ -259,11 +259,11 @@ Plans:
 **Goal:** When extraction yields a fungi_type strain code that is NOT an exact match to the curated active strain set, hold it for a farmer double-check before minting a taxonomy term -- per-encounter ask-back in live capture, batched one-message confirm in backfill (hold drafts as needs_review, then a follow-up pass mints confirmed + remaps corrections + commits). Replaces the blind auto-mint that polluted dev farmOS with extraction variants (LIM/SHIITAKE/OYS for LIMA/SHI/POY). Unblocks a clean Cycle-1 / Phase-55 receipt.
 **Requirements**: Locked design + scope in `.planning/todos/pending/2026-05-25-strain-confirm-before-mint.md` (context seed). Builds on the `ensureFungiTypeUuid` mechanism shipped in `c2af701` (currently gated off). Detection matches the curated 14-code set ([[project_mossrock_active_strain_codes]]), not live farmOS terms.
 **Depends on:** Phase 54
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 - [x] 54.1-01-PLAN.md — Strain resolver: exact-match an extraction code against the curated 14-set (config.strains); KNOWN vs UNKNOWN, no fuzzy auto-resolve (shared foundation)
-- [ ] 54.1-02-PLAN.md — Backfill path: hold unknown-strain drafts as needs_review + one batched Signal message + follow-up confirmed-mint/remap/commit pass
+- [x] 54.1-02-PLAN.md — Backfill path: hold unknown-strain drafts as needs_review + one batched Signal message + follow-up confirmed-mint/remap/commit pass
 - [ ] 54.1-03-PLAN.md — Live capture path: per-encounter strain ask-back via the Phase 39 confirm-loop; YES authorizes the per-draft mint, correction remaps to canonical
 
 ### Phase 55: Full corpus run + receipt
