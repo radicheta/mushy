@@ -254,6 +254,16 @@ Plans:
 - [ ] 54-05-PLAN.md — Cycle 1 (5 pages) operator runbook + farmer checkpoint (BACK-08 part 2) — RUNBOOK authored 2026-05-24 (`31b31bf`); awaits operator real-run + farmer SIGN-OFF
 - [ ] 54-06-PLAN.md — Cycle 2 (20 pages) operator runbook + farmer checkpoint + Phase 55 unlock decision (BACK-08 part 3) — RUNBOOK authored 2026-05-24 (`31b31bf`); blocked on Cycle 1 SIGN-OFF
 
+### Phase 54.1: Strain-confirm before mint (INSERTED)
+
+**Goal:** When extraction yields a fungi_type strain code that is NOT an exact match to the curated active strain set, hold it for a farmer double-check before minting a taxonomy term -- per-encounter ask-back in live capture, batched one-message confirm in backfill (hold drafts as needs_review, then a follow-up pass mints confirmed + remaps corrections + commits). Replaces the blind auto-mint that polluted dev farmOS with extraction variants (LIM/SHIITAKE/OYS for LIMA/SHI/POY). Unblocks a clean Cycle-1 / Phase-55 receipt.
+**Requirements**: Locked design + scope in `.planning/todos/pending/2026-05-25-strain-confirm-before-mint.md` (context seed). Builds on the `ensureFungiTypeUuid` mechanism shipped in `c2af701` (currently gated off). Detection matches the curated 14-code set ([[project_mossrock_active_strain_codes]]), not live farmOS terms.
+**Depends on:** Phase 54
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 54.1 to break down)
+
 ### Phase 55: Full corpus run + receipt
 
 **Goal:** Run the full 2025 notebook corpus to dev farmOS, generate a receipt of every asset/log created or patched, decide whether to promote any subset to prod via upsert.
