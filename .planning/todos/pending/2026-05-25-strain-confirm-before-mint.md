@@ -14,11 +14,14 @@ mechanism exists (fungi-type-cache.js); what's missing is the confirm gate on `c
 
 ## Locked design (with Santi 2026-05-25)
 
-1. **Detection = exact-match only.** A strain code passes silently ONLY if it exactly
-   matches a known fungi_type term (the 14 active codes / existing terms:
-   [[project_mossrock_active_strain_codes]]). NO fuzzy auto-resolve -- never silently
-   mis-map a real new strain that's one char from an existing one. Anything not an exact
-   match is "unknown" and must be farmer-confirmed.
+1. **Detection = exact-match only, against the CURATED active set.** A strain code passes
+   silently ONLY if it exactly matches a code in the curated active list
+   ([[project_mossrock_active_strain_codes]] -- the 14 known codes), NOT "any existing
+   fungi_type term in farmOS". Critical: dev farmOS already contains pollution terms
+   (LIM/SHIITAKE/OYS/CAR, see cleanup below) that the bot cannot delete, so matching
+   against live farmOS terms would let a re-extracted "LIM" exact-match the bogus term and
+   silently pass. Match against the curated source-of-truth list instead. NO fuzzy
+   auto-resolve -- never silently mis-map a real new strain one char from an existing one.
 
 2. **Live capture:** when extraction yields an unknown strain, ask via the Phase 39
    confirm-loop / ask-back: "Hey, I saw 'XYZ' on today's log -- new strain, or did you
@@ -42,9 +45,20 @@ mechanism exists (fungi-type-cache.js); what's missing is the confirm gate on `c
 - `ensureFungiTypeUuid` already built; the confirm flow calls it with create=true only
   AFTER farmer confirmation.
 
-## Cleanup owed from Cycle-1 validation
+## Cleanup owed from Cycle-1 validation (NEEDS FARMOS ADMIN)
 
-Run 2026-05-25T23-52-52-434Z (blind-mint ON) may have created bogus dev-farmOS
-fungi_type terms (LIM, SHITAKE, OYS, CAR) + their assets. Verify via the app's own
-client (curl filter[name][value] was unreliable in testing -- KOY also read absent) and
-delete the non-canonical terms. dev-only.
+Run 2026-05-25T23-52-52-434Z (blind-mint ON) created 4 bogus dev-farmOS fungi_type
+terms. Confirmed via the app's own resolver (curl filter[name][value] was unreliable).
+The `mushy-bot` user CANNOT delete them (DELETE -> 403); a farmOS admin must remove:
+
+- LIM       d21746c9-d5db-44bc-9033-7d13653a90da   (variant of LIMA)
+- SHIITAKE  8f0ba9c1-3d60-48c3-82b5-2cc8b774e417   (full name; should be SHI)
+- OYS       0430811d-f0b2-42b2-b25e-39674a7e794f   (oyster; CSV uses POY)
+- CAR       b0885c6e-9d2f-4c65-9743-720b2c107cc9   (unknown)
+
+Canonical terms verified present + correct: LIMA, SHI, CAS, CAZ, KOY. POY is absent
+(CSV ground truth uses POY but dev farmOS has no POY term). Also: the dev backfill
+ASSETS + logs from the validation runs (22-35-41, 23-32-41, 23-52-52) are throwaway
+test data -- wipe dev backfill assets before the real confirm-gated Cycle-1 run, or
+accept upsert-reuse. Matching against the curated active set (design point 1) makes the
+gate robust even while these bogus terms linger.
