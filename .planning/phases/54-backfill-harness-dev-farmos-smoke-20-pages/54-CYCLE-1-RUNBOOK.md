@@ -12,7 +12,7 @@
 4. `IMG_3800.jpg` (2025-08-06, 21 entries, YEAR-ABSENT single-strain bulk)
 5. `IMG_3830.jpg` (2025-11-17, 22 entries, YEAR-ABSENT page-truncation case)
 
-Note: today the `--limit=5` flag just takes the first 5 from the IMG_3775..IMG_3861 range, which is `IMG_3775, IMG_3776, IMG_3777, IMG_3778, IMG_3779`. For the exact Cycle-1 selection above, set `BACKFILL_PAGE_ALLOWLIST` in env (the harness currently lacks a `--pages-file` flag; add one in a follow-on plan if Cycle 1 needs the curated 5, OR run with `--limit=5` and accept the contiguous 3775..3779 slice for the smoke). **Operator decision before run:** stick with the contiguous slice (cheaper to ship, exercises BACK-01 year-absent paths on IMG_3776..3779) OR file a `--pages-file` follow-on and pause Cycle 1.
+**DECISION LOCKED 2026-05-26 (Santi): contiguous slice.** Cycle 1 runs `--limit=5`, which takes the first 5 of the IMG_3775..IMG_3861 range: `IMG_3775, IMG_3776, IMG_3777, IMG_3778, IMG_3779`. This ships now with no new code and still exercises the BACK-01 year-absent paths on IMG_3776..3779. The curated diversity set above is NOT used for Cycle 1 (it would need a `--pages-file` flag the harness lacks); revisit curated selection only if the contiguous smoke surfaces a gap.
 
 ## Pre-flight (run all before step 6)
 
@@ -23,12 +23,36 @@ Note: today the `--limit=5` flag just takes the first 5 from the IMG_3775..IMG_3
    ```
    Expect `200` or `401`. If unreachable, fix farmOS before proceeding.
 
-2. **DATABASE_URL points at the alerter dev DB**
+2. **PROD-LEAK ISOLATION (HARD GATE -- replaces the falsified "DATABASE_URL is the dev DB" assumption)**
+
+   There is only ONE shared timescale on `:5432`. The live `mushy-alerter-1` watchdog polls it
+   for `status='confirmed'` every 30s and commits to **PROD farmOS (:8082)**. The harness leaves
+   backfill drafts at `status='confirmed'` (it commits to dev directly but never advances them to
+   `'committed'`), so ANY auto-confirm run against the shared DB leaks 2025 data to prod. Cycle 1
+   is NOT exempt. Use Option A (default). Option B is a fallback with a hard cleanup obligation.
+
+   **Option A (DEFAULT) -- throwaway postgres on :5433, prod watchdog never sees it:**
 
    ```bash
-   echo "$DATABASE_URL"
+   # 1. assert 5433 is free (verified, not trusted)
+   ! lsof -iTCP:5433 -sTCP:LISTEN -P -n && echo "5433 free" || { echo "5433 in use, abort"; }
+   # 2. spin a throwaway DB (dropped after the run)
+   docker run -d --name mushy-backfill-pg -p 5433:5432 \
+     -e POSTGRES_PASSWORD=backfill -e POSTGRES_DB=alerter \
+     timescale/timescaledb:2.15.0-pg16
+   # 3. point DATABASE_URL at it and assert it is NOT the shared :5432
+   export DATABASE_URL='postgres://postgres:backfill@127.0.0.1:5433/alerter'
+   echo "$DATABASE_URL" | grep -q ':5432' && { echo "STILL POINTS AT SHARED DB, abort"; } || echo "isolated OK"
    ```
-   Should resolve to the alerter's dev TimescaleDB (NOT prod).
+   `createBackfillContext` self-creates the schema on first connect; the harness writes only
+   synthetic drafts, so an empty DB is correct. After the run (step 12): `docker rm -f mushy-backfill-pg`.
+
+   **Option B (FALLBACK, NOT default) -- stop the live watchdog:** `docker stop mushy-alerter-1`
+   pauses prod RH alerting (the farmer safety net) for the whole window -- needs explicit OK. It
+   only DEFERS the leak: on restart the watchdog drains the still-`confirmed` backfill drafts to
+   prod. So BEFORE `docker start mushy-alerter-1` you MUST clean up:
+   `UPDATE signal_draft SET status='discarded' WHERE needs_review_reason='bulk_backfill_santi';`
+   then verify zero backfill rows remain at `status='confirmed'`, THEN restart and confirm health.
 
 3. **`.planning/backfill/` is in `.gitignore`** (committed in Plan 02)
 
@@ -78,7 +102,7 @@ Note: today the `--limit=5` flag just takes the first 5 from the IMG_3775..IMG_3
        --bulk-backfill --farmer=santi --cycle=1 --limit=5
    ```
 
-   **NOTE on real-run bootstrap:** Plan 01-04 ship the harness but the canonical `poolFactory` + `pipelineFactory` bootstrap from `src/index.js` is NOT yet wired into `main()`. The harness currently exits 1 with `[backfill] real-run bootstrap not yet wired — pass poolFactory/pipelineFactory or use --dry-run.` on real runs. **Before step 7, file a small follow-on plan (~30 min) to lift the bootstrap from `src/index.js` into a `createBackfillContext()` helper that wires `pool + pipeline(onLlmCall)`** OR write a tiny operator-side `live-fire-54.js` driver that does the bootstrap inline (mirroring `live-fire-52.js` pattern). The hermetic test suite proves all behaviors; the missing piece is connecting the canonical alerter bootstrap.
+   **Real-run bootstrap is WIRED (verified 2026-05-26).** `main()` builds `poolFactory` + `pipelineFactory` from `createBackfillContext()` (scripts/backfill-context.js) on any non-dry-run invocation, so the real run connects pool + extraction-pipeline automatically. No follow-on driver needed; the earlier "bootstrap not yet wired" note is obsolete (landed in `e4ec929`).
 
 8. **Inspect `<runDir>/receipt.md`**
 
