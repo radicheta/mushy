@@ -15,6 +15,16 @@ grep -E '^- verdict: SIGN-OFF$' \
 
 Exit 0 required before proceeding.
 
+## Pre-flight: PROD-LEAK ISOLATION (HARD GATE)
+
+Same hazard as Cycle 1, at 4x the page count: the harness flips drafts to `status='confirmed'`
+in the SHARED timescale (:5432), and the live `mushy-alerter-1` watchdog drains those to PROD
+farmOS (:8082). Cycle 2 is NOT exempt. Run the SAME Option A isolation as Cycle 1 before any
+paid step: spin a throwaway postgres on :5433, `export DATABASE_URL` pointing at it, and assert
+it does NOT contain `:5432` (see 54-CYCLE-1-RUNBOOK.md pre-flight step 2 for the exact commands).
+Option B (stop `mushy-alerter-1`) carries the same mandatory pre-restart draft cleanup. Drop the
+throwaway DB after the run.
+
 ## Page Selection (20 pages)
 
 **Tier A — re-run the 8 Cycle 1 + 53-04 fixtures (validates Phase 51 cross-cycle upsert stability):**
