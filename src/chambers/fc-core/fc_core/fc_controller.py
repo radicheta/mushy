@@ -20,6 +20,13 @@ from rclpy.parameter import Parameter
 import json
 import time as _time
 
+# 260529-ean: heartbeat interval for periodic sensor_health republish.
+# Must be comfortably below the alerter's effective sensor-offline watchdog threshold
+# (fc_config sensor_offline_min clamped to [1, 60] minutes by the validator — 60s is
+# well under even the minimum 1-minute floor, so healthy sensors stay visible regardless
+# of the watchdog tuning).
+SENSOR_HEALTH_HEARTBEAT_SEC = 60.0
+
 
 @dataclass
 class ModeView:
@@ -358,6 +365,10 @@ class FruitingChamberController(Node):
         self._boot_time = self.get_clock().now()
         self._warming_up = True
         self._warmup_signal_published = False
+        # 260529-ean: shared timestamp for heartbeat republish — None until the first
+        # real publish (warmup WARN or grace-exit OK).  None guard + grace early-return
+        # together ensure the heartbeat never fires during the startup grace window.
+        self._last_sensor_health_publish = None
 
         # Phase 27: PID state init (HUMID-01, HUMID-03)
         self._pid = PID(
@@ -1512,6 +1523,9 @@ class FruitingChamberController(Node):
         self.sensor_health_pub.publish(msg)
         self._last_sht30_fresh = sht30_fresh
         self._last_scd41_fresh = scd41_fresh
+        # 260529-ean: stamp on EVERY publish path so the heartbeat clock is reset
+        # by warmup, grace-exit, flip, and heartbeat publishes alike.
+        self._last_sensor_health_publish = self.get_clock().now()
 
     def _compute_sht30_fresh(self) -> bool:
         """Phase 26: SHT30 fresh ⇔ slot-1 has carried frame_id=='sht30' within timeout."""
@@ -1575,6 +1589,17 @@ class FruitingChamberController(Node):
         scd41_fresh = self._compute_scd41_fresh()
         if (sht30_fresh != self._last_sht30_fresh
                 or scd41_fresh != self._last_scd41_fresh):
+            self._publish_sensor_health(warming_up=False)
+
+        # 260529-ean: heartbeat republish — keeps alerter sht30LastSeenMs alive for
+        # a healthy, stable sensor that never triggers a freshness flip.
+        # Guarded on is-not-None: the warmup WARN publish stamps the timestamp first,
+        # so the heartbeat only fires after at least one real publish has occurred.
+        # _publish_sensor_health stamps _last_sensor_health_publish, so the interval
+        # is measured from the last publish regardless of whether it was a flip or heartbeat.
+        if (self._last_sensor_health_publish is not None
+                and (self.get_clock().now() - self._last_sensor_health_publish).nanoseconds
+                / 1e9 >= SENSOR_HEALTH_HEARTBEAT_SEC):
             self._publish_sensor_health(warming_up=False)
 
         if self.current_temp is None or self.current_humidity is None:
