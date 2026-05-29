@@ -100,7 +100,7 @@ All in `.planning/todos/pending/`:
 Phase: 55
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-05-26
+Last activity: 2026-05-29 - Completed quick task 260529-ean: sensor_health heartbeat (pending fc1 deploy)
 
 **Phase 53 commit chain:**
 
@@ -280,6 +280,7 @@ Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (for
 |---|-------------|------|--------|-----------|
 | 260518-tbi | 999.53: persist Anthropic token usage in signal_capture for cost visibility | 2026-05-19 | a3ec164 | [260518-tbi-999-53-persist-anthropic-token-usage-in-](./quick/260518-tbi-999-53-persist-anthropic-token-usage-in-/) |
 | 260518-tcj | 999.51 (partial): align bridge control_experiment test srvName with live un-namespaced paths | 2026-05-19 | f1a4331 | [260518-tcj-999-51-mechanical-bridge-srvname-fix](./quick/260518-tcj-999-51-mechanical-bridge-srvname-fix/) |
+| 260529-ean | Periodic sensor_health heartbeat republish in fc_controller to stop alerter freshness-watchdog false alarms (NOT yet deployed to fc1) | 2026-05-29 | 403caaa | [260529-ean-add-periodic-sensor-health-heartbeat-rep](./quick/260529-ean-add-periodic-sensor-health-heartbeat-rep/) |
 | Phase 44 P00 | 5min | 4 tasks | 11 files |
 | Phase 44 P05 | 12min | 2 tasks | 5 files |
 | Phase 44 P06 | 25 | 3 tasks | 7 files |
