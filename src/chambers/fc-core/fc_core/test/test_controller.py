@@ -5,7 +5,7 @@ import rclpy
 import rclpy.time
 from sensor_msgs.msg import Temperature, RelativeHumidity
 from std_msgs.msg import Float32
-from fc_core.fc_controller import FruitingChamberController
+from fc_core.fc_controller import FruitingChamberController, SENSOR_HEALTH_HEARTBEAT_SEC
 from unittest.mock import patch, MagicMock
 from rclpy.qos import DurabilityPolicy
 
@@ -764,5 +764,114 @@ def test_min_dwell_time_param_removed(ros_context):
     declared_names = node.list_parameters([], 10).names
     assert 'min_dwell_time' not in declared_names, (
         'D-15: min_dwell_time must not be declared — dwell guard replaced by PWM window'
+    )
+    node.destroy_node()
+
+
+# -----------------------------------------------------------------------
+# Heartbeat republish tests (260529-ean)
+# -----------------------------------------------------------------------
+
+_HB_NS = int(SENSOR_HEALTH_HEARTBEAT_SEC * 1e9)
+
+
+def test_sensor_health_heartbeat_republishes_when_stale(ros_context):
+    """With grace bypassed and no freshness flip, sensor_health republishes after the
+    heartbeat interval has elapsed since the last publish (warming_up='false', level=OK)."""
+    from diagnostic_msgs.msg import DiagnosticStatus
+    node = FruitingChamberController()
+    node._grace_active = lambda: False
+    node._warming_up = False
+
+    # Seed fresh values equal to what _compute_*_fresh will return (both False — no SHT30/SCD41
+    # timestamps set) so no flip occurs.
+    node._last_sht30_fresh = False
+    node._last_scd41_fresh = False
+
+    # Stamp _last_sensor_health_publish at T0 = 1s (nanoseconds)
+    t0_ns = int(1e9)
+    node._last_sensor_health_publish = rclpy.time.Time(
+        nanoseconds=t0_ns, clock_type=_ROS_TIME
+    )
+
+    published = []
+    node.sensor_health_pub.publish = lambda msg: published.append(msg)
+
+    # Advance clock past the heartbeat interval (T0 + interval + 1s epsilon)
+    t_after_ns = t0_ns + _HB_NS + int(1e9)
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(t_after_ns)):
+        node.control_loop()
+
+    assert len(published) == 1, (
+        f'Expected exactly 1 heartbeat publish, got {len(published)}'
+    )
+    assert published[0].level == DiagnosticStatus.OK
+    kv = {kv.key: kv.value for kv in published[0].values}
+    assert kv.get('warming_up') == 'false', (
+        f'Heartbeat publish must have warming_up=false, got {kv}'
+    )
+    node.destroy_node()
+
+
+def test_sensor_health_heartbeat_clock_reset_by_flip(ros_context):
+    """A flip publish stamps _last_sensor_health_publish; an immediately following
+    control_loop tick (clock not advanced past the interval) must NOT add a second publish."""
+    node = FruitingChamberController()
+    node._grace_active = lambda: False
+    node._warming_up = False
+
+    # Set up so that a flip WILL occur on the first tick: _last_sht30_fresh differs from
+    # what _compute_sht30_fresh() will return (both will be False because no SHT30 timestamps
+    # are set — so make _last_sht30_fresh = True to force a flip).
+    node._last_sht30_fresh = True   # will flip to False
+    node._last_scd41_fresh = False
+
+    published = []
+    node.sensor_health_pub.publish = lambda msg: published.append(msg)
+
+    # Tick 1: flip fires, stamps _last_sensor_health_publish
+    t0_ns = int(1e9)
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(t0_ns)):
+        node.control_loop()
+
+    assert len(published) == 1, (
+        f'Expected exactly 1 publish (the flip), got {len(published)}'
+    )
+
+    # Tick 2: no flip (freshness state stable), clock NOT advanced past interval
+    t1_ns = t0_ns + int(1e9)  # only 1s later; well under SENSOR_HEALTH_HEARTBEAT_SEC
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(t1_ns)):
+        node.control_loop()
+
+    assert len(published) == 1, (
+        f'Heartbeat must NOT fire immediately after a flip-reset; got {len(published)} total publishes'
+    )
+    node.destroy_node()
+
+
+def test_sensor_health_heartbeat_not_fired_in_grace(ros_context):
+    """While _grace_active() is True, advancing the clock far past the heartbeat interval
+    produces only the single warmup WARN publish — never an extra OK heartbeat."""
+    from diagnostic_msgs.msg import DiagnosticStatus
+    node = FruitingChamberController()
+    node._boot_time = rclpy.time.Time(nanoseconds=0, clock_type=_ROS_TIME)
+    # Leave _grace_active as the real implementation (returns True when within grace window).
+    # At t=5s the node is still well inside the default ~20s grace.
+    node._warmup_signal_published = False
+
+    published = []
+    node.sensor_health_pub.publish = lambda msg: published.append(msg)
+
+    # Advance far past the heartbeat interval but stay inside grace
+    far_past_ns = _HB_NS * 3  # 3x heartbeat — still inside grace (5s clock time for grace check)
+    with patch.object(node, 'get_clock', return_value=_mock_clock_at(int(5e9))):
+        node.control_loop()
+        node.control_loop()
+
+    assert len(published) == 1, (
+        f'Expected only the warmup WARN publish during grace, got {len(published)}'
+    )
+    assert published[0].level == DiagnosticStatus.WARN, (
+        f'Grace publish must be WARN, got level={published[0].level}'
     )
     node.destroy_node()
