@@ -15,7 +15,17 @@ const path = require('path');
 const Jimp = require('jimp');
 
 const MAX_BYTES = 5 * 1024 * 1024;      // 5MB Anthropic image ceiling
-const MAX_PIXELS = 1_150_000;           // 1.15MP recommended cap (RESEARCH Pitfall 3)
+// Pixel cap before downscale. The old 1.15MP cap (RESEARCH Pitfall 3) was a
+// cost guard sized for large phone photos, but it shredded faint-pencil paper
+// logs: a 1600x900 (1.44MP) notebook scan got resized + re-JPEG'd at q85,
+// destroying handwriting legibility (260530 inoc misread, 2026-05-30). Anthropic
+// accepts well above this; raise the default and let it be tuned via env.
+// Re-read from env on each call so tests can override without module reload.
+const DEFAULT_MAX_PIXELS = 4_000_000;
+function maxPixels() {
+  const v = parseInt(process.env.EXTRACTION_MAX_PIXELS || '', 10);
+  return Number.isFinite(v) && v > 0 ? v : DEFAULT_MAX_PIXELS;
+}
 const IMAGE_MIME_RE = /^image\/(jpeg|png)$/i;
 
 function mimeFromPath(p) {
@@ -38,11 +48,12 @@ async function downscaleIfNeeded(buffer, mimeType, { logger = console } = {}) {
       return { ok: true, buffer, media_type: mimeType };
     }
     const pixels = img.bitmap.width * img.bitmap.height;
-    const needs = buffer.length > MAX_BYTES || pixels > MAX_PIXELS;
+    const cap = maxPixels();
+    const needs = buffer.length > MAX_BYTES || pixels > cap;
     if (!needs) return { ok: true, buffer, media_type: mimeType };
 
     // Compute scale to land at or under the pixel cap, then re-emit as JPEG (smaller).
-    const scale = Math.sqrt(MAX_PIXELS / pixels);
+    const scale = Math.sqrt(cap / pixels);
     const newW = Math.max(1, Math.floor(img.bitmap.width * scale));
     const newH = Math.max(1, Math.floor(img.bitmap.height * scale));
     img.resize(newW, newH);
@@ -97,5 +108,5 @@ module.exports = {
   readImageToBase64,
   downscaleIfNeeded,
   buildContentBlocks,
-  _internal: { mimeFromPath, MAX_BYTES, MAX_PIXELS },
+  _internal: { mimeFromPath, MAX_BYTES, maxPixels, DEFAULT_MAX_PIXELS },
 };

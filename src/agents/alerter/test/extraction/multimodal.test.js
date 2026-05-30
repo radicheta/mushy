@@ -64,16 +64,40 @@ describe('multimodal.downscaleIfNeeded', () => {
     expect(out.media_type).toBe('image/jpeg');
   });
 
-  test('large image (>1.15MP) is downscaled', async () => {
-    const img = await new Jimp(2000, 2000, 0x00ff00ff);
-    const buf = await img.getBufferAsync(Jimp.MIME_JPEG);
-    const out = await downscaleIfNeeded(buf, 'image/jpeg', { logger: silentLogger });
-    expect(out.ok).toBe(true);
-    expect(out.buffer.length).toBeLessThan(buf.length);
-    // Verify downscaled image pixel count <= 1.15MP
-    const reread = await Jimp.read(out.buffer);
-    const pixels = reread.bitmap.width * reread.bitmap.height;
-    expect(pixels).toBeLessThanOrEqual(1_150_000);
+  test('large image (>cap) is downscaled to the env-tuned cap', async () => {
+    // Override the cap low so a modest test image trips it without building a
+    // multi-megapixel buffer. maxPixels() re-reads env on every call.
+    const prev = process.env.EXTRACTION_MAX_PIXELS;
+    process.env.EXTRACTION_MAX_PIXELS = '1000000'; // 1MP
+    try {
+      const img = await new Jimp(2000, 2000, 0x00ff00ff); // 4MP > 1MP cap
+      const buf = await img.getBufferAsync(Jimp.MIME_JPEG);
+      const out = await downscaleIfNeeded(buf, 'image/jpeg', { logger: silentLogger });
+      expect(out.ok).toBe(true);
+      expect(out.buffer.length).toBeLessThan(buf.length);
+      const reread = await Jimp.read(out.buffer);
+      const pixels = reread.bitmap.width * reread.bitmap.height;
+      expect(pixels).toBeLessThanOrEqual(1_000_000);
+    } finally {
+      if (prev === undefined) delete process.env.EXTRACTION_MAX_PIXELS;
+      else process.env.EXTRACTION_MAX_PIXELS = prev;
+    }
+  }, 20000);
+
+  test('1.44MP notebook-sized image passes through unchanged at default cap', async () => {
+    // Regression for 260530: the old 1.15MP cap shredded a 1600x900 paper log.
+    // At the raised default (4MP), a 1600x900 image must NOT be downscaled.
+    const prev = process.env.EXTRACTION_MAX_PIXELS;
+    delete process.env.EXTRACTION_MAX_PIXELS; // use DEFAULT_MAX_PIXELS
+    try {
+      const img = await new Jimp(1600, 900, 0x0000ffff); // 1.44MP
+      const buf = await img.getBufferAsync(Jimp.MIME_JPEG);
+      const out = await downscaleIfNeeded(buf, 'image/jpeg', { logger: silentLogger });
+      expect(out.ok).toBe(true);
+      expect(out.buffer.length).toBe(buf.length); // untouched
+    } finally {
+      if (prev !== undefined) process.env.EXTRACTION_MAX_PIXELS = prev;
+    }
   }, 20000);
 
   test('non-image mime type passes through unchanged', async () => {
