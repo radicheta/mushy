@@ -355,3 +355,14 @@ v1.7 phase order (hard sequencing):
 ## Operator Next Steps
 
 - Start the next milestone with /gsd-new-milestone
+
+## 2026-05-30: Phase 54.2 inserted (ready to plan) [NOTE: this STATE.md has pre-existing duplicated-key corruption above; this pointer appended at EOF]
+
+Phase 54.2 (strain-detection trigger) added to ROADMAP after 54.1. Closes the
+detection gap deferred in 54.1-03: nothing in the live extraction path detects
+unknown strain codes + emits send_strain_ask_back, so the 2026-05-30 PB2 inoc
+session committed straight to partial_commit_failed. CONTEXT written with 4 open
+design Qs. Next: /gsd-plan-phase 54.2 (or discuss first).
+See .planning/phases/54.2-strain-detection-trigger/54.2-CONTEXT.md +
+.planning/notes/2026-05-30-inoc-session-BREADCRUMBS.md
+Working branch: fix/inoc-starting-seq-dispatch (local, unpushed).

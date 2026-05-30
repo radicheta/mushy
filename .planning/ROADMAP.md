@@ -266,6 +266,18 @@ Plans:
 - [x] 54.1-02-PLAN.md — Backfill path: hold unknown-strain drafts as needs_review + one batched Signal message + follow-up confirmed-mint/remap/commit pass
 - [x] 54.1-03-PLAN.md — Live capture path: per-encounter strain ask-back via the Phase 39 confirm-loop; YES authorizes the per-draft mint, correction remaps to canonical
 
+### Phase 54.2: Strain-detection trigger (wire unknown-strain ask-back into live capture) (INSERTED 2026-05-30)
+
+**Goal:** A live inoc/harvest capture whose extraction contains a strain code not in the curated active set triggers the farmer double-check ("Saw 'PB2' -- new strain code?") BEFORE commit, instead of flowing straight to a farmOS commit that fails. Closes the detection gap explicitly deferred in 54.1-03 (its "Out of scope" note: the DETECTION step that SETS strain_unknown_pending_confirm).
+**Driver:** The 2026-05-30 inoc session (draft `cc3944fd`) was confirmed YES then `partial_commit_failed` x3 because PB2 was an unknown code that never got an ask-back. 54.1 shipped the reply side (render/parse, `send_strain_ask_back` dispatch, mint-on-approve) but nothing in the live extraction path detects unknowns and emits the ask-back. See `.planning/notes/2026-05-30-inoc-session-BREADCRUMBS.md`.
+**Depends on:** Phase 54.1
+**Requirements:**
+- STRAIN-05: Live extraction/persist path runs `resolveStrain` over every species code in a new draft against `config.strains`; collects unknowns (walks all groups for `seeding_session`).
+- STRAIN-06: A draft with >=1 unknown code is held `needs_review_reason='strain_unknown_pending_confirm'` (the value receive-loop:307 already listens for) and emits ONE batched `send_strain_ask_back` listing its unknowns.
+- STRAIN-07: Farmer-confirmed-new codes persist so the NEXT capture's `resolveStrain` treats them as known (strains.yaml is image-baked + not mounted -- runtime-readable store; design decision in CONTEXT Q2).
+- STRAIN-08: No silent fail, no blind mint -- an unknown code never reaches commit without a farmer decision. Regression: a source-level/startup-wiring test proving the detection step is reachable from the live capture path (guards the [[feedback_unit_tests_dont_catch_wiring]] class that bit 54.1 + the 2026-05-30 dispatch bug).
+**Plans:** TBD at plan-phase (likely 2: detection+hold+dispatch wiring; confirmed-code persistence + resolver union). CONTEXT written; 4 open design Qs to resolve in discuss/plan.
+
 ### Phase 55: Full corpus run + receipt
 
 **Goal:** Run the full 2025 notebook corpus to dev farmOS, generate a receipt of every asset/log created or patched, decide whether to promote any subset to prod via upsert.
