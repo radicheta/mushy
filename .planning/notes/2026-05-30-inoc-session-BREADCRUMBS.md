@@ -19,12 +19,62 @@ this session — verify everything, trust nothing claimed without a git/db check
 
 `mushy-alerter-1` is Up (healthy) running all three.
 
-## NOT DONE — the actual ask: "upsert PB2"
-User confirmed via AskUserQuestion: **code `PB2`, label `Portobello`**, scope =
-**config + mint prod term + redeploy**. (User did NOT confirm CR/Crimini — I
-invented that; DROP it, PB2 only.)
+## REFRAMED (2026-05-30): the task is STRAIN UPSERT, not "add PB2 to config"
+The real ask is the general feature: when extraction sees an unknown strain code,
+**double-check with the farmer via Signal before minting** — e.g. "Hey, saw PB2
+in the inoc log today! Is this a new strain code?" PB2 is just the first
+real-world trigger. Manually editing strains.yaml is a band-aid; the feature is
+the fix.
 
-Nothing landed. What I attempted and why it failed:
+### This is ALREADY SCOPED + PARTLY BUILT: Phase 54.1 strain-confirm-before-mint
+- Memory: `project_strain_confirm_before_mint` (locked w/ Santi 2026-05-25).
+- COMPOSER + PARSER shipped hermetically (10/10): `src/agents/alerter/src/
+  confirm/strain-ask-back.js` (233 lines). Exports:
+    - `collectUnknownStrains(draft, curatedSet)` -> [{code, nearest, groupIdx}]
+    - `buildStrainAskBack(unknowns)` -> farmer text ("...new strain code?")
+    - `parseStrainReply(text, pending)` -> {decisions:[{code, action, remap}]}
+    - `applyStrainDecisions(draft, decisions)` -> draft'
+- **THE GAP (verified 2026-05-30): the SEND side is NOT wired into the live
+  pipeline.** grep for `collectUnknownStrains`/`buildStrainAskBack` live callers
+  = NONE. `pipeline.js` has 0 strain references. So an unknown code today flows
+  straight to commit -> `upsertFungiAsset(fungiTypeName: 'PB2')` ->
+  fungi_type_not_found -> `partial_commit_failed` (exactly what killed cc3944fd).
+- There's a HALF-loop: `receive-loop.js:326` calls
+  `resolveStrain(strainReply.code, curatedSet)` to handle a farmer REPLY to a
+  strain ask-back — but nothing ever SENDS that ask-back, so the reply handler
+  is currently unreachable. Verify whether it's live-dead or partially used.
+
+### So the proper task (recommend a real GSD phase/plan, not ad-hoc)
+Wire Phase 54.1's deferred composer into the live capture path:
+1. In pipeline.js (after extraction, before commit/confirm), call
+   `collectUnknownStrains(draft, config.strains)`.
+2. If non-empty: hold the draft, `buildStrainAskBack(...)`, dispatch via the
+   outbound dispatcher (NOTE: add a `send_strain_askback` case — same class of
+   wiring bug as `send_starting_seq_askback` we just fixed in `eb8332b`).
+3. On farmer reply: `parseStrainReply` -> `applyStrainDecisions`; for confirmed-
+   new codes, `ensureFungiTypeUuid(client, code, {create:true})` AND add to the
+   curated set (persisted, not just env — decide where: strains.yaml is baked
+   into the image, so runtime additions need a DB/state store or a rebuild).
+4. Batch multiple unknowns in one ask (memory: "batched farmer double-check").
+5. Scope boundary (locked): ask-back is the EXTRACTION/confirm path only; the
+   santi-gated backfill harness keeps its own auto-confirm.
+
+### Open design Qs for the wiring phase
+- Where do farmer-confirmed new codes persist? strains.yaml is image-baked +
+  not mounted. Options: a DB table the resolver also reads, or alerter_globals,
+  or accept rebuild-on-add. Needs a decision.
+- Curated-set source becomes runtime-mutable -> resolver must read the union of
+  (yaml seed + confirmed-new). Today resolveStrain takes curatedSet as an arg.
+
+### Immediate unblock for the 260530 session (separate from the feature)
+Santi still wants the 260530 session in farmOS. Two paths:
+  (a) ship the wiring above, then re-drive the draft (clean, but it's a feature);
+  (b) quick manual unblock: add PB2 to strains.yaml + mint the prod term, re-send
+      photo+voice. Faster but band-aid. (PB2/Portobello confirmed by Santi.)
+Recommend (a) as the real fix; (b) only if he needs the data in now.
+
+### Earlier failed manual-PB2 attempt (kept for the fix-up notes)
+If doing the (b) band-aid, these are the bugs from my failed first attempt:
 - `strains.yaml` edit FAILED (wrong old_string). The file is a YAML **list**:
   `STRAIN_CODES:` then `  - SHI` etc (14 codes). To add: insert `  - PB2`.
 - `docker-compose.override.yml` STRAINS edit FAILED — there is **no STRAINS var**
