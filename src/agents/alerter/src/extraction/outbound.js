@@ -157,6 +157,14 @@ function createOutboundDispatcher({
       switch (sideEffect) {
         case 'send_ask_back':
           return await sendAskBack(draftRow || {});
+        // Phase 47 Plan 03: seeding_session starting-SEQ ask-back. pipeline.js
+        // builds a draftRow with farmer_facing_preview already populated and
+        // dispatches this side-effect. It reuses the same farmer-facing send
+        // path as send_ask_back (same routing fields: reply_target_kind,
+        // group_id, sender_e164, source_capture_ids). Without this case the
+        // question never reached the farmer and the inoc draft silently expired.
+        case 'send_starting_seq_askback':
+          return await sendAskBack(draftRow || {});
         case 'send_needs_review_ping':
           return await sendNeedsReviewPing(draftRow || {});
         case 'send_batch_review_summary':

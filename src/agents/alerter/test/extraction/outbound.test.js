@@ -213,6 +213,43 @@ describe('createOutboundDispatcher', () => {
     expect(signalClient.send).not.toHaveBeenCalled();
   });
 
+  // Regression 2026-05-30: pipeline.js dispatches 'send_starting_seq_askback'
+  // (seeding_session starting-SEQ ask-back) but dispatch() had no matching case,
+  // so it hit default -> 'unknown_side_effect' and the starting-SEQ question
+  // never reached the farmer; the inoc draft then silently expired. This is the
+  // wiring seam between pipeline.js and outbound.js -- assert it sends.
+  test('send_starting_seq_askback -> signalClient.send called with target = sender_e164', async () => {
+    const signalClient = makeSignalOk();
+    const d = createOutboundDispatcher({
+      signalClient, config: {}, logger: silentLogger,
+      previewBuilder, operatorRecipient: '+59892893012',
+    });
+    const row = makeDraftRow({
+      reply_target_kind: 'dm',
+      draft_json: { type: 'seeding_session', needs_input: 'starting_seq' },
+      farmer_facing_preview: 'Inoc session: 2026-05-30\n\nReply with the starting SEQ (e.g. 4).',
+    });
+    const r = await d.dispatch('send_starting_seq_askback', row);
+    expect(r.ok).toBe(true);
+    expect(signalClient.send).toHaveBeenCalledTimes(1);
+    const call = signalClient.send.mock.calls[0];
+    expect(call[0]).toBe(row.farmer_facing_preview);
+    expect(call[1]).toMatchObject({ to: '+59898018597', intent: 'extraction_preview' });
+  });
+
+  test('send_starting_seq_askback group -> signalClient.send target = { groupId }', async () => {
+    const signalClient = makeSignalOk();
+    const d = createOutboundDispatcher({
+      signalClient, config: {}, logger: silentLogger,
+      previewBuilder, operatorRecipient: '+59892893012',
+    });
+    const row = makeDraftRow({ reply_target_kind: 'group', group_id: 'internalIdAbc' });
+    const r = await d.dispatch('send_starting_seq_askback', row);
+    expect(r.ok).toBe(true);
+    const call = signalClient.send.mock.calls[0];
+    expect(call[1]).toMatchObject({ to: { groupId: 'internalIdAbc' }, intent: 'extraction_preview' });
+  });
+
   // Hotfix 2026-05-24: trinity-skip. When operatorRecipient == capture sender
   // (Santi/radicheta/farmer-1 trinity), operator-channel pings would interrupt
   // the farmer-side conversation with internal-looking chatter. Skip.
