@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.11
 milestone_name: Extraction prereqs + 2025-paper backfill
-status: ready_to_plan
-last_updated: 2026-05-26T01:59:16.419Z
-last_activity: 2026-05-26
+status: planning
+last_updated: "2026-06-02T01:15:07.751Z"
+last_activity: "2026-05-29 - Completed quick task 260529-ean: sensor_health heartbeat (pending fc1 deploy)"
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 2
-  total_plans: 13
-  completed_plans: 71
-  percent: 40
-stopped_at: Phase 54.1 complete (3/3) — ready to discuss Phase 55
+  total_plans: 15
+  completed_plans: 11
+  percent: 33
 ---
 
 # Project State
@@ -326,7 +325,7 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 ## Session Continuity
 
-Last session: 2026-05-26T01:50:29.003Z
+Last session: 2026-06-02T01:15:07.727Z
 Next up: Phase 45 (NORTH-STAR commit_failed ack + replay outstanding silent-failure drafts `b8a1e586` Vikki Rambo + `1fb28e70` Santi LIMA). Optional: 24-h v1.8 soak observation before starting Phase 45 scope work. v1.8 cutover already complete (alerter recreated 01:41:58 ART; bridge already on Phase 46 code).
 
 Previously: kick off v1.8 Phase 1 (event-gate + signal_outbound). Plan-01 = 100-capture hand-classification smoke from mushdatadump-prod, BEFORE spec-locking the gate. Reference notes:
