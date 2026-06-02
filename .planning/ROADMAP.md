@@ -276,10 +276,10 @@ Plans:
 - STRAIN-06: A draft with >=1 unknown code is held `needs_review_reason='strain_unknown_pending_confirm'` (the value receive-loop:307 already listens for) and emits ONE batched `send_strain_ask_back` listing its unknowns.
 - STRAIN-07: Farmer-confirmed-new codes persist so the NEXT capture's `resolveStrain` treats them as known (strains.yaml is image-baked + not mounted -- runtime-readable store; design decision in CONTEXT Q2).
 - STRAIN-08: No silent fail, no blind mint -- an unknown code never reaches commit without a farmer decision. Regression: a source-level/startup-wiring test proving the detection step is reachable from the live capture path (guards the [[feedback_unit_tests_dont_catch_wiring]] class that bit 54.1 + the 2026-05-30 dispatch bug).
-**Plans:** 2 plans (2 waves; CONTEXT 2026-06-01 reframe: farmOS taxonomy = single source of truth, STRAIN-07 dissolved-by-design)
+**Plans:** 1/2 plans executed
 
 Plans:
-- [ ] 54.2-01-PLAN.md — Wiring seams: inject farmosClient into createExtractionPipeline + add send_strain_ask_back to the extraction dispatcher, each with a source-level wiring guard (STRAIN-08)
+- [x] 54.2-01-PLAN.md — Wiring seams: inject farmosClient into createExtractionPipeline + add send_strain_ask_back to the extraction dispatcher, each with a source-level wiring guard (STRAIN-08)
 - [ ] 54.2-02-PLAN.md — Detection gate: collectStrainCodes walk + maybeHoldForStrainConfirm shared helper (after starting_seq, R1) + farmOS existence gate on clean not-found only + batched ask-back + R2 single-code-correction logged limitation + unit/integration tests (STRAIN-05/06/07/08)
 
 ### Phase 55: Full corpus run + receipt
