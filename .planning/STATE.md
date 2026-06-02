@@ -4,7 +4,7 @@ milestone: v1.11
 milestone_name: Extraction prereqs + 2025-paper backfill
 status: executing
 last_updated: "2026-06-02T01:48:06.517Z"
-last_activity: 2026-06-02 -- Phase 54.2 execution started
+last_activity: 2026-06-02 -- Phase 54.2 code shipped (waves 1+2 green); PAUSED at dev live-fire checkpoint
 progress:
   total_phases: 6
   completed_phases: 2
@@ -20,7 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 54.2 — strain-detection-trigger
+**Current focus:** Phase 54.2 — strain-detection-trigger (code shipped; PAUSED at dev live-fire checkpoint)
+
+## Phase 54.2 Status (2026-06-01/02) — CODE COMPLETE, awaiting human checkpoint
+
+Both plans' code shipped on `fix/inoc-starting-seq-dispatch` (full alerter suite green: 1364 pass / 0 fail with `--forceExit`; 2 pre-existing `integration.test.js` open-handle timeouts surface only in the no-forceExit full run, pass in isolation — known [[project_2026_05_19_alerter_integration_hang]], NOT a 54.2 regression).
+
+- **54.2-01 (waves merged `781c103`):** Two foundational seams — `farmosClient` injected into `createExtractionPipeline` (lifted from the commit-watchdog block, graceful null-skip); `send_strain_ask_back` case added to the EXTRACTION dispatcher `outbound.js` (Option b: pipeline pre-renders `farmer_facing_preview`, routes via existing `sendAskBack`) — closes the `eb8332b` unknown-side-effect class. 2 source-level STRAIN-08 wiring guards. Commits `8ee2417`/`09521d9`/`9499a96`.
+- **54.2-02 (waves merged `ae0c966`):** `collectStrainCodes` walk (top-level + `groups[].species.value`) + shared `maybeHoldForStrainConfirm` helper, gated ONLY on clean `fungi_type_not_found`; wired after the `starting_seq` short-circuit AND in `handleStartingSeqReply` (R1, both re-entry shapes); R2 multi-group correction guard logs `strain_correction_multigroup_unsupported` + holds (no silent no-op, no per-group remap); 64 strain tests inc. R1 integration. Commits `40b6dbc`/`4488fcb`/`985ad14`. STRAIN-07 dissolved-by-design (farmOS-term persistence, no new store).
+
+**BLOCKING human-action checkpoint (54.2-02 task 5/5 — unmet):** An admin must DELETE the 4 bogus dev `fungi_type` terms (LIM, SHIITAKE, OYS, CAR, minted by 54.1 testing) from DEV farmOS (:18080) — they read as "known" and SUPPRESS the ask in dev. Then drive a dev capture with an unknown code: confirm HELD (`strain_unknown_pending_confirm`) + ONE batched ask-back + YES upserts term + commits; confirm an infra error does NOT ask. Prod farmOS (:8082) is clean. Do NOT mark the phase Complete or run the verifier until this passes ([[feedback_real_data_before_ship_gate_pass]], [[feedback_unit_tests_dont_catch_wiring]]).
 
 ## Phase 54 Closeout (2026-05-24/25, plans 01-04)
 
