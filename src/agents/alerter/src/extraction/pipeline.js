@@ -32,8 +32,36 @@ const {
   mintChildBlockNames,
   yyyymmddToYymmdd,
 } = require('./seq-helper');
+const { getFungiTypeUuid } = require('../farmos/fungi-type-cache');
+const { nearestKnown } = require('../farmos/strain-resolver');
+const { renderStrainAskBack } = require('../confirm/strain-ask-back');
 
 const IMAGE_EXT_RE = /\.(jpe?g|png|gif|webp)$/i;
+
+/**
+ * Collect distinct strain codes from any draft shape.
+ * Flat shapes (SeedingLog / observation / harvest): top-level fields.
+ * seeding_session: per-group groups[].species.value (the ONLY place codes live).
+ * Mirrors commit-side read precedence (commit-seeding.js:44, seeding-session.js:43).
+ *
+ * @param {object} draft
+ * @returns {string[]} distinct uppercased+trimmed codes
+ */
+function collectStrainCodes(draft) {
+  const codes = [];
+  if (!draft || typeof draft !== 'object') return codes;
+  // Flat shapes: top-level fields (mirror commit-seeding.js:44).
+  const flat = draft.species_code || draft.species || draft.strain || draft.fungi_type;
+  if (typeof flat === 'string' && flat.trim()) codes.push(flat.toUpperCase().trim());
+  // seeding_session: per-group species.value (verified seeding-session.js:43).
+  if (Array.isArray(draft.groups)) {
+    for (const g of draft.groups) {
+      const v = g && g.species && g.species.value;
+      if (typeof v === 'string' && v.trim()) codes.push(v.toUpperCase().trim());
+    }
+  }
+  return Array.from(new Set(codes)); // DISTINCT (Decision 5: one batched ask)
+}
 
 async function loadImageBlocks(paths, logger) {
   if (!Array.isArray(paths) || paths.length === 0) return [];
@@ -168,6 +196,7 @@ function createExtractionPipeline({
   logger = console,
   clock = { now: () => Date.now() },
   outboundDispatcher = { dispatch: () => {} },
+  farmosClient = null,
 }) {
   if (!pool) throw new Error('createExtractionPipeline: pool required');
   if (!extractor) throw new Error('createExtractionPipeline: extractor required');
@@ -175,6 +204,103 @@ function createExtractionPipeline({
   if (!stateMachine) throw new Error('createExtractionPipeline: stateMachine required');
   if (!previewBuilder) throw new Error('createExtractionPipeline: previewBuilder required');
   if (!config) throw new Error('createExtractionPipeline: config required');
+
+  /**
+   * Phase 54.2 Plan 02: shared strain-detection gate.
+   * Checks each code in the draft against farmOS. If any are cleanly not-found
+   * (fungi_type_not_found only -- NOT taxonomy_missing / http_* / ok:true),
+   * holds the draft as AWAITING_FARMER with needs_review_reason='strain_unknown_pending_confirm'
+   * and dispatches ONE batched send_strain_ask_back.
+   *
+   * Returns: { ok, draftId, status, sideEffects } when the draft was held (caller must return early),
+   *          null when no unknowns found (caller continues normal flow),
+   *          or { ok:false, reason } on a DB error.
+   *
+   * Scope: single-draft conversational enqueue path. The runBatchMode and multi-confirm
+   * paths are NOT yet gated here (explicit follow-on gap, not a silent omission).
+   *
+   * @param {object} draft
+   * @param {string} draftId
+   * @param {object} captureCtx
+   * @param {string[]} sourceCaptureIds
+   * @param {number} priorAskbackTurns
+   * @returns {Promise<object|null>}
+   */
+  async function maybeHoldForStrainConfirm(draft, draftId, captureCtx, sourceCaptureIds, priorAskbackTurns) {
+    if (!farmosClient) {
+      logger.warn && logger.warn('[extraction] maybeHoldForStrainConfirm: farmosClient null -- skipping strain detection (no farmOS credentials)');
+      return null;
+    }
+    const codes = collectStrainCodes(draft);
+    if (codes.length === 0) return null;
+
+    const curated = Array.isArray(config.strains) ? config.strains : [];
+    const unknowns = [];
+    for (const code of codes) {
+      let r;
+      try {
+        r = await getFungiTypeUuid(farmosClient, code);
+      } catch (e) {
+        logger.warn && logger.warn(`[extraction] getFungiTypeUuid threw for code=${code}: ${e.message}`);
+        continue; // infra error -> pass through, do not ask
+      }
+      // Gate ONLY on the clean not-found case (Decision 2 / Pitfall 1).
+      // ok:true -> known; other ok:false reasons -> infra, pass through.
+      if (!r.ok && r.reason === 'fungi_type_not_found') {
+        unknowns.push({ seenCode: code, nearest: nearestKnown(code, curated) });
+      }
+    }
+
+    if (unknowns.length === 0) return null;
+
+    // Compose ONE batched preview from per-code renderStrainAskBack lines (Decision 5 / 7).
+    const preview = unknowns
+      .map((u) => renderStrainAskBack(u.seenCode, u.nearest))
+      .join('\n\n');
+
+    const askbackUpd = await extractionDb.updateDraftStatus(
+      pool,
+      draftId,
+      DRAFT_STATUS.AWAITING_FARMER,
+      {
+        farmer_facing_preview: preview,
+        needs_review_reason: 'strain_unknown_pending_confirm', // receive-loop.js:305 join key
+      },
+    );
+    if (!askbackUpd.ok) {
+      logger.warn && logger.warn(`[extraction] strain hold status update failed: ${askbackUpd.reason}`);
+      return { ok: false, reason: askbackUpd.reason };
+    }
+
+    const sender = captureCtx && captureCtx.sender;
+    const draftRow = {
+      id: draftId,
+      sender_e164: sender,
+      farmos_person: (captureCtx && captureCtx.farmosPerson) || null,
+      status: DRAFT_STATUS.AWAITING_FARMER,
+      draft_json: draft,
+      farmer_facing_preview: preview,
+      reply_target_kind: (captureCtx && captureCtx.replyTargetKind) || null,
+      group_id: (captureCtx && captureCtx.groupId) || null,
+      source_capture_ids: sourceCaptureIds,
+      askback_turns: priorAskbackTurns,
+    };
+
+    // Option (b): preview pre-rendered into farmer_facing_preview; dispatcher routes
+    // through sendAskBack unchanged (Pitfall 5 resolved in Wave 1 -- outbound.js:175).
+    try {
+      outboundDispatcher.dispatch('send_strain_ask_back', draftRow);
+    } catch (e) {
+      logger.warn && logger.warn(`[extraction] dispatch send_strain_ask_back failed: ${e.message}`);
+    }
+
+    return {
+      ok: true,
+      draftId,
+      status: DRAFT_STATUS.AWAITING_FARMER,
+      sideEffects: ['send_strain_ask_back'],
+    };
+  }
 
   // Plan 08 batch mode: multi-draft paper-log scan. Forces start_new, never asks the
   // farmer back, summarises the whole page to the operator in one Signal message.
@@ -675,6 +801,26 @@ function createExtractionPipeline({
         };
       }
 
+      // 5c. Phase 54.2 Plan 02 Task 2: strain-detection gate (R1 site 1 of 2).
+      // Called AFTER the send_starting_seq_askback block so a session needing both
+      // SEQ and strain-confirm resolves SEQ first (the SEQ gate returns early at :802
+      // above, so a draft with needs_input='starting_seq' never reaches this gate on
+      // the first pass -- SEQ is always resolved before strain is even checked).
+      //
+      // NOTE: runBatchMode and small-N multi-confirm paths bypass this single-draft
+      // enqueue gate entirely. Those paths are NOT yet gated for strain detection
+      // (explicit follow-on gap -- batch captures are rare in the conversational
+      // path that produced the 2026-05-30 PB2 failure; scoped here intentionally).
+      {
+        const strainHold = await maybeHoldForStrainConfirm(
+          draft, draftId, captureCtx, sourceCaptureIds, priorAskbackTurns,
+        );
+        if (strainHold !== null) {
+          // Either held (ok:true) or DB error (ok:false) -- return early either way.
+          return { ...strainHold, continuity };
+        }
+      }
+
       // 6. state-machine transition
       const transition = stateMachine.transition(
         {
@@ -889,6 +1035,32 @@ function createExtractionPipeline({
       if (!upd.ok) {
         logger.warn && logger.warn(`[extraction] starting_seq fill update failed: ${upd.reason}`);
         return { ok: false, reason: upd.reason };
+      }
+
+      // Phase 54.2 Plan 02 Task 2: strain-detection gate (R1 site 2 of 2).
+      // Called here -- after child_block_names are minted and needs_input is cleared --
+      // so the gate fires after SEQ resolution regardless of whether the SEQ reply
+      // re-enters via handleStartingSeqReply (shape b) or enqueue (shape a).
+      // captureCtx is reconstructed minimally from the stored row so the helper has
+      // the routing fields it needs for draftRow building.
+      {
+        const seqReplyCaptureCtx = {
+          sender: row.sender_e164,
+          farmosPerson: row.farmos_person || null,
+          replyTargetKind: row.reply_target_kind || null,
+          groupId: row.group_id || null,
+          senderName: (captureCtx && captureCtx.senderName) || null,
+        };
+        const strainHold = await maybeHoldForStrainConfirm(
+          updatedDraft,
+          draftId,
+          seqReplyCaptureCtx,
+          row.source_capture_ids || [],
+          (row.askback_turns || 0),
+        );
+        if (strainHold !== null) {
+          return strainHold;
+        }
       }
 
       try {
