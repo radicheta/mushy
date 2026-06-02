@@ -250,3 +250,98 @@ describe('Phase 54.1 Plan 03 Task 3: receive-loop strain-pending routing', () =>
 function pool_or_any() {
   return expect.anything();
 }
+
+// =====================================================================
+// Phase 54.2 Plan 02 Task 4: R2 multi-group correction guard
+// Proves: a correction reply on a seeding_session draft (or any multi-group
+// draft) does NOT silently no-op. It logs strain_correction_multigroup_unsupported
+// and re-asks the farmer. The groups[].species.value fields are NOT changed.
+// A flat-shape (single-code, no groups[]) correction still works.
+// =====================================================================
+
+describe('multigroup correction', () => {
+  it('correction on seeding_session draft -> logs strain_correction_multigroup_unsupported, NO confirmDraft, NO species_code rewrite, re-asks farmer', async () => {
+    const sessionDraftRow = {
+      id: 'strain-session-01',
+      sender_e164: '+15550001234',
+      needs_review_reason: 'strain_unknown_pending_confirm',
+      draft_json: {
+        type: 'seeding_session',
+        event_date: '2026-05-30',
+        groups: [
+          { parent: { value: 'P1', confidence: 1, sources: ['audio'] }, species: { value: 'PB2', confidence: 1, sources: ['audio'] }, qty: { value: 2, confidence: 1, sources: ['audio'] }, child_block_names: { value: ['260530_PB2_1', '260530_PB2_2'], confidence: 1, sources: ['paper_log_photo'] } },
+        ],
+      },
+    };
+    const w = makeStrainWiring({ draftRow: sessionDraftRow });
+    // Farmer sends "SHI" as a correction (SHI is in the curated set).
+    const sig = makeSignalClient([makeEnvelope({ text: 'SHI' })]);
+    const logger = silentLogger();
+    const loop = createReceiveLoop({
+      signalClient: sig, dispatch: jest.fn(), config: BASE_CONFIG, logger, ...w,
+    });
+    await runOneTick(loop);
+
+    // confirmDraft must NOT be called -- draft stays held.
+    expect(w.confirmDb.confirmDraft).not.toHaveBeenCalled();
+    // No species_code rewrite on draft_json (groups stay unchanged).
+    const jsonCall = w.extractionDb.updateDraftStatus.mock.calls.find(
+      (c) => c[3] && c[3].draft_json
+    );
+    expect(jsonCall).toBeUndefined();
+    // send_strain_ask_back re-dispatched (re-ask).
+    const reask = w.confirmOutbound.dispatch.mock.calls.find((c) => c[0] === 'send_strain_ask_back');
+    expect(reask).toBeDefined();
+    // The logger must have recorded the limitation.
+    const warnCalls = logger.warn.mock.calls;
+    expect(warnCalls.some((c) => c[0] && c[0].includes('strain_correction_multigroup_unsupported'))).toBe(true);
+  });
+
+  it('correction on flat-shape draft (no groups[]) -> species_code rewritten + confirmDraft called (unchanged path)', async () => {
+    const flatDraftRow = {
+      id: 'strain-flat-01',
+      sender_e164: '+15550001234',
+      needs_review_reason: 'strain_unknown_pending_confirm',
+      draft_json: { type: 'observation', species_code: 'PB2', asset_ref: 'B1' },
+    };
+    const w = makeStrainWiring({ draftRow: flatDraftRow });
+    // Farmer sends "SHI" as a correction (SHI is in the curated set).
+    const sig = makeSignalClient([makeEnvelope({ text: 'SHI' })]);
+    const loop = createReceiveLoop({
+      signalClient: sig, dispatch: jest.fn(), config: BASE_CONFIG, logger: silentLogger(), ...w,
+    });
+    await runOneTick(loop);
+
+    // The flat-shape correction path: species_code must be rewritten.
+    const jsonCall = w.extractionDb.updateDraftStatus.mock.calls.find(
+      (c) => c[3] && c[3].draft_json
+    );
+    expect(jsonCall).toBeDefined();
+    expect(jsonCall[3].draft_json.species_code).toBe('SHI');
+    // confirmDraft called after correction.
+    expect(w.confirmDb.confirmDraft).toHaveBeenCalled();
+  });
+
+  it('correction on multi-group draft without seeding_session type (groups[] present) -> same guard fires, NO confirmDraft', async () => {
+    // Any draft with groups[] should be protected, not just type=seeding_session.
+    const multiGroupDraft = {
+      id: 'strain-multigroup-01',
+      sender_e164: '+15550001234',
+      needs_review_reason: 'strain_unknown_pending_confirm',
+      draft_json: {
+        type: 'custom_log',
+        groups: [{ species: { value: 'PB2' } }],
+      },
+    };
+    const w = makeStrainWiring({ draftRow: multiGroupDraft });
+    const sig = makeSignalClient([makeEnvelope({ text: 'SHI' })]);
+    const logger = silentLogger();
+    const loop = createReceiveLoop({
+      signalClient: sig, dispatch: jest.fn(), config: BASE_CONFIG, logger, ...w,
+    });
+    await runOneTick(loop);
+
+    expect(w.confirmDb.confirmDraft).not.toHaveBeenCalled();
+    expect(logger.warn.mock.calls.some((c) => c[0] && c[0].includes('strain_correction_multigroup_unsupported'))).toBe(true);
+  });
+});

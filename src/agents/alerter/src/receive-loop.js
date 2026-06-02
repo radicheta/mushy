@@ -4,7 +4,7 @@ const { parseSnoozeCommand } = require('./snooze');
 const { parseExperimentCommand } = require('./experiment_commands');
 // Phase 54.1 Plan 03 Task 3: per-encounter strain ask-back reply parser + resolver.
 const { parseStrainAskBackReply } = require('./confirm/strain-ask-back');
-const { resolveStrain } = require('./farmos/strain-resolver');
+const { resolveStrain, nearestKnown } = require('./farmos/strain-resolver');
 
 // Phase 37 D-06/D-09 — pure helper for unit-testable trigger evaluation.
 // Defensive against both envelope wrapper shapes (env.envelope.dataMessage AND
@@ -321,6 +321,34 @@ function createReceiveLoop({
                 }
                 continue;
               } else if (strainReply.kind === 'correction') {
+                // Phase 54.2 Plan 02 Task 3: R2 option (b) -- multi-group correction guard.
+                // seeding_session has NO top-level species_code (seeding-session.js:43);
+                // codes live ONLY at groups[].species.value. A correction that writes only
+                // the top-level species_code is structurally inert for multi-group sessions
+                // and would silently no-op -- the committed draft would carry the stale
+                // per-group values. Instead: detect the multi-group / session shape, log
+                // an explicit limitation, and keep the draft held (re-ask).
+                // Flat-shape single-code corrections are unchanged and still rewrite
+                // species_code. Per-group remap is a clean follow-on, not this scope.
+                const draftJson = draftRow.draft_json || {};
+                const isMultiGroupSession = draftJson.type === 'seeding_session'
+                  || (Array.isArray(draftJson.groups) && draftJson.groups.length > 0);
+                if (isMultiGroupSession) {
+                  logger.warn(
+                    `[receive] strain_correction_multigroup_unsupported: draft=${draftRow.id} ` +
+                    'correction target is a seeding_session or multi-group shape -- ' +
+                    'per-group remap not implemented (follow-on); keeping draft held'
+                  );
+                  // Re-ask the farmer with the original seen code + nearest hint.
+                  const seenCode = draftJson.species_code || strainReply.code;
+                  const curatedSetForHint = (config && Array.isArray(config.strains)) ? config.strains : [];
+                  await confirmOutbound.dispatch('send_strain_ask_back', draftRow, {
+                    seenCode,
+                    nearest: nearestKnown(seenCode, curatedSetForHint),
+                  });
+                  continue;
+                }
+                // Flat-shape single-code correction path (unchanged).
                 // Validate the correction target against the curated set.
                 const curatedSet = (config && Array.isArray(config.strains)) ? config.strains : [];
                 const resolved = resolveStrain(strainReply.code, curatedSet);

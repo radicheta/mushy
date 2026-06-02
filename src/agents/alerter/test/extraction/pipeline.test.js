@@ -765,3 +765,326 @@ describe('pipeline -- handleStartingSeqReply', () => {
     expect(updates.length).toBe(updatesAfterFirst);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 54.2 Plan 02: strain detection gate
+// STRAIN-05, STRAIN-06, STRAIN-08 (unit tests).
+// ---------------------------------------------------------------------------
+
+// Fake farmosClient builder: maps code -> discriminated getFungiTypeUuid result.
+function makeFarmosClient(codeMap) {
+  // codeMap: { [code]: { ok, uuid?, reason? } }
+  return {
+    get: jest.fn(async (url) => {
+      // Extract the code from the filter query param.
+      const m = url.match(/filter\[name\]\[value\]=([^&]+)/);
+      const code = m ? decodeURIComponent(m[1]) : null;
+      const result = code && codeMap[code];
+      if (!result) {
+        // Default: not-found (empty data array).
+        return { ok: true, body: { data: [] } };
+      }
+      if (result.ok === false && result.reason === 'fungi_type_not_found') {
+        return { ok: true, body: { data: [] } };
+      }
+      if (result.ok === false && result.reason === 'fungi_type_taxonomy_missing') {
+        return { ok: false, status: 404 };
+      }
+      if (result.ok === false && result.reason && result.reason.startsWith('http_')) {
+        const status = parseInt(result.reason.replace('http_', ''), 10) || 500;
+        return { ok: false, status };
+      }
+      if (result.ok === false && result.reason === 'http_network') {
+        return { ok: false, status: null };
+      }
+      // ok:true -> return a UUID
+      return { ok: true, body: { data: [{ id: result.uuid || 'uuid-known' }] } };
+    }),
+  };
+}
+
+// Build a pipeline deps set with a fake farmosClient.
+function makeStrainDeps({ codeMap = {}, extractedDraft, updateResult } = {}) {
+  const dispatched = [];
+  const updates = [];
+  const pool = {
+    query: jest.fn(async () => ({ rows: [], rowCount: 1 })),
+  };
+  const extractor = {
+    extract: jest.fn(async () => ({
+      ok: true,
+      drafts: [{ draft: extractedDraft || { type: 'observation', species_code: 'PB2' }, per_field_confidence: {} }],
+      draft: extractedDraft || { type: 'observation', species_code: 'PB2' },
+      per_field_confidence: {},
+      continuity_decision: 'start_new',
+      usage: null,
+    })),
+  };
+  const extractionDb = {
+    getInFlightForSender: jest.fn(async () => null),
+    insertDraft: jest.fn(async () => ({ ok: true })),
+    updateDraftStatus: jest.fn(async (_pool, id, status, extras) => {
+      updates.push({ id, status, extras });
+      return updateResult || { ok: true };
+    }),
+    advanceAskbackTurn: jest.fn(async () => ({ ok: true })),
+    computeDraftId: jest.fn((ids, idx) => `draft-${(ids || []).join('-')}-${idx || 0}`),
+  };
+  const stateMachine = {
+    forceStartNewIfIdle: jest.fn(() => null),
+    transition: jest.fn(() => ({
+      nextStatus: DRAFT_STATUS.AWAITING_FARMER,
+      side_effects: [],
+      nextAskbackTurns: 0,
+      reason: 'ok',
+      askBackInfo: { missingFields: [], lowConfFields: [] },
+    })),
+  };
+  const previewBuilder = { buildPreview: jest.fn(() => 'preview') };
+  const config = {
+    draftIdleGapMin: 60,
+    extractionConfidenceThreshold: 0.7,
+    maxAskbackTurns: 3,
+    strains: ['SHI', 'KOY', 'LIMA'],
+  };
+  const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+  const outboundDispatcher = {
+    dispatch: jest.fn((effect, row) => { dispatched.push({ effect, row }); }),
+  };
+  const farmosClient = makeFarmosClient(codeMap);
+  // fungi-type-cache has a module-level LRU; clear it between tests.
+  require('../../src/farmos/fungi-type-cache')._clear();
+  const pipeline = createExtractionPipeline({
+    pool, extractor, extractionDb, stateMachine, previewBuilder, config, logger,
+    outboundDispatcher, farmosClient,
+  });
+  return { pipeline, extractionDb, outboundDispatcher, logger, dispatched, updates, farmosClient };
+}
+
+const strainCtx = {
+  captureId: 'CAP-STRAIN-01',
+  sender: '+59891840201',
+  farmosPerson: 'f1',
+  text: 'inoc PB2',
+  transcripts: [],
+  attachmentPaths: [],
+  replyTargetKind: 'dm',
+  groupId: null,
+};
+
+describe('collectStrainCodes', () => {
+  // collectStrainCodes is a pure module-level function not exported directly.
+  // We test it indirectly via pipeline behavior (what codes get checked).
+  // Additionally, we test by observing the farmosClient.get calls (codes are
+  // encodeURIComponent'd into the filter query).
+
+  function codesChecked(farmosClient) {
+    return farmosClient.get.mock.calls.map((c) => {
+      const m = c[0].match(/filter\[name\]\[value\]=([^&]+)/);
+      return m ? decodeURIComponent(m[1]) : null;
+    }).filter(Boolean);
+  }
+
+  test('flat draft: top-level species_code is collected', async () => {
+    const { pipeline, farmosClient: fc } = makeStrainDeps({
+      codeMap: { 'PB2': { ok: true, uuid: 'uuid-pb2' } },
+      extractedDraft: { type: 'observation', species_code: 'PB2' },
+    });
+    await pipeline.enqueue(strainCtx);
+    expect(codesChecked(fc)).toContain('PB2');
+  });
+
+  test('flat draft: top-level species falls back when species_code absent', async () => {
+    const { pipeline, farmosClient: fc } = makeStrainDeps({
+      codeMap: { 'SHI': { ok: true, uuid: 'uuid-shi' } },
+      extractedDraft: { type: 'observation', species: 'SHI' },
+    });
+    await pipeline.enqueue(strainCtx);
+    expect(codesChecked(fc)).toContain('SHI');
+  });
+
+  test('seeding_session: codes from all groups[].species.value are collected', async () => {
+    const draft = {
+      type: 'seeding_session',
+      event_date: '2026-05-30',
+      groups: [
+        { parent: { value: 'P1', confidence: 1, sources: ['audio'] }, species: { value: 'SHI', confidence: 1, sources: ['audio'] }, qty: { value: 3, confidence: 1, sources: ['audio'] }, child_block_names: { value: ['260530_SHI_1', '260530_SHI_2', '260530_SHI_3'], confidence: 1, sources: ['paper_log_photo'] } },
+        { parent: { value: 'P2', confidence: 1, sources: ['audio'] }, species: { value: 'PB2', confidence: 1, sources: ['audio'] }, qty: { value: 2, confidence: 1, sources: ['audio'] }, child_block_names: { value: ['260530_PB2_4', '260530_PB2_5'], confidence: 1, sources: ['paper_log_photo'] } },
+      ],
+    };
+    const { pipeline, farmosClient: fc } = makeStrainDeps({
+      codeMap: {
+        'SHI': { ok: true, uuid: 'uuid-shi' },
+        'PB2': { ok: false, reason: 'fungi_type_not_found' },
+      },
+      extractedDraft: draft,
+    });
+    await pipeline.enqueue({ ...strainCtx, captureId: 'CAP-SS-PB2' });
+    const checked = codesChecked(fc);
+    expect(checked).toContain('SHI');
+    expect(checked).toContain('PB2');
+  });
+
+  test('seeding_session: distinct codes -- duplicate codes only checked once', async () => {
+    const draft = {
+      type: 'seeding_session',
+      event_date: '2026-05-30',
+      groups: [
+        { parent: { value: 'P1', confidence: 1, sources: ['audio'] }, species: { value: 'KOY', confidence: 1, sources: ['audio'] }, qty: { value: 2, confidence: 1, sources: ['audio'] }, child_block_names: { value: ['260530_KOY_1', '260530_KOY_2'], confidence: 1, sources: ['paper_log_photo'] } },
+        { parent: { value: 'P2', confidence: 1, sources: ['audio'] }, species: { value: 'KOY', confidence: 1, sources: ['audio'] }, qty: { value: 3, confidence: 1, sources: ['audio'] }, child_block_names: { value: ['260530_KOY_3', '260530_KOY_4', '260530_KOY_5'], confidence: 1, sources: ['paper_log_photo'] } },
+      ],
+    };
+    const { pipeline, farmosClient: fc } = makeStrainDeps({
+      codeMap: { 'KOY': { ok: true, uuid: 'uuid-koy' } },
+      extractedDraft: draft,
+    });
+    await pipeline.enqueue({ ...strainCtx, captureId: 'CAP-DEDUP' });
+    const koyChecks = codesChecked(fc).filter((c) => c === 'KOY');
+    // KOY appears in 2 groups but should only be checked once (DISTINCT).
+    expect(koyChecks).toHaveLength(1);
+  });
+});
+
+describe('strain detection gate', () => {
+  test('ok:true from farmOS -> NO hold, no ask-back (code is known)', async () => {
+    const { pipeline, dispatched, updates } = makeStrainDeps({
+      codeMap: { 'SHI': { ok: true, uuid: 'uuid-shi' } },
+      extractedDraft: { type: 'observation', species_code: 'SHI' },
+    });
+    const res = await pipeline.enqueue({ ...strainCtx, captureId: 'CAP-KNOWN' });
+    expect(res.ok).toBe(true);
+    expect(dispatched.some((d) => d.effect === 'send_strain_ask_back')).toBe(false);
+    const strainHold = updates.find((u) => u.extras && u.extras.needs_review_reason === 'strain_unknown_pending_confirm');
+    expect(strainHold).toBeUndefined();
+  });
+
+  test('fungi_type_not_found -> draft held with strain_unknown_pending_confirm + send_strain_ask_back dispatched', async () => {
+    const { pipeline, dispatched, updates } = makeStrainDeps({
+      codeMap: { 'PB2': { ok: false, reason: 'fungi_type_not_found' } },
+      extractedDraft: { type: 'observation', species_code: 'PB2' },
+    });
+    const res = await pipeline.enqueue(strainCtx);
+    expect(res.ok).toBe(true);
+    expect(res.status).toBe(DRAFT_STATUS.AWAITING_FARMER);
+    expect(res.sideEffects).toContain('send_strain_ask_back');
+    const holdUpdate = updates.find((u) => u.extras && u.extras.needs_review_reason === 'strain_unknown_pending_confirm');
+    expect(holdUpdate).toBeDefined();
+    expect(dispatched.filter((d) => d.effect === 'send_strain_ask_back')).toHaveLength(1);
+  });
+
+  test('fungi_type_taxonomy_missing (HTTP 404) -> pass through, NO ask-back (infra error)', async () => {
+    const { pipeline, dispatched, updates } = makeStrainDeps({
+      codeMap: { 'PB2': { ok: false, reason: 'fungi_type_taxonomy_missing' } },
+      extractedDraft: { type: 'observation', species_code: 'PB2' },
+    });
+    await pipeline.enqueue({ ...strainCtx, captureId: 'CAP-404' });
+    expect(dispatched.some((d) => d.effect === 'send_strain_ask_back')).toBe(false);
+    expect(updates.find((u) => u.extras && u.extras.needs_review_reason === 'strain_unknown_pending_confirm')).toBeUndefined();
+  });
+
+  test('http_500 from farmOS -> pass through, NO ask-back (infra error)', async () => {
+    const { pipeline, dispatched } = makeStrainDeps({
+      codeMap: { 'PB2': { ok: false, reason: 'http_500' } },
+      extractedDraft: { type: 'observation', species_code: 'PB2' },
+    });
+    await pipeline.enqueue({ ...strainCtx, captureId: 'CAP-500' });
+    expect(dispatched.some((d) => d.effect === 'send_strain_ask_back')).toBe(false);
+  });
+
+  test('http_network from farmOS -> pass through, NO ask-back (infra error)', async () => {
+    const { pipeline, dispatched } = makeStrainDeps({
+      codeMap: { 'PB2': { ok: false, reason: 'http_network' } },
+      extractedDraft: { type: 'observation', species_code: 'PB2' },
+    });
+    await pipeline.enqueue({ ...strainCtx, captureId: 'CAP-NETFAIL' });
+    expect(dispatched.some((d) => d.effect === 'send_strain_ask_back')).toBe(false);
+  });
+
+  test('farmosClient null -> warn logged, no throw, normal flow continues', async () => {
+    const dispatched = [];
+    const pool = { query: jest.fn(async () => ({ rows: [], rowCount: 1 })) };
+    const extractor = { extract: jest.fn(async () => ({
+      ok: true,
+      drafts: [{ draft: { type: 'observation', species_code: 'PB2' }, per_field_confidence: {} }],
+      draft: { type: 'observation', species_code: 'PB2' },
+      per_field_confidence: {},
+      continuity_decision: 'start_new',
+      usage: null,
+    })) };
+    const extractionDb = {
+      getInFlightForSender: jest.fn(async () => null),
+      insertDraft: jest.fn(async () => ({ ok: true })),
+      updateDraftStatus: jest.fn(async () => ({ ok: true })),
+      advanceAskbackTurn: jest.fn(async () => ({ ok: true })),
+      computeDraftId: jest.fn((ids, idx) => `draft-${idx || 0}`),
+    };
+    const stateMachine = {
+      forceStartNewIfIdle: jest.fn(() => null),
+      transition: jest.fn(() => ({ nextStatus: DRAFT_STATUS.AWAITING_FARMER, side_effects: [], nextAskbackTurns: 0, reason: 'ok', askBackInfo: { missingFields: [], lowConfFields: [] } })),
+    };
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+    const outboundDispatcher = { dispatch: jest.fn((e, r) => dispatched.push({ effect: e, row: r })) };
+    const pipeline = createExtractionPipeline({
+      pool, extractor, extractionDb, stateMachine,
+      previewBuilder: { buildPreview: jest.fn(() => 'preview') },
+      config: { draftIdleGapMin: 60, extractionConfidenceThreshold: 0.7, maxAskbackTurns: 3 },
+      logger, outboundDispatcher,
+      farmosClient: null, // explicit null
+    });
+    const res = await pipeline.enqueue(strainCtx);
+    expect(res.ok).toBe(true);
+    // Should warn about skipping strain detection
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringMatching(/farmosClient null/));
+    // Should NOT have dispatched any strain ask-back
+    expect(dispatched.some((d) => d.effect === 'send_strain_ask_back')).toBe(false);
+  });
+});
+
+describe('batched strain ask', () => {
+  test('seeding_session with 2 unknown codes -> ONE send_strain_ask_back dispatch, both codes in preview', async () => {
+    require('../../src/farmos/fungi-type-cache')._clear();
+    const draft = {
+      type: 'seeding_session',
+      event_date: '2026-05-30',
+      groups: [
+        { parent: { value: 'P1', confidence: 1, sources: ['audio'] }, species: { value: 'PB2', confidence: 1, sources: ['audio'] }, qty: { value: 2, confidence: 1, sources: ['audio'] }, child_block_names: { value: ['260530_PB2_1', '260530_PB2_2'], confidence: 1, sources: ['paper_log_photo'] } },
+        { parent: { value: 'P2', confidence: 1, sources: ['audio'] }, species: { value: 'XXX', confidence: 1, sources: ['audio'] }, qty: { value: 1, confidence: 1, sources: ['audio'] }, child_block_names: { value: ['260530_XXX_3'], confidence: 1, sources: ['paper_log_photo'] } },
+      ],
+    };
+    const { pipeline, dispatched, updates } = makeStrainDeps({
+      codeMap: {
+        'PB2': { ok: false, reason: 'fungi_type_not_found' },
+        'XXX': { ok: false, reason: 'fungi_type_not_found' },
+      },
+      extractedDraft: draft,
+    });
+    const res = await pipeline.enqueue({ ...strainCtx, captureId: 'CAP-BATCH-STRAIN' });
+    expect(res.ok).toBe(true);
+    expect(res.status).toBe(DRAFT_STATUS.AWAITING_FARMER);
+    // Exactly ONE dispatch for all unknowns (Decision 5: batched ask).
+    const strainDispatches = dispatched.filter((d) => d.effect === 'send_strain_ask_back');
+    expect(strainDispatches).toHaveLength(1);
+    // The preview should contain both codes.
+    const holdUpdate = updates.find((u) => u.extras && u.extras.needs_review_reason === 'strain_unknown_pending_confirm');
+    expect(holdUpdate).toBeDefined();
+    expect(holdUpdate.extras.farmer_facing_preview).toContain('PB2');
+    expect(holdUpdate.extras.farmer_facing_preview).toContain('XXX');
+  });
+});
+
+describe('no auto-confirm', () => {
+  test('strain detection gate never sets strain_confirm_approved and never auto-commits', async () => {
+    require('../../src/farmos/fungi-type-cache')._clear();
+    const { pipeline, updates } = makeStrainDeps({
+      codeMap: { 'PB2': { ok: false, reason: 'fungi_type_not_found' } },
+      extractedDraft: { type: 'observation', species_code: 'PB2' },
+    });
+    await pipeline.enqueue(strainCtx);
+    // No update should ever set strain_confirm_approved.
+    const approvalUpdate = updates.find((u) => u.extras && u.extras.needs_review_reason === 'strain_confirm_approved');
+    expect(approvalUpdate).toBeUndefined();
+    // The draft must be held (not confirmed).
+    const holdUpdate = updates.find((u) => u.extras && u.extras.needs_review_reason === 'strain_unknown_pending_confirm');
+    expect(holdUpdate).toBeDefined();
+  });
+});
