@@ -158,6 +158,25 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
     operatorRecipient: config.signalRecipient,
   });
   logger.info(`[boot] extraction outbound dispatcher ready -> ${maskNumber(config.signalRecipient)}`);
+  // Phase 54.2 Plan 01: lift farmosClient construction to before the pipeline so
+  // the strain-detection gate (Wave 2) can call getFungiTypeUuid. Constructed
+  // here only when credentials are present; null when absent (the Wave 2 gate
+  // guards `if (farmosClient)` and skips, mirroring the commit-watchdog WARN
+  // below). The same instance is reused by the commit-watchdog block -- never
+  // constructed twice.
+  let farmosClient = null;
+  if (config.farmosUsername && config.farmosPassword) {
+    farmosClient = farmos.createFarmosClient({
+      farmosUrl: config.farmosUrl,
+      username: config.farmosUsername,
+      password: config.farmosPassword,
+      logger,
+      backoffMs: config.commitRetryBackoffMs,
+      retryMax: config.commitRetryMax,
+    });
+  } else {
+    logger.warn('[farmosClient] not constructed: farmOS credentials missing');
+  }
   const extractionPipeline = createExtractionPipeline({
     pool,
     extractor,
@@ -168,6 +187,7 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
     logger,
     clock: { now: () => clock() },
     outboundDispatcher,
+    farmosClient,
   });
 
   // Phase 44 Plan-04 D-01: event-gate boot wiring. Haiku 4.5 classifier reads
@@ -328,14 +348,8 @@ async function createAlerter({ env = process.env, clock = Date.now, logger = con
   // surfaces the gate to the operator.
   let commitWatchdog = null;
   if (config.farmosUsername && config.farmosPassword) {
-    const farmosClient = farmos.createFarmosClient({
-      farmosUrl: config.farmosUrl,
-      username: config.farmosUsername,
-      password: config.farmosPassword,
-      logger,
-      backoffMs: config.commitRetryBackoffMs,
-      retryMax: config.commitRetryMax,
-    });
+    // farmosClient was lifted above the pipeline construction (Phase 54.2 Plan 01)
+    // and is reused here -- not constructed again.
     const auditLogger = farmos.createAuditLogger({
       pool, logger, farmosUrl: config.farmosUrl, confirmDb: confirm.confirmDb,
     });

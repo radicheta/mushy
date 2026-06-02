@@ -139,3 +139,30 @@ describe('Phase 54.1 startup wiring (Plan 03 live strain ask-back)', () => {
     expect(call[1]).toMatch(/(^|[\s,{])extractionDb\s*[,}]/);
   });
 });
+
+describe('Phase 54.2 startup wiring (Plan 01 strain-detection seams)', () => {
+  // STRAIN-08: Two source-level guards for the two foundational wiring seams.
+  // Unit tests inject fakes and cannot catch a dropped DI wire or a missing
+  // dispatch case -- exactly the eb8332b bug class (send_starting_seq_askback
+  // was absent from extraction/outbound.js and the question never reached the
+  // farmer). These guards fail fast if either seam regresses.
+  const fs = require('fs');
+  const path = require('path');
+  const indexSrc = fs.readFileSync(path.join(__dirname, '../../src/index.js'), 'utf8');
+  const outboundSrc = fs.readFileSync(
+    path.join(__dirname, '../../src/extraction/outbound.js'),
+    'utf8',
+  );
+
+  it('src/index.js forwards farmosClient into createExtractionPipeline', () => {
+    // Guard: if Task 1's injection is reverted, this match fails.
+    const call = indexSrc.match(/createExtractionPipeline\(\{([\s\S]*?)\}\)/);
+    expect(call).not.toBeNull();
+    expect(call[1]).toMatch(/(^|[\s,{])farmosClient\s*[,}]/);
+  });
+
+  it('src/extraction/outbound.js contains a send_strain_ask_back case', () => {
+    // Guard: if Task 2's dispatch case is reverted, this match fails.
+    expect(outboundSrc).toMatch(/case\s+['"]send_strain_ask_back['"]/);
+  });
+});

@@ -165,6 +165,15 @@ function createOutboundDispatcher({
         // question never reached the farmer and the inoc draft silently expired.
         case 'send_starting_seq_askback':
           return await sendAskBack(draftRow || {});
+        // Phase 54.2 Plan 01: unknown-strain ask-back (Pitfall 5 -- eb8332b class).
+        // pipeline.js pre-renders the batched body into draftRow.farmer_facing_preview
+        // (reusing renderStrainAskBack per-line) and dispatches this side-effect.
+        // Routes through sendAskBack unchanged -- same pattern as send_starting_seq_askback.
+        // The send_strain_ask_back case previously existed only in
+        // confirm/outbound-confirm.js (a different dispatcher); without this case a
+        // pipeline dispatch threw unknown_side_effect.
+        case 'send_strain_ask_back':
+          return await sendAskBack(draftRow || {});
         case 'send_needs_review_ping':
           return await sendNeedsReviewPing(draftRow || {});
         case 'send_batch_review_summary':
