@@ -397,7 +397,7 @@ function computePerShapeStats(runSummary) {
 // Receipt builder.
 // ============================================================================
 
-function buildReceipt({ runDir, runSummary, csvPath, runId, cycleNumber, farmosUrl, elapsedSec, generatedAt }) {
+function buildReceipt({ runDir, runSummary, csvPath, runId, cycleNumber, farmosUrl, elapsedSec, generatedAt, notesReceiptPath, notesJsonlPath }) {
   fs.mkdirSync(runDir, { recursive: true });
   const csvRowsByDate = {};
   for (const page of runSummary || []) {
@@ -472,19 +472,49 @@ function buildReceipt({ runDir, runSummary, csvPath, runId, cycleNumber, farmosU
   }
   lines.push('');
 
+  // BACK-10: per-shape stats section (tagged as bulk-backfill auto-YES --
+  // not human-YES signal for v1.13 narrowing).
+  const shapeStats = computePerShapeStats(runSummary);
+  lines.push(`## BACK-10 Per-shape stats (bulk-backfill auto-YES -- not human-YES signal for v1.13)`);
+  lines.push('');
+  lines.push(`tag: bulk_backfill_auto_yes`);
+  lines.push('');
+  lines.push(`| shape | n | ok | held | failed | yes_rate_pct |`);
+  lines.push(`|-------|---|----|------|--------|-------------|`);
+  for (const [shape, bucket] of Object.entries(shapeStats.by_shape)) {
+    const rate = bucket.n === 0 ? 'n/a' : (100 * bucket.ok / bucket.n).toFixed(1);
+    lines.push(`| ${shape} | ${bucket.n} | ${bucket.ok} | ${bucket.held} | ${bucket.failed} | ${rate} |`);
+  }
+  lines.push('');
+  const totalRate = shapeStats.total.n === 0 ? 'n/a' : (100 * shapeStats.total.ok / shapeStats.total.n).toFixed(1);
+  lines.push(`| **total** | ${shapeStats.total.n} | ${shapeStats.total.ok} | ${shapeStats.total.held} | ${shapeStats.total.failed} | ${totalRate} |`);
+  lines.push('');
+
   lines.push(`## Farmer review`);
   lines.push('');
-  lines.push(`Receipt is the SINGLE document for farmer review of Cycle ${cycleNumber}. dev-farmOS UI is too noisy for per-entry verification — trust this receipt + spot-check a handful of UUIDs.`);
+  lines.push(`Receipt is the SINGLE document for farmer review of Cycle ${cycleNumber}. dev-farmOS UI is too noisy for per-entry verification -- trust this receipt + spot-check a handful of UUIDs.`);
   lines.push('');
   lines.push(`Pass criteria: duplicate_asset_count == 0 AND upsert_stability.unstable == [] AND no surprising failure reasons in the per-page sections.`);
   lines.push('');
 
   let body = lines.join('\n');
-  // ASCII-only enforcement: strip em-dashes (— and –) to '--'.
+  // ASCII-only enforcement: strip em-dashes (-- and -) to '--'.
   body = body.replace(/[–—]/g, '--');
 
   const receiptPath = path.join(runDir, 'receipt.md');
   fs.writeFileSync(receiptPath, body, 'utf8');
+
+  // BACK-09: optional copy-out to .planning/notes/ for full-corpus runs.
+  // Uses the SAME scrubbed body string (no second render -- avoids re-introducing em-dashes).
+  if (notesReceiptPath) {
+    fs.mkdirSync(path.dirname(notesReceiptPath), { recursive: true });
+    fs.writeFileSync(notesReceiptPath, body, 'utf8');
+  }
+  if (notesJsonlPath) {
+    fs.mkdirSync(path.dirname(notesJsonlPath), { recursive: true });
+    fs.writeFileSync(notesJsonlPath, buildUuidJsonl(runSummary), 'utf8');
+  }
+
   return receiptPath;
 }
 

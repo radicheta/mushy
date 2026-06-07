@@ -232,6 +232,115 @@ describe('computeAggregate (Phase 51 upsert stability + duplicate count)', () =>
   });
 });
 
+describe('buildReceipt -- BACK-10 section + notes copy-out', () => {
+  let tmpDir;
+  let notesDir;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bf-receipt-'));
+    notesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bf-notes-'));
+  });
+
+  const makeRunSummaryWithCommits = () => ([
+    {
+      pagePath: '/c/IMG_3775.jpg',
+      pageDate: '2025-02-01',
+      draftIds: ['d1', 'd2', 'd3'],
+      commits: [
+        { ok: true, asset_ids: ['u1'], log_ids: ['l1'], log_type: 'seeding', strain_codes: ['CAS'], block_name: '1-08-23', draftId: 'd1' },
+        { ok: 'held', asset_ids: [], log_ids: [], log_type: 'observation', draftId: 'd2' },
+        { ok: false, asset_ids: [], log_ids: [], log_type: 'harvest', draftId: 'd3' },
+      ],
+    },
+  ]);
+
+  test('BACK-10 section is present in receipt body with literal tag line', () => {
+    buildReceipt({ runDir: tmpDir, runSummary: makeRunSummaryWithCommits(), csvPath: null, runId: 'r1', cycleNumber: 1 });
+    const md = fs.readFileSync(path.join(tmpDir, 'receipt.md'), 'utf8');
+    expect(md).toMatch(/## BACK-10 Per-shape stats/);
+    expect(md).toMatch(/bulk-backfill auto-YES -- not human-YES signal for v1\.13/);
+    expect(md).toMatch(/tag: bulk_backfill_auto_yes/);
+    expect(md).toMatch(/yes_rate_pct/);
+  });
+
+  test('BACK-10 table shows correct counts and yes_rate_pct', () => {
+    buildReceipt({ runDir: tmpDir, runSummary: makeRunSummaryWithCommits(), csvPath: null, runId: 'r1', cycleNumber: 1 });
+    const md = fs.readFileSync(path.join(tmpDir, 'receipt.md'), 'utf8');
+    // seeding: 1 ok -> yes_rate = 100.0%
+    expect(md).toMatch(/seeding.*100\.0/);
+    // observation: 1 held -> yes_rate = 0.0%
+    expect(md).toMatch(/observation.*0\.0/);
+    // harvest: 1 failed -> yes_rate = 0.0%
+    expect(md).toMatch(/harvest.*0\.0/);
+  });
+
+  test('BACK-10 handles n=0 shapes with "n/a" yes_rate_pct (no division-by-zero)', () => {
+    buildReceipt({ runDir: tmpDir, runSummary: [], csvPath: null, runId: 'r1', cycleNumber: 1 });
+    const md = fs.readFileSync(path.join(tmpDir, 'receipt.md'), 'utf8');
+    expect(md).toMatch(/n\/a/);
+    expect(md).not.toMatch(/NaN/);
+    expect(md).not.toMatch(/Infinity/);
+  });
+
+  test('buildReceipt WITHOUT notesReceiptPath writes only runDir/receipt.md (Cycle regression guard)', () => {
+    buildReceipt({ runDir: tmpDir, runSummary: makeRunSummaryWithCommits(), csvPath: null, runId: 'r1', cycleNumber: 1 });
+    const files = fs.readdirSync(tmpDir);
+    expect(files).toContain('receipt.md');
+    // notesDir should remain empty -- no extra writes
+    const notesFiles = fs.readdirSync(notesDir);
+    expect(notesFiles).toHaveLength(0);
+  });
+
+  test('buildReceipt WITH notesReceiptPath writes notes copy with same body as runDir receipt', () => {
+    const notesReceiptPath = path.join(notesDir, 'sub', '2026-06-07-receipt.md');
+    buildReceipt({
+      runDir: tmpDir,
+      runSummary: makeRunSummaryWithCommits(),
+      csvPath: null,
+      runId: 'r1',
+      cycleNumber: 1,
+      notesReceiptPath,
+    });
+    expect(fs.existsSync(notesReceiptPath)).toBe(true);
+    const runDirBody = fs.readFileSync(path.join(tmpDir, 'receipt.md'), 'utf8');
+    const notesBody = fs.readFileSync(notesReceiptPath, 'utf8');
+    expect(notesBody).toBe(runDirBody);
+  });
+
+  test('buildReceipt WITH notesJsonlPath writes UUID JSONL sibling', () => {
+    const notesJsonlPath = path.join(notesDir, '2026-06-07-receipt.jsonl');
+    buildReceipt({
+      runDir: tmpDir,
+      runSummary: makeRunSummaryWithCommits(),
+      csvPath: null,
+      runId: 'r1',
+      cycleNumber: 1,
+      notesJsonlPath,
+    });
+    expect(fs.existsSync(notesJsonlPath)).toBe(true);
+    const jsonl = fs.readFileSync(notesJsonlPath, 'utf8');
+    // Should have at least one line (1 asset + 1 log from the seeding commit)
+    const lines = jsonl.trim().split('\n').filter((l) => l.length > 0);
+    expect(lines.length).toBeGreaterThan(0);
+    // Each line must be valid JSON
+    for (const line of lines) {
+      expect(() => JSON.parse(line)).not.toThrow();
+    }
+  });
+
+  test('notes parent dirs are auto-created (mkdir -p)', () => {
+    const notesReceiptPath = path.join(notesDir, 'deep', 'nested', 'receipt.md');
+    expect(() => buildReceipt({
+      runDir: tmpDir,
+      runSummary: [],
+      csvPath: null,
+      runId: 'r1',
+      cycleNumber: 1,
+      notesReceiptPath,
+    })).not.toThrow();
+    expect(fs.existsSync(notesReceiptPath)).toBe(true);
+  });
+});
+
 describe('buildReceipt', () => {
   let tmpDir;
   beforeEach(() => {
