@@ -8,6 +8,29 @@ files:
   - src/simulation/  # digital twin / Gazebo chamber model
 ---
 
+## STATUS UPDATE 2026-06-07 — pieces #1 + #2 SHIPPED (inline, not as a phase)
+
+Derived-telemetry slice built inline on branch `fix/inoc-starting-seq-dispatch`:
+
+- **#1 VPD** and **#2 water vapor in chamber air** — DONE. Computed bridge-side
+  (precedent: replay-aware derivation), not client-side. New module
+  `src/mission-control/bridge/src/fc_derived.js` (Tetens SVP + absolute-humidity
+  integration over chamber volume). Two new telemetry topics `fc.vpd` (kPa) and
+  `fc.water_vapor` (mL) flow through the existing `(time, topic, value)`
+  hypertable — no DB migration. Wired into `index.js` (emitDerived on each
+  temp/RH update + ALLOWED_TOPICS) and the OpenMCT `plugin.js` SENSORS dict.
+  10 unit tests in `test/fc_derived.test.js`; full 241-test bridge suite green.
+- **Chamber volume config**: FC-1 real dims = 120 x 240 x 200 cm = **5.76 m^3**
+  (Santi-confirmed 2026-06-07). Lives as `FC_CHAMBER_VOLUME_M3` env in
+  `docker-compose.override.yml` (default 5.76), consumed by `fc_derived.js`.
+- **NOT YET DEPLOYED** — code-complete + tested; needs `docker compose up -d
+  --build bridge` + openmct rebuild on elder-plops (= prod). Reword the "estimated
+  water volume" interpretation: Santi clarified it's water vapor *held in the
+  chamber atmosphere* (AH x volume), NOT humidifier consumption as #2 originally read.
+
+Still open: **#3 digital-twin link**, **#4 runtime config buttons** (the buttons
+remain gated on the bridge write-path spike noted below).
+
 ## Idea (captured 2026-05-24 from Santi)
 
 > "negative vapour pressure display and a few buttons would be a natural addition for MC next release — and they aren't gated i believe?"

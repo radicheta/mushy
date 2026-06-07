@@ -106,6 +106,33 @@
             extract: function (msg) { return msg.data; },
             min: 0,
             max: 1
+        },
+        {
+            // Derived: vapor pressure deficit, computed in the bridge from
+            // temperature + humidity. No real ROS topic — synthetic key used
+            // for subscription routing only. Fruiting band is ~0.4-0.8 kPa.
+            identifier: { namespace: 'fruiting-chamber', key: 'fc.vpd' },
+            name: 'VPD',
+            unit: 'kPa',
+            topic: '/fc1/derived/vpd',
+            msgType: 'std_msgs/msg/Float32',
+            extract: function (msg) { return msg.data; },
+            min: 0,
+            max: 2,
+            type: 'derived'
+        },
+        {
+            // Derived: water vapor held in the chamber atmosphere (mL),
+            // absolute humidity integrated over the 5.76 m^3 chamber volume.
+            identifier: { namespace: 'fruiting-chamber', key: 'fc.water_vapor' },
+            name: 'Water in air',
+            unit: 'mL',
+            topic: '/fc1/derived/water_vapor',
+            msgType: 'std_msgs/msg/Float32',
+            extract: function (msg) { return msg.data; },
+            min: 0,
+            max: 200,
+            type: 'derived'
         }
     ];
 
@@ -324,7 +351,9 @@
                         temperature_2:   'fc.temperature_2',
                         humidifier_duty: 'fc.humidifier_duty',
                         humidity_target: 'fc.humidity_target',
-                        pid_output:      'fc.pid_output'
+                        pid_output:      'fc.pid_output',
+                        vpd:             'fc.vpd',
+                        water_vapor:     'fc.water_vapor'
                     };
 
                     Object.keys(fieldToKey).forEach(function (field) {
