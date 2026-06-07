@@ -71,4 +71,3 @@ that have ground truth. Pages without ground truth remain unverifiable.
 Before any full run: add a ground-truth commit-time cross-check (and/or harden
 the extraction prompt for the strain column), re-smoke, re-audit. Treat the
 strain-gate wiring (CR-01/CR-02) as secondary -- it only addresses mode 1.
-</content>
