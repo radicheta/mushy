@@ -54,3 +54,8 @@ tenants/*/.env
 # Canonical Cycle 1/2 attestation receipts are committed manually under
 # .planning/phases/54-.../54-CYCLE-N-RECEIPT.md.
 .planning/backfill/
+# Same backfill scratch when the harness is run from the alerter cwd.
+src/agents/alerter/.planning/backfill/
+
+# Operator-local runtime logs (pinning cycler, smoke runs).
+logs/
