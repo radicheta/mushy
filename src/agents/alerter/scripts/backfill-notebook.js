@@ -750,11 +750,23 @@ async function main(argv = process.argv.slice(2), {
       try { fs.closeSync(responsesFd); } catch (_e) {}
     }
     // Plan 04: always emit receipt.md so a crashed run still has an audit
-    // artifact (T-54-13 — repudiation mitigation).
+    // artifact (T-54-13 -- repudiation mitigation).
     if (opts.bulkBackfill) {
       try {
         const { buildReceipt } = require('./build-backfill-receipt');
         const csvPath = env.MUSHROOM_LOG_CSV || '/mnt/slime-kingdom/shared/mushdatadump/mushroom_log.csv';
+        // BACK-09: full-corpus runs (--all-pages) write a permanent receipt + UUID JSONL
+        // to .planning/notes/ so the artifacts are git-tracked. Cycle runs (no --all-pages)
+        // keep writing only to the gitignored run-dir.
+        let notesReceiptPath;
+        let notesJsonlPath;
+        if (opts.allPages) {
+          const dateStr = (now ? new Date(now) : new Date()).toISOString().slice(0, 10);
+          const notesDir = require('path').resolve(__dirname, '../../../../.planning/notes');
+          const basename = `${dateStr}-2025-notebook-backfill-receipt`;
+          notesReceiptPath = require('path').join(notesDir, `${basename}.md`);
+          notesJsonlPath = require('path').join(notesDir, `${basename}.jsonl`);
+        }
         buildReceipt({
           runDir,
           runSummary,
@@ -763,6 +775,8 @@ async function main(argv = process.argv.slice(2), {
           cycleNumber: opts.cycle,
           farmosUrl: env.FARMOS_URL,
           elapsedSec: 0,
+          notesReceiptPath,
+          notesJsonlPath,
         });
       } catch (e) {
         logger.warn && logger.warn(`[backfill] buildReceipt failed: ${e.message}`);
