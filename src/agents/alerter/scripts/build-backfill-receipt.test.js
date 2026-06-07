@@ -13,6 +13,8 @@ const {
   renderPageSection,
   computeAggregate,
   buildReceipt,
+  buildUuidJsonl,
+  computePerShapeStats,
 } = require('./build-backfill-receipt');
 
 describe('parseCsv', () => {
@@ -290,5 +292,175 @@ describe('buildReceipt', () => {
     buildReceipt({ runDir: tmpDir, runSummary, csvPath: null, runId: 'r1', cycleNumber: 1 });
     const md = fs.readFileSync(path.join(tmpDir, 'receipt.md'), 'utf8');
     expect(md).toMatch(/unstable: 1 \(FAIL -- Phase 51 contract regression\)/);
+  });
+});
+
+describe('buildUuidJsonl', () => {
+  const makeRunSummary = () => ([
+    {
+      pagePath: '/c/IMG_3775.jpg',
+      commits: [
+        {
+          ok: true,
+          asset_ids: ['asset-uuid-1'],
+          log_ids: ['log-uuid-1'],
+          log_type: 'seeding',
+          block_name: '1-08-23',
+          draftId: 'd1',
+        },
+        {
+          ok: true,
+          asset_ids: [],
+          log_ids: ['log-uuid-2'],
+          log_type: 'observation',
+          block_name: null,
+          draftId: 'd2',
+        },
+      ],
+    },
+  ]);
+
+  test('emits one line per asset UUID (type:asset) and one per log UUID (type:log)', () => {
+    const jsonl = buildUuidJsonl(makeRunSummary());
+    const lines = jsonl.trim().split('\n').map((l) => JSON.parse(l));
+    expect(lines).toHaveLength(3); // 1 asset + 2 logs
+    expect(lines.filter((l) => l.type === 'asset')).toHaveLength(1);
+    expect(lines.filter((l) => l.type === 'log')).toHaveLength(2);
+  });
+
+  test('asset lines carry uuid, log_type, page, draft_id, block_name', () => {
+    const jsonl = buildUuidJsonl(makeRunSummary());
+    const lines = jsonl.trim().split('\n').map((l) => JSON.parse(l));
+    const assetLine = lines.find((l) => l.type === 'asset');
+    expect(assetLine.uuid).toBe('asset-uuid-1');
+    expect(assetLine.log_type).toBe('seeding');
+    expect(assetLine.page).toBe('IMG_3775.jpg');
+    expect(assetLine.draft_id).toBe('d1');
+    expect(assetLine.block_name).toBe('1-08-23');
+  });
+
+  test('log lines carry uuid, log_type, page, draft_id (no block_name)', () => {
+    const jsonl = buildUuidJsonl(makeRunSummary());
+    const lines = jsonl.trim().split('\n').map((l) => JSON.parse(l));
+    const logLine = lines.find((l) => l.type === 'log' && l.log_type === 'observation');
+    expect(logLine.uuid).toBe('log-uuid-2');
+    expect(logLine.page).toBe('IMG_3775.jpg');
+    expect(logLine.draft_id).toBe('d2');
+    expect(Object.prototype.hasOwnProperty.call(logLine, 'block_name')).toBe(false);
+  });
+
+  test('each emitted line is valid JSON (parseable by JSON.parse)', () => {
+    const jsonl = buildUuidJsonl(makeRunSummary());
+    const lines = jsonl.trim().split('\n');
+    for (const line of lines) {
+      expect(() => JSON.parse(line)).not.toThrow();
+    }
+  });
+
+  test('output ends with a trailing newline when non-empty', () => {
+    const jsonl = buildUuidJsonl(makeRunSummary());
+    expect(jsonl.endsWith('\n')).toBe(true);
+  });
+
+  test('empty input (null/undefined/[]) returns empty string', () => {
+    expect(buildUuidJsonl(null)).toBe('');
+    expect(buildUuidJsonl(undefined)).toBe('');
+    expect(buildUuidJsonl([])).toBe('');
+  });
+
+  test('runSummary with no asset/log UUIDs returns empty string', () => {
+    const runSummary = [{
+      pagePath: '/c/IMG_3775.jpg',
+      commits: [{ ok: 'held', asset_ids: [], log_ids: [], log_type: 'seeding', draftId: 'd1' }],
+    }];
+    expect(buildUuidJsonl(runSummary)).toBe('');
+  });
+});
+
+describe('computePerShapeStats', () => {
+  test('returns tag: "bulk_backfill_auto_yes" and by_shape with all five KNOWN_SHAPES', () => {
+    const stats = computePerShapeStats([]);
+    expect(stats.tag).toBe('bulk_backfill_auto_yes');
+    for (const shape of ['seeding', 'observation', 'activity', 'harvest', 'input']) {
+      expect(stats.by_shape[shape]).toBeDefined();
+    }
+  });
+
+  test('ok=true increments by_shape[shape].ok and total.ok', () => {
+    const runSummary = [{
+      pagePath: '/c/IMG_3775.jpg',
+      commits: [{ ok: true, log_type: 'seeding', asset_ids: ['a1'], log_ids: ['l1'] }],
+    }];
+    const stats = computePerShapeStats(runSummary);
+    expect(stats.by_shape.seeding).toEqual({ n: 1, ok: 1, held: 0, failed: 0 });
+    expect(stats.total).toEqual({ n: 1, ok: 1, held: 0, failed: 0 });
+  });
+
+  test('ok="held" increments by_shape[shape].held (not ok)', () => {
+    const runSummary = [{
+      pagePath: '/c/IMG_3775.jpg',
+      commits: [{ ok: 'held', log_type: 'observation', asset_ids: [], log_ids: [] }],
+    }];
+    const stats = computePerShapeStats(runSummary);
+    expect(stats.by_shape.observation).toEqual({ n: 1, ok: 0, held: 1, failed: 0 });
+  });
+
+  test('ok=false increments by_shape[shape].failed', () => {
+    const runSummary = [{
+      pagePath: '/c/IMG_3775.jpg',
+      commits: [{ ok: false, log_type: 'harvest', asset_ids: [], log_ids: [] }],
+    }];
+    const stats = computePerShapeStats(runSummary);
+    expect(stats.by_shape.harvest).toEqual({ n: 1, ok: 0, held: 0, failed: 1 });
+  });
+
+  test('ok="skipped" counts as failed', () => {
+    const runSummary = [{
+      pagePath: '/c/IMG_3775.jpg',
+      commits: [{ ok: 'skipped', log_type: 'input', asset_ids: [], log_ids: [] }],
+    }];
+    const stats = computePerShapeStats(runSummary);
+    expect(stats.by_shape.input.failed).toBe(1);
+    expect(stats.by_shape.input.ok).toBe(0);
+  });
+
+  test('unexpected log_type creates its own bucket (not dropped)', () => {
+    const runSummary = [{
+      pagePath: '/c/IMG_3775.jpg',
+      commits: [{ ok: true, log_type: 'custom_type', asset_ids: ['a'], log_ids: [] }],
+    }];
+    const stats = computePerShapeStats(runSummary);
+    expect(stats.by_shape.custom_type).toBeDefined();
+    expect(stats.by_shape.custom_type.ok).toBe(1);
+  });
+
+  test('null/undefined log_type uses "unknown" bucket', () => {
+    const runSummary = [{
+      pagePath: '/c/IMG_3775.jpg',
+      commits: [{ ok: true, log_type: null, asset_ids: ['a'], log_ids: [] }],
+    }];
+    const stats = computePerShapeStats(runSummary);
+    expect(stats.by_shape.unknown).toBeDefined();
+    expect(stats.by_shape.unknown.ok).toBe(1);
+  });
+
+  test('total accumulates across all pages and shapes', () => {
+    const runSummary = [
+      {
+        pagePath: '/c/IMG_3775.jpg',
+        commits: [
+          { ok: true, log_type: 'seeding', asset_ids: ['a1'], log_ids: [] },
+          { ok: 'held', log_type: 'observation', asset_ids: [], log_ids: [] },
+        ],
+      },
+      {
+        pagePath: '/c/IMG_3776.jpg',
+        commits: [
+          { ok: false, log_type: 'harvest', asset_ids: [], log_ids: [] },
+        ],
+      },
+    ];
+    const stats = computePerShapeStats(runSummary);
+    expect(stats.total).toEqual({ n: 3, ok: 1, held: 1, failed: 1 });
   });
 });
