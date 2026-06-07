@@ -22,6 +22,8 @@ const ACTIVE_STRAIN_CODES = [
   'DT', 'CAS', 'CAZ', 'WIN', 'ALM', 'MOR', 'BP', 'LIMA',
 ];
 
+const KNOWN_SHAPES = ['seeding', 'observation', 'activity', 'harvest', 'input'];
+
 // ============================================================================
 // CSV parsing (minimal — handles double-quote escapes for notes column).
 // ============================================================================
@@ -319,6 +321,79 @@ function aggregateCost(responsesJsonlPath) {
 }
 
 // ============================================================================
+// UUID JSONL builder (BACK-09).
+// ============================================================================
+
+function buildUuidJsonl(runSummary) {
+  const lines = [];
+  for (const page of runSummary || []) {
+    const pageBase = path.basename(page.pagePath || page.page || '');
+    for (const c of (page.commits || [])) {
+      for (const uuid of (c.asset_ids || [])) {
+        lines.push(JSON.stringify({
+          type: 'asset',
+          uuid,
+          block_name: c.block_name || null,
+          log_type: c.log_type || null,
+          page: pageBase,
+          draft_id: c.draftId || null,
+        }));
+      }
+      for (const uuid of (c.log_ids || [])) {
+        lines.push(JSON.stringify({
+          type: 'log',
+          uuid,
+          log_type: c.log_type || null,
+          page: pageBase,
+          draft_id: c.draftId || null,
+        }));
+      }
+    }
+  }
+  return lines.join('\n') + (lines.length > 0 ? '\n' : '');
+}
+
+// ============================================================================
+// Per-shape stats (BACK-10).
+// ============================================================================
+
+function computePerShapeStats(runSummary) {
+  const by_shape = {};
+  for (const shape of KNOWN_SHAPES) {
+    by_shape[shape] = { n: 0, ok: 0, held: 0, failed: 0 };
+  }
+  const total = { n: 0, ok: 0, held: 0, failed: 0 };
+
+  for (const page of runSummary || []) {
+    for (const c of (page.commits || [])) {
+      const shape = c.log_type || 'unknown';
+      if (!by_shape[shape]) by_shape[shape] = { n: 0, ok: 0, held: 0, failed: 0 };
+      by_shape[shape].n += 1;
+      total.n += 1;
+      if (c.ok === true) {
+        by_shape[shape].ok += 1;
+        total.ok += 1;
+      } else if (c.ok === 'held') {
+        by_shape[shape].held += 1;
+        total.held += 1;
+      } else {
+        by_shape[shape].failed += 1;
+        total.failed += 1;
+      }
+    }
+  }
+
+  return {
+    // BACK-10: tag this entire stats object so v1.13 never treats
+    // these as human-YES signal. bulk_backfill_auto_yes = auto-confirm
+    // short-circuit only; no human reviewed individual drafts.
+    tag: 'bulk_backfill_auto_yes',
+    by_shape,
+    total,
+  };
+}
+
+// ============================================================================
 // Receipt builder.
 // ============================================================================
 
@@ -415,6 +490,7 @@ function buildReceipt({ runDir, runSummary, csvPath, runId, cycleNumber, farmosU
 
 module.exports = {
   ACTIVE_STRAIN_CODES,
+  KNOWN_SHAPES,
   parseCsv,
   loadCsvForPage,
   strainSetFromCsv,
@@ -424,5 +500,7 @@ module.exports = {
   renderPageSection,
   computeAggregate,
   aggregateCost,
+  buildUuidJsonl,
+  computePerShapeStats,
   buildReceipt,
 };
