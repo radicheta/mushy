@@ -105,7 +105,7 @@ None of this has bitten us yet, and the outage-recovery work (v1.6) genuinely he
 1. **Direction: Fork A + incubation chamber.** Run this farm well via Signal. No lateral expansion to more fruiting chambers. Next hardware is an incubation chamber — extending the system to cover the full cultivation lifecycle, not replicating what already exists.
 2. **The bot's voice:** Signal interaction is the goal, not a silent filing clerk. Bot re-enable is gated on a proper intent router — six canonical playbooks (inoculation session, random observation, create todo, mark todo done, substrate prep, harvest event) as the shared layer between the Signal bot and the farmOS Flask app. See `.planning/notes/2026-06-06-board-meeting-playbooks.md`.
 3. **The bus-factor risk:** Three actions decided: (a) mirror the Tier A backup to a separate local disk in addition to the VPS; (b) Zoy holds a copy of the age decryption key (`id_ed25519`) for safekeeping; (c) farmOS DB dumps pushed to VPS nightly alongside the Tier A bundle — implemented same day, script updated.
-4. **Next board cadence:** to be decided.
+4. **Next board cadence:** Event-driven, not fixed. Nudge scheduled for ~2026-06-27 to check if a meeting is warranted.
 
 ---
 
