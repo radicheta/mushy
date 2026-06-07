@@ -144,6 +144,27 @@ def interruptible_sleep(seconds, logfile=None, what=None):
         time.sleep(min(1.0, end - time.monotonic()))
 
 
+def vent_defer_seconds(vent_start_min, vent_end_min, wet_min, sec_of_hour):
+    """Seconds to wait so a wet phase of `wet_min` doesn't overlap the hourly
+    vent window [vent_start_min, vent_end_min). Returns 0 if it already clears
+    (or the guard is disabled by start>=end). The vent is a wall-clock mechanical
+    timer; we work in seconds-of-hour, which is timezone-invariant for whole-hour
+    offsets. Assumes a non-wrapping window and wet_min < gap between windows."""
+    if vent_end_min <= vent_start_min:
+        return 0
+    vs, ve, wet = vent_start_min * 60, vent_end_min * 60, wet_min * 60
+    t = sec_of_hour
+
+    def overlaps(start):
+        # check this-hour and next-hour occurrences (wet < 3600 so two suffice)
+        return ((start < ve and start + wet > vs) or
+                (start < ve + 3600 and start + wet > vs + 3600))
+
+    if not overlaps(t):
+        return 0
+    return (ve - t) if t < ve else (ve + 3600 - t)
+
+
 def handle_signal(signum, frame):
     global _stop
     _stop = True
@@ -157,6 +178,8 @@ def main():
     p.add_argument("--dry-min", type=int, default=30, help="force-evaporation minutes per cycle (0=skip)")
     p.add_argument("--rest-min", type=int, default=180, help="rest (in pinning mode) minutes per cycle")
     p.add_argument("--max-cycles", type=int, default=0, help="stop after N cycles (0=unlimited; use for smoke tests)")
+    p.add_argument("--vent-start-min", type=int, default=0, help="hourly vent window start (minute of hour)")
+    p.add_argument("--vent-end-min", type=int, default=15, help="hourly vent window end (minute of hour); set <= start to disable the guard")
     p.add_argument("--logfile", default=DEFAULT_LOG, help="JSONL action log path")
     p.add_argument("--dry-run", action="store_true", help="print the schedule, fire nothing")
     args = p.parse_args()
@@ -179,10 +202,13 @@ def main():
     logfile = None if args.dry_run else args.logfile
     if logfile:
         os.makedirs(os.path.dirname(os.path.abspath(logfile)), exist_ok=True)
+    vent_guard = (f":{args.vent_start_min:02d}-:{args.vent_end_min:02d}"
+                  if args.vent_end_min > args.vent_start_min else "disabled")
     log(logfile, "start",
         bridge=args.bridge, days=args.days, wet_min=args.wet_min,
         dry_min=args.dry_min, rest_min=args.rest_min,
-        cycle_min=cycle_min, est_cycles=est_cycles, dry_run=args.dry_run)
+        cycle_min=cycle_min, est_cycles=est_cycles,
+        vent_guard=vent_guard, dry_run=args.dry_run)
 
     # Put the chamber in pinning so force phases revert into it (not flat fruiting).
     if not set_mode(args.bridge, PINNING_MODE, logfile, args.dry_run) and not args.dry_run:
@@ -208,6 +234,16 @@ def main():
         log(logfile, "cycle_begin", cycle=cycle)
 
         if args.wet_min > 0 and not _stop:
+            # Don't mist into an open vent: defer the wet pulse past the window.
+            now = datetime.now()
+            defer = vent_defer_seconds(args.vent_start_min, args.vent_end_min,
+                                       args.wet_min, now.minute * 60 + now.second)
+            if defer > 0:
+                log(logfile, "wait_for_vent_clear", defer_sec=defer,
+                    vent_window=f":{args.vent_start_min:02d}-:{args.vent_end_min:02d}")
+                interruptible_sleep(defer)
+            if _stop:
+                break
             ok = force_phase(args.bridge, "force-condensation", args.wet_min, logfile, False)
             failures = 0 if ok else failures + 1
             interruptible_sleep(args.wet_min * 60 + SETTLE_SEC)
