@@ -28,7 +28,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/mnt/slime-kingdom/opt/mushy
-ExecStart=/usr/bin/python3 scripts/pinning_cycler.py --days 5 --wet-min 10 --dry-min 30 --rest-min 180 --logfile logs/pinning-cycler.jsonl
+ExecStart=/usr/bin/python3 scripts/pinning_cycler.py --days 5 --wet-min 10 --dry-min 30 --rest-min 180 --vent-start-min 0 --vent-end-min 15 --logfile logs/pinning-cycler.jsonl
 Restart=on-failure
 RestartSec=30
 KillSignal=SIGTERM

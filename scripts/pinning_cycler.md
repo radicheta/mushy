@@ -106,6 +106,8 @@ setsid nohup python3 scripts/pinning_cycler.py \
 | `--dry-min` | 30 | `force-evaporation` minutes per cycle (0 = skip). Range 1–120. |
 | `--rest-min` | 180 | Rest in `pinning` mode per cycle. |
 | `--max-cycles` | 0 | Stop after N cycles (0 = unlimited; use for smoke tests). |
+| `--vent-start-min` | 0 | Hourly forced-vent window start (minute of hour). |
+| `--vent-end-min` | 15 | Vent window end; set ≤ start to disable the guard. |
 | `--bridge` | `http://localhost:8081` | Bridge base URL. |
 | `--logfile` | `logs/pinning-cycler.jsonl` | JSONL action log (gitignored). |
 | `--dry-run` | off | Print the schedule and exit; fire nothing. |
@@ -126,6 +128,17 @@ curl -s "http://localhost:8081/history/fc.vpd?start=$(($(date +%s%3N)-7200000))&
 
 `fc.humidifier_duty` = 1 during wet, 0 during dry/rest. `fc.vpd` and
 `fc.water_vapor` (added 2026-06-07) are the derived readouts of the cycle.
+
+## Vent coordination
+
+A forced vent on a mechanical timer runs ~15 min/hr (aligned to **:00–:15**).
+It's external to mushy — the cycler can't switch it, but it *avoids fighting it*:
+before each wet pulse, if a `force-condensation` of `--wet-min` would overlap
+`[--vent-start-min, --vent-end-min)`, the cycler defers it to the window's end
+(`:15`) so misting always goes into a *closed* tent. Dry/rest phases overlap the
+vent freely (the vent assists drying + keeps CO₂ near-ambient, which oysters like).
+Look for `wait_for_vent_clear` events in the log. To disable (e.g. if you move
+the timer or wire the vent to a relay), set `--vent-end-min` ≤ `--vent-start-min`.
 
 ## Tuning (the part you do by eye)
 
@@ -169,7 +182,14 @@ curl -s -X POST http://localhost:8081/control/param -H 'Content-Type: applicatio
   restart — so a reboot starts a fresh `--days` window rather than resuming the
   remaining time. Harmless for the experiment (cycling just continues); only
   matters if you're counting on an exact stop date.
-- **FAE is manual.** The fan is temperature-driven only; there is no active
-  fresh-air exhaust. Watch CO₂ on the SCD41 and crack the tent if it climbs.
+- **FAE is real but not mushy-controlled.** Two airflow sources exist outside
+  fc_core's knowledge: (1) the internal circulation fan — actually the temp-driven
+  PWM fan at min 50%, so effectively always-on; (2) a **forced vent on a mechanical
+  timer, ~15 min/hr** (being aligned to :00–:15). The vent is NOT in fc_config /
+  fc_controller — the cycler is blind to it. CO₂ sits ~470 ppm (near outdoor), so
+  FAE is abundant — good for oyster pinning. The vent can blow humidity out of a
+  `force-condensation` phase if windows overlap; see clock-coordination notes /
+  the relay-control option if this matters. Could be brought under fc1 GPIO
+  control (relay) for true coordination — future work.
 - **Signal trigger path** for force modes was blocked on signal-cli deviceId=2
   (Phase 31); this script uses the proven bridge HTTP path instead.
