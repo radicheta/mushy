@@ -64,6 +64,9 @@ Flags:
   --cycle=<n>             Cycle number (1 or 2). Default 1.
   --limit=<n>             Max pages to process. Default 5.
   --dry-run               Skip DB + pipeline; list selected pages only.
+  --allow-prod-write      Opt in to writing to PROD farmOS (:8082). Requires
+                          --farmer=santi. Bypasses the prod-guard for an
+                          explicit, operator-authorized promotion (BACK-11).
   --resume-from=<base>    Skip until basename matches (e.g. IMG_3778.jpg).
   --run-id=<id>           Override the auto-generated run id.
   --corpus-dir=<path>     Override corpus dir. Default ${CORPUS_DEFAULT}.
@@ -80,6 +83,7 @@ function parseArgs(argv) {
     help: false,
     bulkBackfill: false,
     allPages: false,
+    allowProdWrite: false,
     farmer: null,
     cycle: 1,
     limit: 5,
@@ -92,6 +96,7 @@ function parseArgs(argv) {
     if (arg === '--help' || arg === '-h') { opts.help = true; continue; }
     if (arg === '--bulk-backfill') { opts.bulkBackfill = true; continue; }
     if (arg === '--all-pages') { opts.allPages = true; continue; }
+    if (arg === '--allow-prod-write') { opts.allowProdWrite = true; continue; }
     if (arg === '--dry-run') { opts.dryRun = true; continue; }
     const eq = arg.indexOf('=');
     if (eq < 0) continue;
@@ -600,15 +605,24 @@ async function main(argv = process.argv.slice(2), {
   if (opts.allPages) opts.limit = Infinity;
 
   // Prod-guard first when URL is present. Missing URL is fine on --dry-run.
-  if (env.FARMOS_URL) {
+  // BACK-11: an explicit, operator-authorized promotion may opt in to a PROD
+  // write via --allow-prod-write, but ONLY together with --farmer=santi. The
+  // flag alone (without santi) does NOT bypass the guard.
+  const prodWriteAuthorized = opts.allowProdWrite && opts.farmer === 'santi';
+  if (env.FARMOS_URL && !prodWriteAuthorized) {
     try {
       assertProdGuard(env.FARMOS_URL);
     } catch (e) {
       logger.error && logger.error(
-        `REFUSING: prod-guard on FARMOS_URL=${env.FARMOS_URL}. Phase 54 is dev-only.`
+        `REFUSING: prod-guard on FARMOS_URL=${env.FARMOS_URL}. Pass --allow-prod-write --farmer=santi to authorize a PROD promotion.`
       );
       return { code: 3 };
     }
+  }
+  if (prodWriteAuthorized && env.FARMOS_URL) {
+    logger.warn && logger.warn(
+      `[backfill] PROD WRITE AUTHORIZED (--allow-prod-write --farmer=santi): committing to ${env.FARMOS_URL}`
+    );
   }
 
   try {

@@ -183,6 +183,16 @@ describe('parseArgs -- all-pages flag', () => {
   });
 });
 
+describe('parseArgs -- allow-prod-write flag (BACK-11)', () => {
+  test('--allow-prod-write sets opts.allowProdWrite = true', () => {
+    expect(parseArgs(['--allow-prod-write']).allowProdWrite).toBe(true);
+  });
+
+  test('default opts.allowProdWrite is false', () => {
+    expect(parseArgs([]).allowProdWrite).toBe(false);
+  });
+});
+
 describe('main() -- all-pages resolves limit to Infinity', () => {
   test('--all-pages --dry-run selects all corpus pages', async () => {
     const fakePages = [
@@ -320,6 +330,26 @@ describe('main (integration of helpers)', () => {
     const logger = mkLogger();
     const r = await main(
       ['--bulk-backfill', '--farmer=santi', '--dry-run'],
+      { env: { FARMOS_URL: 'http://10.68.155.50:8082' }, logger }
+    );
+    expect(r.code).toBe(3);
+    expect(logger._lines.error.some((m) => /REFUSING.*prod-guard/.test(m))).toBe(true);
+  });
+
+  test('BACK-11: --allow-prod-write --farmer=santi bypasses the prod-guard on :8082', async () => {
+    const logger = mkLogger();
+    const r = await main(
+      ['--allow-prod-write', '--farmer=santi', '--dry-run'],
+      { env: { FARMOS_URL: 'http://10.68.155.50:8082' }, logger }
+    );
+    expect(r.code).not.toBe(3);
+    expect(logger._lines.warn.some((m) => /PROD WRITE AUTHORIZED/.test(m))).toBe(true);
+  });
+
+  test('BACK-11: --allow-prod-write WITHOUT --farmer=santi still trips the prod-guard', async () => {
+    const logger = mkLogger();
+    const r = await main(
+      ['--allow-prod-write', '--farmer=vikki', '--dry-run'],
       { env: { FARMOS_URL: 'http://10.68.155.50:8082' }, logger }
     );
     expect(r.code).toBe(3);
