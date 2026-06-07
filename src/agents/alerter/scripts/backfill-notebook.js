@@ -59,6 +59,7 @@ const USAGE = `Usage: node scripts/backfill-notebook.js [flags]
 Flags:
   --help                  Print this banner and exit.
   --bulk-backfill         Enable santi-only auto-confirm mode.
+  --all-pages             Process all corpus pages (overrides --limit).
   --farmer=<name>         Farmer identity (santi required for --bulk-backfill).
   --cycle=<n>             Cycle number (1 or 2). Default 1.
   --limit=<n>             Max pages to process. Default 5.
@@ -78,6 +79,7 @@ function parseArgs(argv) {
   const opts = {
     help: false,
     bulkBackfill: false,
+    allPages: false,
     farmer: null,
     cycle: 1,
     limit: 5,
@@ -89,6 +91,7 @@ function parseArgs(argv) {
   for (const arg of argv) {
     if (arg === '--help' || arg === '-h') { opts.help = true; continue; }
     if (arg === '--bulk-backfill') { opts.bulkBackfill = true; continue; }
+    if (arg === '--all-pages') { opts.allPages = true; continue; }
     if (arg === '--dry-run') { opts.dryRun = true; continue; }
     const eq = arg.indexOf('=');
     if (eq < 0) continue;
@@ -592,6 +595,9 @@ async function main(argv = process.argv.slice(2), {
     printUsage();
     return { code: 0 };
   }
+
+  // --all-pages overrides --limit: select the full corpus.
+  if (opts.allPages) opts.limit = Infinity;
 
   // Prod-guard first when URL is present. Missing URL is fine on --dry-run.
   if (env.FARMOS_URL) {
