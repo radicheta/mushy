@@ -16,6 +16,7 @@ const control_param = require('./control_param');
 const control_persist = require('./control_persist');
 const control_experiment = require('./control_experiment');
 const { markFc1Active, getFc1LastMsgTs, getFc1LastMsgAgeSec } = require('./fc1_liveness');
+const fc_derived = require('./fc_derived');
 
 // Fail fast if database password is not configured
 if (!process.env.TIMESCALE_PASSWORD) {
@@ -45,7 +46,10 @@ const latestTelemetry = {
     humidity: null,
     temperature: null,
     co2: null,
-    humidifier: null
+    humidifier: null,
+    // Derived (computed from temperature + humidity in emitDerived); not from a sensor.
+    vpd: null,
+    water_vapor: null
 };
 
 // Camera MJPEG streaming state
@@ -374,7 +378,8 @@ app.get('/farmer/summary', (req, res) => {
 
 // Allowlist for history endpoint topics — prevents SQL injection via topic param (T-07-04)
 const ALLOWED_TOPICS = ['fc.humidity', 'fc.temperature', 'fc.co2', 'fc.humidifier', 'fc.humidity_2', 'fc.temperature_2',
-                         'fc.humidifier_duty', 'fc.humidity_target', 'fc.pid_output'];
+                         'fc.humidifier_duty', 'fc.humidity_target', 'fc.pid_output',
+                         'fc.vpd', 'fc.water_vapor'];
 
 // Server-side downsampling: choose bucket interval based on requested time range (D-06)
 // <=2h -> ~1440 pts at 5s; <=24h -> ~1440 pts at 1min; <=7d -> ~1008 pts at 10min; >7d -> 1hr
@@ -757,6 +762,26 @@ async function insertTelemetry(topic, value, tsMs, _tsNs) {
     }
 }
 
+// Derived telemetry: recompute VPD + chamber water-vapor from the latest
+// temperature + humidity, then broadcast + persist. Called from both the
+// temperature and humidity subscriptions so it refreshes whenever either
+// input moves. No-op until both inputs have been seen. Uses the caller's
+// timestamp (the sample that triggered the update) for DB alignment.
+async function emitDerived(ts) {
+    if (!latestTelemetry.temperature || !latestTelemetry.humidity) return;
+    const derived = fc_derived.computeDerived(
+        latestTelemetry.temperature.value,
+        latestTelemetry.humidity.value
+    );
+    if (!derived) return;
+    const tsNs = ts * 1_000_000;
+    latestTelemetry.vpd = { value: derived.vpd, timestamp: ts };
+    latestTelemetry.water_vapor = { value: derived.water_vapor, timestamp: ts };
+    broadcast({ vpd: derived.vpd, water_vapor: derived.water_vapor, timestamp: ts });
+    await insertTelemetry('fc.vpd', derived.vpd, ts, tsNs);
+    await insertTelemetry('fc.water_vapor', derived.water_vapor, ts, tsNs);
+}
+
 // Main startup sequence
 rclnodejs.init().then(async () => {
     const node = new rclnodejs.Node('mission_control_bridge');
@@ -784,6 +809,7 @@ rclnodejs.init().then(async () => {
             markFc1Active(Date.now());
             broadcast({ humidity: value, timestamp: ts });
             await insertTelemetry('fc.humidity', value, tsMs, tsNs);
+            await emitDerived(ts);
         }
     );
 
@@ -801,6 +827,7 @@ rclnodejs.init().then(async () => {
             markFc1Active(Date.now());
             broadcast({ temperature: value, timestamp: ts });
             await insertTelemetry('fc.temperature', value, tsMs, tsNs);
+            await emitDerived(ts);
         }
     );
 

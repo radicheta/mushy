@@ -18,6 +18,9 @@ services:
       - SIGNAL_API_URL=${SIGNAL_API_URL:-http://localhost:8085}
       - SIGNAL_SENDER=${SIGNAL_SENDER}
       - SIGNAL_RECIPIENT=${SIGNAL_RECIPIENT}
+      # Derived-telemetry chamber geometry: FC-1 = 120 x 240 x 200 cm = 5.76 m^3.
+      # Drives the "Water in air" (water-vapor mass) metric in fc_derived.js.
+      - FC_CHAMBER_VOLUME_M3=${FC_CHAMBER_VOLUME_M3:-5.76}
     volumes:
       - /home/santi/.config/cyclonedds.xml:/etc/cyclonedds.xml:ro
       - /data/snapshots-burnt:/data/snapshots-burnt
