@@ -54,3 +54,6 @@ tenants/*/.env
 # Canonical Cycle 1/2 attestation receipts are committed manually under
 # .planning/phases/54-.../54-CYCLE-N-RECEIPT.md.
 .planning/backfill/
+
+# Pinning cycler runtime logs (operator-local; runbook: scripts/pinning_cycler.md)
+logs/
