@@ -49,7 +49,36 @@ hiccups mid-wet, the current phase expires back to `pinning` on its own —
 **the mister cannot get stuck on.** The cycler adds rhythm, not a new failure
 mode.
 
-## Running it
+## Running it — systemd (canonical, survives reboot)
+
+The induction run is managed by a **user-level systemd unit**
+(`scripts/pinning-cycler.service`). santi has linger enabled, so the user
+manager starts at boot even with no login → the run survives reboots.
+
+```bash
+# Install / update the unit (no sudo needed):
+cp scripts/pinning-cycler.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now pinning-cycler.service
+
+# Manage:
+systemctl --user status pinning-cycler
+systemctl --user stop pinning-cycler        # SIGTERM -> cancels phase, leaves pinning
+systemctl --user restart pinning-cycler
+journalctl --user -u pinning-cycler -f
+
+# Re-tune: edit the ExecStart timings in scripts/pinning-cycler.service, then:
+cp scripts/pinning-cycler.service ~/.config/systemd/user/ && \
+  systemctl --user daemon-reload && systemctl --user restart pinning-cycler
+```
+
+Boot race: the bridge is a docker container (restart=always) and may not be up
+the instant the unit starts at boot. The script exits 1 if it can't reach the
+bridge; `Restart=on-failure` + `RestartSec=30` retries until it is. A clean
+completion of the `--days` window exits 0 and does NOT restart (the induction
+is intentionally finite).
+
+## Running it — manual (ad-hoc / smoke tests)
 
 ```bash
 cd /mnt/slime-kingdom/opt/mushy
@@ -116,8 +145,13 @@ against the VPD trace.
 ## Stopping
 
 ```bash
-pkill -f pinning_cycler.py     # cancels any live phase, leaves chamber in pinning
+systemctl --user stop pinning-cycler   # preferred (systemd-managed run)
+# or, if running manually:  pkill -f pinning_cycler.py
 ```
+
+> Do NOT use `pkill -f` with a pattern that also appears in your own shell's
+> command line — it will SIGTERM the shell too. Prefer `systemctl --user stop`,
+> or kill by PID.
 
 On stop (signal or window-complete) it cancels any in-flight experiment and
 sets the chamber back to `pinning`. **Once pins have set, switch to `fruiting`**
@@ -130,9 +164,11 @@ curl -s -X POST http://localhost:8081/control/param -H 'Content-Type: applicatio
 
 ## Known gaps / not yet done
 
-- **Not reboot-persistent.** Runs under `setsid nohup`, survives the session
-  but not an elder-plops reboot. Auto-revert means a reboot gap is a pause in
-  rhythm, not a hazard. Wrap in a systemd unit if you want reboot survival.
+- **Reboot recovery restarts the window.** The unit survives reboot (linger),
+  but the script tracks elapsed time with a monotonic clock that resets on
+  restart — so a reboot starts a fresh `--days` window rather than resuming the
+  remaining time. Harmless for the experiment (cycling just continues); only
+  matters if you're counting on an exact stop date.
 - **FAE is manual.** The fan is temperature-driven only; there is no active
   fresh-air exhaust. Watch CO₂ on the SCD41 and crack the tent if it climbs.
 - **Signal trigger path** for force modes was blocked on signal-cli deviceId=2
