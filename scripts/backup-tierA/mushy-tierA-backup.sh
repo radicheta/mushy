@@ -16,6 +16,8 @@ set -uo pipefail
 # Config (env-overridable for testing)
 VPS_HOST="${VPS_HOST:-mushy@178.105.84.13}"
 VPS_REPO="${VPS_REPO:-/var/backups/mushy-tierA}"
+VPS_FARMOS_REPO="${VPS_FARMOS_REPO:-/var/backups/farmos-db}"
+FARMOS_BACKUP_DIR="${FARMOS_BACKUP_DIR:-/mnt/slime-kingdom/backups/farmos}"
 RECIPIENT_PUB="${RECIPIENT_PUB:-/home/santi/.ssh/id_ed25519.pub}"
 BRIDGE_HEARTBEAT_URL="${BRIDGE_HEARTBEAT_URL:-http://localhost:8081/heartbeat-alert}"
 RETENTION_DAYS="${RETENTION_DAYS:-30}"
@@ -103,7 +105,23 @@ scp -B -o ConnectTimeout=15 "$OUT_LOCAL" "$VPS_HOST:$VPS_REPO/$STAMP.tar.age" >/
   || fail "scp to $VPS_HOST:$VPS_REPO"
 log "pushed to $VPS_HOST:$VPS_REPO/$STAMP.tar.age"
 
-# 4. Retention prune on VPS
+# 4. Push latest farmOS DB dump to VPS
+LATEST_DUMP=$(ls -t "$FARMOS_BACKUP_DIR"/farm-*.dump.gz 2>/dev/null | head -1)
+if [ -n "$LATEST_DUMP" ]; then
+  ssh -o BatchMode=yes -o ConnectTimeout=10 "$VPS_HOST" "mkdir -p $VPS_FARMOS_REPO" \
+    || fail "ensure $VPS_FARMOS_REPO on VPS"
+  scp -B -o ConnectTimeout=30 "$LATEST_DUMP" "$VPS_HOST:$VPS_FARMOS_REPO/$(basename "$LATEST_DUMP")" >/dev/null \
+    || fail "scp farmos dump to $VPS_HOST:$VPS_FARMOS_REPO"
+  DUMP_SIZE=$(stat -c%s "$LATEST_DUMP")
+  log "pushed farmos dump $(basename "$LATEST_DUMP") ($DUMP_SIZE bytes) to VPS"
+  ssh -o BatchMode=yes -o ConnectTimeout=10 "$VPS_HOST" \
+    "find $VPS_FARMOS_REPO -maxdepth 1 -type f -name 'farm-*.dump.gz' -mtime +$RETENTION_DAYS -print -delete" \
+    > /dev/null 2>&1 || log "farmos dump prune skipped (non-fatal)"
+else
+  log "no farmos dump found in $FARMOS_BACKUP_DIR — skipping"
+fi
+
+# 5. Retention prune on VPS
 ssh -o BatchMode=yes -o ConnectTimeout=10 "$VPS_HOST" \
   "find $VPS_REPO -maxdepth 1 -type f -name '*.tar.age' -mtime +$RETENTION_DAYS -print -delete" \
   > "$WORK/pruned.txt" 2>/dev/null || log "prune skipped (non-fatal)"

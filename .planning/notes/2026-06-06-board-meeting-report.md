@@ -8,7 +8,7 @@
 
 ## Mushy's opening statement (read aloud)
 
-The farm is running. The chamber controls itself. The bot is muted because it misbehaved.
+The chamber controls itself. The bot logged farm events in the lab and then spammed the Signal group, so it's muted.
 
 Pick a direction: run this farm, grow more chambers, or build a product. Everything else follows from that.
 
@@ -100,12 +100,12 @@ None of this has bitten us yet, and the outage-recovery work (v1.6) genuinely he
 
 ---
 
-## 5. What we are asking the board to decide this weekend
+## 5. Board decisions (2026-06-06)
 
-1. **Pick a fork** (A run-the-farm / B more-chambers / C product), or explicitly choose a blend and its priority order. Everything downstream depends on this.
-2. **The bot's voice:** agree the principle that the bot should be silent by default and only speak when it has something genuinely useful to say (a real question, a real confirmation, a real alert). This holds in all three forks and lets us re-enable it safely.
-3. **The bus-factor risk:** decide whether to spend a little now on an offsite backup and a second trained operator.
-4. **Set the next board cadence.** Last meeting was 2026-05-09; roughly monthly seems to be the natural rhythm.
+1. **Direction: Fork A + incubation chamber.** Run this farm well via Signal. No lateral expansion to more fruiting chambers. Next hardware is an incubation chamber — extending the system to cover the full cultivation lifecycle, not replicating what already exists.
+2. **The bot's voice:** Signal interaction is the goal, not a silent filing clerk. Bot re-enable is gated on a proper intent router — six canonical playbooks (inoculation session, random observation, create todo, mark todo done, substrate prep, harvest event) as the shared layer between the Signal bot and the farmOS Flask app. See `.planning/notes/2026-06-06-board-meeting-playbooks.md`.
+3. **The bus-factor risk:** Three actions decided: (a) mirror the Tier A backup to a separate local disk in addition to the VPS; (b) Zoy holds a copy of the age decryption key (`id_ed25519`) for safekeeping; (c) farmOS DB dumps pushed to VPS nightly alongside the Tier A bundle — implemented same day, script updated.
+4. **Next board cadence:** to be decided.
 
 ---
 
