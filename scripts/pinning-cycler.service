@@ -1,0 +1,38 @@
+# Mushroom pinning induction cycler — user-level systemd unit.
+#
+# Install (no sudo needed; santi has linger enabled so user units survive reboot):
+#   cp scripts/pinning-cycler.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now pinning-cycler.service
+#
+# Manage:
+#   systemctl --user status pinning-cycler
+#   systemctl --user stop pinning-cycler      # SIGTERM -> cancels phase, leaves pinning
+#   journalctl --user -u pinning-cycler -f    # (also: tail -f logs/pinning-cycler.jsonl)
+#
+# Tune: edit ExecStart timings below, then:
+#   cp scripts/pinning-cycler.service ~/.config/systemd/user/ && \
+#     systemctl --user daemon-reload && systemctl --user restart pinning-cycler
+#
+# Boot-race note: the bridge is a docker container (restart=always) and may not
+# be reachable the instant this starts at boot. The script aborts (exit 1) if it
+# can't reach the bridge; Restart=on-failure + RestartSec=30 retries until the
+# bridge is up. A clean completion of the --days window exits 0 and does NOT
+# restart (the induction is intentionally finite).
+
+[Unit]
+Description=Mushroom pinning induction cycler (condensation/evaporation cycles)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/mnt/slime-kingdom/opt/mushy
+ExecStart=/usr/bin/python3 scripts/pinning_cycler.py --days 5 --wet-min 10 --dry-min 30 --rest-min 180 --logfile logs/pinning-cycler.jsonl
+Restart=on-failure
+RestartSec=30
+KillSignal=SIGTERM
+TimeoutStopSec=90
+
+[Install]
+WantedBy=default.target
