@@ -1,5 +1,45 @@
 # 2026-06-07 -- Overnight autonomous pass: handoff for Santi
 
+## Plain-English version (read this part)
+
+Tonight I only did safe code cleanup -- bug fixes from a code review, nothing
+that touched the real farm data or cost money. Tests all green. I pushed it.
+
+The big stuff is still waiting on you, and here is what the codenames mean so
+future-you (or future-me) doesn't have to decode them:
+
+- **CR-01 / CR-02** = there's a safety check meant to catch unknown
+  mushroom-strain codes before saving them. It's currently switched OFF in the
+  real run. A code review wanted it switched ON. I left it OFF on purpose,
+  because (a) you'd already decided it's unnecessary -- all the strain codes are
+  pre-loaded now -- and (b) the prod audit showed it wouldn't catch the actual
+  problem we hit anyway (one strain, POY, got silently saved as a different one,
+  KOY). **Your call later:** officially close it as "not needed", or turn it on.
+
+- **F1** = every backfilled log entry should show a photo of the notebook page
+  it came from, so you can see the source. Right now most of them drop the photo.
+
+- **F2** = you should be able to open ONE whole notebook page as a single group
+  in farmOS and lay it next to the paper notebook to check it line-by-line. Right
+  now each line becomes its own disconnected entry, so you can't.
+
+- **F1 + F2 together** = one feature: one "session" per notebook page, with the
+  page photo attached, holding all that page's entries. This is the "session is
+  the real unit, not the individual bag" idea you've raised before.
+
+- **The fidelity fix** = the extractor currently mis-reads or mis-files about a
+  third of notebook entries, and sometimes silently saves the wrong strain. The
+  fix is to cross-check each entry against the known-correct CSV at save time.
+  Before that lands, the full notebook run stays parked. The one thing I'd need
+  from you to build it: when an entry disagrees with the CSV, should it warn,
+  pause, or skip?
+
+None of this is urgent. Sleep well.
+
+---
+
+## Detailed version (for the next working session)
+
 You asked me to "check notes from previous session and continue as
 autonomously as possible overnight." Here is exactly what I did, what I
 deliberately did NOT do, and what's waiting for you.
