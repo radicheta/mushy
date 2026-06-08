@@ -71,3 +71,19 @@ that have ground truth. Pages without ground truth remain unverifiable.
 Before any full run: add a ground-truth commit-time cross-check (and/or harden
 the extraction prompt for the strain column), re-smoke, re-audit. Treat the
 strain-gate wiring (CR-01/CR-02) as secondary -- it only addresses mode 1.
+
+## CORRECTION (Santi, 2026-06-07): "ground truth" CSV is a misnomer
+
+The `mushroom_log.csv` is NOT authoritative. It is another interpretation of the
+same paper notebooks -- probably better than the extractor, but not necessarily
+100% accurate. Implications for the fix above:
+
+- The "hit/miss/extra" numbers measure *agreement between two interpretations*,
+  not *extractor error*. A "miss" or "extra" may be the CSV being wrong, not the
+  extractor.
+- A commit-time cross-check therefore must NOT hard-reject on CSV disagreement
+  (that would trust a fallible source). It should FLAG disagreements for a human
+  to resolve against the actual notebook page.
+- The only real source of truth is the notebook page image -- which is why F1/F2
+  (attach page photo + group-by-page) is the dependency that makes a flagged
+  disagreement resolvable at all.
