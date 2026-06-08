@@ -28,11 +28,17 @@ future-you (or future-me) doesn't have to decode them:
   the real unit, not the individual bag" idea you've raised before.
 
 - **The fidelity fix** = the extractor currently mis-reads or mis-files about a
-  third of notebook entries, and sometimes silently saves the wrong strain. The
-  fix is to cross-check each entry against the known-correct CSV at save time.
-  Before that lands, the full notebook run stays parked. The one thing I'd need
-  from you to build it: when an entry disagrees with the CSV, should it warn,
-  pause, or skip?
+  third of notebook entries, and sometimes silently saves the wrong strain.
+  Idea: cross-check each entry against the CSV at save time. **Caveat Santi
+  added 2026-06-07:** the CSV is NOT ground truth -- it's just another
+  interpretation of the same notebooks, probably better but not guaranteed 100%.
+  So a disagreement means "two readings differ", not "extractor is wrong". The
+  check therefore can't be a hard reject-on-mismatch that trusts the CSV blindly;
+  it's a flag-for-a-human-look. The real source of truth is the notebook page
+  itself -- which is exactly why F1/F2 (attach the page photo + group by page)
+  matter: a flagged disagreement is only resolvable by looking at the page.
+  Before this lands, the full notebook run stays parked. Open question for you:
+  on a disagreement, warn/flag, pause, or skip?
 
 None of this is urgent. Sleep well.
 
