@@ -52,3 +52,11 @@ with the fidelity fix (commit-time ground-truth cross-check) before the full run
 
 ## Open / more notes incoming
 - (Santi is still dropping audit notes -- append below.)
+
+## Overnight status (2026-06-07, autonomous pass)
+- F1/F2 design here is unchanged and still needs Santi sign-off before planning.
+- Separately, the safe subset of `55-REVIEW.md` (WR-01/02/03, IN-01/02) was
+  applied in commit `38e63b6`; the two CRITICALs (CR-01/CR-02, strain-gate
+  re-wire) are DEFERRED -- they conflict with the "gate is moot" decision and
+  the audit shows they don't catch the silent misattribution anyway.
+- Full handoff: `.planning/notes/2026-06-07-overnight-handoff.md`.
