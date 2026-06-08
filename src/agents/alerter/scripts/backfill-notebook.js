@@ -635,7 +635,7 @@ async function main(argv = process.argv.slice(2), {
   }
 
   if (!opts.dryRun) {
-    const missing = ['FARMOS_URL', 'FARMOS_USERNAME', 'FARMOS_PASSWORD', 'DATABASE_URL']
+    const missing = ['FARMOS_URL', 'FARMOS_USERNAME', 'FARMOS_PASSWORD', 'DATABASE_URL', 'ANTHROPIC_API_KEY']
       .filter((k) => !env[k]);
     if (missing.length > 0) {
       logger.error && logger.error(`MISSING env: ${missing.join(', ')}`);
@@ -738,6 +738,7 @@ async function main(argv = process.argv.slice(2), {
   }
 
   const runSummary = [];
+  const startMs = Date.now();
   try {
     for (const page of selected) {
       const entry = await dispatchPage({
@@ -776,10 +777,10 @@ async function main(argv = process.argv.slice(2), {
         let notesJsonlPath;
         if (opts.allPages) {
           const dateStr = (now ? new Date(now) : new Date()).toISOString().slice(0, 10);
-          const notesDir = require('path').resolve(__dirname, '../../../../.planning/notes');
+          const notesDir = path.resolve(__dirname, '../../../../.planning/notes');
           const basename = `${dateStr}-2025-notebook-backfill-receipt`;
-          notesReceiptPath = require('path').join(notesDir, `${basename}.md`);
-          notesJsonlPath = require('path').join(notesDir, `${basename}.jsonl`);
+          notesReceiptPath = path.join(notesDir, `${basename}.md`);
+          notesJsonlPath = path.join(notesDir, `${basename}.jsonl`);
         }
         buildReceipt({
           runDir,
@@ -788,7 +789,7 @@ async function main(argv = process.argv.slice(2), {
           runId,
           cycleNumber: opts.cycle,
           farmosUrl: env.FARMOS_URL,
-          elapsedSec: 0,
+          elapsedSec: Math.round((Date.now() - startMs) / 1000),
           notesReceiptPath,
           notesJsonlPath,
         });

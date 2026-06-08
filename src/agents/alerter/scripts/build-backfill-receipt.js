@@ -506,13 +506,23 @@ function buildReceipt({ runDir, runSummary, csvPath, runId, cycleNumber, farmosU
 
   // BACK-09: optional copy-out to .planning/notes/ for full-corpus runs.
   // Uses the SAME scrubbed body string (no second render -- avoids re-introducing em-dashes).
+  // WR-01: never clobber an existing notes artifact (paid-result persistence policy).
+  // If the date-stamped path already exists (same-day crash+retry with fresh run-id),
+  // suffix with the run-id so the prior run's audit trail survives.
+  const collisionSafe = (p) => {
+    if (!p || !fs.existsSync(p)) return p;
+    const ext = path.extname(p);
+    return `${p.slice(0, -ext.length)}-${runId}${ext}`;
+  };
   if (notesReceiptPath) {
-    fs.mkdirSync(path.dirname(notesReceiptPath), { recursive: true });
-    fs.writeFileSync(notesReceiptPath, body, 'utf8');
+    const out = collisionSafe(notesReceiptPath);
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    fs.writeFileSync(out, body, 'utf8');
   }
   if (notesJsonlPath) {
-    fs.mkdirSync(path.dirname(notesJsonlPath), { recursive: true });
-    fs.writeFileSync(notesJsonlPath, buildUuidJsonl(runSummary), 'utf8');
+    const out = collisionSafe(notesJsonlPath);
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    fs.writeFileSync(out, buildUuidJsonl(runSummary), 'utf8');
   }
 
   return receiptPath;

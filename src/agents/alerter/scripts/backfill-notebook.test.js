@@ -194,23 +194,27 @@ describe('parseArgs -- allow-prod-write flag (BACK-11)', () => {
 });
 
 describe('main() -- all-pages resolves limit to Infinity', () => {
-  test('--all-pages --dry-run selects all corpus pages', async () => {
-    const fakePages = [
-      '/c/IMG_3775.jpg', '/c/IMG_3776.jpg', '/c/IMG_3777.jpg',
-    ];
-    const result = await main(['--all-pages', '--dry-run'], {
-      env: {},
-      logger: { log: () => {}, warn: () => {}, error: () => {} },
-      poolFactory: null,
-      pipelineFactory: null,
-      // Override listCorpusPages via the corpusDir + readdirSync would not work here;
-      // instead we spy on process: but since main() calls listCorpusPages internally
-      // we test the integration via --corpus-dir pointing at a controlled dir.
-      // Use the selectPages Infinity behavior verified above as the unit truth.
-      // For this integration test we just verify code: 0 (no crash).
-    });
-    // main() with --dry-run returns code 0 even if corpus dir is missing (logs warn).
-    expect(result.code).toBe(0);
+  test('--all-pages --dry-run selects ALL corpus pages (no limit truncation)', async () => {
+    // Stub fs.readdirSync so listCorpusPages sees a controlled corpus (mirror
+    // of the --bulk-backfill dry-run test below). With --all-pages the limit
+    // resolves to Infinity, so every in-range page must appear in runSummary.
+    const fs = require('fs');
+    const orig = fs.readdirSync;
+    fs.readdirSync = () => ['IMG_3775.jpg', 'IMG_3776.jpg', 'IMG_3777.jpg'];
+    try {
+      const result = await main(['--all-pages', '--dry-run'], {
+        env: {},
+        logger: { log: () => {}, warn: () => {}, error: () => {} },
+        poolFactory: null,
+        pipelineFactory: null,
+      });
+      expect(result.code).toBe(0);
+      // All three stubbed pages selected -- proves limit=Infinity, not just "no crash".
+      expect(result.runSummary).toHaveLength(3);
+      expect(result.runSummary.every((e) => e.ok === 'dry-run')).toBe(true);
+    } finally {
+      fs.readdirSync = orig;
+    }
   });
 });
 
@@ -394,6 +398,23 @@ describe('main (integration of helpers)', () => {
     );
     expect(r.code).toBe(5);
     expect(logger._lines.error.some((m) => /MISSING env/.test(m))).toBe(true);
+  });
+
+  test('non-dry-run missing ANTHROPIC_API_KEY exits 5 (WR-03 fail-fast before DB writes)', async () => {
+    const logger = mkLogger();
+    const r = await main(
+      ['--bulk-backfill', '--farmer=santi'],
+      {
+        env: {
+          FARMOS_URL: 'http://10.68.155.50:18080',
+          FARMOS_USERNAME: 'x', FARMOS_PASSWORD: 'x', DATABASE_URL: 'x',
+          // ANTHROPIC_API_KEY intentionally absent
+        },
+        logger,
+      }
+    );
+    expect(r.code).toBe(5);
+    expect(logger._lines.error.some((m) => /MISSING env.*ANTHROPIC_API_KEY/.test(m))).toBe(true);
   });
 });
 
@@ -1078,6 +1099,7 @@ describe('main: run-id collision (Plan 03)', () => {
           env: {
             FARMOS_URL: 'http://10.68.155.50:18080',
             FARMOS_USERNAME: 'x', FARMOS_PASSWORD: 'x', DATABASE_URL: 'x',
+            ANTHROPIC_API_KEY: 'x',
           },
           logger,
         }
