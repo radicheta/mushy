@@ -327,6 +327,26 @@ describe('buildReceipt -- BACK-10 section + notes copy-out', () => {
     }
   });
 
+  test('WR-01: pre-existing notes receipt is NOT clobbered -- second run suffixes run-id', () => {
+    const notesReceiptPath = path.join(notesDir, '2026-06-07-receipt.md');
+    // Seed a prior run's artifact at the date-stamped path.
+    fs.writeFileSync(notesReceiptPath, 'PRIOR RUN -- do not clobber', 'utf8');
+    buildReceipt({
+      runDir: tmpDir,
+      runSummary: makeRunSummaryWithCommits(),
+      csvPath: null,
+      runId: 'run-2',
+      cycleNumber: 1,
+      notesReceiptPath,
+    });
+    // Original survives untouched.
+    expect(fs.readFileSync(notesReceiptPath, 'utf8')).toBe('PRIOR RUN -- do not clobber');
+    // New artifact written under a run-id-suffixed sibling.
+    const suffixed = path.join(notesDir, '2026-06-07-receipt-run-2.md');
+    expect(fs.existsSync(suffixed)).toBe(true);
+    expect(fs.readFileSync(suffixed, 'utf8')).toBe(fs.readFileSync(path.join(tmpDir, 'receipt.md'), 'utf8'));
+  });
+
   test('notes parent dirs are auto-created (mkdir -p)', () => {
     const notesReceiptPath = path.join(notesDir, 'deep', 'nested', 'receipt.md');
     expect(() => buildReceipt({
