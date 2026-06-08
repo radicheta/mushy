@@ -303,3 +303,19 @@ the `limit=Infinity` path.
 _Reviewed: 2026-06-07_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
+
+---
+
+## Resolution (2026-06-07, overnight autonomous pass -- commit `38e63b6`)
+
+| Finding | Status | Note |
+|---------|--------|------|
+| CR-01 (strain-gate dead in `main()`) | **DEFERRED -- needs Santi** | Conflicts with recorded decision that the gate is moot (curated terms pre-provisioned + `createMissingFungiType:false`; see `[[project_farmos_fungi_type_24_terms_dev_prod_synced]]`). Reviewer lacked that context. Re-wiring may contradict the 2026-05-25 strain-confirm lock. Santi to adjudicate. **Also note:** the audit (`2026-06-07-prod-smoke-fidelity-audit.md`) found this gate does NOT catch the dangerous failure mode (silent POY->KOY misattribution) -- it only addresses misread-to-failure (mode 1). The real lever is a commit-time ground-truth cross-check, which is a separate design task. |
+| CR-02 (`sendUnknownStrainBatch` never called) | **DEFERRED -- needs Santi** | Same gate; same adjudication. Moot while CR-01 is deferred. |
+| WR-01 (notes clobber) | **FIXED** | Collision-safe suffix with run-id; +1 test. |
+| WR-02 (`elapsedSec=0`) | **FIXED** | Wall-clock `startMs` captured before page loop. |
+| WR-03 (`ANTHROPIC_API_KEY` guard) | **FIXED** | Added to missing-env list; +1 fail-fast test; run-id-collision test env updated. |
+| IN-01 (redundant `require('path')`) | **FIXED** | Uses file-level binding. |
+| IN-02 (vacuous `--all-pages` test) | **FIXED** | Stubs `readdirSync`, asserts all pages selected. |
+
+5 of 7 applied. The 2 criticals are intentionally held: they are entangled with the parked-corpus-run fidelity decision, which is Santi's to make. Full alerter suite: 1374 pass / 9 skip / 0 fail.
