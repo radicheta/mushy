@@ -148,7 +148,7 @@ files.js exports (src/farmos/files.js:49): uploadAttachment, uploadAttachments.
     undefined exports, NOT pass vacuously.
   </action>
   <verify>
-    <automated>cd src/agents/alerter && npx jest scripts/backfill-notebook.test.js -t "fidelity|aggregate|buildCsvBudget|no_csv|csv_verified|hold_reason" 2>&1 | grep -Eq "fidelity|aggregate" && echo "scaffold present"</automated>
+    <automated>cd src/agents/alerter && npx jest scripts/backfill-notebook.test.js -t "fidelity|aggregate|buildCsvBudget|no_csv|csv_verified|hold_reason"; test $? -ne 0 && echo "RED confirmed (scaffolds fail as required)"</automated>
   </verify>
   <acceptance_criteria>
     - The three describe blocks exist with the exact title tokens from 55B-VALIDATION.md
@@ -189,7 +189,7 @@ files.js exports (src/farmos/files.js:49): uploadAttachment, uploadAttachments.
     and mirror whichever mocking style that file uses.
   </action>
   <verify>
-    <automated>cd src/agents/alerter && npx jest test/farmos/commit-seeding-session.test.js -t "image" 2>&1 | grep -Eq "image upload|D-03" && echo "scaffold present"</automated>
+    <automated>cd src/agents/alerter && npx jest test/farmos/commit-seeding-session.test.js -t "image"; test $? -ne 0 && echo "RED confirmed (image scaffolds fail as required)"</automated>
   </verify>
   <acceptance_criteria>
     - describe 'commitSeedingSession -- image upload (D-03)' exists with token `image`.

@@ -182,6 +182,7 @@ Honors locked schema (B5 SEQ per-session per 2026-05-22 clarification in farmos 
 **Goal:** A confirmed groups-shape draft commits with one `asset--group` named `inoc YYYY-MM-DD` as the session entity, plus N per-block seeding logs (one per child, parent = source block only), plus one `log--activity` with `is_group_assignment=true` that lists the N children under the session group. Children carry NO `parent[]` edge to the session — membership lives on the membership log, not on the asset.
 
 **Requirements:**
+
 - SESSION-01: `commit-seeding-session.js` preflight: lookup-or-create the session group asset by name (composes with Phase 51 upsert — group assets are upserted by name too). Anonymous-by-default; structured notes carry draft id provenance.
 - SESSION-02: After children created, POST a single `log--activity` carrying `is_group_assignment: true`, `relationships.asset.data[]` = child UUIDs, `relationships.group.data[]` = [sessionGroupId], timestamp = the session event_date day-grain epoch the seeding logs already use.
 - SESSION-03: Children's `parent[]` stays single-source (the source block). NO secondary parent edge to the session group. Lineage walk from a child returns its strain ancestry; "what session was this in?" answered by a query against the membership log.
@@ -196,12 +197,14 @@ Honors locked schema (B5 SEQ per-session per 2026-05-22 clarification in farmos 
 **Touches:** `src/agents/alerter/src/farmos/commits/commit-seeding-session.js`, new `src/agents/alerter/src/farmos/group-membership.js` (or extension of `logs.js`), `assets.js` group-asset helpers (likely a thin `upsertGroupAsset` sibling of `upsertFungiAsset`), tests across `test/farmos/`, possibly the audit-logger schema if "session group asset" becomes a logged dimension.
 
 **Constraints:**
+
 - Honors C4 (lineage via log refs, not asset properties) — membership lives on a log, not an asset field.
 - Composes with Phase 51 upsert — group assets are content-addressable by name, same merge layer.
 - Honors the substrate log-only lock — group asset is not a substrate, doesn't collide.
 - Optional follow-on: backfill the 11 dev children from today's 48-LIVE-FIRE into a retro group (per the farmos-side note's open item #5). Not gating; can be done as a one-liner script during/after Phase 52 ships.
 
 **Plans:** 5 plans
+
 - [ ] 52-01-PLAN.md — groupAssets.js module (findGroupAssetByName + upsertGroupAsset + deleteGroupAsset)
 - [ ] 52-02-PLAN.md — activityLogs.js module (createGroupAssignmentLog with is_group_assignment=true)
 - [ ] 52-03-PLAN.md — re-introduce session preflight + membership log + collision naming + expanded rollback in commit-seeding-session.js
@@ -224,12 +227,15 @@ Honors locked schema (B5 SEQ per-session per 2026-05-22 clarification in farmos 
 
 **Goal:** Close the three known extraction bugs that would corrupt a notebook backfill before any batch run touches farmOS.
 **Requirements:**
+
 - BACK-01: `corpus_context` extension lets a fixture/job pin `year=2025` so extractor stops hallucinating years on undated notebook pages.
 - BACK-02: Phase 38 batch-mode no longer misroutes small multi-draft captures (closes `2026-05-24-phase38-batch-mode-misroutes-small-multi-draft-captures.md`).
 - BACK-03: Photo-vs-paper-log classifier reins in eagerness (closes `2026-05-24-phase38-photo-vs-paper-log-classifier-too-eager.md`).
 - BACK-04: Hermetic eval on 5-10 hand-labeled 2025 notebook pages PASSES before any batch run.
+
 **Touches:** `src/agents/alerter/src/extraction/`, eval fixtures, possibly `signal_capture.corpus_context` column.
 **Plans:** 4 plans
+
 - [x] 53-01-PLAN.md — BACK-01 corpus_context JSONB column + pipeline/extractor plumbing (SHIPPED 2026-05-24, `bf721e2` + `9d25ec7`)
 - [x] 53-02-PLAN.md — BACK-02 small-N multi-draft routing heuristic (drafts>5 OR conf<0.7 → batch; else N per-draft confirms) + DT-tubs regression (SHIPPED 2026-05-24, `9835caf`)
 - [x] 53-03-PLAN.md — BACK-03 capture_kind prompt-only classifier (Option 1) + envelope schema + 2 new few-shots (SHIPPED 2026-05-24, `52f0874` + `673c413`)
@@ -239,14 +245,17 @@ Honors locked schema (B5 SEQ per-session per 2026-05-22 clarification in farmos 
 
 **Goal:** A scripted harness ingests N notebook pages from the `mushdatadump-prod/` corpus, runs them through extraction → confirm (auto-YES under `--bulk-backfill --farmer=santi`) → upsert into dev farmOS, with paid-LLM results persisted per-call.
 **Requirements:**
+
 - BACK-05: `scripts/backfill-notebook.js` (or sibling) iterates corpus pages, builds synthetic `signal_capture` rows with `corpus_context={year:2025, source:'paper_log'}`, dispatches through the normal pipeline.
 - BACK-06: Bulk-backfill mode flag short-circuits CONF-01 YES requirement for `farmer=santi` only; every auto-confirmed draft still emits a farmer-facing summary (audit, not just silent write).
 - BACK-07: Paid LLM responses persisted to `.planning/backfill/2025-notebook/<run-id>/responses.jsonl` (append-only, per-call unique).
 - BACK-08: Smoke run on 10 representative pages produces correct stub-enrichment on the 4 May-22 ancestors (UUIDs byte-identical pre/post per Phase 51 contract). No duplicate assets created.
+
 **Touches:** `scripts/`, possibly small alerter additions for the bulk-mode short-circuit. Path corrected from ROADMAP-original `mushdatadump-prod/` to actual corpus path `/mnt/slime-kingdom/shared/mushdatadump/jpeg/` (range IMG_3775..IMG_3861). BACK-08 stub-enrichment sub-clause resolved as N/A (May-22 stubs are 2026-dated, postdate 2025 notebook); substituted intra-cycle upsert-stability check against Phase 51 contract — same invariant, validated on existing data.
 **Plans:** 6 plans
 
 Plans:
+
 - [x] 54-01-PLAN.md — backfill-notebook.js CLI core, prod-guard, santi-gate, page-range filter, synthetic-capture dispatch (BACK-05) — SHIPPED 2026-05-24 (`bfcde26`)
 - [x] 54-02-PLAN.md — bulk-backfill short-circuit: auto-flip drafts to confirmed + commit-router dispatch + summaries.log audit (BACK-06) — SHIPPED 2026-05-24 (`99e3f98`)
 - [x] 54-03-PLAN.md — paid-LLM observer hook on extractor + append-only responses.jsonl per run-id (BACK-07) — SHIPPED 2026-05-24 (`f4923e4`)
@@ -262,6 +271,7 @@ Plans:
 **Plans:** 3/3 plans complete
 
 Plans:
+
 - [x] 54.1-01-PLAN.md — Strain resolver: exact-match an extraction code against the curated 14-set (config.strains); KNOWN vs UNKNOWN, no fuzzy auto-resolve (shared foundation)
 - [x] 54.1-02-PLAN.md — Backfill path: hold unknown-strain drafts as needs_review + one batched Signal message + follow-up confirmed-mint/remap/commit pass
 - [x] 54.1-03-PLAN.md — Live capture path: per-encounter strain ask-back via the Phase 39 confirm-loop; YES authorizes the per-draft mint, correction remaps to canonical
@@ -270,6 +280,7 @@ Plans:
 
 **Goal:** Run the full 2025 notebook corpus to dev farmOS, generate a receipt of every asset/log created or patched, decide whether to promote any subset to prod via upsert.
 **Requirements:**
+
 - BACK-09: Full corpus processed; receipt at `.planning/notes/2026-XX-XX-2025-notebook-backfill-receipt.md` + JSONL of UUIDs.
 - BACK-10: Per-shape confirm-accuracy stats computed from the run (input to v1.13). Reports n_per_shape and YES rate (auto-YES counts here are not signal for v1.13 — v1.13 needs human-YES; bulk-backfill receipts are tagged accordingly).
 - BACK-11: Prod-promotion decision documented (default: dev-only; prod write only if operator opts in per-session-class).
@@ -277,6 +288,7 @@ Plans:
 **Plans:** 2/2 plans complete
 
 Plans:
+
 - [x] 55-01-PLAN.md — harness --all-pages flag + build-backfill-receipt buildUuidJsonl/computePerShapeStats + .planning/notes/ copy-out + tagged BACK-10 section (BACK-09, BACK-10)
 - [x] 55-02-PLAN.md — 55-FULL-CORPUS-RUNBOOK.md (GA1 isolation pre-flight + smoke-before-full + crash recovery) + 55-PROMOTION-DECISION.md dev-only default (BACK-11)
 
@@ -298,9 +310,17 @@ Santi 2026-06-09. Context: `.planning/phases/55B-*/55B-CONTEXT.md`.
 **Plans:** 4 plans (1 wave-0 gate + 2 implementation + 1 re-smoke gate)
 
 Plans:
+**Wave 1**
+
 - [ ] 55B-01-PLAN.md — Wave 0: patchGroupAssetFiles + RED test scaffolds (fidelity/aggregate/image) + A1 PATCH-associates-files dev smoke probe (FIDELITY-01/02, SESSION-01/02)
 - [ ] 55B-02-PLAN.md — Commit-time CSV fidelity hold gate in processDraftsForCapture (buildCsvBudget + 3-branch hold) (FIDELITY-01, FIDELITY-02)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 55B-03-PLAN.md — Session routing (aggregateSeedingDraftsToSessionJson) + page-image attach on session group asset (SESSION-01/02/03)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 55B-04-PLAN.md — 5-page GA1-isolated re-smoke runbook + live gate (IMG_3776 mode-2 regression guard) (SMOKE-01, SESSION-03)
 
 ---
@@ -326,6 +346,7 @@ Plans:
 **Honors:** OSS-Foray α — per-tenant opt-in, never cross-tenant defaults. Reversibility — auto-committed writes still send farmer-facing summaries with `UNDO <id>` within 1h. Demotion ratchet — shape's 7-day confirm rate <97% auto-demotes back to YES-required.
 
 **Requirements (provisional):**
+
 - AUTO-01: Per-draft "shape" classifier tags every extracted draft (`single-block-observation`, `multi-parent-inoc-session`, `harvest-bagging`, `activity-watering`, ...).
 - AUTO-02: Per-shape historical accuracy table — YES rate, n, last-7d trend — computed nightly from `signal_draft` history.
 - AUTO-03: Per-tenant + per-farmer opt-in config gates which shapes are eligible for auto-commit.
@@ -345,6 +366,7 @@ Plans:
 **Driver:** 2026-05-24 conversation while running 48-LIVE-FIRE. The May-22 prod write needed 4 ancestor parent blocks (260304_SHI_5, 260118_SHI_23, 260118_SHI_26, 260118_KOY_12) that don't exist in prod farmOS because their Jan/Mar inoc sessions live in the 2025 paper notebook and haven't been scanned yet. Silently minting them now creates assets the future 2025-scan-backfill will collide with. The fix isn't a stub strategy — the fix is that ALL writes become merge-by-default so out-of-order arrival is structurally safe. Cross-refs: `[[feedback_farmer_is_reality_source_of_truth]]` (today's observation-of-unknown-asset principle), `.planning/notes/2026-05-24-v1.9-uat-findings.md` (observation-backfill todo), `.planning/notes/2026-05-24-session-as-asset-group-design.md` (composes with the asset--group work).
 
 **Requirements:**
+
 - UPSERT-01: `assets.upsertFungiAsset(client, opts)` — lookup by name → if found, PATCH merged fields → if not, POST. Returns same shape as `createFungiAsset`. All existing callers (`commit-seeding-session`, `commit-observation`, `commit-seeding`, future ones) route through this.
 - UPSERT-02: `logs.upsertLog(client, type, opts)` — lookup by stable key (per-type rule, see below) → PATCH merged or POST. Seeding logs key = `(type='seeding', asset.id)` (B5: one inoc event per child).
 - UPSERT-03: Merge rules per field type, codified in a `_mergeAssetFields(existing, incoming)` function. Array-valued ref fields (parent[], qr_codes[], farm_id_tag[]) = set-union. Scalar identity fields (name, type) = never mutated. Scalar non-identity (fungi_type, fungi_xing, status) = conflict-surface if differs, no silent overwrite. Notes = append-with-dedup OR structured notes_entries list (decide in plan).
@@ -361,6 +383,7 @@ Plans:
 **Touches:** `src/agents/alerter/src/farmos/assets.js`, `src/agents/alerter/src/farmos/logs.js`, `src/agents/alerter/src/farmos/commits/commit-seeding-session.js`, `src/agents/alerter/src/farmos/commits/commit-observation.js`, `src/agents/alerter/src/farmos/commits/commit-seeding.js` (legacy), the audit log shape if upsert outcome (created/patched/noop) becomes a logged dimension, tests across `test/farmos/`.
 
 **Constraints:**
+
 - Honors `[[feedback_farmer_is_reality_source_of_truth]]` — observation on unknown asset becomes a real upsert path, not an error.
 - Honors substrate log-only lock and C4 (lineage = log, not field) — the upsert is at the *asset+log* granularity, not at a lineage graph.
 - Idempotency on `signal_draft.id` (Phase 40 audit) stays in place as a coarser safety net.
@@ -369,6 +392,7 @@ Plans:
 **Plans:** 6/6 plans complete
 
 Plans:
+
 - [x] 51-01-wave0-infrastructure-PLAN.md — mock-client PATCH/delete/by-id/412 + client.js opts.headers + audit-logger outcome/conflicts/etag_source + fixture + dev-farmOS notes round-trip probe
 - [x] 51-02-merge-pure-module-PLAN.md — merge.js pure module (mergeAssetFields + IdentityMutationError + STABLE_NOTES_SEPARATOR) with Jest coverage of all 5 rule classes + stub-marker preservation
 - [x] 51-03-upsert-fungi-asset-PLAN.md — upsertFungiAsset + isStubAsset + STUB_BACKFILL_MARKER on assets.js with soft revision_id compare (UPSERT-04 degraded per RESEARCH)
@@ -385,6 +409,7 @@ Plans:
 **Requirements:** INOC-01, INOC-02, INOC-03, INOC-05 (INOC-04 carry-forward to Phase 48)
 
 **Success criteria (what must be TRUE):**
+
 1. Replay the 2026-05-22 audio+photo turn through the new extractor → emits exactly one draft with 5 groups (3 SHI singles + 4 KOY-118-12 + 4 KOY-425-4), 11 children total, child names `260522_SHI_1..3` + `260522_KOY_4..11` (per-session SEQ from paper-log photo, not per-strain auto-generated).
 2. Each field in the draft carries provenance — `parent` fields tagged with `source: audio`, `child_block_names` with `source: paper_log_photo`, with confidence per source.
 3. A synthetic conflict fixture (audio says "118-23", photo says "118-25") flags the disagreement in the confirm preview with both values, never silently picks one.
@@ -393,11 +418,13 @@ Plans:
 **Touches:** `src/agents/alerter/src/extraction/prompts/system.js`, draft schema (likely a new groups-shape variant), `signal_draft.per_field_confidence` extended with source tracking, possibly `signal_capture` schema for cross-turn bundle tracking.
 
 **Constraints:**
+
 - Locked-schema-only output (no off-schema fields per C5).
 - No auto-generated SEQ when paper-log photo absent — ask-back preferred over guessing per [[project_extraction_holistic_multi_source_fusion]].
 - Honors B5 session-wide SEQ disambiguation ([[project_b5_seq_is_per_session_not_per_strain]]).
 
 **Plans:** 5 plans
+
 - [ ] 47-01-PLAN.md — New schemas (SeedingSession + Provenanced + ConflictEntry) + Draft union extension
 - [ ] 47-02-PLAN.md — System prompt revision + May-22-shape multi-parent few-shot
 - [ ] 47-03-PLAN.md — Pipeline starting_seq ask-back branch + seq-helper.js (Phase 48 reuse)
@@ -413,6 +440,7 @@ Plans:
 **Requirements:** INOC-04, INOC-05, INOC-06
 
 **Success criteria (what must be TRUE):**
+
 1. A confirmed May-22-shape draft writes 11 `seeding` logs + 1 anonymous session asset to farmOS dev. Each child block's primary parent = its specific source block (audio-extracted); each child also references the session asset as a secondary parent.
 2. Duplicate YES on the same draft produces no double-write (idempotency via draft UUID).
 3. Lineage walk from any child block returns its specific parent AND the session asset cleanly; query "show me the May 22 inoc session" returns all 11 children.
@@ -422,6 +450,7 @@ Plans:
 **Touches:** `src/agents/alerter/src/farmos/`, `src/agents/alerter/src/confirm/`, the write path audited in Phase 40, possibly `signal_draft.farmer_facing_preview` rendering.
 
 **Constraints:**
+
 - Native log types only per C5 (`seeding` only; no custom session-log bundle).
 - C4 lineage-via-log-refs preserved — session asset is a secondary `parent` ref on the child block, not a custom field.
 - Composes with [[feedback_hard_rules_relaxed_when_farmer_is_santi]] — Phase 45 ack remains v1.8 scope.
@@ -437,6 +466,7 @@ Plans:
 **Requirements:** INOC-07
 
 **Success criteria (what must be TRUE):**
+
 1. CI eval suite includes ≥3 real inoc sessions with hand-labeled expected outputs (groups, child names, parents).
 2. The 2026-05-22 session in the corpus emits 11 correctly-named blocks + correct parents + session asset; lineage walk returns clean.
 3. The two failed May-22 drafts in production timescale (`e3a564d063d4…` and `6edaaba7deb0…`) are marked `discarded` with reason "superseded by Phase 49 reprocess".
@@ -446,6 +476,7 @@ Plans:
 **Touches:** `src/agents/alerter/test/` (eval corpus), `.planning/phases/49-*/`, maintenance scripts to mark stale drafts discarded.
 
 **Constraints:**
+
 - Honors [[feedback_real_data_before_ship_gate_pass]] — curated fixtures necessary, never sufficient. Real sessions are the ship gate.
 - Honors [[feedback_smoke_before_expensive_batch]] — May 22 (1 session) before the full corpus.
 - farmOS *dev* (not prod) is the write target. v1.9 doesn't auto-backfill prod farmOS with historical paper-log sessions.
@@ -459,6 +490,7 @@ Plans:
 **Hotfix trigger:** 2026-05-20 fc1 outage (13:04 → ~24:00 UTC, 10h47m). Farmer received only "co2 sensor offline" Signal alerts; no high-level chamber-dark notification ever fired. Root cause + fix direction documented in `.planning/debug/alerter-co2-only-not-pi.md` (`isPiOffline` keys off alerter↔bridge WS + boot-time `rosReady`, neither input reflects fc1 publisher liveness).
 
 **Requirements:**
+
 - CD-01: Bridge tracks `fc1LastMsgTs = max(ts)` across all subscribed fc1 topics (`humidity`, `temperature`, `humidity_2`, `temperature_2`, `co2`, `humidifier`, `humidifier_duty`, `sensor_health`, `pid_output`) and exposes `fc1.last_msg_ts` + `fc1.last_msg_age_sec` in `/health`.
 - CD-02: Alerter consumes `fc1LastMsgTs` via the existing `pi_liveness` event path; `rules.js` `isPiOffline` gains a third OR-trigger `(now - fc1LastMsgTs) > piOfflineMin*60000`. Existing `wsConnected` / `rosConnected` triggers retained.
 - CD-03: `message.js` `formatProblem({alertType:'pi'})` produces a chamber-level message (no em-dashes per `[[feedback_no_em_dashes_in_artifacts]]`) carrying last-known RH/T/timestamps from the `lastKnown` payload `state.js:513-520` already assembles. Suggested shape: `FC-1 offline ?? no telemetry XXm. chamber uncontrolled. last RH XX% @ HH:MM.`
@@ -469,16 +501,19 @@ Plans:
 **Touches:** `src/mission-control/bridge/src/index.js`, `src/agents/alerter/src/bridge-client.js`, `src/agents/alerter/src/rules.js`, `src/agents/alerter/src/message.js`, `src/agents/alerter/src/state.js`, plus 3 test files.
 
 **Constraints:**
+
 - elder-plops is dev+prod (no staging); rebuild of both bridge + alerter ships to f1 immediately. Tests green before rebuild.
 - Atomic deploy: bridge and alerter changes must land together; bridge alone with no alerter consumer adds nothing; alerter alone with no bridge field crashes on null.
 - Watch for stale `ALERT_SHT30_ENABLED=false` (lifted 2026-05-20 by this session) — when chamber-dark detector lands, the per-sensor SHT30 watchdog should *also* fire alongside it, not be the only chamber signal.
 
 **Open design questions for discuss-phase:**
+
 - Should `fc1LastMsgTs` be tracked per-topic with min-age aggregation, or just max-across-all? Affects whether a stuck single topic triggers chamber-dark when others are fresh.
 - Cooldown semantics: does chamber-dark have its own cooldown distinct from the per-sensor cooldowns, or share the existing `ALERT_PI_OFFLINE_MIN`?
 - Should the per-sensor alerts be suppressed when chamber-dark is firing (avoid spamming the farmer with co2/sht30/rh-OOB while pi is dark), or kept for diagnostic detail?
 
 **Plans:** 3 plans
+
 - [x] 46-01-PLAN.md — Bridge fc1LastMsgTs aggregator + /health.fc1 schema + bridge tests (CD-01, partial CD-04)
 - [x] 46-02-PLAN.md — Alerter consumes fc1LastMsgTs; isPiOffline third OR-trigger; chamber-level pi message; per-sensor suppression; alerter tests (CD-02, CD-03, partial CD-04)
 - [x] 46-03-PLAN.md — Atomic rebuild + Round 3 live-fire attestation; D-09 + D-10 fixes shipped during the attestation cycle (closes CD-01..CD-04)
@@ -489,10 +524,13 @@ Plans:
 **Depends on:** Nothing (first v1.7 phase; hard pre-gate per requirements)
 **Requirements:** PRE-01, PRE-02
 **Success Criteria** (what must be TRUE):
+
   1. Operator can send a Signal message to the bot and receive a reply in the same DM thread
   2. A second farmer sends a test message and receives a reply routed to their number (not farmer #1)
   3. Alerter container rebuild does not break identity trust (signal-cli /v1/identities check passes after rebuild)
+
 **Plans:** 4 plans (all shipped 2026-05-13; SC#2 closed 2026-05-16 organically via 2026-05-15 Vikki Rambo round-trip)
+
 - [x] 36-01-PLAN.md — Pre-flight snapshot + identity capture + Phase 35 coverage verdict + restore recipe
 - [x] 36-02-PLAN.md — 36-RUNBOOK.md authored + live primary re-registration + kickoff message to farmers (interactive)
 - [x] 36-03-PLAN.md — post-rebuild-trust-check.sh script + bats tests + alerter compose healthcheck wire-up
@@ -504,10 +542,13 @@ Plans:
 **Depends on:** Phase 36 (receive must work before routing matters)
 **Requirements:** ROUTE-01, ROUTE-02, ROUTE-03
 **Success Criteria** (what must be TRUE):
+
   1. Farmer #2 DMs the bot; bot reply arrives on farmer #2's phone, not farmer #1's
   2. A message to the group thread produces no unsolicited reply; an @mention or command gets exactly one reply to the group
   3. Known farmer numbers resolve to farmOS person IDs in the message metadata; unknown number gets (unassigned) tag and message is not silently dropped
+
 **Plans:** 4 plans
+
 - [x] 37-01-PLAN.md — Wave 0 smoke probe + six group envelope fixtures + jest baseline
 - [x] 37-02-PLAN.md — signal.js send({to}) refactor + config.js (SIGNAL_GROUP_ID, SIGNAL_FARMER_MAP) + capture-db.js ALTER TABLE migrations
 - [x] 37-03-PLAN.md — receive-loop.js group gate + collectGroupTriggers + D-09 dedupe; capture.js replyTarget threading + farmer-map + new row fields
@@ -519,11 +560,13 @@ Plans:
 **Depends on:** Phase 37 (need sender identity before extraction can attribute the event)
 **Requirements:** EXT-01, EXT-02, EXT-03, EXT-04, EXT-05
 **Success Criteria** (what must be TRUE):
+
   1. A text message describing inoculation of SHI blocks produces a seeding log draft with block names matching the B5 convention (YYMMDD_SHI_SEQ)
   2. A voice note and a photo of the same session produce one combined draft, not two separate ones
   3. When a required field is ambiguous, bot sends a targeted Signal reply asking for it; draft completes after farmer responds
   4. A lineage cue ("from blocks 3, 4, and 5") extracts a multi-parent harvest batch ref per C4
   5. No off-schema fields appear in any extracted draft; all log types are native per C5
+
 **Plans:** 9 plans, shipped. 38-01..06 (Waves 0-2), 38-07 (eval harness PASS in 38-EVAL-REPORT.md), 38-08 prod-log advisory superseded by 38-09 re-eval (Plan 09 ran 96-fixture re-eval -> PASS at 95.8% schema conformance 2026-05-12). See `.planning/phases/38-extraction-pipeline/`.
 
 ### Phase 39: Farmer Confirmation Loop
@@ -532,11 +575,13 @@ Plans:
 **Depends on:** Phase 38 (need extraction before confirm loop can function)
 **Requirements:** CONF-01, CONF-02, CONF-03, CONF-04, CONF-05
 **Success Criteria** (what must be TRUE):
+
   1. After extraction, farmer receives a human-readable draft summary with YES/NO/EDIT reply instructions
   2. Sending YES once commits the draft; a second YES does not produce a duplicate write in farmOS
   3. NO discards the draft; bot confirms discard; original transcript remains in the Phase 25 capture store for audit
   4. EDIT with correction text produces a revised draft; EDIT is accepted at least 3 times before the bot escalates
   5. A draft with no response for 30 min gets one ping, then auto-discards with a note; it never auto-commits
+
 **Plans:** 7 plans, all shipped 2026-05-13 (39-01..07). 127 unit + 11 integration PASS. Live-farmer UAT deferred per 39-RUNBOOK.md. See `.planning/phases/39-farmer-confirmation-loop/`.
 
 ### Phase 40: FarmOS Write Path
@@ -545,11 +590,13 @@ Plans:
 **Depends on:** Phase 39 (writes only happen after confirm; can be developed in parallel against synthetic drafts)
 **Requirements:** FOS-01, FOS-02, FOS-03, FOS-04, FOS-05, FOS-06
 **Success Criteria** (what must be TRUE):
+
   1. A sterilization batch, block, harvest batch, and bag asset can each be created via API from a confirmed draft and appear in farmOS dev stack
   2. Re-confirming the same draft (duplicate YES) does not create duplicate assets or logs in farmOS
   3. A photo from the originating Signal message appears as a file attachment on the observation or harvest log in farmOS
   4. A QR code in a farmer message resolves to an existing block asset and appends a log to it rather than creating a new asset
   5. Operator can query one endpoint or log stream and see every farmOS write from the last 24h with draft UUID, farmer ID, and farmOS response
+
 **Plans:** 8 plans, all shipped 2026-05-13 (40-01..08). 92/92 unit PASS; live dev-farmOS integration + prod-fixture SHIP GATE deferred to operator per 40-RUNBOOK.md. See `.planning/phases/40-farmos-write-path/`.
 **Composes-with:** 999.2 (this phase is its closure)
 
@@ -559,10 +606,12 @@ Plans:
 **Depends on:** Phase 38 (extraction must work); parallel-safe with Phase 40 (harness exercises extraction without write path)
 **Requirements:** INGEST-01, INGEST-02, INGEST-03, INGEST-04
 **Success Criteria** (what must be TRUE):
+
   1. CI runs the synthetic fixture corpus; all expected outputs match and the test suite passes
   2. At least one batch of paper inoc log photos flows through the pipeline; a hand-labeled comparison report is produced showing per-field accuracy
   3. At least one set of existing audio recordings flows through Whisper plus extraction; comparison report produced
   4. The same underlying inoc session represented as both a paper-log photo and an audio recording produces identical seeding log content
+
 **Plans:** 7 plans, all shipped 2026-05-13 (41-01..07). 37 PASS + 5 operator-deferred live. mushdatadump-prod hand-labels + audio + paired-sessions in 41-RUNBOOK.md. See `.planning/phases/41-ingestion-harness/`.
 
 ### Phase 42: SHI-on-Sawdust Pilot
@@ -571,12 +620,14 @@ Plans:
 **Depends on:** Phase 40 (write path live), Phase 41 (ingestion harness validates extraction quality), Phase 39 (confirm loop required)
 **Requirements:** PILOT-01, PILOT-02, PILOT-03, PILOT-04, PILOT-05, PILOT-06
 **Success Criteria** (what must be TRUE):
+
   1. Sterilization batch appears in farmOS after a single Signal message describing the batch count (no form, no login required)
   2. After inoculation, one block asset exists in farmOS with species=SHI, substrate=sawdust, QR bound, and a seeding log pointing at the batch
   3. Cold_shock and fruiting transitions appear as activity and observation logs; current-stage derivation returns the correct stage at every checkpoint
   4. Harvest batch and at least one bag asset exist in farmOS after a harvest Signal message; bag asset is QR-bound
   5. Archive_spent activity log written on the block; lineage walk bag to harvest batch to block to sterilization batch returns clean with no broken refs
   6. Operator reconstructs the full lifecycle from farmOS logs alone without referring to Signal history
+
 **Plans:** 3 plans scaffolded 2026-05-13 (42-01..03 + RUNBOOK + PILOT-LOG + VERIFICATION). Status: human_needed — actual pilot run calendar-deferred 4-8 weeks against real mushroom lifecycle. See `.planning/phases/42-shi-pilot/42-VERIFICATION.md`.
 
 ## Progress
@@ -699,6 +750,7 @@ Plans:
 **Plans:** 4 plans (3 already executed on `main`)
 
 Plans:
+
 - [x] 999.1-01-PLAN.md — Wave 1: pre-flight Timescale dedupe + idempotent UNIQUE (topic, time) migration in initDb() + shared config/buffered_topics.yaml manifest
 - [x] 999.1-02-PLAN.md — Wave 2: implement fc_buffer ROS node (sqlite WAL + http.server on 100.96.239.75:8765 + 24h pruner) + setup.py entry_point + fc.launch.py wiring + systemd /var/lib/fc-core dir setup
 - [x] 999.1-03-PLAN.md — Wave 2: bridge buffer_replay.js (30s poll, 15s timeout, ON CONFLICT DO NOTHING) + insertTelemetry timestamp refactor + msg.header.stamp on live RH/T paths + last_ingested_ns persistence to host volume
@@ -709,6 +761,7 @@ Plans:
 **Goal:** Make fc-core's systemd unit survive the boot-time race the 2026-05-02 farm power outage exposed: tailscale0 link came up before acquiring an IPv4, fc-core's `ExecStartPre` only checked link presence, all 5 ROS nodes failed `rcl_create_node`, `ros2 launch` exited 0 (the known systemd trap), 5 retries in ~10s tripped `start-limit-hit`, service stayed dead 55min until manual `reset-failed && start`. Farmer-visible: "fc never came back after black out."
 
 **Requirements (post-realignment 2026-05-03):**
+
 - [x] **SYS-02** — `Restart=always` + `RestartSec=10` + `StartLimitIntervalSec=300` + `StartLimitBurst=5` already in `scripts/pi-deploy/fc-core.service` (live on fc1 after Wave 3 deploy).
 - [x] **SYS-03** — Unit has explicit `After=wg-quick@wg0.service` and `Wants=wg-quick@wg0.service` (kernel-WG brings up wg0 at boot). IPv4 polling loop kept as belt-and-braces.
 - [x] **SYS-01** — `ExecStartPre` waits for IPv4 on `wg0` via 60-attempt × 1s loop on `ip -4 addr show wg0 | grep -q inet` (already shipped via 27.1 transport switch commits; previous ROADMAP text describing `ip link show wg0` was stale).
@@ -721,6 +774,7 @@ Plans:
 **Plans:** 1 plan
 
 Plans:
+
 - [x] 27.2-01-PLAN.md — Edit fc-core.service (explicit After=/Wants=wg-quick@wg0.service), fix ROADMAP/REQUIREMENTS text, deploy, validate via cold reboot + wg0-down-at-boot scenarios, capture journalctl evidence (PARTIAL — Tasks 1+2 PASS; Task 3 wg0-down-at-boot deferred to 999.28; SUMMARY.md 2026-05-07)
 
 ### Phase 27.3: Telemetry sampling-rate reduction — MOOTED 2026-05-03
@@ -842,6 +896,7 @@ milestone. Promote with `/gsd:review-backlog` when ready.
   6. **Telemetry visibility:** publish a `fc.sensor_heater_active` boolean topic so Mission Control can show vertical-line annotations on charts; Timescale rows during the window get marked (either skip insert, or insert with quality flag). Default: skip insert during heater + recovery → users see a small data gap rather than a corrupt spike. Composes with 999.27 derived telemetry — derivations must respect the gap.
 
   **Composes with:**
+
   - **Phase 26** (sensor freshness / dual-sensor) — heater_active is a freshness state, fits the same pattern
   - **999.22** (alerter must read ops state from controller, not env) — heater suppression must be controller-driven, can't be env-pinned
   - **999.27** (derived telemetry) — VPD/dew_point/humidity_rate must skip heater windows
@@ -861,6 +916,7 @@ milestone. Promote with `/gsd:review-backlog` when ready.
   **(b) Daily maintenance digest.** Broader pattern: scan last 24h of `journalctl -u fc-core`, `docker logs mushy-{alerter,bridge}`, signal-cli logs, timescale ingest stats, and produce a one-page TLDR. Sections to include (recommended defaults; refine in discuss-phase): unexpected restarts, error/warn-rate deltas vs prior 7-day baseline, alert volume per type with trend, sensor freshness anomalies, telemetry gaps (Timescale row-count per topic per hour vs baseline), DERP relay / Tailscale CPU spikes, disk usage on /data and /var, container restart counts, signal-cli send failures. Delivery: email (already have SMTP? check) or Signal as a single low-priority digest message ("[DAILY] FC-1 health 2026-05-06 — 3 nuggets, 0 concerns. Open: ..."). Cadence: 03:00 UYT (chamber quiet, fits the 999.34 nightly slot).
 
   **Implementation surface options** (each with tradeoffs — resolve in discuss-phase):
+
   1. **Standalone container** `mushy-maintenance-1` (Node or Python), reads container logs via Docker socket + ssh fc1 for journalctl + Timescale via SQL. Sends one digest. Cleanest separation; new container.
   2. **New responsibility on existing alerter** — alerter already has Signal egress + bridge subscription + Timescale; add a daily cron + log-tail handlers. Less new infra; conflates "real-time alerts" with "daily report" (probably bad — different failure modes).
   3. **Anthropic-API-backed agent** — feed last 24h of logs into Claude with a "produce a maintenance TLDR" prompt; LLM does pattern detection. Already have `ANTHROPIC_API_KEY` in `.env`. Riskier (cost + reliability + nondeterminism) but matches the "agent" framing from other projects and would catch novel pathologies the rule-based version misses. Could ship rule-based first (a) + LLM digest later (b).
@@ -929,13 +985,16 @@ milestone. Promote with `/gsd:review-backlog` when ready.
 **Requirements:** SCHEMA-01 (every log_type round-trips extractor->normalizer->commit without terminal field-shape failure), SCHEMA-02 (a real extractor draft for activity-relocate commits end-to-end against mock farmOS), SCHEMA-03 (normalize.js is idempotent: commit-shape input passes through unchanged), SCHEMA-04 (5 chain tests live under `test/farmos/integration/` and run by default, no `FARMOS_INTEGRATION=1` gate)
 **Depends on:** Phase 40 (the commit handlers being normalized) and Phase 38 (the extractor-shape contract)
 **Open design questions for discuss-phase** (from `.planning/notes/2026-05-16-schema-audit.md` section 3.A):
+
   1. harvest `source_block_refs` (block names) vs `source_qr_codes` -- extend `qr.resolveQr` to handle block names, or add parallel resolve-by-name path?
   2. seeding `batch_name` (sterilization) vs `parent_batch_name` (lineage) -- keep distinct, fold, or defer until pasteurization log lands?
   3. input `recipe_lot` vs `input_ingredients` -- extend commit-input to read recipe_lot, or just append to notes?
   4. harvest `qty_g` (single number) vs `bags` (multi-bag w/ QR+weight) -- extractor schema extension or farmer UX change? (audit calls this out of scope for same-week-fix; file as v1.8 candidate)
+
 **Reference:** `.planning/notes/2026-05-16-schema-audit.md` (full audit; verdict: 4 of 5 log_types wire-incompatible end-to-end; recommends A + C bundled, ~1d combined)
 **Plans:** 6 plans (all shipped 2026-05-16)
 Plans:
+
 - [x] 43-01-PLAN.md -- normalize.js + unit tests (incl. SCHEMA-03 idempotency)
 - [x] 43-02-PLAN.md -- qr.js name-on-miss fallback (D-06)
 - [x] 43-03-PLAN.md -- wire normalize() into commit-router.js (D-02, 1-line)
@@ -949,12 +1008,15 @@ Plans:
 **Depends on:** Phase 43 (schema normalizer in place — gate must not regress chain tests)
 **Requirements (proposed; lock at discuss-phase):** GATE-01 (zero farmer-facing preview pings on hand-labeled chit-chat in 100-capture smoke), GATE-02 (>=95% event recall on same smoke), OUTBOUND-01 (every `signalClient.send` writes one row to `signal_outbound` with intent tag — 14 call sites enumerated, see `.planning/notes/2026-05-17-signal-outbound-schema-audit.md`), OUTBOUND-02 (Phase 37 `fmtHistory` reads `signal_outbound` and surfaces `lastBotOutbound` to the LLM prompt — closes finding 1b), TENANT-01 (`signal_outbound.tenant_id` indexed; `tenants/mossrock/` directory exists with at least one config key moved in)
 **Open design questions for discuss-phase:**
+
   1. Rules-only first vs. Haiku 4.5 pre-classifier from day one? (Note 2026-05-17 recommends rules-first, audit one week, add Haiku only if residual phantom rate justifies the paid surface — `feedback_smoke_before_expensive_batch`.)
   2. Should the gate ALSO gate the Phase 37 LLM-convo `compose` call at `capture.js:168`? (Out of scope for finding 7 proper; cheap to bundle.)
   3. Tenant-id retrofit for existing tables (`signal_capture`, `signal_draft`) — defer to v2.0 extraction or do it now? (Default: defer per OSS-Foray decision; new tables only in v1.8.)
   4. What's in `tenants/mossrock/` for v1.8? SIGNAL_FARMER_MAP at minimum; SHI/SH2/KOY/MAI/MALI/KOS/DT/CAS/CAZ/WIN/ALM/MOR/BP/LIMA strain vocab; Anthropic key + farmOS endpoint pointer? Decide at discuss-phase.
+
 **Ship-gate (per `feedback_real_data_before_ship_gate_pass`):** 100-capture hand-classification smoke from prod (Plan-01) drawn from live Timescale `signal_capture` rows on elder-plops (frozen `/mnt/mossrock/shared/mushdatadump-prod/` corpus is only 3 rows; see `.planning/notes/2026-05-17-prod-corpus-survey.md`). Stratified per 2026-05-17 distribution: 36 hard-event / 28 confirm / 8 phantom-ack / 8 UX-meta / 12 soft-obs / 8 greetings.
 **References:**
+
 - `.planning/notes/2026-05-17-is-this-an-event-gate.md` (finding 7 design)
 - `.planning/notes/2026-05-17-llm-outbound-amnesia.md` (finding 1b design)
 - `.planning/notes/2026-05-17-oss-foray-decision.md` (Option α tenant constraint)
@@ -964,6 +1026,7 @@ Plans:
 - SEED-010 (Foray extraction trigger)
 
 **Plans:** 6/7 plans executed
+
 - [x] 44-00-PLAN.md — Wave 0 scaffolding (.gitignore + yaml dep + 8 test stubs)
 - [x] 44-01-PLAN.md — 100-capture hand-classified smoke fixture (operator manual ship-gate)
 - [x] 44-02-PLAN.md — signal_outbound DDL + DAO + signal.js single persistence hook (OUTBOUND-01, TENANT-01)
@@ -979,6 +1042,7 @@ Plans:
 **Requirements (proposed; lock at discuss-phase):** ACK-01 (no terminal state in the confirm/commit machine is silent post-YES — enumerated and tested), ACK-02 (replay of draft `b8a1e586` Vikki Rambo through the fixed path produces an English-default farmer-facing reply on the failure path — Vikki is English-first per `[[farmer-language-stacks]]`), ACK-03 (replay of draft `1fb28e70` Santi LIMA likewise), ACK-04 (idempotency: a retried commit does not double-send the ack)
 **Reference:** `.planning/notes/2026-05-17-northstar-commit-failed-reply.md` + `.planning/notes/2026-05-17-northstar-ack-sketch.md` (impl-sketch produced by overnight research) + memory `[[feedback_no_silent_failure_after_farmer_confirm]]`
 **Plans:** 5 plans
+
 - [ ] 45-01-PLAN.md — Schema: signal_draft.outcome_ack_sent_at + tryMarkOutcomeAckSent idempotency primitive (ACK-04)
 - [ ] 45-02-PLAN.md — commit-outcome-preview.js renderer: 10 templates + 3 farm-level + 8-code reasonMap (ACK-01)
 - [ ] 45-03-PLAN.md — edit-handler Option X: commit_failed → EDIT → awaiting_farmer transition (ACK-01)

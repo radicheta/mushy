@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.11
 milestone_name: Extraction prereqs + 2025-paper backfill
 status: executing
-last_updated: "2026-06-10T01:42:05.717Z"
-last_activity: 2026-06-07 -- Phase 55 execution started
+last_updated: "2026-06-10T02:12:12.769Z"
+last_activity: 2026-06-10 -- Phase 55B planning complete
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 15
+  total_plans: 19
   completed_plans: 13
   percent: 60
 ---
@@ -98,8 +98,8 @@ All in `.planning/todos/pending/`:
 
 Phase: 55 (full-corpus-run-receipt) — EXECUTING
 Plan: 1 of 2
-Status: Executing Phase 55
-Last activity: 2026-06-07 -- Phase 55 execution started
+Status: Ready to execute
+Last activity: 2026-06-10 -- Phase 55B planning complete
 
 **Phase 53 commit chain:**
 
