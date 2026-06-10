@@ -866,19 +866,22 @@ pre-parsed CSV content from a trusted local file.
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Does `patchGroupAssetFiles` work for `asset--group`?**
+1. **Does `patchGroupAssetFiles` work for `asset--group`?** (A1 -- ASSUMED, MEDIUM confidence)
+   - **RESOLVED via Wave 0 gate:** verified by the blocking dev-smoke probe in 55B-01 Task 4 (PATCH `/api/asset/group/<id>` with `relationships.file` against dev `:18080`) BEFORE any image-attach implementation (55B-03) may run; fallback = two-step create -> upload -> associate. The assumption stays honest (verified at execution time, not research time), but the resolution mechanism is planned and gating.
    - What we know: `commit-observation.js` associates files via `logs.createLog(..., fileIds)` which handles file relationship on creation, not PATCH.
    - What's unclear: Whether farmOS's `asset--group` JSON:API endpoint accepts PATCH with `relationships.file` for an already-created asset. The pattern is standard JSON:API but has not been tested specifically for groups in this codebase.
    - Recommendation: Add a smoke probe against dev `:18080` in Wave 0 (before implementation commit) to verify: `curl -X PATCH /api/asset/group/<id> -d '{"data":{"type":"asset--group","id":"<id>","relationships":{"file":{"data":[{"type":"file--file","id":"<fid>"}]}}}}'`. If it fails, the alternative is to set `file` in the POST payload at group creation time (before image upload, so this would require two-step: create group -> upload files -> PATCH).
 
 2. **What is the correct `parent_batch_name` / `parent` field in backfill seeding drafts?**
+   - **RESOLVED:** confirmed during planning against `commit-seeding-session.js:153-156` -- the consumer reads `g.parent.value` / `g.species.value` / `g.child_block_names.value`, so aggregation maps `parent_batch_name || parent -> group.parent.value` (and `species -> group.species.value`).
    - What we know: `aggregateSeedingDraftsToSessionJson` groups by `dj.parent_batch_name || dj.parent`. The actual field name from the extractor for backfill seeding drafts is resolved by `normalize()` -- see `src/farmos/commits/normalize.js`.
    - What's unclear: Whether backfill `seeding` draft_json uses `parent_batch_name` or `parent` or `species` as the group key. This matters for correct session aggregation.
    - Recommendation: Read `normalize.js` before writing the aggregation (planner action: read that file as part of Plan 1 task discovery).
 
 3. **Smoke page count: 5 or 10?**
+   - **RESOLVED:** 5 pages is sufficient; IMG_3775, 3776, 3778, 3782, 3777 cover all three failure modes.
    - What we know: The 5-page paid smoke is from the existing GA1 runbook discipline. The 10-page prod audit was the trigger for this phase.
    - What's unclear: Whether 5 pages is sufficient for the re-smoke to catch fidelity regressions.
    - Recommendation: 5 pages is sufficient; the 5 selected (see Pattern 7) cover all three failure modes. Use `--limit=5 --resume-from=IMG_3775.jpg` to reproducibly select them.
