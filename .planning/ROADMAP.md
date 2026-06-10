@@ -280,7 +280,22 @@ Plans:
 - [x] 55-01-PLAN.md — harness --all-pages flag + build-backfill-receipt buildUuidJsonl/computePerShapeStats + .planning/notes/ copy-out + tagged BACK-10 section (BACK-09, BACK-10)
 - [x] 55-02-PLAN.md — 55-FULL-CORPUS-RUNBOOK.md (GA1 isolation pre-flight + smoke-before-full + crash recovery) + 55-PROMOTION-DECISION.md dev-only default (BACK-11)
 
-### Phase 55b: TBD if needed (per-tenant backfill story, observation-of-unknown-asset path)
+### Phase 55b: Fidelity / corpus-unblock (cross-check + F1/F2 session reconcile)
+
+**Goal:** Land the blockers before the parked full-corpus run is safe to execute.
+(1) Commit-time fidelity cross-check that HOLDS every entry not exact-verified against
+the per-page CSV reading (`needs_review`, never hard-reject -- CSV is a fallible 2nd
+interpretation). (2) F1+F2 reconcile surface: backfill per-block logs/assets group under
+the inoc-session group asset (Phase 52 mechanism) with source notebook page image(s)
+attached to the session asset (1..N pages; the inoc session, not the page, is the unit),
+so a human reconciles a session 1:1 against the physical notebook. Re-scoped from the
+original "per-tenant backfill / unknown-asset" placeholder (both absorbed elsewhere) with
+Santi 2026-06-09. Context: `.planning/phases/55B-*/55B-CONTEXT.md`.
+
+**Depends on:** Phase 55 (tooling + docs), Phase 52 (session group asset), Phase 51
+(upsert), Phase 54.1 (needs_review hold). Private-files infra RESOLVED (2026-05-25).
+
+**Plans:** TBD during plan-phase.
 
 ---
 
