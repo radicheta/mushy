@@ -295,7 +295,13 @@ Santi 2026-06-09. Context: `.planning/phases/55B-*/55B-CONTEXT.md`.
 **Depends on:** Phase 55 (tooling + docs), Phase 52 (session group asset), Phase 51
 (upsert), Phase 54.1 (needs_review hold). Private-files infra RESOLVED (2026-05-25).
 
-**Plans:** TBD during plan-phase.
+**Plans:** 4 plans (1 wave-0 gate + 2 implementation + 1 re-smoke gate)
+
+Plans:
+- [ ] 55B-01-PLAN.md — Wave 0: patchGroupAssetFiles + RED test scaffolds (fidelity/aggregate/image) + A1 PATCH-associates-files dev smoke probe (FIDELITY-01/02, SESSION-01/02)
+- [ ] 55B-02-PLAN.md — Commit-time CSV fidelity hold gate in processDraftsForCapture (buildCsvBudget + 3-branch hold) (FIDELITY-01, FIDELITY-02)
+- [ ] 55B-03-PLAN.md — Session routing (aggregateSeedingDraftsToSessionJson) + page-image attach on session group asset (SESSION-01/02/03)
+- [ ] 55B-04-PLAN.md — 5-page GA1-isolated re-smoke runbook + live gate (IMG_3776 mode-2 regression guard) (SMOKE-01, SESSION-03)
 
 ---
 
