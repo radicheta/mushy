@@ -1,8 +1,8 @@
 ---
 phase: 55B
 slug: 55b-fidelity-corpus-unblock
-status: draft
-nyquist_compliant: false
+status: planned
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-06-09
 ---
@@ -85,4 +85,4 @@ created: 2026-06-09
 - [ ] Feedback latency < 15s (quick)
 - [ ] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** planner-signed 2026-06-09 -- all tasks carry <automated> verify or a Wave 0 dependency; A1 PATCH probe is the explicit Wave 0 smoke gate
