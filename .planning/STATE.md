@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.11
 milestone_name: Extraction prereqs + 2025-paper backfill
 status: executing
-last_updated: "2026-06-07T20:54:49.710Z"
+last_updated: "2026-06-10T01:42:05.717Z"
 last_activity: 2026-06-07 -- Phase 55 execution started
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 15
-  completed_plans: 11
-  percent: 40
+  completed_plans: 13
+  percent: 60
 ---
 
 # Project State
@@ -325,7 +325,7 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 ## Session Continuity
 
-Last session: 2026-05-26T01:50:29.003Z
+Last session: 2026-06-10T01:42:05.708Z
 Next up: Phase 45 (NORTH-STAR commit_failed ack + replay outstanding silent-failure drafts `b8a1e586` Vikki Rambo + `1fb28e70` Santi LIMA). Optional: 24-h v1.8 soak observation before starting Phase 45 scope work. v1.8 cutover already complete (alerter recreated 01:41:58 ART; bridge already on Phase 46 code).
 
 Previously: kick off v1.8 Phase 1 (event-gate + signal_outbound). Plan-01 = 100-capture hand-classification smoke from mushdatadump-prod, BEFORE spec-locking the gate. Reference notes:
