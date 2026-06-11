@@ -318,6 +318,7 @@ function appendSummaryLine(fd, line) {
 async function processDraftsForCapture({
   pool, client, captureId, pagePath, opts, summariesFd, extractionDb, commitRouter, dryRun,
   curatedStrains,
+  csvRowsForPage, csvBudget,
 }) {
   // Hard re-assertion per T-54-05.
   assertSantiInLoop(opts);
@@ -399,6 +400,88 @@ async function processDraftsForCapture({
           }
           continue;
         }
+      }
+    }
+
+    // 1b. Fidelity cross-check gate (T-55B-03): compare extracted strain against
+    // the per-page CSV reading BEFORE committing. Only active inside bulkBackfill.
+    // Three branches:
+    //   (a) no CSV rows for this page -> hold everything (fidelity_cross_check_no_csv)
+    //   (b) seeding/seeding_session with strain not in budget -> hold (fidelity_cross_check_unverified)
+    //   (c) seeding/seeding_session with strain verified -> consume budget, fall through
+    //   (d) non-seeding on CSV-covered page -> hold (fidelity_cross_check_nonseeding)
+    if (opts.bulkBackfill === true && csvRowsForPage !== undefined) {
+      const dj = (draft && draft.draft_json) || {};
+      const isSeedingDraft = logType === 'seeding' || logType === 'seeding_session';
+
+      if (!csvRowsForPage || csvRowsForPage.length === 0) {
+        // Branch (a): no CSV coverage for this page.
+        await db.updateDraftStatus(pool, draftId, 'needs_review', {
+          needs_review_reason: 'fidelity_cross_check_no_csv',
+        });
+        entry = {
+          draftId, log_type: logType,
+          ok: 'held', reason: 'fidelity_cross_check_no_csv',
+          strain_codes: [],
+          block_name: dj.block_name || null,
+          asset_ids: [], log_ids: [],
+        };
+        commits.push(entry);
+        if (summariesFd != null) {
+          appendSummaryLine(summariesFd, buildSummaryLine({
+            ts, page: path.basename(pagePath), captureId, draftId, logType,
+            ok: false, assetCount: 0, logCount: 0, reason: 'fidelity_cross_check_no_csv',
+          }));
+        }
+        continue;
+      } else if (isSeedingDraft) {
+        // Branch (b/c): seeding draft on a CSV-covered page.
+        const rawStrain = dj.species_code || dj.species || dj.strain || dj.fungi_type || null;
+        const strainUpper = rawStrain ? String(rawStrain).toUpperCase() : null;
+        const budget = csvBudget || new Map();
+        const verified = strainUpper && consumeCsvBudget(budget, strainUpper);
+        if (!verified) {
+          // Branch (b): strain absent from CSV or budget exhausted.
+          await db.updateDraftStatus(pool, draftId, 'needs_review', {
+            needs_review_reason: 'fidelity_cross_check_unverified',
+          });
+          entry = {
+            draftId, log_type: logType,
+            ok: 'held', reason: 'fidelity_cross_check_unverified',
+            strain_codes: strainUpper ? [strainUpper] : [],
+            block_name: dj.block_name || null,
+            asset_ids: [], log_ids: [],
+          };
+          commits.push(entry);
+          if (summariesFd != null) {
+            appendSummaryLine(summariesFd, buildSummaryLine({
+              ts, page: path.basename(pagePath), captureId, draftId, logType,
+              ok: false, assetCount: 0, logCount: 0, reason: 'fidelity_cross_check_unverified',
+            }));
+          }
+          continue;
+        }
+        // Branch (c): budget consumed -> fall through to flipDraftToConfirmed.
+      } else {
+        // Branch (d): non-seeding draft on a CSV-covered page.
+        await db.updateDraftStatus(pool, draftId, 'needs_review', {
+          needs_review_reason: 'fidelity_cross_check_nonseeding',
+        });
+        entry = {
+          draftId, log_type: logType,
+          ok: 'held', reason: 'fidelity_cross_check_nonseeding',
+          strain_codes: [],
+          block_name: dj.block_name || null,
+          asset_ids: [], log_ids: [],
+        };
+        commits.push(entry);
+        if (summariesFd != null) {
+          appendSummaryLine(summariesFd, buildSummaryLine({
+            ts, page: path.basename(pagePath), captureId, draftId, logType,
+            ok: false, assetCount: 0, logCount: 0, reason: 'fidelity_cross_check_nonseeding',
+          }));
+        }
+        continue;
       }
     }
 
