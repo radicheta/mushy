@@ -20,7 +20,30 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 55B — fidelity-corpus-unblock
+**Current focus:** Phase 55B — fidelity-corpus-unblock (PAUSED 2026-06-10: code complete, 2 live gates blocked on dev :18080 creds)
+
+## Phase 55B Pause (2026-06-10) — CODE COMPLETE, LIVE GATES PARKED
+
+**Status:** All 4 plans' code shipped + green (1397 alerter tests, 0 regressions, tree clean, 22 commits on `feat/phase-55-full-corpus`). Two live operator gates remain BLOCKED. Phase NOT verified/complete.
+
+**What shipped (commits `202c300`..`823c9e7`):**
+- **55B-01:** `patchGroupAssetFiles` JSON:API helper (relationships.file PATCH on asset--group) + RED scaffolds (fidelity/aggregate/budget/image). `patch_files` test GREEN.
+- **55B-02:** Commit-time CSV fidelity hold gate in `processDraftsForCapture` (3 branches: `fidelity_cross_check_no_csv` / `_unverified` / `_nonseeding`; `buildCsvBudget`/`consumeCsvBudget`). The durable catch for the 2026-06-07 POY-committed-as-KOY silent misattribution. Gate only fires under `opts.bulkBackfill===true`; live paths untouched.
+- **55B-03:** `aggregateSeedingDraftsToSessionJson` + dispatch wiring in `processDraftsForCapture` (one `seeding_session` commit per page, constituent attribution, Pitfall-4 `session_commit_failed` rollback) + best-effort page-image attach in `commit-seeding-session.js` (upload + `patchGroupAssetFiles`, never aborts the commit). NOTE: first 55B-03 pass SKIPPED the dispatch wiring claiming "no RED test"; sent back and fixed with a covering test — watch for this TDD-dodge pattern.
+- **55B-04:** `55B-RE-SMOKE-RUNBOOK.md` authored (GA1 :5433 isolation, `--limit=5 --resume-from=IMG_3775.jpg`, per-page PASS criteria, F2 reconcile, dev-auth pre-flight, scope fence). Task 2 (live re-smoke) NOT run.
+
+**THE BLOCKER (both live gates):** dev farmOS **:18080 rejects the prod bot login (HTTP 400 "unrecognized username or password")**. `GET /api` = 200 (instance is up), but the `mushy-bot` + `secrets.env` password that works on prod :8082 is not valid on dev :18080. Both Phase 55B live gates (A1 PATCH probe in 55B-01 Task 4, AND the 5-page re-smoke in 55B-04 Task 2) write to dev :18080, so both are parked. See `55B-A1-SMOKE.md` (verdict: BLOCKED, not falsified). A1 design call: direct `patchGroupAssetFiles` PATCH kept as PRIMARY (fully unit-tested); LIVE A1 confirmation folded into the re-smoke's "session image attached" pass criterion.
+
+**AWAITING SANTI DECISION (isolation strategy for the live gates):**
+1. **Fix dev :18080 creds** (cleanest, keeps GA1 isolation) — create/reset a dev `mushy-bot` or give a dev admin login; then run A1 probe + re-smoke against dev.
+2. **Run on prod :8082 + clean up** — use working prod creds + throwaway :5433 draft DB, then DELETE the ~5 test session assets from prod farmOS after (violates plan's GA1 farmOS-isolation; risky).
+3. **Park live validation, ship code** — record as OPERATOR-DEFERRED (like Phases 48/49); phase stays `human_needed`.
+
+**RESUME STEPS (next session):**
+1. Resolve the isolation decision above.
+2. If option 1: `node src/agents/alerter/scripts/a1-probe.js` (dev-locked; self-loads creds) — expect `=== A1 PASS ===`; records `55B-A1-SMOKE.md`.
+3. Then follow `55B-RE-SMOKE-RUNBOOK.md` from Step 0 (dev-auth pre-flight). Hard gate: IMG_3776 POY HELD (reason `fidelity_cross_check_unverified`), NOT committed as KOY. Record `55B-RE-SMOKE.md`.
+4. Close 55B-01 Task 4 + 55B-04 Task 2 checkpoints, write `55B-04-SUMMARY.md`, then run phase verification + completion (code review gate still pending too).
 
 ## Phase 54 Closeout (2026-05-24/25, plans 01-04)
 
