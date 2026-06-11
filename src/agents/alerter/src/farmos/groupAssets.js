@@ -92,9 +92,33 @@ async function deleteGroupAsset(client, assetId) {
   return { ok: true, http_status: r.status };
 }
 
+// Phase 55B Plan 01: associate file--file UUIDs to an existing asset--group via
+// JSON:API PATCH on the relationships.file edge. This is the A1 assumption --
+// proven against dev :18080 before Plan 03 image-attach implementation.
+async function patchGroupAssetFiles(client, assetId, fileIds) {
+  if (!fileIds || fileIds.length === 0) return { ok: true, skipped: true };
+  const payload = {
+    data: {
+      type: 'asset--group',
+      id: assetId,
+      relationships: {
+        file: {
+          data: fileIds.map((id) => ({ type: 'file--file', id })),
+        },
+      },
+    },
+  };
+  const r = await client.patch('/api/asset/group/' + assetId, payload);
+  if (!r.ok) {
+    return { ok: false, reason: 'http_' + (r.status || 'network'), http_status: r.status };
+  }
+  return { ok: true, http_status: r.status };
+}
+
 module.exports = {
   findGroupAssetByName,
   upsertGroupAsset,
   deleteGroupAsset,
+  patchGroupAssetFiles,
   _clearCache,
 };

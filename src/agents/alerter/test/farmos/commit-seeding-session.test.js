@@ -371,3 +371,71 @@ describe('commitSeedingSession (Phase 52 Plan 03/04)', () => {
     expect(commitRouter.DISPATCH.seeding_session).toBe(commitSeedingSession);
   });
 });
+
+// ============================================================================
+// Phase 55B Plan 01 Task 1: patchGroupAssetFiles payload-shape tests
+// ============================================================================
+
+const { patchGroupAssetFiles } = require('../../src/farmos/groupAssets');
+
+describe('patch_files (patchGroupAssetFiles JSON:API PATCH shape)', () => {
+  function makePatchClient(opts = {}) {
+    const { patchStatus = 200, patchOk = true } = opts;
+    return {
+      patch: jest.fn().mockResolvedValue({ ok: patchOk, status: patchStatus }),
+    };
+  }
+
+  it('calls client.patch with correct path and relationships.file.data entries', async () => {
+    const client = makePatchClient();
+    const result = await patchGroupAssetFiles(client, 'group-uuid-1', ['file-uuid-a']);
+
+    expect(client.patch).toHaveBeenCalledTimes(1);
+    const [path, body] = client.patch.mock.calls[0];
+    expect(path).toBe('/api/asset/group/group-uuid-1');
+    expect(body.data.type).toBe('asset--group');
+    expect(body.data.id).toBe('group-uuid-1');
+    expect(body.data.relationships.file.data).toEqual([
+      { type: 'file--file', id: 'file-uuid-a' },
+    ]);
+    expect(result.ok).toBe(true);
+    expect(result.http_status).toBe(200);
+  });
+
+  it('maps multiple fileIds to relationships.file.data array', async () => {
+    const client = makePatchClient();
+    await patchGroupAssetFiles(client, 'group-uuid-2', ['file-1', 'file-2', 'file-3']);
+
+    const [, body] = client.patch.mock.calls[0];
+    expect(body.data.relationships.file.data).toEqual([
+      { type: 'file--file', id: 'file-1' },
+      { type: 'file--file', id: 'file-2' },
+      { type: 'file--file', id: 'file-3' },
+    ]);
+  });
+
+  it('returns { ok: true, skipped: true } and does NOT call client.patch when fileIds is empty', async () => {
+    const client = makePatchClient();
+    const result = await patchGroupAssetFiles(client, 'group-uuid-3', []);
+
+    expect(client.patch).not.toHaveBeenCalled();
+    expect(result).toEqual({ ok: true, skipped: true });
+  });
+
+  it('returns { ok: true, skipped: true } and does NOT call client.patch when fileIds is null', async () => {
+    const client = makePatchClient();
+    const result = await patchGroupAssetFiles(client, 'group-uuid-4', null);
+
+    expect(client.patch).not.toHaveBeenCalled();
+    expect(result).toEqual({ ok: true, skipped: true });
+  });
+
+  it('returns canonical error shape on non-ok HTTP response', async () => {
+    const client = makePatchClient({ patchOk: false, patchStatus: 422 });
+    const result = await patchGroupAssetFiles(client, 'group-uuid-5', ['file-uuid-b']);
+
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe('http_422');
+    expect(result.http_status).toBe(422);
+  });
+});
