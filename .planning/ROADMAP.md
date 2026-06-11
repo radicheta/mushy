@@ -307,7 +307,7 @@ Santi 2026-06-09. Context: `.planning/phases/55B-*/55B-CONTEXT.md`.
 **Depends on:** Phase 55 (tooling + docs), Phase 52 (session group asset), Phase 51
 (upsert), Phase 54.1 (needs_review hold). Private-files infra RESOLVED (2026-05-25).
 
-**Plans:** 4 plans (1 wave-0 gate + 2 implementation + 1 re-smoke gate)
+**Plans:** 0/4 plans executed
 
 Plans:
 **Wave 1**
