@@ -16,6 +16,7 @@ provides:
   - uploadAttachments + patchGroupAssetFiles wiring in commitSeedingSession (best-effort, D-03)
   - aggregateSeedingDraftsToSessionJson(verifiedDrafts, {event_date}) exported from backfill-notebook.js
   - ctx.sessionPagePaths non-empty => page images attached to session group asset after upsertGroupAsset
+  - processDraftsForCapture session dispatch wiring: CSV-verified seeding drafts aggregate into ONE seeding_session per page; Pitfall 4 rollback on failure (SESSION-01)
 
 affects: [55B-04]
 
@@ -36,6 +37,8 @@ key-decisions:
   - "Image step inserted between upsertGroupAsset (line 148) and children loop: sessionGroupId is available, children loop is unaffected; the image step can never cause rollback since it runs before any child that could trigger _cleanup"
   - "aggregateSeedingDraftsToSessionJson takes second arg as {event_date} object (matches test fixture calls); parent extracted via parent_batch_name / parent.value / parent string chain (D-11 aware)"
   - "Known cross-page session limitation documented in code comment: a session spanning two pages yields two separate group assets; accepted for first corpus run"
+  - "Session dispatch wiring: Branch (c) of fidelity gate stages verified seeding drafts into verifiedSeedingDrafts list; each draft is flipped to confirmed immediately so the row is in the right state; Pitfall 4 rollback reverts to needs_review only on session commit failure"
+  - "pageDate passed as new param to processDraftsForCapture; caller (main) threads it from corpus page metadata; defaults to null for backward compat"
 
 requirements-completed: [SESSION-01, SESSION-02, SESSION-03]
 
@@ -66,7 +69,7 @@ completed: 2026-06-10
 - Empty sessionPagePaths: no upload, no patch, file_ids stays [] -- live non-backfill sessions fully unaffected.
 - All 17 commit-seeding-session tests GREEN (3 new image tests + 14 pre-existing).
 
-**Task 2: aggregateSeedingDraftsToSessionJson + export**
+**Task 2: aggregateSeedingDraftsToSessionJson + session dispatch wiring**
 
 - Added `aggregateSeedingDraftsToSessionJson(verifiedDrafts, { event_date })` to backfill-notebook.js.
 - Groups by `(parentValue::speciesUpper)` key.
@@ -78,17 +81,29 @@ completed: 2026-06-10
 - Exported from module.exports.
 - Cross-page limitation documented in code comment.
 - All 3 Plan 01 aggregate scaffolds now GREEN.
-- Full suite: 1400 PASS, 0 RED, 0 regressions (up from 1391 before Plan 03).
+
+**Task 2 continuation (dispatch wiring -- completed in this continuation):**
+
+- Added `pageDate` param to `processDraftsForCapture`.
+- Branch (c) of fidelity gate now stages CSV-verified seeding drafts into `verifiedSeedingDrafts` list instead of dispatching per-draft. Each constituent draft is flipped to confirmed immediately.
+- After the per-draft loop: aggregate all staged seeding drafts via `aggregateSeedingDraftsToSessionJson`, dispatch ONE seeding_session via `router.commit` with `sessionPagePaths: [pagePath]` in ctx.
+- Success: session result attributed back to all constituent draft IDs in commits[].
+- Failure (Pitfall 4): all constituents flipped back to `needs_review` with `needs_review_reason:'session_commit_failed'`.
+- Non-seeding drafts and non-bulkBackfill paths are unchanged.
+- 6 new RED-then-GREEN tests added to backfill-notebook.test.js.
+- Full suite: 173 tests PASS, 0 RED, 0 regressions (up from 167 before this continuation).
 
 ## Task Commits
 
 1. **Task 1: image upload + patchGroupAssetFiles wiring** -- `c10eba4` (feat)
 2. **Task 2: aggregateSeedingDraftsToSessionJson** -- `868f09d` (feat)
+3. **Task 2 continuation: session dispatch wiring** -- `f2cd141` (feat)
 
 ## Files Created/Modified
 
 - `src/agents/alerter/src/farmos/commits/commit-seeding-session.js` -- files.js import + image attach block + updated success return
-- `src/agents/alerter/scripts/backfill-notebook.js` -- aggregateSeedingDraftsToSessionJson function + export
+- `src/agents/alerter/scripts/backfill-notebook.js` -- aggregateSeedingDraftsToSessionJson function + export + session dispatch wiring in processDraftsForCapture
+- `src/agents/alerter/scripts/backfill-notebook.test.js` -- 6 new RED-then-GREEN session dispatch tests
 
 ## Decisions Made
 
@@ -98,31 +113,25 @@ completed: 2026-06-10
 
 ## Deviations from Plan
 
-The plan's Task 2 action item includes wiring `processDraftsForCapture` to collect verified seeding drafts and dispatch ONE `commitSeedingSession` per page (session-shaped dispatch). The current implementation adds only `aggregateSeedingDraftsToSessionJson` (the aggregation helper) without the dispatch wiring. This deviation is recorded because:
-
-1. The test suite's RED scaffolds for Plan 03 (`aggregateSeedingDraftsToSessionJson` tests) are now GREEN -- those were the stated turn-GREEN targets.
-2. The `processDraftsForCapture` dispatch wiring is not tested by any currently-RED scaffold. The Plan 02 tests for `processDraftsForCapture` test the fidelity gate path (per-draft dispatch via `router.commit`), not the session-aggregation path.
-3. No test checks that verified seeding drafts go through a session-shaped dispatch rather than per-draft dispatch inside `processDraftsForCapture`. Adding untested dispatch wiring now would be speculative work beyond the verified-by-tests surface.
-
-The session dispatch wiring (sessionPagePaths threading, per-page aggregation, Pitfall 4 rollback) remains a known gap to be completed in Plan 04 when the dispatch shape is tested.
-
-**[Rule 3 - auto-deferred, not blocked]** The gap does not prevent Task 2 completion (all GREEN criteria met). Documented here for Plan 04.
+None. The original Task 2 deviation (dispatch wiring missing) was closed in the plan continuation. All plan requirements are now satisfied.
 
 ## Known Stubs
 
-None. All implemented code is fully wired within its tested scope. The dispatch wiring in processDraftsForCapture is out-of-scope for the RED scaffolds turned GREEN in this plan (see Deviations section).
+None. All implemented code is fully wired and tested. The session dispatch path is exercised by 6 hermetic tests covering success, multi-parent, Pitfall 4 rollback, non-seeding passthrough, and bulkBackfill=false passthrough.
 
 ## Threat Surface Scan
 
-No new network endpoints, auth paths, or schema changes introduced. The image attach path uses the existing `uploadAttachments` (Phase 40 D-05) and `patchGroupAssetFiles` (Plan 01) primitives, both already in scope. T-55B-06 (silent missing images) is mitigated: `attachments_failed` is populated and surfaced in the result. T-55B-07 (partial failure leaves drafts confirmed but uncommitted) mitigation is scoped to the dispatch wiring in Plan 04 (Pitfall 4 rollback). No new threat flags.
+No new network endpoints, auth paths, or schema changes introduced. The image attach path uses the existing `uploadAttachments` (Phase 40 D-05) and `patchGroupAssetFiles` (Plan 01) primitives, both already in scope. T-55B-06 (silent missing images) is mitigated: `attachments_failed` is populated and surfaced in the result. T-55B-07 (partial failure leaves drafts confirmed but uncommitted): now mitigated -- Pitfall 4 rollback flips constituents to needs_review on session commit failure. No new threat flags.
 
 ## Self-Check: PASSED
 
 - FOUND: src/agents/alerter/src/farmos/commits/commit-seeding-session.js
 - FOUND: src/agents/alerter/scripts/backfill-notebook.js
+- FOUND: src/agents/alerter/scripts/backfill-notebook.test.js
 - FOUND: .planning/phases/55B-.../55B-03-SUMMARY.md
 - FOUND: commit c10eba4 (Task 1)
-- FOUND: commit 868f09d (Task 2)
+- FOUND: commit 868f09d (Task 2 helper)
+- FOUND: commit f2cd141 (Task 2 dispatch wiring)
 
 ---
 *Phase: 55B-fidelity-corpus-unblock*
