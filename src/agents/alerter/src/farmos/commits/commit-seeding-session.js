@@ -20,6 +20,7 @@ const assets = require('../assets');
 const logs = require('../logs');
 const groupAssets = require('../groupAssets');
 const activityLogs = require('../activityLogs');
+const files = require('../files');
 
 const COLLISION_MAX = 9;
 
@@ -146,6 +147,34 @@ async function commitSeedingSession(client, draft, ctx) {
     }
     const sessionGroupId = groupRes.assetId;
     const sessionGroupJustCreated = groupRes.outcome === 'created';
+
+    // -------- OPTIONAL: attach page images to session group (best-effort, D-03) --------
+    // Only active when ctx.sessionPagePaths is non-empty (backfill path).
+    // Upload failure or PATCH failure MUST NOT change the ok-status of the session commit.
+    const attachPaths = (ctx && ctx.sessionPagePaths) || [];
+    let uploadedFileIds = [];
+    let attachmentsFailed = [];
+    if (attachPaths.length > 0) {
+      const upRes = await files.uploadAttachments(client, attachPaths, { logger: ctx && ctx.logger });
+      uploadedFileIds = upRes.fileIds || [];
+      attachmentsFailed = upRes.failed || [];
+      if (attachmentsFailed.length > 0 && ctx && ctx.logger && ctx.logger.warn) {
+        ctx.logger.warn(
+          `[commit-seeding-session] ${attachmentsFailed.length} attachment(s) failed to upload draft=${draftId}: ${attachmentsFailed.map((f) => f.reason).join(', ')}`,
+        );
+      }
+      if (uploadedFileIds.length > 0) {
+        const patchRes = await groupAssets.patchGroupAssetFiles(client, sessionGroupId, uploadedFileIds);
+        if (!patchRes.ok) {
+          attachmentsFailed.push({ reason: 'patch_files_failed:' + (patchRes.reason || 'unknown') });
+          if (ctx && ctx.logger && ctx.logger.warn) {
+            ctx.logger.warn(
+              `[commit-seeding-session] patchGroupAssetFiles failed draft=${draftId} assetId=${sessionGroupId}: ${patchRes.reason}`,
+            );
+          }
+        }
+      }
+    }
 
     let childIndex = 0;
 
@@ -275,7 +304,8 @@ async function commitSeedingSession(client, draft, ctx) {
       ok: true,
       asset_ids: assetIdsOut,
       log_ids: logIdsOut,
-      file_ids: [],
+      file_ids: uploadedFileIds,
+      attachments_failed: attachmentsFailed,
       http_status: 201,
     };
   } catch (e) {
