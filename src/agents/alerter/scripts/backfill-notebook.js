@@ -378,6 +378,10 @@ async function processDraftsForCapture({
   pool, client, captureId, pagePath, opts, summariesFd, extractionDb, commitRouter, dryRun,
   curatedStrains,
   csvRowsForPage, csvBudget,
+  // pageDate: ISO date string for the page (e.g. '2025-02-01'). Used as
+  // event_date when synthesizing the seeding_session draft_json for session
+  // dispatch. Derived from the corpus filename when not provided by the caller.
+  pageDate,
 }) {
   // Hard re-assertion per T-54-05.
   assertSantiInLoop(opts);
@@ -390,6 +394,17 @@ async function processDraftsForCapture({
   // Collection of held unknown codes: [{ code, nearest, draftIds }].
   // Accumulated across drafts in this capture; caller merges across pages.
   const heldUnknownCodes = [];
+
+  // Phase 55B Plan 03 Task 2: Staging list for CSV-verified seeding drafts that
+  // will be aggregated into ONE seeding_session commit after the per-draft loop.
+  // Only populated when opts.bulkBackfill=true AND csvRowsForPage is defined
+  // (fidelity gate active). Each element is { draft, commitIndex } where
+  // commitIndex is the index in commits[] reserved for this draft's attribution.
+  //
+  // Cross-page limitation: a session spanning two pages yields two separate
+  // group assets (one per processDraftsForCapture call). This is accepted for
+  // the first backfill corpus run; a cross-page merge pass is a future follow-on.
+  const verifiedSeedingDrafts = [];
 
   for (const draft of drafts) {
     const ts = new Date().toISOString();
@@ -520,7 +535,38 @@ async function processDraftsForCapture({
           }
           continue;
         }
-        // Branch (c): budget consumed -> fall through to flipDraftToConfirmed.
+        // Branch (c): budget consumed -> stage for session aggregation (bulkBackfill).
+        // The draft is confirmed (individual flip below), but its commit entry is
+        // deferred: we collect all CSV-verified seeding drafts for the page and dispatch
+        // ONE seeding_session after the per-draft loop (SESSION-01).
+        const commitIndex = commits.length;
+        const dj_c = (draft && draft.draft_json) || {};
+        const strain_c = dj_c.species_code || dj_c.species || dj_c.strain || dj_c.fungi_type || null;
+        // Flip draft to 'confirmed' now so the row is in the right state regardless of
+        // the session dispatch outcome (Pitfall 4 rollback will set it back if needed).
+        const flipC = await flipDraftToConfirmed(pool, draftId, { extractionDb: db });
+        if (!flipC || flipC.ok !== true) {
+          // Flip failed -- treat as per-draft failure; do NOT stage for session.
+          const badEntry = {
+            draftId, log_type: logType, ok: false, asset_ids: [], log_ids: [],
+            reason: `draft_flip_failed: ${(flipC && flipC.reason) || 'unknown'}`,
+          };
+          commits.push(badEntry);
+          if (summariesFd != null) {
+            appendSummaryLine(summariesFd, buildSummaryLine({
+              ts, page: path.basename(pagePath), captureId, draftId, logType,
+              ok: false, assetCount: 0, logCount: 0, reason: badEntry.reason,
+            }));
+          }
+          continue;
+        }
+        // Reserve a placeholder in commits[]; filled after session dispatch.
+        commits.push({ draftId, log_type: logType, _pending_session: true, asset_ids: [], log_ids: [],
+          strain_codes: strain_c ? [String(strain_c).toUpperCase()] : [],
+          block_name: dj_c.block_name || null,
+        });
+        verifiedSeedingDrafts.push({ draft, commitIndex });
+        continue;
       } else {
         // Branch (d): non-seeding draft on a CSV-covered page.
         await db.updateDraftStatus(pool, draftId, 'needs_review', {
@@ -604,6 +650,94 @@ async function processDraftsForCapture({
         ok: entry.ok, assetCount: entry.asset_ids.length, logCount: entry.log_ids.length,
         reason: entry.reason,
       }));
+    }
+  }
+
+  // Phase 55B Plan 03 Task 2: session dispatch for CSV-verified seeding drafts.
+  // If any verified seeding drafts were staged, aggregate them into ONE
+  // seeding_session and dispatch it through the commit-router.
+  //
+  // sessionPagePaths: the page path(s) for the session. The synthetic capture has
+  // attachment_paths:[pagePath] (buildSyntheticCapture ~line 189); we use pagePath
+  // directly here since each processDraftsForCapture call handles one page.
+  if (opts.bulkBackfill && verifiedSeedingDrafts.length > 0) {
+    const constituentDrafts = verifiedSeedingDrafts.map((v) => v.draft);
+    const constituentIndices = verifiedSeedingDrafts.map((v) => v.commitIndex);
+    const sessionJson = aggregateSeedingDraftsToSessionJson(constituentDrafts, {
+      event_date: pageDate || null,
+    });
+    // Synthetic in-memory draft — never persisted. The log_type field tells the
+    // commit-router to route this to commitSeedingSession.
+    const syntheticDraft = {
+      id: `synthetic-session-${captureId}`,
+      log_type: 'seeding_session',
+      draft_json: sessionJson,
+    };
+    let sessionResult;
+    try {
+      sessionResult = await router.commit(client, syntheticDraft, {
+        auditLogger: { logCommit: async () => {} },
+        createMissingFungiType: false,
+        sessionPagePaths: pagePath ? [pagePath] : [],
+      });
+    } catch (e) {
+      sessionResult = { ok: false, reason: `session_commit_threw: ${e.message}`, asset_ids: [], log_ids: [] };
+    }
+
+    const ts = new Date().toISOString();
+
+    if (sessionResult && sessionResult.ok) {
+      // Session committed successfully. Attribute the result back to all constituent draft IDs.
+      for (const { draft: cDraft, commitIndex } of verifiedSeedingDrafts) {
+        const cDj = (cDraft && cDraft.draft_json) || {};
+        const cStrain = cDj.species_code || cDj.species || cDj.strain || cDj.fungi_type || null;
+        commits[commitIndex] = {
+          draftId: cDraft.id,
+          log_type: 'seeding',
+          ok: true,
+          asset_ids: sessionResult.asset_ids || [],
+          log_ids: sessionResult.log_ids || [],
+          reason: sessionResult.reason,
+          strain_codes: cStrain ? [String(cStrain).toUpperCase()] : [],
+          block_name: cDj.block_name || null,
+        };
+        if (summariesFd != null) {
+          appendSummaryLine(summariesFd, buildSummaryLine({
+            ts, page: path.basename(pagePath), captureId, draftId: cDraft.id, logType: 'seeding',
+            ok: true, assetCount: (sessionResult.asset_ids || []).length,
+            logCount: (sessionResult.log_ids || []).length,
+          }));
+        }
+      }
+    } else {
+      // Session commit failed. Pitfall 4 rollback: flip all constituents back to
+      // needs_review so they are visibly absent from the session view and can be
+      // manually reviewed or retried.
+      const rollbackReason = (sessionResult && sessionResult.reason) || 'session_commit_failed';
+      for (const { draft: cDraft, commitIndex } of verifiedSeedingDrafts) {
+        const cDj = (cDraft && cDraft.draft_json) || {};
+        const cStrain = cDj.species_code || cDj.species || cDj.strain || cDj.fungi_type || null;
+        await db.updateDraftStatus(pool, cDraft.id, 'needs_review', {
+          needs_review_reason: 'session_commit_failed',
+        });
+        commits[commitIndex] = {
+          draftId: cDraft.id,
+          log_type: 'seeding',
+          ok: false,
+          reason: 'session_commit_failed',
+          session_commit_reason: rollbackReason,
+          asset_ids: [],
+          log_ids: [],
+          strain_codes: cStrain ? [String(cStrain).toUpperCase()] : [],
+          block_name: cDj.block_name || null,
+        };
+        if (summariesFd != null) {
+          appendSummaryLine(summariesFd, buildSummaryLine({
+            ts, page: path.basename(pagePath), captureId, draftId: cDraft.id, logType: 'seeding',
+            ok: false, assetCount: 0, logCount: 0, reason: 'session_commit_failed',
+          }));
+        }
+      }
     }
   }
 
