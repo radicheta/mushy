@@ -439,3 +439,109 @@ describe('patch_files (patchGroupAssetFiles JSON:API PATCH shape)', () => {
     expect(result.http_status).toBe(422);
   });
 });
+
+// ============================================================================
+// Phase 55B Plan 01 Task 3: RED image-upload scaffolds
+// These tests are intentionally RED -- commitSeedingSession does not yet
+// import files.js nor accept ctx.sessionPagePaths. They will turn GREEN in
+// Plan 03.
+// ============================================================================
+
+const os = require('os');
+const fsSync = require('fs');
+
+describe('commitSeedingSession -- image upload (D-03)', () => {
+  let tmpDir3;
+  let realPagePath;
+
+  beforeAll(async () => {
+    tmpDir3 = fsSync.mkdtempSync(path.join(os.tmpdir(), 'cs-img-'));
+    realPagePath = path.join(tmpDir3, 'IMG_3790.jpg');
+    fsSync.writeFileSync(realPagePath, Buffer.from([0xff, 0xd8]));
+  });
+
+  afterAll(() => {
+    try { fsSync.rmSync(tmpDir3, { recursive: true }); } catch (_) {}
+  });
+
+  it('image: when ctx.sessionPagePaths is non-empty, calls uploadAttachments (postBinary) then client.patch in order', async () => {
+    const client = makeSessionMockClient();
+    // Mock postBinary to return a file--file UUID
+    client.postBinary = jest.fn(async () => ({
+      ok: true,
+      status: 201,
+      body: { data: { id: 'file-uuid-img-1', type: 'file--file' } },
+    }));
+    // Mock patch to succeed
+    client.patch = jest.fn(async () => ({ ok: true, status: 200 }));
+
+    const { ctx } = makeAuditCtx();
+    ctx.sessionPagePaths = [realPagePath];
+
+    const r = await commitSeedingSession(client, draftFor(MAY22_FIXTURE, 'd-img-1'), ctx);
+
+    expect(r.ok).toBe(true);
+    // postBinary (upload) must have been called before patch (associate)
+    expect(client.postBinary).toHaveBeenCalled();
+    expect(client.patch).toHaveBeenCalled();
+
+    // Assert order: postBinary invocation order < patch invocation order
+    const postBinaryOrder = client.postBinary.mock.invocationCallOrder[0];
+    const patchOrder = client.patch.mock.invocationCallOrder[0];
+    expect(postBinaryOrder).toBeLessThan(patchOrder);
+  });
+
+  it('image: PATCH targets session group id with relationships.file (reuses patch_files shape)', async () => {
+    const client = makeSessionMockClient();
+    const fileUuid = 'file-uuid-img-2';
+    client.postBinary = jest.fn(async () => ({
+      ok: true,
+      status: 201,
+      body: { data: { id: fileUuid, type: 'file--file' } },
+    }));
+    client.patch = jest.fn(async () => ({ ok: true, status: 200 }));
+
+    const { ctx } = makeAuditCtx();
+    ctx.sessionPagePaths = [realPagePath];
+
+    await commitSeedingSession(client, draftFor(MAY22_FIXTURE, 'd-img-2'), ctx);
+
+    const sessionGroupId = client._created.groups[0].id;
+    expect(client.patch).toHaveBeenCalledWith(
+      `/api/asset/group/${sessionGroupId}`,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          relationships: expect.objectContaining({
+            file: expect.objectContaining({
+              data: expect.arrayContaining([
+                { type: 'file--file', id: fileUuid },
+              ]),
+            }),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('image: upload failure is non-fatal -- result.ok is true and attachments_failed is populated', async () => {
+    const client = makeSessionMockClient();
+    // Force the upload to fail (HTTP 500)
+    client.postBinary = jest.fn(async () => ({
+      ok: false,
+      status: 500,
+      body: { errors: [{ status: '500' }] },
+    }));
+    client.patch = jest.fn(async () => ({ ok: true, status: 200 }));
+
+    const { ctx } = makeAuditCtx();
+    ctx.sessionPagePaths = [realPagePath];
+
+    const r = await commitSeedingSession(client, draftFor(MAY22_FIXTURE, 'd-img-3'), ctx);
+
+    // Non-fatal: session commit still succeeds
+    expect(r.ok).toBe(true);
+    // attachments_failed must be populated
+    expect(Array.isArray(r.attachments_failed)).toBe(true);
+    expect(r.attachments_failed.length).toBeGreaterThan(0);
+  });
+});
