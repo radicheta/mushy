@@ -276,6 +276,65 @@ function consumeCsvBudget(budget, strainUpper) {
   return true;
 }
 
+// Phase 55B Plan 03: aggregate CSV-verified seeding drafts for a page into one
+// seeding_session draft_json shape, ready for commitSeedingSession.
+//
+// Groups by (parentValue::speciesUpper) key. Emits the nested {value:...} shape
+// that commitSeedingSession reads at g.parent.value / g.species.value / g.qty.value /
+// g.child_block_names.value (lines 153-156 of commit-seeding-session.js).
+//
+// Known limitation: a session spanning two pages yields two separate group assets
+// (one per aggregateSeedingDraftsToSessionJson call). This is accepted for the
+// first backfill corpus run; a cross-page merge pass is a future follow-on.
+function aggregateSeedingDraftsToSessionJson(verifiedDrafts, { event_date } = {}) {
+  // Map from groupKey -> {parent, species, qty, childBlockNames}
+  const groupMap = new Map();
+
+  for (const draft of (verifiedDrafts || [])) {
+    const dj = (draft && draft.draft_json) || {};
+
+    // Parent: prefer parent_batch_name (D-11 normalized), then parent.value, then parent string.
+    const parentValue = dj.parent_batch_name
+      || (dj.parent && typeof dj.parent === 'object' && dj.parent.value)
+      || (typeof dj.parent === 'string' ? dj.parent : null)
+      || 'NO_PARENT';
+
+    // Species: prefer species_code, then species.value, then other fallbacks.
+    const rawSpecies = dj.species_code
+      || (dj.species && typeof dj.species === 'object' && dj.species.value)
+      || (typeof dj.species === 'string' ? dj.species : null)
+      || dj.strain
+      || dj.fungi_type
+      || '';
+    const speciesUpper = String(rawSpecies).toUpperCase();
+
+    const groupKey = parentValue + '::' + speciesUpper;
+
+    if (!groupMap.has(groupKey)) {
+      groupMap.set(groupKey, { parent: parentValue, species: speciesUpper, qty: 0, childBlockNames: [] });
+    }
+    const g = groupMap.get(groupKey);
+    g.qty += (typeof dj.qty === 'number' ? dj.qty : 1);
+    if (dj.block_name) g.childBlockNames.push(dj.block_name);
+  }
+
+  const groups = [];
+  for (const g of groupMap.values()) {
+    groups.push({
+      parent: { value: g.parent },
+      species: { value: g.species },
+      qty: { value: g.qty },
+      child_block_names: { value: g.childBlockNames },
+    });
+  }
+
+  return {
+    type: 'seeding_session',
+    event_date,
+    groups,
+  };
+}
+
 async function flipDraftToConfirmed(pool, draftId, { extractionDb } = {}) {
   // Phase 54 Plan 02: bulk-backfill short-circuit. Skips the live confirm
   // YES-round-trip by writing the canonical 'confirmed' status with an audit
@@ -926,6 +985,7 @@ module.exports = {
   assertSantiInLoop,
   buildCsvBudget,
   consumeCsvBudget,
+  aggregateSeedingDraftsToSessionJson,
   flipDraftToConfirmed,
   buildSummaryLine,
   openSummariesLog,
