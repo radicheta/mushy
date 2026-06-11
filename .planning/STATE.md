@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.11
 milestone_name: Extraction prereqs + 2025-paper backfill
 status: executing
-last_updated: "2026-06-11T01:37:23.039Z"
+last_updated: "2026-06-11T01:44:04.229Z"
 last_activity: 2026-06-11
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 19
-  completed_plans: 15
+  completed_plans: 16
   percent: 60
 ---
 
@@ -97,7 +97,7 @@ All in `.planning/todos/pending/`:
 ## Current Position
 
 Phase: 55B (fidelity-corpus-unblock) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-06-11
 
@@ -284,6 +284,7 @@ Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (for
 | Phase 44 P05 | 12min | 2 tasks | 5 files |
 | Phase 44 P06 | 25 | 3 tasks | 7 files |
 | Phase 44 P03 | 5m44s | 2 tasks | 9 files |
+| Phase 55B-fidelity-corpus-unblock P03 | 12min | 2 tasks | 2 files |
 
 ## Deferred Items
 
@@ -325,7 +326,7 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 ## Session Continuity
 
-Last session: 2026-06-11T01:37:23.030Z
+Last session: 2026-06-11T01:44:04.220Z
 Next up: Phase 45 (NORTH-STAR commit_failed ack + replay outstanding silent-failure drafts `b8a1e586` Vikki Rambo + `1fb28e70` Santi LIMA). Optional: 24-h v1.8 soak observation before starting Phase 45 scope work. v1.8 cutover already complete (alerter recreated 01:41:58 ART; bridge already on Phase 46 code).
 
 Previously: kick off v1.8 Phase 1 (event-gate + signal_outbound). Plan-01 = 100-capture hand-classification smoke from mushdatadump-prod, BEFORE spec-locking the gate. Reference notes:

@@ -307,7 +307,7 @@ Santi 2026-06-09. Context: `.planning/phases/55B-*/55B-CONTEXT.md`.
 **Depends on:** Phase 55 (tooling + docs), Phase 52 (session group asset), Phase 51
 (upsert), Phase 54.1 (needs_review hold). Private-files infra RESOLVED (2026-05-25).
 
-**Plans:** 2/4 plans executed
+**Plans:** 3/4 plans executed
 
 Plans:
 **Wave 1**
@@ -317,7 +317,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 55B-03-PLAN.md — Session routing (aggregateSeedingDraftsToSessionJson) + page-image attach on session group asset (SESSION-01/02/03)
+- [x] 55B-03-PLAN.md — Session routing (aggregateSeedingDraftsToSessionJson) + page-image attach on session group asset (SESSION-01/02/03)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
