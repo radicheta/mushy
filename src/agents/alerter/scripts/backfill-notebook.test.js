@@ -1111,3 +1111,298 @@ describe('main: run-id collision (Plan 03)', () => {
     }
   });
 });
+
+// ============================================================================
+// Phase 55B Plan 01 Task 2: RED scaffolds for Wave 1/2 implementation
+// These tests are intentionally RED -- they reference buildCsvBudget,
+// consumeCsvBudget, and aggregateSeedingDraftsToSessionJson which are NOT
+// yet exported from backfill-notebook.js. They also rely on csvRowsForPage
+// and csvBudget params of processDraftsForCapture which are not yet honored.
+// They will turn GREEN in Plans 02/03.
+// ============================================================================
+
+const {
+  buildCsvBudget,
+  consumeCsvBudget,
+  aggregateSeedingDraftsToSessionJson,
+} = require('./backfill-notebook');
+
+describe('processDraftsForCapture (fidelity cross-check)', () => {
+  let tmpDir2;
+  let fd2;
+  beforeEach(() => {
+    tmpDir2 = fs.mkdtempSync(path2.join(os.tmpdir(), 'bf-fid-'));
+    fd2 = fs.openSync(path2.join(tmpDir2, 'summaries.log'), 'a');
+  });
+  afterEach(() => {
+    try { fs.closeSync(fd2); } catch (_e) {}
+  });
+
+  function makeDb2(overrides = {}) {
+    return {
+      getDraftsForCapture: jest.fn().mockResolvedValue([]),
+      updateDraftStatus: jest.fn().mockResolvedValue({ ok: true }),
+      ...overrides,
+    };
+  }
+
+  function makeRouter2(overrides = {}) {
+    return {
+      commit: jest.fn().mockResolvedValue({ ok: true, asset_ids: ['a1'], log_ids: ['l1'] }),
+      ...overrides,
+    };
+  }
+
+  test('no_csv: when no CSV rows exist for page, all drafts are held with needs_review_reason fidelity_cross_check_no_csv', async () => {
+    const drafts = [
+      { id: 'd-nc-1', log_type: 'seeding', draft_json: { species_code: 'SHI' } },
+    ];
+    const extractionDb = makeDb2({
+      getDraftsForCapture: jest.fn().mockResolvedValue(drafts),
+    });
+    const router = makeRouter2();
+
+    // csvRowsForPage=[] means no CSV coverage for this page -> fidelity hold
+    const r = await processDraftsForCapture({
+      pool: {}, client: {}, captureId: 'cap-fid-1', pagePath: '/c/IMG_3775.jpg',
+      opts: { bulkBackfill: true, farmer: 'santi' },
+      summariesFd: fd2, extractionDb, commitRouter: router, dryRun: false,
+      curatedStrains: ['SHI', 'KOY'],
+      csvRowsForPage: [],   // new param -- not yet honored
+      csvBudget: null,      // new param -- not yet honored
+    });
+
+    expect(router.commit).not.toHaveBeenCalled();
+    expect(extractionDb.updateDraftStatus).toHaveBeenCalledWith(
+      expect.anything(), 'd-nc-1', 'needs_review',
+      expect.objectContaining({ needs_review_reason: 'fidelity_cross_check_no_csv' }),
+    );
+    // held entry shape
+    expect(r.commits).toHaveLength(1);
+    const entry = r.commits[0];
+    expect(entry.ok).toBe('held');
+    // no_csv_reason assertion
+    expect(entry.reason).toBe('fidelity_cross_check_no_csv');
+  });
+
+  test('csv_verified: CSV-matching draft is committed (does NOT call updateDraftStatus needs_review)', async () => {
+    const drafts = [
+      { id: 'd-cv-1', log_type: 'seeding', draft_json: { species_code: 'SHI', block_name: '260101_SHI_1' } },
+    ];
+    const extractionDb = makeDb2({
+      getDraftsForCapture: jest.fn().mockResolvedValue(drafts),
+    });
+    const router = makeRouter2();
+
+    // csvRowsForPage has one SHI row -> budget of 1; draft is verified
+    const csvRowsForPage = [{ strain: 'SHI', block_name: '260101_SHI_1', page_date: '2025-01-01' }];
+    const csvBudget = buildCsvBudget(csvRowsForPage); // will throw/fail if not exported
+
+    const r = await processDraftsForCapture({
+      pool: {}, client: {}, captureId: 'cap-fid-2', pagePath: '/c/IMG_3775.jpg',
+      opts: { bulkBackfill: true, farmer: 'santi' },
+      summariesFd: fd2, extractionDb, commitRouter: router, dryRun: false,
+      curatedStrains: ['SHI', 'KOY'],
+      csvRowsForPage,
+      csvBudget,
+    });
+
+    // csv_verified: commit called, no needs_review updateDraftStatus
+    expect(router.commit).toHaveBeenCalledTimes(1);
+    const needsReviewCalls = extractionDb.updateDraftStatus.mock.calls.filter(
+      (c) => c[2] === 'needs_review',
+    );
+    expect(needsReviewCalls).toHaveLength(0);
+  });
+
+  test('fidelity hold_reason: CSV-mismatch draft is held with needs_review_reason fidelity_cross_check_unverified', async () => {
+    const drafts = [
+      { id: 'd-fm-1', log_type: 'seeding', draft_json: { species_code: 'KOY', block_name: '260101_KOY_1' } },
+    ];
+    const extractionDb = makeDb2({
+      getDraftsForCapture: jest.fn().mockResolvedValue(drafts),
+    });
+    const router = makeRouter2();
+
+    // CSV has SHI but draft is KOY -> mismatch -> hold
+    const csvRowsForPage = [{ strain: 'SHI', block_name: '260101_SHI_1', page_date: '2025-01-01' }];
+    const csvBudget = buildCsvBudget(csvRowsForPage);
+
+    const r = await processDraftsForCapture({
+      pool: {}, client: {}, captureId: 'cap-fid-3', pagePath: '/c/IMG_3775.jpg',
+      opts: { bulkBackfill: true, farmer: 'santi' },
+      summariesFd: fd2, extractionDb, commitRouter: router, dryRun: false,
+      curatedStrains: ['SHI', 'KOY'],
+      csvRowsForPage,
+      csvBudget,
+    });
+
+    expect(router.commit).not.toHaveBeenCalled();
+    expect(extractionDb.updateDraftStatus).toHaveBeenCalledWith(
+      expect.anything(), 'd-fm-1', 'needs_review',
+      expect.objectContaining({ needs_review_reason: 'fidelity_cross_check_unverified' }),
+    );
+    const entry = r.commits[0];
+    expect(entry.ok).toBe('held');
+    expect(entry.reason).toBe('fidelity_cross_check_unverified');
+  });
+
+  test('fidelity budget-exhausted: when CSV count < draft count for same strain, overflow draft is held', async () => {
+    // CSV budget = 1 SHI; 2 SHI drafts -> second one is overflow -> held
+    const drafts = [
+      { id: 'd-bx-1', log_type: 'seeding', draft_json: { species_code: 'SHI', block_name: '260101_SHI_1' } },
+      { id: 'd-bx-2', log_type: 'seeding', draft_json: { species_code: 'SHI', block_name: '260101_SHI_2' } },
+    ];
+    const extractionDb = makeDb2({
+      getDraftsForCapture: jest.fn().mockResolvedValue(drafts),
+    });
+    const router = makeRouter2();
+
+    const csvRowsForPage = [{ strain: 'SHI', block_name: '260101_SHI_1', page_date: '2025-01-01' }];
+    const csvBudget = buildCsvBudget(csvRowsForPage); // budget = {SHI: 1}
+
+    const r = await processDraftsForCapture({
+      pool: {}, client: {}, captureId: 'cap-fid-4', pagePath: '/c/IMG_3775.jpg',
+      opts: { bulkBackfill: true, farmer: 'santi' },
+      summariesFd: fd2, extractionDb, commitRouter: router, dryRun: false,
+      curatedStrains: ['SHI', 'KOY'],
+      csvRowsForPage,
+      csvBudget,
+    });
+
+    // First SHI committed; second held (budget exhausted)
+    expect(router.commit).toHaveBeenCalledTimes(1);
+    const heldEntries = r.commits.filter((c) => c.ok === 'held');
+    expect(heldEntries.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('aggregateSeedingDraftsToSessionJson', () => {
+  test('aggregate single parent+species produces one group', () => {
+    const drafts = [
+      {
+        id: 'd-agg-1',
+        draft_json: {
+          parent: { value: '260101_SHI_1' },
+          species: { value: 'SHI' },
+          block_name: '260515_SHI_1',
+          qty: 1,
+        },
+      },
+      {
+        id: 'd-agg-2',
+        draft_json: {
+          parent: { value: '260101_SHI_1' },
+          species: { value: 'SHI' },
+          block_name: '260515_SHI_2',
+          qty: 1,
+        },
+      },
+    ];
+
+    const result = aggregateSeedingDraftsToSessionJson(drafts, { event_date: '2026-05-15' });
+
+    expect(result.type).toBe('seeding_session');
+    expect(result.event_date).toBe('2026-05-15');
+    expect(result.groups).toHaveLength(1);
+    const g = result.groups[0];
+    expect(g.parent.value).toBe('260101_SHI_1');
+    expect(g.species.value).toBe('SHI');
+    // child_block_names array populated
+    expect(g.child_block_names.value).toEqual(
+      expect.arrayContaining(['260515_SHI_1', '260515_SHI_2']),
+    );
+  });
+
+  test('aggregate multi-parent produces multiple groups', () => {
+    const drafts = [
+      {
+        id: 'd-mp-1',
+        draft_json: {
+          parent: { value: '260101_SHI_1' },
+          species: { value: 'SHI' },
+          block_name: '260515_SHI_1',
+          qty: 1,
+        },
+      },
+      {
+        id: 'd-mp-2',
+        draft_json: {
+          parent: { value: '260118_KOY_5' },
+          species: { value: 'KOY' },
+          block_name: '260515_KOY_1',
+          qty: 1,
+        },
+      },
+    ];
+
+    const result = aggregateSeedingDraftsToSessionJson(drafts, { event_date: '2026-05-15' });
+
+    expect(result.groups).toHaveLength(2);
+    const parents = result.groups.map((g) => g.parent.value);
+    expect(parents).toContain('260101_SHI_1');
+    expect(parents).toContain('260118_KOY_5');
+  });
+
+  test('aggregate populates child_block_names array from block_name field', () => {
+    const drafts = [
+      {
+        id: 'd-bn-1',
+        draft_json: {
+          parent: { value: '260101_KOY_3' },
+          species_code: 'KOY',
+          block_name: '260515_KOY_4',
+          qty: 1,
+        },
+      },
+      {
+        id: 'd-bn-2',
+        draft_json: {
+          parent: { value: '260101_KOY_3' },
+          species_code: 'KOY',
+          block_name: '260515_KOY_5',
+          qty: 1,
+        },
+      },
+    ];
+
+    const result = aggregateSeedingDraftsToSessionJson(drafts, { event_date: '2026-05-15' });
+
+    expect(result.groups).toHaveLength(1);
+    const names = result.groups[0].child_block_names.value;
+    expect(names).toEqual(expect.arrayContaining(['260515_KOY_4', '260515_KOY_5']));
+    expect(names).toHaveLength(2);
+  });
+});
+
+describe('buildCsvBudget / consumeCsvBudget', () => {
+  test('buildCsvBudget builds Map<strainUpper, count> from CSV rows, skipping empty strain', () => {
+    const rows = [
+      { strain: 'SHI', block_name: 'a' },
+      { strain: 'shi', block_name: 'b' },   // lowercased -> normalized to SHI
+      { strain: 'KOY', block_name: 'c' },
+      { strain: '',    block_name: 'd' },   // empty -> skipped
+      { strain: null,  block_name: 'e' },   // null -> skipped
+    ];
+
+    const budget = buildCsvBudget(rows);
+
+    expect(budget).toBeInstanceOf(Map);
+    expect(budget.get('SHI')).toBe(2);
+    expect(budget.get('KOY')).toBe(1);
+    expect(budget.has('')).toBe(false);
+  });
+
+  test('consumeCsvBudget returns false when budget for strain reaches 0', () => {
+    const rows = [{ strain: 'SHI', block_name: 'x' }];
+    const budget = buildCsvBudget(rows);
+
+    // First consume: should return true (budget was 1, now 0)
+    const first = consumeCsvBudget(budget, 'SHI');
+    expect(first).toBe(true);
+
+    // Second consume: budget is 0, should return false
+    const second = consumeCsvBudget(budget, 'SHI');
+    expect(second).toBe(false);
+  });
+});
