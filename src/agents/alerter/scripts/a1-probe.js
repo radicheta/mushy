@@ -12,11 +12,25 @@ const path = require('path');
 const DEV_URL = 'http://10.68.155.50:18080'; // dev only — never :8082
 if (/:8082|prod/i.test(DEV_URL)) { console.error('FATAL: dev URL guard tripped'); process.exit(2); }
 
+// Load creds in-process WITHOUT printing them (the sanctioned remedy for the
+// transcript secret-leak guard). Root .env supplies the username; the authoritative
+// bot password lives in tenants/mossrock/secrets.env (docker-compose.override.yml:148),
+// sourced second so it overrides any stale value in .env.
+function loadEnvFile(p) {
+  try {
+    for (const line of fs.readFileSync(p, 'utf8').split('\n')) {
+      const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+      if (m) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+    }
+  } catch (_) { /* file optional */ }
+}
+loadEnvFile('/mnt/slime-kingdom/opt/mushy/.env');
+loadEnvFile('/mnt/slime-kingdom/opt/mushy/tenants/mossrock/secrets.env');
+
 const username = process.env.FARMOS_USERNAME;
 const password = process.env.FARMOS_PASSWORD;
 if (!username || !password) {
-  console.error('Missing FARMOS_USERNAME / FARMOS_PASSWORD in env.');
-  console.error('Run:  set -a; source /mnt/slime-kingdom/opt/mushy/.env; set +a   then re-run this script.');
+  console.error('Missing FARMOS_USERNAME / FARMOS_PASSWORD after loading .env + secrets.env.');
   process.exit(2);
 }
 
