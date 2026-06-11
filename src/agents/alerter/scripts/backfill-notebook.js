@@ -250,6 +250,32 @@ function assertSantiInLoop(opts) {
   }
 }
 
+// ============================================================================
+// Phase 55B Plan 02: CSV budget helpers for fidelity cross-check gate.
+// ============================================================================
+
+function buildCsvBudget(csvRows) {
+  // Build Map<strainUpper, count> from CSV rows. Mirrors strainSetFromCsv in
+  // build-backfill-receipt.js but lives here so processDraftsForCapture can
+  // consume/decrement entries per draft (mutable budget).
+  const m = new Map();
+  for (const r of (csvRows || [])) {
+    const s = String(r.strain || '').toUpperCase();
+    if (!s) continue;
+    m.set(s, (m.get(s) || 0) + 1);
+  }
+  return m;
+}
+
+function consumeCsvBudget(budget, strainUpper) {
+  // Returns true and decrements the count if budget for strainUpper > 0.
+  // Returns false when budget is exhausted or the strain is absent.
+  const remaining = budget.get(strainUpper) || 0;
+  if (remaining <= 0) return false;
+  budget.set(strainUpper, remaining - 1);
+  return true;
+}
+
 async function flipDraftToConfirmed(pool, draftId, { extractionDb } = {}) {
   // Phase 54 Plan 02: bulk-backfill short-circuit. Skips the live confirm
   // YES-round-trip by writing the canonical 'confirmed' status with an audit
@@ -815,6 +841,8 @@ module.exports = {
   dispatchPage,
   // Plan 02
   assertSantiInLoop,
+  buildCsvBudget,
+  consumeCsvBudget,
   flipDraftToConfirmed,
   buildSummaryLine,
   openSummariesLog,
