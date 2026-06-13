@@ -1,6 +1,6 @@
 ---
 id: SEED-005
-status: dormant
+status: activating
 title: Chamber water-mass observer + condensation camera macro
 captured: 2026-05-08
 trigger: VPD scoping discussion (farmer call 2026-05-09); composes with Phase 31 force-evaporation review and any future closed-loop VPD work
@@ -9,6 +9,15 @@ composes_with: [SEED-004, 999.27, 999.33, Phase 31]
 ---
 
 # SEED-005 — Chamber water-mass observer + condensation camera macro
+
+> **2026-06-13 — ACTIVATING (source #3 first).** Macro lens arrived + mounted on the fc1
+> camera, satisfying this seed's "camera macro depends on camera being back online"
+> dependency. Pulling **data-source #3 (condensation camera macro)** forward on its own to
+> calibrate the RH sensors near 100%. Decisions locked + full plan:
+> [`../notes/2026-06-13-cv-condensation-detection-plan.md`](../notes/2026-06-13-cv-condensation-detection-plan.md).
+> Locked: capture-dataset-first → tiny CNN → bridge-side inference; detect condensation on the
+> **outer** bag surface; daylight-only (flash LED deferred). The psychrometric + actuator-integral
+> water-mass observer (sources #1/#2) remains the larger arc this feeds.
 
 **Captured:** 2026-05-08, ahead of overnight VPD research and Saturday lab visit.
 **Source:** Operator note while planning VPD discussion items for the farmer call.
