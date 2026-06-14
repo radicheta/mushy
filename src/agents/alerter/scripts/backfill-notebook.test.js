@@ -1486,6 +1486,14 @@ describe('processDraftsForCapture (session dispatch wiring - Plan 55B-03 Task 2)
     const attributed = r.commits.filter((c) => c.draftId === 'd-s1' || c.draftId === 'd-s2');
     expect(attributed).toHaveLength(2);
     expect(attributed.every((c) => c.ok === true)).toBe(true);
+    // Session assets are credited to exactly ONE representative (no per-constituent
+    // duplication -- prevents the receipt's false-positive duplicate_asset_count).
+    const withAssets = attributed.filter((c) => (c.asset_ids || []).length > 0);
+    expect(withAssets).toHaveLength(1);
+    expect(withAssets[0].asset_ids).toEqual(['a1']);
+    const members = attributed.filter((c) => c.session_member === true);
+    expect(members).toHaveLength(1);
+    expect(members[0].asset_ids).toEqual([]);
   });
 
   test('ctx.sessionPagePaths is enriched from pagePath and forwarded to router.commit', async () => {

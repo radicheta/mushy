@@ -687,28 +687,36 @@ async function processDraftsForCapture({
     const ts = new Date().toISOString();
 
     if (sessionResult && sessionResult.ok) {
-      // Session committed successfully. Attribute the result back to all constituent draft IDs.
-      for (const { draft: cDraft, commitIndex } of verifiedSeedingDrafts) {
+      // Session committed successfully. The session minted its assets/logs ONCE, so credit
+      // the full asset_ids/log_ids to a single representative constituent (the first); the
+      // rest are recorded as ok session members carrying no assets. Copying the whole set
+      // onto every constituent inflates the receipt's asset/log totals and trips the
+      // duplicate-asset detector (same UUID under N block_names = false positive). The
+      // member drafts keep their strain_codes/block_name so the CSV diff is unaffected.
+      verifiedSeedingDrafts.forEach(({ draft: cDraft, commitIndex }, i) => {
         const cDj = (cDraft && cDraft.draft_json) || {};
         const cStrain = cDj.species_code || cDj.species || cDj.strain || cDj.fungi_type || null;
+        const isRep = i === 0;
+        const cAssetIds = isRep ? (sessionResult.asset_ids || []) : [];
+        const cLogIds = isRep ? (sessionResult.log_ids || []) : [];
         commits[commitIndex] = {
           draftId: cDraft.id,
           log_type: 'seeding',
           ok: true,
-          asset_ids: sessionResult.asset_ids || [],
-          log_ids: sessionResult.log_ids || [],
+          asset_ids: cAssetIds,
+          log_ids: cLogIds,
           reason: sessionResult.reason,
+          session_member: !isRep,
           strain_codes: cStrain ? [String(cStrain).toUpperCase()] : [],
           block_name: cDj.block_name || null,
         };
         if (summariesFd != null) {
           appendSummaryLine(summariesFd, buildSummaryLine({
             ts, page: path.basename(pagePath), captureId, draftId: cDraft.id, logType: 'seeding',
-            ok: true, assetCount: (sessionResult.asset_ids || []).length,
-            logCount: (sessionResult.log_ids || []).length,
+            ok: true, assetCount: cAssetIds.length, logCount: cLogIds.length,
           }));
         }
-      }
+      });
     } else {
       // Session commit failed. Pitfall 4 rollback: flip all constituents back to
       // needs_review so they are visibly absent from the session view and can be
