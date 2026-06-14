@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.11
 milestone_name: Extraction prereqs + 2025-paper backfill
 status: executing
-last_updated: "2026-06-11T01:44:04.229Z"
-last_activity: 2026-06-11
+last_updated: "2026-06-14T21:40:00.000Z"
+last_activity: 2026-06-14
 progress:
   total_phases: 5
   completed_phases: 3
@@ -20,30 +20,69 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 55B — fidelity-corpus-unblock (PAUSED 2026-06-10: code complete, 2 live gates blocked on dev :18080 creds)
+**Current focus:** Phase 55B — fidelity-corpus-unblock (2026-06-14: fidelity HARD GATE VERIFIED live; 2 follow-ons open before the parked full-corpus run)
 
-## Phase 55B Pause (2026-06-10) — CODE COMPLETE, LIVE GATES PARKED
+## Phase 55B Update (2026-06-14) — HARD GATE GREEN; 2 FOLLOW-ONS OPEN
 
-**Status:** All 4 plans' code shipped + green (1397 alerter tests, 0 regressions, tree clean, 22 commits on `feat/phase-55-full-corpus`). Two live operator gates remain BLOCKED. Phase NOT verified/complete.
+**Status:** The 2026-06-10 "blocked on dev creds" pause is RESOLVED. Fixing the creds exposed
+(and we fixed + verified) three real bugs the auth wall had masked. The fidelity gate — the
+phase's whole purpose — now holds POY-as-KOY live. 1397 alerter tests green, tree clean.
+4 commits this session on `feat/phase-55-full-corpus` (see below). Phase NOT yet
+verified/complete: 2 follow-ons + the formal verification/code-review gate remain.
 
-**What shipped (commits `202c300`..`823c9e7`):**
-- **55B-01:** `patchGroupAssetFiles` JSON:API helper (relationships.file PATCH on asset--group) + RED scaffolds (fidelity/aggregate/budget/image). `patch_files` test GREEN.
-- **55B-02:** Commit-time CSV fidelity hold gate in `processDraftsForCapture` (3 branches: `fidelity_cross_check_no_csv` / `_unverified` / `_nonseeding`; `buildCsvBudget`/`consumeCsvBudget`). The durable catch for the 2026-06-07 POY-committed-as-KOY silent misattribution. Gate only fires under `opts.bulkBackfill===true`; live paths untouched.
-- **55B-03:** `aggregateSeedingDraftsToSessionJson` + dispatch wiring in `processDraftsForCapture` (one `seeding_session` commit per page, constituent attribution, Pitfall-4 `session_commit_failed` rollback) + best-effort page-image attach in `commit-seeding-session.js` (upload + `patchGroupAssetFiles`, never aborts the commit). NOTE: first 55B-03 pass SKIPPED the dispatch wiring claiming "no RED test"; sent back and fixed with a covering test — watch for this TDD-dodge pattern.
-- **55B-04:** `55B-RE-SMOKE-RUNBOOK.md` authored (GA1 :5433 isolation, `--limit=5 --resume-from=IMG_3775.jpg`, per-page PASS criteria, F2 reconcile, dev-auth pre-flight, scope fence). Task 2 (live re-smoke) NOT run.
+Full detail: memory [[project_phase55b_hard_gate_green_2026_06_14]], `55B-A1-SMOKE.md`
+(A1 PASS), `55B-RE-SMOKE.md` (runs 1-3). Superseded memories:
+[[project_dev_farmos_18080_rejects_prod_bot_creds]] (RESOLVED), and the new
+[[project_farmos_image_upload_needs_field_scoped_route]].
 
-**THE BLOCKER (both live gates):** dev farmOS **:18080 rejects the prod bot login (HTTP 400 "unrecognized username or password")**. `GET /api` = 200 (instance is up), but the `mushy-bot` + `secrets.env` password that works on prod :8082 is not valid on dev :18080. Both Phase 55B live gates (A1 PATCH probe in 55B-01 Task 4, AND the 5-page re-smoke in 55B-04 Task 2) write to dev :18080, so both are parked. See `55B-A1-SMOKE.md` (verdict: BLOCKED, not falsified). A1 design call: direct `patchGroupAssetFiles` PATCH kept as PRIMARY (fully unit-tested); LIVE A1 confirmation folded into the re-smoke's "session image attached" pass criterion.
+**Fixed + verified this session:**
+- **Dev :18080 creds** — was a password mismatch (not a missing account). Reset dev
+  `mushy-bot` via drush to match `secrets.env`; login now 200.
+- **`bbd9212` image-attach** — the A1 `patchGroupAssetFiles` design was FALSIFIED live: this
+  farmOS has no octet-stream route at `/api/file/file` (415, identical dev+prod; the upload
+  path never worked) and the `file` field rejects jpg. Rewrote to the field-scoped route
+  `POST /api/asset/group/{uuid}/image` (creates+links in one call; photos -> `image` field).
+  `a1-probe.js` rewritten; A1 PASS. `patchGroupAssetFiles` removed.
+- **`96d1cd0` fidelity-gate wiring** — main() called `processDraftsForCapture` WITHOUT
+  `csvRowsForPage/csvBudget/pageDate`, so the gate guard was always false and EVERY draft
+  auto-confirmed (re-smoke run 1 reproduced POY-committed-as-KOY). Wired the inputs at
+  `backfill-notebook.js:1050`. Re-smoke run 2: IMG_3776 POY-misread-as-KOY HELD as
+  `fidelity_cross_check_unverified`, not committed. 31 held / 33 committed.
+- **`0526025` receipt dup false-positive** — session aggregation credited the whole
+  session's asset_ids to every constituent draft -> false `duplicate_asset_count=22` +
+  inflated totals. Now credits one representative; rest `session_member:true` empty. Re-smoke
+  run 3: `duplicate_asset_count: 0 (PASS)`, totals sane, hard gate intact.
 
-**AWAITING SANTI DECISION (isolation strategy for the live gates):**
-1. **Fix dev :18080 creds** (cleanest, keeps GA1 isolation) — create/reset a dev `mushy-bot` or give a dev admin login; then run A1 probe + re-smoke against dev.
-2. **Run on prod :8082 + clean up** — use working prod creds + throwaway :5433 draft DB, then DELETE the ~5 test session assets from prod farmOS after (violates plan's GA1 farmOS-isolation; risky).
-3. **Park live validation, ship code** — record as OPERATOR-DEFERRED (like Phases 48/49); phase stays `human_needed`.
+**OPEN follow-ons (none blocking the hard-gate PASS; do as separate scoped pieces):**
+1. **Strain gate (Phase 54.1) is ALSO unwired** in this driver — `curatedStrains` not passed
+   at `backfill-notebook.js:1050`; `require('../src/config').strains` is empty. Needs a
+   curated-strain SOURCE decision first (live farmOS `fungi_type` terms vs the hardcoded
+   14/24 set). Not the 55B hard gate, but the same call-site gap.
+2. **D-03 page-image-on-session, live** — the A1 attach mechanism is proven standalone
+   (55B-A1-SMOKE.md), but the re-smoke routes via the per-page seeding_session and the image
+   landing on the session group asset is NOT yet confirmed (F2 reconcile, runbook STEP 7).
 
 **RESUME STEPS (next session):**
-1. Resolve the isolation decision above.
-2. If option 1: `node src/agents/alerter/scripts/a1-probe.js` (dev-locked; self-loads creds) — expect `=== A1 PASS ===`; records `55B-A1-SMOKE.md`.
-3. Then follow `55B-RE-SMOKE-RUNBOOK.md` from Step 0 (dev-auth pre-flight). Hard gate: IMG_3776 POY HELD (reason `fidelity_cross_check_unverified`), NOT committed as KOY. Record `55B-RE-SMOKE.md`.
-4. Close 55B-01 Task 4 + 55B-04 Task 2 checkpoints, write `55B-04-SUMMARY.md`, then run phase verification + completion (code review gate still pending too).
+1. Decide whether to do follow-on #1 (#strain-gate source) and/or #2 (#image-on-session F2).
+2. Then close 55B-04 (write `55B-04-SUMMARY.md`), run phase verification + completion
+   (code-review gate still pending). The parked 73-page full-corpus run stays Phase 55 /
+   GA2-owned and gated on Cycle-2 farmer sign-off — NOT unblocked by this re-smoke alone.
+
+**Re-smoke mechanics (for the next runner):** GA1 isolation = throwaway pg on :5433
+(`docker run ... postgres:14`), DATABASE_URL points there; prod alerter stays UP (Option A;
+prod watchdog polls :5432 only). Harness loads creds in-process (sandbox blocks bash from
+reading secrets.env); `--farmer=santi` (NOT `--farmer santi`); runbook STEP 0 `/jsonapi`
+check is wrong for this farmOS, use `/api`. `.planning/backfill/` is gitignored (run dirs are
+throwaway). Re-smoke writes to dev farmOS :18080 (rebuild-acceptable; assets accumulate across
+re-runs -> idempotent reuse, so a clean asset count needs a fresh farmOS).
+
+### Original pause (2026-06-10) — superseded, kept only as the "what 55B-01..04 shipped" record
+- **55B-01:** `patchGroupAssetFiles` helper (REMOVED 2026-06-14, falsified) + RED scaffolds.
+- **55B-02:** Commit-time CSV fidelity hold gate (`fidelity_cross_check_no_csv`/`_unverified`/
+  `_nonseeding`; `buildCsvBudget`/`consumeCsvBudget`). Now actually wired (`96d1cd0`).
+- **55B-03:** `aggregateSeedingDraftsToSessionJson` + session dispatch + page-image attach
+  (attach rewired to field-scoped route `bbd9212`; attribution fixed `0526025`).
+- **55B-04:** `55B-RE-SMOKE-RUNBOOK.md` authored; live re-smoke now RUN (runs 1-3 above).
 
 ## Phase 54 Closeout (2026-05-24/25, plans 01-04)
 
