@@ -205,11 +205,11 @@ Honors locked schema (B5 SEQ per-session per 2026-05-22 clarification in farmos 
 
 **Plans:** 5 plans
 
-- [ ] 52-01-PLAN.md — groupAssets.js module (findGroupAssetByName + upsertGroupAsset + deleteGroupAsset)
-- [ ] 52-02-PLAN.md — activityLogs.js module (createGroupAssignmentLog with is_group_assignment=true)
-- [ ] 52-03-PLAN.md — re-introduce session preflight + membership log + collision naming + expanded rollback in commit-seeding-session.js
-- [ ] 52-04-PLAN.md — hermetic integration tests at 17 assets + 12 logs; partial-failure + membership-log-failure + collision scenarios
-- [ ] 52-05-PLAN.md — scripts/live-fire-52.js dev-farmOS ship-gate harness + 52-LIVE-FIRE.md runbook (operator-attested)
+- [x] 52-01-PLAN.md — groupAssets.js module (findGroupAssetByName + upsertGroupAsset + deleteGroupAsset) (SHIPPED, `96dabcc`)
+- [x] 52-02-PLAN.md — activityLogs.js module (createGroupAssignmentLog with is_group_assignment=true) (SHIPPED, `7ca0639`)
+- [x] 52-03-PLAN.md — re-introduce session preflight + membership log + collision naming + expanded rollback in commit-seeding-session.js (SHIPPED, `8a6601a`)
+- [x] 52-04-PLAN.md — hermetic integration tests at 17 assets + 12 logs; partial-failure + membership-log-failure + collision scenarios (SHIPPED, `a180635`)
+- [x] 52-05-PLAN.md — scripts/live-fire-52.js dev-farmOS ship-gate harness + 52-LIVE-FIRE.md runbook (operator-attested) (SHIPPED, `a5b40ba`)
 
 ---
 
@@ -260,7 +260,7 @@ Plans:
 - [x] 54-02-PLAN.md — bulk-backfill short-circuit: auto-flip drafts to confirmed + commit-router dispatch + summaries.log audit (BACK-06) — SHIPPED 2026-05-24 (`99e3f98`)
 - [x] 54-03-PLAN.md — paid-LLM observer hook on extractor + append-only responses.jsonl per run-id (BACK-07) — SHIPPED 2026-05-24 (`f4923e4`)
 - [x] 54-04-PLAN.md — receipt.md builder: per-page + aggregate + Phase 51 upsert-stability check (BACK-08 part 1) — SHIPPED 2026-05-24 (`31b31bf`); BACK-08 stub-enrichment resolved as N/A, substituted intra-cycle upsert-stability
-- [ ] 54-05-PLAN.md — Cycle 1 (5 pages) operator runbook + farmer checkpoint (BACK-08 part 2) — RUNBOOK authored 2026-05-24 (`31b31bf`); awaits operator real-run + farmer SIGN-OFF
+- [x] 54-05-PLAN.md — Cycle 1 (5 pages) operator runbook + farmer checkpoint (BACK-08 part 2) — RUNBOOK authored 2026-05-24 (`31b31bf`); farmer SIGN-OFF completed 2026-06-07
 - [x] 54-06-PLAN.md — Cycle 2 (20 pages) operator runbook + farmer checkpoint + Phase 55 unlock decision (BACK-08 part 3) — RUNBOOK authored 2026-05-24 (`31b31bf`); blocked on Cycle 1 SIGN-OFF (completed 2026-06-07)
 
 ### Phase 54.1: Strain-confirm before mint (INSERTED)
