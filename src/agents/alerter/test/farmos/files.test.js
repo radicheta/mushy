@@ -55,3 +55,61 @@ describe('files.js (Phase 40 Plan 03)', () => {
     expect(opts.timeoutMs).toBe(30000);
   });
 });
+
+describe('files.js field-scoped upload (Phase 55B)', () => {
+  let tmpDir;
+  let realPath;
+  beforeAll(async () => {
+    tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'farmos-fieldfiles-'));
+    realPath = path.join(tmpDir, 'page.jpg');
+    await fs.promises.writeFile(realPath, Buffer.from([0xff, 0xd8, 0xff]));
+  });
+  afterAll(async () => { try { await fs.promises.rm(tmpDir, { recursive: true }); } catch (_) {} });
+
+  it('POSTs to /{collection}/{uuid}/{field} and returns fileId', async () => {
+    const client = mockClient();
+    const r = await files.uploadFieldAttachment(client, '/api/asset/group', 'g-1', 'image', realPath);
+    expect(r.ok).toBe(true);
+    expect(r.fileId).toBe('file-1');
+    const [url] = client.postBinary.mock.calls[0];
+    expect(url).toBe('/api/asset/group/g-1/image');
+  });
+
+  it('missing file returns skipped:true; no postBinary call', async () => {
+    const client = mockClient();
+    const r = await files.uploadFieldAttachment(client, '/api/asset/group', 'g-1', 'image', '/nope/x.jpg');
+    expect(r.skipped).toBe(true);
+    expect(client.postBinary).not.toHaveBeenCalled();
+  });
+
+  it('extracts the newest id when the field echoes a multi-value list', async () => {
+    const client = mockClient(async () => ({
+      ok: true, status: 200,
+      body: { data: [{ id: 'old' }, { id: 'new' }] },
+    }));
+    const r = await files.uploadFieldAttachment(client, '/api/asset/group', 'g-1', 'image', realPath);
+    expect(r.fileId).toBe('new');
+  });
+
+  it('non-ok upload returns canonical error shape', async () => {
+    const client = mockClient(async () => ({ ok: false, status: 422 }));
+    const r = await files.uploadFieldAttachment(client, '/api/asset/group', 'g-1', 'image', realPath);
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe('http_422');
+  });
+
+  it('uploadFieldAttachments aggregates fileIds / skipped / failed', async () => {
+    let n = 0;
+    const client = mockClient(async () => {
+      n++;
+      if (n === 2) return { ok: false, status: 500 };
+      return { ok: true, status: 200, body: { data: { id: 'f-' + n } } };
+    });
+    const r = await files.uploadFieldAttachments(
+      client, '/api/asset/group', 'g-1', 'image', [realPath, realPath, '/nope/x.jpg'],
+    );
+    expect(r.fileIds).toEqual(['f-1']);
+    expect(r.failed.map((f) => f.reason)).toEqual(['http_500']);
+    expect(r.skipped).toEqual(['/nope/x.jpg']);
+  });
+});

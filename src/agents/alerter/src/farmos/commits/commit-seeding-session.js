@@ -150,29 +150,24 @@ async function commitSeedingSession(client, draft, ctx) {
 
     // -------- OPTIONAL: attach page images to session group (best-effort, D-03) --------
     // Only active when ctx.sessionPagePaths is non-empty (backfill path).
-    // Upload failure or PATCH failure MUST NOT change the ok-status of the session commit.
+    // Upload failure MUST NOT change the ok-status of the session commit.
+    // Page photos go on the group's `image` field via the field-scoped binary route
+    // (creates + links in one call). The `file` field rejects jpg; the old
+    // upload-to-/api/file/file + relationships.file PATCH never routed on this farmOS.
     const attachPaths = (ctx && ctx.sessionPagePaths) || [];
     let uploadedFileIds = [];
     let attachmentsFailed = [];
     if (attachPaths.length > 0) {
-      const upRes = await files.uploadAttachments(client, attachPaths, { logger: ctx && ctx.logger });
+      const upRes = await files.uploadFieldAttachments(
+        client, '/api/asset/group', sessionGroupId, 'image', attachPaths,
+        { logger: ctx && ctx.logger },
+      );
       uploadedFileIds = upRes.fileIds || [];
       attachmentsFailed = upRes.failed || [];
       if (attachmentsFailed.length > 0 && ctx && ctx.logger && ctx.logger.warn) {
         ctx.logger.warn(
           `[commit-seeding-session] ${attachmentsFailed.length} attachment(s) failed to upload draft=${draftId}: ${attachmentsFailed.map((f) => f.reason).join(', ')}`,
         );
-      }
-      if (uploadedFileIds.length > 0) {
-        const patchRes = await groupAssets.patchGroupAssetFiles(client, sessionGroupId, uploadedFileIds);
-        if (!patchRes.ok) {
-          attachmentsFailed.push({ reason: 'patch_files_failed:' + (patchRes.reason || 'unknown') });
-          if (ctx && ctx.logger && ctx.logger.warn) {
-            ctx.logger.warn(
-              `[commit-seeding-session] patchGroupAssetFiles failed draft=${draftId} assetId=${sessionGroupId}: ${patchRes.reason}`,
-            );
-          }
-        }
       }
     }
 

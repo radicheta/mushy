@@ -373,78 +373,10 @@ describe('commitSeedingSession (Phase 52 Plan 03/04)', () => {
 });
 
 // ============================================================================
-// Phase 55B Plan 01 Task 1: patchGroupAssetFiles payload-shape tests
-// ============================================================================
-
-const { patchGroupAssetFiles } = require('../../src/farmos/groupAssets');
-
-describe('patch_files (patchGroupAssetFiles JSON:API PATCH shape)', () => {
-  function makePatchClient(opts = {}) {
-    const { patchStatus = 200, patchOk = true } = opts;
-    return {
-      patch: jest.fn().mockResolvedValue({ ok: patchOk, status: patchStatus }),
-    };
-  }
-
-  it('calls client.patch with correct path and relationships.file.data entries', async () => {
-    const client = makePatchClient();
-    const result = await patchGroupAssetFiles(client, 'group-uuid-1', ['file-uuid-a']);
-
-    expect(client.patch).toHaveBeenCalledTimes(1);
-    const [path, body] = client.patch.mock.calls[0];
-    expect(path).toBe('/api/asset/group/group-uuid-1');
-    expect(body.data.type).toBe('asset--group');
-    expect(body.data.id).toBe('group-uuid-1');
-    expect(body.data.relationships.file.data).toEqual([
-      { type: 'file--file', id: 'file-uuid-a' },
-    ]);
-    expect(result.ok).toBe(true);
-    expect(result.http_status).toBe(200);
-  });
-
-  it('maps multiple fileIds to relationships.file.data array', async () => {
-    const client = makePatchClient();
-    await patchGroupAssetFiles(client, 'group-uuid-2', ['file-1', 'file-2', 'file-3']);
-
-    const [, body] = client.patch.mock.calls[0];
-    expect(body.data.relationships.file.data).toEqual([
-      { type: 'file--file', id: 'file-1' },
-      { type: 'file--file', id: 'file-2' },
-      { type: 'file--file', id: 'file-3' },
-    ]);
-  });
-
-  it('returns { ok: true, skipped: true } and does NOT call client.patch when fileIds is empty', async () => {
-    const client = makePatchClient();
-    const result = await patchGroupAssetFiles(client, 'group-uuid-3', []);
-
-    expect(client.patch).not.toHaveBeenCalled();
-    expect(result).toEqual({ ok: true, skipped: true });
-  });
-
-  it('returns { ok: true, skipped: true } and does NOT call client.patch when fileIds is null', async () => {
-    const client = makePatchClient();
-    const result = await patchGroupAssetFiles(client, 'group-uuid-4', null);
-
-    expect(client.patch).not.toHaveBeenCalled();
-    expect(result).toEqual({ ok: true, skipped: true });
-  });
-
-  it('returns canonical error shape on non-ok HTTP response', async () => {
-    const client = makePatchClient({ patchOk: false, patchStatus: 422 });
-    const result = await patchGroupAssetFiles(client, 'group-uuid-5', ['file-uuid-b']);
-
-    expect(result.ok).toBe(false);
-    expect(result.reason).toBe('http_422');
-    expect(result.http_status).toBe(422);
-  });
-});
-
-// ============================================================================
-// Phase 55B Plan 01 Task 3: RED image-upload scaffolds
-// These tests are intentionally RED -- commitSeedingSession does not yet
-// import files.js nor accept ctx.sessionPagePaths. They will turn GREEN in
-// Plan 03.
+// Phase 55B (2026-06-14): page-image attach via field-scoped binary route.
+// Replaces the falsified A1 two-step (upload to /api/file/file + relationships.file
+// PATCH). Photos POST octet-stream to /api/asset/group/{uuid}/image, which creates +
+// links the file in one call. See project_farmos_image_upload_needs_field_scoped_route.
 // ============================================================================
 
 const os = require('os');
@@ -464,15 +396,13 @@ describe('commitSeedingSession -- image upload (D-03)', () => {
     try { fsSync.rmSync(tmpDir3, { recursive: true }); } catch (_) {}
   });
 
-  it('image: when ctx.sessionPagePaths is non-empty, calls uploadAttachments (postBinary) then client.patch in order', async () => {
+  it('image: POSTs octet-stream to the group image field route (no relationships.file PATCH)', async () => {
     const client = makeSessionMockClient();
-    // Mock postBinary to return a file--file UUID
     client.postBinary = jest.fn(async () => ({
       ok: true,
-      status: 201,
+      status: 200,
       body: { data: { id: 'file-uuid-img-1', type: 'file--file' } },
     }));
-    // Mock patch to succeed
     client.patch = jest.fn(async () => ({ ok: true, status: 200 }));
 
     const { ctx } = makeAuditCtx();
@@ -481,25 +411,22 @@ describe('commitSeedingSession -- image upload (D-03)', () => {
     const r = await commitSeedingSession(client, draftFor(MAY22_FIXTURE, 'd-img-1'), ctx);
 
     expect(r.ok).toBe(true);
-    // postBinary (upload) must have been called before patch (associate)
     expect(client.postBinary).toHaveBeenCalled();
-    expect(client.patch).toHaveBeenCalled();
-
-    // Assert order: postBinary invocation order < patch invocation order
-    const postBinaryOrder = client.postBinary.mock.invocationCallOrder[0];
-    const patchOrder = client.patch.mock.invocationCallOrder[0];
-    expect(postBinaryOrder).toBeLessThan(patchOrder);
+    // The field-scoped route creates + links in one call: no relationships.file PATCH.
+    const patchedGroupFile = client.patch.mock.calls.some(
+      ([p, body]) => /\/api\/asset\/group\//.test(p)
+        && body && body.data && body.data.relationships && body.data.relationships.file,
+    );
+    expect(patchedGroupFile).toBe(false);
   });
 
-  it('image: PATCH targets session group id with relationships.file (reuses patch_files shape)', async () => {
+  it('image: upload targets /api/asset/group/{sessionGroupId}/image', async () => {
     const client = makeSessionMockClient();
-    const fileUuid = 'file-uuid-img-2';
     client.postBinary = jest.fn(async () => ({
       ok: true,
-      status: 201,
-      body: { data: { id: fileUuid, type: 'file--file' } },
+      status: 200,
+      body: { data: { id: 'file-uuid-img-2', type: 'file--file' } },
     }));
-    client.patch = jest.fn(async () => ({ ok: true, status: 200 }));
 
     const { ctx } = makeAuditCtx();
     ctx.sessionPagePaths = [realPagePath];
@@ -507,20 +434,8 @@ describe('commitSeedingSession -- image upload (D-03)', () => {
     await commitSeedingSession(client, draftFor(MAY22_FIXTURE, 'd-img-2'), ctx);
 
     const sessionGroupId = client._created.groups[0].id;
-    expect(client.patch).toHaveBeenCalledWith(
-      `/api/asset/group/${sessionGroupId}`,
-      expect.objectContaining({
-        data: expect.objectContaining({
-          relationships: expect.objectContaining({
-            file: expect.objectContaining({
-              data: expect.arrayContaining([
-                { type: 'file--file', id: fileUuid },
-              ]),
-            }),
-          }),
-        }),
-      }),
-    );
+    const [url] = client.postBinary.mock.calls[0];
+    expect(url).toBe(`/api/asset/group/${sessionGroupId}/image`);
   });
 
   it('image: upload failure is non-fatal -- result.ok is true and attachments_failed is populated', async () => {
@@ -531,7 +446,6 @@ describe('commitSeedingSession -- image upload (D-03)', () => {
       status: 500,
       body: { errors: [{ status: '500' }] },
     }));
-    client.patch = jest.fn(async () => ({ ok: true, status: 200 }));
 
     const { ctx } = makeAuditCtx();
     ctx.sessionPagePaths = [realPagePath];

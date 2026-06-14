@@ -35,8 +35,8 @@ if (!username || !password) {
 }
 
 const { createFarmosClient } = require('../src/farmos/client');
-const { upsertGroupAsset, patchGroupAssetFiles } = require('../src/farmos/groupAssets');
-const { uploadAttachments } = require('../src/farmos/files');
+const { upsertGroupAsset, deleteGroupAsset } = require('../src/farmos/groupAssets');
+const { uploadFieldAttachment } = require('../src/farmos/files');
 
 const SMOKE_PATH = '/mnt/slime-kingdom/opt/mushy/.planning/phases/55B-tbd-if-needed-per-tenant-backfill-story-observation-of-unkno/55B-A1-SMOKE.md';
 
@@ -54,35 +54,38 @@ const SMOKE_PATH = '/mnt/slime-kingdom/opt/mushy/.planning/phases/55B-tbd-if-nee
     rec('group_upsert', JSON.stringify(g));
     if (!g.ok) throw new Error('group upsert failed');
 
-    // Step 2: upload a tiny JPEG to get a file--file UUID
+    // Step 2: upload a tiny JPEG to the group's `image` field via the field-scoped
+    // binary route. This CREATES the file AND links it in one call (no separate PATCH).
     const tmp = path.join(os.tmpdir(), 'a1-smoke.jpg');
-    fs.writeFileSync(tmp, Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]));
-    const up = await uploadAttachments(client, [tmp]);
-    rec('upload', JSON.stringify(up));
-    const fileId = up.fileIds && up.fileIds[0];
-    if (!fileId) throw new Error('upload produced no fileIds');
+    fs.writeFileSync(tmp, Buffer.from([
+      0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46,
+      0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xff, 0xd9,
+    ]));
+    const up = await uploadFieldAttachment(client, '/api/asset/group', g.assetId, 'image', tmp);
+    rec('image_upload', JSON.stringify(up));
+    if (!up.ok) throw new Error('image upload failed: ' + (up.reason || 'unknown'));
 
-    // Step 3: PATCH the group to associate the file
-    const pr = await patchGroupAssetFiles(client, g.assetId, [fileId]);
-    rec('patch_result', JSON.stringify(pr));
+    // Step 3: GET the group's image relationship and confirm the file is linked.
+    const verify = await client.get('/api/asset/group/' + g.assetId + '/image');
+    const data = verify.body && verify.body.data;
+    const linked = Array.isArray(data) ? data : (data ? [data] : []);
+    rec('linked_images', JSON.stringify(linked.map((f) => f && f.attributes && f.attributes.filename)));
+    const found = linked.length > 0;
 
-    // Step 4: GET ?include=file and confirm the relationship
-    const verify = await client.get('/api/asset/group/' + g.assetId + '?include=file');
-    const related = verify.body && verify.body.data && verify.body.data.relationships
-      && verify.body.data.relationships.file && verify.body.data.relationships.file.data;
-    rec('relationships_file_data', JSON.stringify(related));
-    const found = Array.isArray(related) && related.some((f) => f.id === fileId);
-
-    if (pr.ok && found) {
+    if (up.ok && found) {
       verdict = 'PASS';
     } else {
       verdict = 'FAIL';
-      fallbackNote = pr.ok
-        ? 'PATCH returned ok but file UUID absent from relationships.file.data — use two-step fallback (set file relationship in the group-creation POST, or POST /api/asset/group with relationships.file inline).'
-        : 'PATCH rejected (' + JSON.stringify(pr) + ') — Plan 03 must set file in the group-creation POST instead of a relationship PATCH.';
+      fallbackNote = up.ok
+        ? 'Upload returned ok but no image is linked on the group -- check the image field config.'
+        : 'Field-scoped image upload rejected (' + JSON.stringify(up) + ').';
     }
     rec('verdict', verdict);
     if (fallbackNote) rec('fallback', fallbackNote);
+
+    // GA1 hygiene: delete the dev smoke group so probe re-runs do not accumulate.
+    const del = await deleteGroupAsset(client, g.assetId);
+    rec('cleanup_delete', JSON.stringify(del));
   } catch (e) {
     verdict = 'FAIL';
     fallbackNote = 'Probe error: ' + e.message + ' — investigate before choosing fallback.';
@@ -94,7 +97,7 @@ const SMOKE_PATH = '/mnt/slime-kingdom/opt/mushy/.planning/phases/55B-tbd-if-nee
 phase: 55B-fidelity-corpus-unblock
 plan: 01
 artifact: A1-SMOKE
-assumption: A1 (PATCH associates file--file to asset--group)
+assumption: A1' (field-scoped binary upload links image to asset--group)
 verdict: ${verdict}
 target: dev farmOS :18080
 recorded: ${now}
@@ -111,8 +114,8 @@ ${log.join('\n')}
 ## Interpretation
 
 ${verdict === 'PASS'
-  ? 'A1 VERIFIED: patchGroupAssetFiles associates a file--file UUID to an asset--group via a JSON:API relationships.file PATCH. Plan 03 uses the direct PATCH (patchGroupAssetFiles) as designed.'
-  : 'A1 FALSIFIED. ' + fallbackNote + ' Plan 03 must adapt before writing the image-attach implementation.'}
+  ? "A1' VERIFIED: a field-scoped binary POST to /api/asset/group/{uuid}/image (Content-Type octet-stream) creates the file AND links it to the group's image field in one call. files.uploadFieldAttachments uses this route; commit-seeding-session attaches page photos this way. No relationships.file PATCH needed."
+  : "A1' FALSIFIED. " + fallbackNote}
 `;
   fs.writeFileSync(SMOKE_PATH, md);
   console.log('\nWrote', SMOKE_PATH);

@@ -92,33 +92,16 @@ async function deleteGroupAsset(client, assetId) {
   return { ok: true, http_status: r.status };
 }
 
-// Phase 55B Plan 01: associate file--file UUIDs to an existing asset--group via
-// JSON:API PATCH on the relationships.file edge. This is the A1 assumption --
-// proven against dev :18080 before Plan 03 image-attach implementation.
-async function patchGroupAssetFiles(client, assetId, fileIds) {
-  if (!fileIds || fileIds.length === 0) return { ok: true, skipped: true };
-  const payload = {
-    data: {
-      type: 'asset--group',
-      id: assetId,
-      relationships: {
-        file: {
-          data: fileIds.map((id) => ({ type: 'file--file', id })),
-        },
-      },
-    },
-  };
-  const r = await client.patch('/api/asset/group/' + assetId, payload);
-  if (!r.ok) {
-    return { ok: false, reason: 'http_' + (r.status || 'network'), http_status: r.status };
-  }
-  return { ok: true, http_status: r.status };
-}
+// NOTE (Phase 55B, 2026-06-14): patchGroupAssetFiles (PATCH relationships.file) was
+// REMOVED. The A1 design (upload file--file UUID, then PATCH it onto the group's `file`
+// edge) was falsified live: this farmOS has no octet-stream route at /api/file/file, and
+// the `file` field rejects images anyway. Page photos now use the field-scoped binary
+// route on the `image` field (files.uploadFieldAttachments), which creates + links in one
+// call. See memory project_farmos_image_upload_needs_field_scoped_route.
 
 module.exports = {
   findGroupAssetByName,
   upsertGroupAsset,
   deleteGroupAsset,
-  patchGroupAssetFiles,
   _clearCache,
 };
