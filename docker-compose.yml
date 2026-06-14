@@ -23,7 +23,7 @@ services:
       - CORS_ORIGIN=${CORS_ORIGIN:-http://10.68.155.50:8080}
       - SNAPSHOT_DIR=/data/snapshots
       - SNAPSHOT_BURNT_DIR=/data/snapshots-burnt
-      - SNAPSHOT_INTERVAL_MIN=5
+      - SNAPSHOT_INTERVAL_MIN=1
       - CAMERA_ID=fc1
       # Phase 21 retention defaults (optional; in-process daily prune)
       - RETENTION_DAYS=${RETENTION_DAYS:-365}
