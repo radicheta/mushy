@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.11
 milestone_name: Extraction prereqs + 2025-paper backfill
-status: executing
-last_updated: "2026-06-14T21:40:00.000Z"
+status: milestone_complete
+last_updated: 2026-06-14T23:41:44.285Z
 last_activity: 2026-06-14
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 19
-  completed_plans: 16
+  completed_plans: 77
   percent: 60
+stopped_at: Milestone complete (Phase 55B was final phase)
 ---
 
 # Project State
@@ -20,11 +21,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 55B — fidelity-corpus-unblock (2026-06-14: fidelity HARD GATE VERIFIED live; 2 follow-ons open before the parked full-corpus run)
+**Current focus:** Milestone complete
 
 ## Phase 55B Update (2026-06-14) — HARD GATE GREEN; 2 FOLLOW-ONS OPEN
 
-**Status:** The 2026-06-10 "blocked on dev creds" pause is RESOLVED. Fixing the creds exposed
+**Status:** Milestone complete
 (and we fixed + verified) three real bugs the auth wall had masked. The fidelity gate — the
 phase's whole purpose — now holds POY-as-KOY live. 1397 alerter tests green, tree clean.
 4 commits this session on `feat/phase-55-full-corpus` (see below). Phase NOT yet
@@ -158,10 +159,10 @@ All in `.planning/todos/pending/`:
 
 ## Current Position
 
-Phase: 55B (fidelity-corpus-unblock) — EXECUTING
-Plan: 4 of 4
+Phase: 55B
+Plan: Not started
 Status: Ready to execute
-Last activity: 2026-06-11
+Last activity: 2026-06-14
 
 **Phase 53 commit chain:**
 
@@ -228,7 +229,7 @@ Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (for
 
 **Velocity:**
 
-- Total plans completed: 82 (v1.0 + v1.1 + v1.2 + v1.2.1 + v1.3 Phase 17)
+- Total plans completed: 86 (v1.0 + v1.1 + v1.2 + v1.2.1 + v1.3 Phase 17)
 - Average duration: ~25 min/plan (estimated)
 - v1.2 plans completed: 0
 
