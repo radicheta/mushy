@@ -1041,18 +1041,31 @@ async function main(argv = process.argv.slice(2), {
 
   const runSummary = [];
   const startMs = Date.now();
+  // Phase 55B fix (2026-06-14): wire the fidelity-gate inputs into the real driver.
+  // Without csvRowsForPage the gate guard (csvRowsForPage !== undefined) is false and
+  // every draft auto-confirms -- the gate was a silent no-op (the 2026-06-14 re-smoke
+  // reproduced the POY-committed-as-KOY misattribution). loadCsvForPage returns [] for a
+  // page with no resolvable CSV date, which the gate treats as hold-all
+  // (fidelity_cross_check_no_csv). The budget is per-page (consumed per verified draft).
+  const { loadCsvForPage, pageDateForImage } = require('./build-backfill-receipt');
+  const csvPath = env.MUSHROOM_LOG_CSV || '/mnt/slime-kingdom/shared/mushdatadump/mushroom_log.csv';
   try {
     for (const page of selected) {
       const entry = await dispatchPage({
         pool, pipeline, page, runId, sender, corpusContext, dryRun: false,
       });
       if (entry.ok === true) {
+        const pageDate = pageDateForImage(path.basename(page));
+        const csvRowsForPage = loadCsvForPage(csvPath, pageDate);
+        const csvBudget = buildCsvBudget(csvRowsForPage);
         const { drafts, commits } = await processDraftsForCapture({
           pool, client, captureId: entry.captureId, pagePath: page,
           opts, summariesFd, extractionDb, commitRouter, dryRun: false,
+          csvRowsForPage, csvBudget, pageDate,
         });
         entry.draftIds = drafts.map((d) => d.id);
         entry.commits = commits;
+        entry.event_date = pageDate; // surface page date for the receipt heading
       }
       runSummary.push(entry);
       logger.log && logger.log(
