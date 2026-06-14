@@ -40,6 +40,15 @@ This is a receipt-reporting bug, separate from the gate. Recommended fix: attrib
 session result to ONE representative entry (or dedupe session-attributed UUIDs before the
 duplicate check) so duplicate_asset_count / asset totals are meaningful for the full run.
 
+**FIXED 2026-06-14 (run 3, run_id re-smoke-55b-1781472903):** backfill-notebook.js now
+credits the session's asset_ids/log_ids to a single representative constituent; the rest
+are `session_member:true` with empty asset lists (CSV-diff strain_codes preserved on all).
+Re-smoke after the fix: `duplicate_asset_count: 0 (PASS)`, asset/log totals no longer
+inflated, and the hard gate is intact (KOY x4 / CAR x4 / LIM x5 / PIN x3 still HELD as
+fidelity_cross_check_unverified; 33 confirmed / 31 held). Note: run 3's assets_created=3 is
+a re-run artifact (dev farmOS retained children from runs 1-2, so the session-commit
+returned mostly-existing assets) -- not introduced by the attribution change.
+
 ### Page-set note
 
 Harness selected contiguous IMG_3775-3779 (runbook had mis-specified a non-contiguous set
