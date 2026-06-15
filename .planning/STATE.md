@@ -7,11 +7,11 @@ last_updated: 2026-06-14T23:41:44.285Z
 last_activity: 2026-06-14
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 5
   total_plans: 19
-  completed_plans: 77
-  percent: 60
-stopped_at: Milestone complete (Phase 55B was final phase)
+  completed_plans: 19
+  percent: 100
+stopped_at: v1.11 milestone complete + archived (Phase 55B was final phase)
 ---
 
 # Project State
@@ -21,7 +21,7 @@ stopped_at: Milestone complete (Phase 55B was final phase)
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Milestone complete
+**Current focus:** v1.11 SHIPPED + archived 2026-06-14 (Phases 53/54/54.1/55/55B; fidelity hard gate verified live). Planning next milestone — v1.12 Farm-Agent Python port. Detail: `.planning/milestones/v1.11-ROADMAP.md`.
 
 ## Phase 55B Update (2026-06-14) — HARD GATE GREEN; 2 FOLLOW-ONS OPEN
 
@@ -350,6 +350,32 @@ Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (for
 | Phase 55B-fidelity-corpus-unblock P03 | 12min | 2 tasks | 2 files |
 
 ## Deferred Items
+
+Items acknowledged and deferred at **v1.11 milestone close on 2026-06-14** (22 open artifacts; all known, none gating the ship):
+
+| Category | Item | Status |
+|----------|------|--------|
+| debug | alerter-co2-only-not-pi | root-cause-found |
+| quick_task | 260518-tbi-999-53-persist-anthropic-token-usage | shipped (`a3ec164`); stale index entry |
+| quick_task | 260518-tcj-999-51-mechanical-bridge-srvname-fix | shipped (`f1a4331`); stale index entry |
+| quick_task | 260529-ean-periodic-sensor-health-heartbeat | shipped (`403caaa`, not yet deployed to fc1); stale index entry |
+| todo | 2026-05-14-port-alerter-to-farm-agent-python | open (drives v1.12) |
+| todo | 2026-05-21-alerter-tz-montevideo-local-time-rendering | open |
+| todo | 2026-05-24-eval-strain-regex-rejects-ca3-wedge | open |
+| todo | 2026-05-24-mc-vpd-display-and-control-buttons | open |
+| todo | 2026-05-24-observation-of-unknown-asset-should-backfill-not-fail | open |
+| todo | (1 more pending todo) | open |
+| seeds | SEED-001..010 | dormant (future-scoped) |
+| uat | 55B-HUMAN-UAT.md (live F2 reconcile, D-03) | partial — 1 pending |
+| verification | 55B-VERIFICATION.md | human_needed (live F2 reconcile) |
+| verification | (1 prior-phase carry) | as previously noted |
+
+v1.11-specific carry-forward (owned by the parked full-corpus run / v1.13):
+- Full 73-page corpus run parked (Phase-55/GA2, Cycle-2 farmer sign-off).
+- Strain gate unwired in the backfill driver (code review CR-02/WR-06) — needs a curated-strain source decision.
+- Session `qty>1` whole-page rollback (code review CR-01) — fix before full run.
+- No `55B-SECURITY.md` (security_enforcement on); secure-phase not run.
+- **Planning hygiene:** live `REQUIREMENTS.md` is stale v1.7/v1.9 content; `MILESTONES.md` missing v1.6–v1.9 entries — reconcile in a dedicated cleanup.
 
 Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 

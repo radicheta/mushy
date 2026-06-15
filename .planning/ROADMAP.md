@@ -16,7 +16,7 @@
 - ✅ **v1.9 Inoc-Session Correctness** — Phases 47–50 (shipped 2026-05-23; INOC-01..07 + QUOT-01..06 hermetic-attested; live-fire & May-22 reprocess operator-deferred via runbooks)
 - ✅ **v1.10 Order-Independent Writes (upsert-by-stable-identity)** — Phase 51 (shipped 2026-05-24; UPSERT-01..07 all verified; live-fire on dev farmOS: 16 assets patched / 0 created, 11 logs patched / 0 created, zero duplicates). See `.planning/milestones/v1.10-ROADMAP.md`.
 - 📋 **v1.10.1 Session-Entity Adoption (asset--group)** — Phase 52 (planned 2026-05-24; reverses Phase 48 "no session entity" interim now that farmos team enabled `farm_group` on dev+prod, commit `1857037`; session = `asset--group`, membership = `activity` log with `is_group_assignment=true`).
-- 📋 **v1.11 2025-Notebook Backfill** — Phases 53–55 (planned 2026-05-24; runs the mushdatadump 2025 paper-log corpus through the now-unblocked extraction+upsert pipeline; gated on Phase 38 batch-mode fix + year-context shim).
+- ✅ **v1.11 2025-Notebook Backfill** — Phases 53–55B (shipped 2026-06-14; runs the mushdatadump 2025 paper-log corpus through the now-unblocked extraction+upsert pipeline; gated on Phase 38 batch-mode fix + year-context shim).
 - 📋 **v1.12 Farm-Agent Python Port** — Phases 56–? (planned 2026-05-24; ports the Node alerter/extraction stack to Python, unblocks Phase 50 wire-level quote-rendering bugs deferred from v1.9, sets up Foray v2.0 surface).
 - 📋 **v1.13 Auto-Commit Narrowing** — Phases TBD (planned 2026-05-24; carves per-shape auto-commit lanes gated on ≥99% historical YES rate + n≥50, with UNDO + auto-demotion; structurally depends on v1.11 generating the confirm corpus).
 
@@ -213,117 +213,23 @@ Honors locked schema (B5 SEQ per-session per 2026-05-22 clarification in farmos 
 
 ---
 
-## v1.11 2025-Notebook Backfill (Phases 53–55) — PLANNED 2026-05-24
+## ✅ v1.11 2025-Notebook Backfill (Phases 53–55B) — SHIPPED 2026-06-14
 
-**Driver:** Phase 51 upsert layer (shipped 2026-05-24) structurally unblocks running the `/mnt/mossrock/shared/mushdatadump-prod/` 2025 paper-log corpus through the extraction+confirm+write pipeline without create-collisions against the May-22 stubs or any future captures. Today's prod write minted 4 stubs (`260304_SHI_5`, `260118_SHI_23`, `260118_SHI_26`, `260118_KOY_12`) carrying `STUB - awaits 2025-paper-scan backfill` markers — v1.11 is what makes them get *enriched* in place rather than just reused.
+Full detail archived: `.planning/milestones/v1.11-ROADMAP.md` + `v1.11-REQUIREMENTS.md`.
 
-**Strategic role:** Generates the high-volume confirm corpus that v1.13 auto-commit narrowing structurally requires (today: 43 drafts in last 30d, ~44% commit rate — nowhere near the n≥50/shape × ≥99% bar). Also closes [[project_mushdatadump_is_2025_notebook]] (year hallucination) and the two open Phase 38 batch-mode findings filed 2026-05-24.
+<details>
+<summary>✅ v1.11 (Phases 53, 54, 54.1, 55, 55B) — 19 plans, SHIPPED 2026-06-14</summary>
 
-**Honors:** `[[feedback_smoke_before_expensive_batch]]` (5-10 pages first), `[[feedback_persist_paid_results_default]]` (per-call unique paths + JSONL append), `[[feedback_real_data_before_ship_gate_pass]]` (real notebook scans are the ship gate), `[[feedback_hard_rules_relaxed_when_farmer_is_santi]]` (bulk-backfill mode can auto-confirm under `--farmer=santi`).
+- [x] Phase 53: Extraction prereqs — year-context shim + Phase 38 batch-mode fixes (4 plans)
+- [x] Phase 54: Backfill harness + dev-farmOS smoke (6 plans; Cycle 1 farmer sign-off 2026-06-07)
+- [x] Phase 54.1: Strain-confirm before mint (3 plans)
+- [x] Phase 55: Full-corpus tooling + receipt + promotion decision (2 plans; full run parked GA2)
+- [x] Phase 55B: Fidelity cross-check + F1/F2 session reconcile (4 plans; re-smoke hard gate PASS)
 
-**Phases:**
-
-### Phase 53: Extraction prerequisites — year-context shim + Phase 38 batch-mode fixes
-
-**Goal:** Close the three known extraction bugs that would corrupt a notebook backfill before any batch run touches farmOS.
-**Requirements:**
-
-- BACK-01: `corpus_context` extension lets a fixture/job pin `year=2025` so extractor stops hallucinating years on undated notebook pages.
-- BACK-02: Phase 38 batch-mode no longer misroutes small multi-draft captures (closes `2026-05-24-phase38-batch-mode-misroutes-small-multi-draft-captures.md`).
-- BACK-03: Photo-vs-paper-log classifier reins in eagerness (closes `2026-05-24-phase38-photo-vs-paper-log-classifier-too-eager.md`).
-- BACK-04: Hermetic eval on 5-10 hand-labeled 2025 notebook pages PASSES before any batch run.
-
-**Touches:** `src/agents/alerter/src/extraction/`, eval fixtures, possibly `signal_capture.corpus_context` column.
-**Plans:** 4 plans
-
-- [x] 53-01-PLAN.md — BACK-01 corpus_context JSONB column + pipeline/extractor plumbing (SHIPPED 2026-05-24, `bf721e2` + `9d25ec7`)
-- [x] 53-02-PLAN.md — BACK-02 small-N multi-draft routing heuristic (drafts>5 OR conf<0.7 → batch; else N per-draft confirms) + DT-tubs regression (SHIPPED 2026-05-24, `9835caf`)
-- [x] 53-03-PLAN.md — BACK-03 capture_kind prompt-only classifier (Option 1) + envelope schema + 2 new few-shots (SHIPPED 2026-05-24, `52f0874` + `673c413`)
-- [x] 53-04-PLAN.md — BACK-04 hermetic eval gate on 5-10 hand-labeled 2025 notebook pages (Phase 54 unblocking gate) — SHIPPED 2026-05-24 (scaffolding `a2467ea` + 8-fixture corpus `cc95c8d`); 8/8 hermetic fixtures green; Phase 54 UNBLOCKED
-
-### Phase 54: Backfill harness + dev-farmOS smoke (≤20 pages)
-
-**Goal:** A scripted harness ingests N notebook pages from the `mushdatadump-prod/` corpus, runs them through extraction → confirm (auto-YES under `--bulk-backfill --farmer=santi`) → upsert into dev farmOS, with paid-LLM results persisted per-call.
-**Requirements:**
-
-- BACK-05: `scripts/backfill-notebook.js` (or sibling) iterates corpus pages, builds synthetic `signal_capture` rows with `corpus_context={year:2025, source:'paper_log'}`, dispatches through the normal pipeline.
-- BACK-06: Bulk-backfill mode flag short-circuits CONF-01 YES requirement for `farmer=santi` only; every auto-confirmed draft still emits a farmer-facing summary (audit, not just silent write).
-- BACK-07: Paid LLM responses persisted to `.planning/backfill/2025-notebook/<run-id>/responses.jsonl` (append-only, per-call unique).
-- BACK-08: Smoke run on 10 representative pages produces correct stub-enrichment on the 4 May-22 ancestors (UUIDs byte-identical pre/post per Phase 51 contract). No duplicate assets created.
-
-**Touches:** `scripts/`, possibly small alerter additions for the bulk-mode short-circuit. Path corrected from ROADMAP-original `mushdatadump-prod/` to actual corpus path `/mnt/slime-kingdom/shared/mushdatadump/jpeg/` (range IMG_3775..IMG_3861). BACK-08 stub-enrichment sub-clause resolved as N/A (May-22 stubs are 2026-dated, postdate 2025 notebook); substituted intra-cycle upsert-stability check against Phase 51 contract — same invariant, validated on existing data.
-**Plans:** 6 plans
-
-Plans:
-
-- [x] 54-01-PLAN.md — backfill-notebook.js CLI core, prod-guard, santi-gate, page-range filter, synthetic-capture dispatch (BACK-05) — SHIPPED 2026-05-24 (`bfcde26`)
-- [x] 54-02-PLAN.md — bulk-backfill short-circuit: auto-flip drafts to confirmed + commit-router dispatch + summaries.log audit (BACK-06) — SHIPPED 2026-05-24 (`99e3f98`)
-- [x] 54-03-PLAN.md — paid-LLM observer hook on extractor + append-only responses.jsonl per run-id (BACK-07) — SHIPPED 2026-05-24 (`f4923e4`)
-- [x] 54-04-PLAN.md — receipt.md builder: per-page + aggregate + Phase 51 upsert-stability check (BACK-08 part 1) — SHIPPED 2026-05-24 (`31b31bf`); BACK-08 stub-enrichment resolved as N/A, substituted intra-cycle upsert-stability
-- [x] 54-05-PLAN.md — Cycle 1 (5 pages) operator runbook + farmer checkpoint (BACK-08 part 2) — RUNBOOK authored 2026-05-24 (`31b31bf`); farmer SIGN-OFF completed 2026-06-07
-- [x] 54-06-PLAN.md — Cycle 2 (20 pages) operator runbook + farmer checkpoint + Phase 55 unlock decision (BACK-08 part 3) — RUNBOOK authored 2026-05-24 (`31b31bf`); blocked on Cycle 1 SIGN-OFF (completed 2026-06-07)
-
-### Phase 54.1: Strain-confirm before mint (INSERTED)
-
-**Goal:** When extraction yields a fungi_type strain code that is NOT an exact match to the curated active strain set, hold it for a farmer double-check before minting a taxonomy term -- per-encounter ask-back in live capture, batched one-message confirm in backfill (hold drafts as needs_review, then a follow-up pass mints confirmed + remaps corrections + commits). Replaces the blind auto-mint that polluted dev farmOS with extraction variants (LIM/SHIITAKE/OYS for LIMA/SHI/POY). Unblocks a clean Cycle-1 / Phase-55 receipt.
-**Requirements**: Locked design + scope in `.planning/todos/pending/2026-05-25-strain-confirm-before-mint.md` (context seed). Builds on the `ensureFungiTypeUuid` mechanism shipped in `c2af701` (currently gated off). Detection matches the curated 14-code set ([[project_mossrock_active_strain_codes]]), not live farmOS terms.
-**Depends on:** Phase 54
-**Plans:** 3/3 plans complete
-
-Plans:
-
-- [x] 54.1-01-PLAN.md — Strain resolver: exact-match an extraction code against the curated 14-set (config.strains); KNOWN vs UNKNOWN, no fuzzy auto-resolve (shared foundation)
-- [x] 54.1-02-PLAN.md — Backfill path: hold unknown-strain drafts as needs_review + one batched Signal message + follow-up confirmed-mint/remap/commit pass
-- [x] 54.1-03-PLAN.md — Live capture path: per-encounter strain ask-back via the Phase 39 confirm-loop; YES authorizes the per-draft mint, correction remaps to canonical
-
-### Phase 55: Full corpus run + receipt
-
-**Goal:** Run the full 2025 notebook corpus to dev farmOS, generate a receipt of every asset/log created or patched, decide whether to promote any subset to prod via upsert.
-**Requirements:**
-
-- BACK-09: Full corpus processed; receipt at `.planning/notes/2026-XX-XX-2025-notebook-backfill-receipt.md` + JSONL of UUIDs.
-- BACK-10: Per-shape confirm-accuracy stats computed from the run (input to v1.13). Reports n_per_shape and YES rate (auto-YES counts here are not signal for v1.13 — v1.13 needs human-YES; bulk-backfill receipts are tagged accordingly).
-- BACK-11: Prod-promotion decision documented (default: dev-only; prod write only if operator opts in per-session-class).
-
-**Plans:** 2/2 plans complete
-
-Plans:
-
-- [x] 55-01-PLAN.md — harness --all-pages flag + build-backfill-receipt buildUuidJsonl/computePerShapeStats + .planning/notes/ copy-out + tagged BACK-10 section (BACK-09, BACK-10)
-- [x] 55-02-PLAN.md — 55-FULL-CORPUS-RUNBOOK.md (GA1 isolation pre-flight + smoke-before-full + crash recovery) + 55-PROMOTION-DECISION.md dev-only default (BACK-11)
-
-### Phase 55b: Fidelity / corpus-unblock (cross-check + F1/F2 session reconcile)
-
-**Goal:** Land the blockers before the parked full-corpus run is safe to execute.
-(1) Commit-time fidelity cross-check that HOLDS every entry not exact-verified against
-the per-page CSV reading (`needs_review`, never hard-reject -- CSV is a fallible 2nd
-interpretation). (2) F1+F2 reconcile surface: backfill per-block logs/assets group under
-the inoc-session group asset (Phase 52 mechanism) with source notebook page image(s)
-attached to the session asset (1..N pages; the inoc session, not the page, is the unit),
-so a human reconciles a session 1:1 against the physical notebook. Re-scoped from the
-original "per-tenant backfill / unknown-asset" placeholder (both absorbed elsewhere) with
-Santi 2026-06-09. Context: `.planning/phases/55B-*/55B-CONTEXT.md`.
-
-**Depends on:** Phase 55 (tooling + docs), Phase 52 (session group asset), Phase 51
-(upsert), Phase 54.1 (needs_review hold). Private-files infra RESOLVED (2026-05-25).
-
-**Plans:** 4/4 plans complete
-
-Plans:
-**Wave 1**
-
-- [x] 55B-01-PLAN.md — Wave 0: patchGroupAssetFiles + RED test scaffolds (fidelity/aggregate/image) + A1 PATCH-associates-files dev smoke probe (FIDELITY-01/02, SESSION-01/02)
-- [x] 55B-02-PLAN.md — Commit-time CSV fidelity hold gate in processDraftsForCapture (buildCsvBudget + 3-branch hold) (FIDELITY-01, FIDELITY-02)
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 55B-03-PLAN.md — Session routing (aggregateSeedingDraftsToSessionJson) + page-image attach on session group asset (SESSION-01/02/03)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 55B-04-PLAN.md — 5-page GA1-isolated re-smoke runbook + live gate (IMG_3776 mode-2 regression guard) (SMOKE-01, SESSION-03)
-
----
+Carried forward: full 73-page corpus run (parked, GA2/Cycle-2), live F2 reconcile (D-03,
+`55B-HUMAN-UAT.md`), strain gate unwired in backfill driver (CR-02/WR-06), session qty>1
+rollback (CR-01), no 55B-SECURITY.md.
+</details>
 
 ## v1.12 Farm-Agent Python Port (Phases 56–?) — PLANNED 2026-05-24
 
