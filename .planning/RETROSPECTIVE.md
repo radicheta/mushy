@@ -150,6 +150,46 @@
 
 ---
 
+> **Gap note:** this retrospective jumps from v1.2.1 to v1.11 — v1.2 through v1.10 were never
+> written up (same planning-doc drift found at the v1.11 close). Reconstruct in a dedicated pass.
+
+## Milestone: v1.11 — Extraction prereqs + 2025-paper backfill
+
+**Shipped:** 2026-06-14
+**Phases:** 5 (53, 54, 54.1, 55, 55B) | **Plans:** 19
+
+### What Was Built
+The 2025-notebook backfill pipeline end-to-end: year-context shim + Phase 38 batch-mode fixes,
+a santi-gated bulk-backfill harness with persisted paid-LLM results, strain-confirm-before-mint,
+full-corpus tooling + receipt + promotion decision, and a commit-time CSV fidelity cross-check
+that HOLDS unverified entries (never hard-rejects).
+
+### What Worked
+- **Live re-smoke as the real ship-gate.** Hermetic tests were green, but run 1 of the 55B
+  re-smoke exposed that the fidelity gate was a silent no-op — the driver never passed the gate
+  inputs. The wiring fix (`96d1cd0`) then held IMG_3776 POY (not committed as KOY). Reinforces
+  `feedback_unit_tests_dont_catch_wiring`.
+- **GA1 isolation (throwaway pg :5433)** let a paid live run exercise the gate without touching
+  prod alerting.
+- **HOLD-don't-reject** posture for the fallible ground-truth CSV matched reality.
+
+### What Was Inefficient
+- Live farmOS routes assumed in the plan (A1 PATCH-associates-files) were falsified only at
+  live-fire; the field-scoped image route had to be discovered by probing.
+- Several gate inputs (fidelity, strain) share one call site that was under-wired — caught one
+  (fidelity) live, the other (strain) is still a tracked follow-on.
+
+### Key Lessons
+- Wire-level/route assumptions about external systems must be probed early, not at the gate.
+- A single under-wired driver call site can silently disable multiple safety gates — audit the
+  call site, not just the unit tests.
+
+### Cost Observations
+- Re-smoke paid extraction ~0.23 USD / 5 pages; full 73-page run deliberately parked behind a
+  farmer sign-off rather than spent speculatively (`feedback_smoke_before_expensive_batch`).
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -168,4 +208,4 @@
 3. **Side-effect fixes accumulate.** v1.0: SCD41 CO2 was a side-effect win. v1.1: Phase 09's fc-core restart resolved TDEBT-02 as a side-effect, saving Phase 10 debugging time.
 
 ---
-*Last updated: 2026-04-18 at v1.2.1 milestone completion.*
+*Last updated: 2026-06-14 at v1.11 milestone completion (v1.2–v1.10 write-ups still missing).*

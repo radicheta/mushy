@@ -8,6 +8,14 @@ A closed-loop humidity control system for fruiting chamber 1 (FC-1) running on R
 
 **A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.**
 
+> **Current State (2026-06-14): v1.11 SHIPPED** — Extraction prereqs + 2025-paper backfill
+> (Phases 53/54/54.1/55/55B). The 2025-notebook backfill pipeline is end-to-end with a
+> commit-time CSV fidelity cross-check whose live re-smoke caught the 2026-06-07 POY-as-KOY
+> silent misattribution. Full 73-page corpus run stays parked (Phase-55/GA2, Cycle-2 farmer
+> sign-off). Next: v1.12 Farm-Agent Python port. Detail: `.planning/milestones/v1.11-ROADMAP.md`.
+> NOTE: the per-milestone sections below this point are stale (last full review 2026-05-03,
+> pre-v1.7) and pending a dedicated PROJECT.md reconciliation alongside the REQUIREMENTS.md drift.
+
 ## Requirements
 
 ### Validated
@@ -275,4 +283,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-05-03 — v1.5.0.1 realigned: 27.1 shipped via wg0 detour, 27.3+27.4 mooted by transport switch, 27.2 partly absorbed*
+*Last updated: 2026-06-14 — v1.11 shipped (current-state marker added at top; full section reconciliation still pending)*

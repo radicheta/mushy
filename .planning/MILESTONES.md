@@ -1,5 +1,65 @@
 # Milestones
 
+## v1.11 Extraction prereqs + 2025-paper backfill (Shipped: 2026-06-14)
+
+**Phases:** 53, 54, 54.1, 55, 55B (5 phases, 19 plans, all complete)
+**Git range:** `2f23b9e` (53-01, 2026-05-18) → `c073a62` (55B complete, 2026-06-14)
+
+### Delivered
+
+The 2025-notebook backfill pipeline end-to-end: extraction bug fixes (year-context shim +
+Phase 38 batch-mode), a santi-gated bulk-backfill harness with persisted paid-LLM results,
+strain-confirm-before-mint, full-corpus tooling + receipt + promotion decision, and a
+commit-time CSV fidelity cross-check whose live re-smoke proved the 2026-06-07 POY-as-KOY
+silent misattribution is now caught and HELD.
+
+### Highlights
+
+- **Fidelity gate (55B)** HOLDS every entry not exact-verified against the per-page CSV
+  (`needs_review`, never hard-reject — the ground-truth CSV is a fallible 2nd reading).
+  Live re-smoke (`re-smoke-55b-1781472903`): 33 confirmed / 31 held / duplicate_asset_count 0;
+  IMG_3776 POY held (not KOY).
+- **Session reconcile surface (55B)** — backfill per-block drafts aggregate into one per-page
+  `seeding_session` group asset with the source page image attached; held drafts produce no
+  member so a human reconciles 1:1 against the notebook.
+- **Strain-confirm before mint (54.1)** — unknown strain codes held for a farmer double-check
+  instead of blind-minting taxonomy variants.
+- **Backfill harness (54)** — santi-gated bulk auto-confirm, prod-guard, per-call JSONL of
+  paid LLM results; Cycle 1 farmer SIGN-OFF 2026-06-07.
+
+### Key deviations / decisions
+
+- BACK-08 stub-enrichment sub-clause resolved N/A (May-22 stubs postdate the 2025 notebook);
+  substituted intra-cycle upsert-stability against the Phase 51 contract.
+- A1 PATCH-associates-files route falsified live; replaced by field-scoped
+  `/api/asset/group/{uuid}/image` (A1', A1-SMOKE PASS).
+- 55B-04 checkpoint closed on the hard-gate PASS; live F2 reconcile (D-03) carried as a
+  tracked human-needed follow-on.
+
+### Known deferred items at close
+
+22 open artifacts acknowledged and deferred (see STATE.md Deferred Items). All known, none
+gating: the parked full 73-page corpus run (Phase-55/GA2, Cycle-2 farmer sign-off), the live
+F2 reconcile (D-03, `55B-HUMAN-UAT.md`), the strain gate being unwired in the backfill driver
+(code review CR-02/WR-06), the session `qty>1` whole-page rollback (CR-01), and no
+`55B-SECURITY.md` (security_enforcement on, secure-phase not run).
+
+### Process note
+
+- **REQUIREMENTS.md / ROADMAP.md milestone drift discovered at close.** The live
+  `REQUIREMENTS.md` still held stale v1.7/v1.9 content (never reset for v1.8/v1.10/v1.11);
+  `MILESTONES.md` is missing v1.6–v1.9 entries. v1.11 was closed by reconstructing a correct
+  `v1.11-REQUIREMENTS.md` from phase frontmatter/ROADMAP and leaving the stale live file
+  untouched for a separate reconciliation. ROADMAP reorg was scoped to the v1.11 section only.
+
+### Archive
+
+- Full roadmap: `.planning/milestones/v1.11-ROADMAP.md`
+- Requirements (reconstructed): `.planning/milestones/v1.11-REQUIREMENTS.md`
+- No milestone audit was run (acknowledged at close).
+
+---
+
 ## v1.10 Order-Independent Writes (upsert-by-stable-identity) (Shipped: 2026-05-24)
 
 **Phases shipped:** 1 (Phase 51)
