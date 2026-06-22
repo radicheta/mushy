@@ -1694,10 +1694,22 @@ class FruitingChamberController(Node):
             self._ramp_setpoint_to_band(dt, mode)
             rh = self.current_humidity
 
-            # Phase 28 D-09: band-aware error projection.
-            # error_pct < 0 when below the defended floor → drives duty up via PID.
-            if rh < mode.band_low:
-                error_pct = (rh - mode.band_low) * 100.0
+            # Phase 28 D-09 + quadratic low-side feather (calibration 2026-06-21).
+            # error_pct < 0 drives duty up via PID. Below target, error ramps
+            # quadratically from 0 at target to -b/2 at band_low, then continues
+            # linearly below band_low. The piecewise join at d=b is C1 (value AND
+            # slope match), so the controller climbs gently from the setpoint
+            # instead of stepping at the floor — the step was the source of the
+            # derivative kick that slammed duty to 100%. b = band half-width in
+            # pct (= humidity_tolerance * 100). With b<=0 the feather degenerates
+            # to the plain linear projection.
+            if rh < mode.target:
+                d = (mode.target - rh) * 100.0          # pct below target (>0)
+                b = (mode.target - mode.band_low) * 100.0
+                if b > 0 and d <= b:
+                    error_pct = -(d * d) / (2.0 * b)     # quadratic feather
+                else:
+                    error_pct = -(d - b / 2.0)           # linear, C1 with feather
             elif rh > mode.band_high:
                 if mode.defend_side in ('high', 'both'):
                     error_pct = (rh - mode.band_high) * 100.0

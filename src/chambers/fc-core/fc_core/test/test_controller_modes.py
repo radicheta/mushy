@@ -318,10 +318,11 @@ def _set_fruiting_v0(node):
 def test_fruiting_preserves_humid04(ros_context):
     """plan 28-03; MODE-02 — fruiting v0 reproduces Phase 27 narrow-band PID; HUMID-04.
 
-    With band [0.945, 0.975] defend_side=both:
-    - rh=0.96 (in-band) → error_pct=0; duty stays bounded (no Mode C entry).
-    - rh=0.93 (below band_low) → error_pct=(0.93-0.945)*100=-1.5; PID demands
-      non-zero duty (preserves Phase 27 HUMID-04 contract).
+    With band [0.945, 0.975] defend_side=both (target=0.96):
+    - rh=0.96 (at target) → error_pct=0; duty stays bounded (no Mode C entry).
+    - rh=0.93 (below band_low) → quadratic-feather linear region:
+      error_pct=-(d - b/2)=-(3.0-0.75)=-2.25; PID demands non-zero duty
+      (preserves Phase 27 HUMID-04 contract under the 2026-06-21 feather).
     """
     node = _make_node()
     _set_fruiting_v0(node)
