@@ -1695,21 +1695,26 @@ class FruitingChamberController(Node):
             rh = self.current_humidity
 
             # Phase 28 D-09 + quadratic low-side feather (calibration 2026-06-21).
-            # error_pct < 0 drives duty up via PID. Below target, error ramps
-            # quadratically from 0 at target to -b/2 at band_low, then continues
-            # linearly below band_low. The piecewise join at d=b is C1 (value AND
-            # slope match), so the controller climbs gently from the setpoint
-            # instead of stepping at the floor — the step was the source of the
-            # derivative kick that slammed duty to 100%. b = band half-width in
-            # pct (= humidity_tolerance * 100). With b<=0 the feather degenerates
-            # to the plain linear projection.
-            if rh < mode.target:
-                d = (mode.target - rh) * 100.0          # pct below target (>0)
-                b = (mode.target - mode.band_low) * 100.0
-                if b > 0 and d <= b:
-                    error_pct = -(d * d) / (2.0 * b)     # quadratic feather
+            # error_pct < 0 drives duty up via PID. The feather is anchored on the
+            # band MIDPOINT (the defended-floor reference), NOT mode.target: pinning's
+            # cosmetic target (0.85) sits BELOW its band_low (0.90) by design, so
+            # anchoring on target would zero the error exactly where the floor must
+            # be defended. Below the midpoint, error ramps quadratically from 0 at
+            # the midpoint to -w/2 at band_low, then continues linearly below the
+            # floor. The join at s=w is C1 (value AND slope match), so the controller
+            # climbs gently instead of stepping at the floor — the step was the
+            # source of the derivative kick that slammed duty to 100%. w = band
+            # half-width in pct; for a symmetric band, midpoint == target and
+            # w == humidity_tolerance*100. With w<=0 the feather degenerates to the
+            # plain linear projection.
+            midpoint = (mode.band_low + mode.band_high) / 2.0
+            w = (mode.band_high - mode.band_low) / 2.0 * 100.0
+            if rh < midpoint:
+                s = (midpoint - rh) * 100.0             # pct below band midpoint (>0)
+                if w > 0 and s <= w:
+                    error_pct = -(s * s) / (2.0 * w)     # quadratic feather
                 else:
-                    error_pct = -(d - b / 2.0)           # linear, C1 with feather
+                    error_pct = -(s - w / 2.0)           # linear, C1 with feather
             elif rh > mode.band_high:
                 if mode.defend_side in ('high', 'both'):
                     error_pct = (rh - mode.band_high) * 100.0
