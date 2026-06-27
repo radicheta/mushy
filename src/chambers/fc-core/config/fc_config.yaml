@@ -78,9 +78,13 @@ fc_controller:
   ros__parameters:
     active_mode: fruiting
     # Fruiting v0 — D-05 — preserves Phase 27 HUMID-04 narrow-band PID behavior
-    modes.fruiting.target_humidity: 0.96
-    modes.fruiting.band_low: 0.945
-    modes.fruiting.band_high: 0.975
+    # Band centered on the target: the quadratic feather anchors error=0 at the
+    # midpoint, so the chamber settles ~midpoint (feather-up vs passive-drying-down).
+    # 2026-06-27: farmer lowered RH target 0.96→0.90; band [0.945,0.975]→[0.885,0.915]
+    # (width 0.03 preserved). Was live on fc1/prod runtime overlay first; forward-ported here.
+    modes.fruiting.target_humidity: 0.90
+    modes.fruiting.band_low: 0.885
+    modes.fruiting.band_high: 0.915
     modes.fruiting.defend_side: both
     modes.fruiting.t_target: .nan
     # Pinning v0 — D-06 — passive only; defends floor 0.90 only, ceiling 0.99 silent (D-07)
