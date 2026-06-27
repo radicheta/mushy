@@ -16,6 +16,7 @@
         {
             identifier: { namespace: 'fruiting-chamber', key: 'fc.humidity' },
             name: 'Humidity',
+            precision: 1,
             unit: '%',
             topic: '/fc1/humidity',
             msgType: 'sensor_msgs/msg/RelativeHumidity',
@@ -26,6 +27,7 @@
         {
             identifier: { namespace: 'fruiting-chamber', key: 'fc.temperature' },
             name: 'Temperature',
+            precision: 1,
             unit: '°C',
             topic: '/fc1/temperature',
             msgType: 'sensor_msgs/msg/Temperature',
@@ -36,6 +38,7 @@
         {
             identifier: { namespace: 'fruiting-chamber', key: 'fc.co2' },
             name: 'CO2',
+            precision: 0,
             unit: 'ppm',
             topic: '/fc1/co2',
             msgType: 'std_msgs/msg/Float32',
@@ -46,6 +49,7 @@
         {
             identifier: { namespace: 'fruiting-chamber', key: 'fc.humidifier' },
             name: 'Humidifier',
+            precision: 0,
             unit: '',
             topic: '/fc1/actuators/humidifier',
             msgType: 'std_msgs/msg/Bool',
@@ -57,6 +61,7 @@
         {
             identifier: { namespace: 'fruiting-chamber', key: 'fc.humidity_2' },
             name: 'Humidity (SCD41)',
+            precision: 1,
             unit: '%',
             topic: '/fc1/humidity_2',
             msgType: 'sensor_msgs/msg/RelativeHumidity',
@@ -67,6 +72,7 @@
         {
             identifier: { namespace: 'fruiting-chamber', key: 'fc.temperature_2' },
             name: 'Temperature (SCD41)',
+            precision: 1,
             unit: '°C',
             topic: '/fc1/temperature_2',
             msgType: 'sensor_msgs/msg/Temperature',
@@ -77,6 +83,7 @@
         {
             identifier: { namespace: 'fruiting-chamber', key: 'fc.humidity_target' },
             name: 'Humidity target',
+            precision: 1,
             unit: '%',
             topic: '/fc1/control/humidity_target',
             msgType: 'std_msgs/msg/Float32',
@@ -89,6 +96,7 @@
         {
             identifier: { namespace: 'fruiting-chamber', key: 'fc.humidifier_duty' },
             name: 'Humidifier duty',
+            precision: 2,
             unit: '',
             topic: '/fc1/actuators/humidifier_duty',
             msgType: 'std_msgs/msg/Float32',
@@ -100,6 +108,7 @@
         {
             identifier: { namespace: 'fruiting-chamber', key: 'fc.pid_output' },
             name: 'PID output',
+            precision: 2,
             unit: '',
             topic: '/fc1/control/pid_output',
             msgType: 'std_msgs/msg/Float32',
@@ -113,6 +122,7 @@
             // for subscription routing only. Fruiting band is ~0.4-0.8 kPa.
             identifier: { namespace: 'fruiting-chamber', key: 'fc.vpd' },
             name: 'VPD',
+            precision: 2,
             unit: 'kPa',
             topic: '/fc1/derived/vpd',
             msgType: 'std_msgs/msg/Float32',
@@ -126,6 +136,7 @@
             // absolute humidity integrated over the 5.76 m^3 chamber volume.
             identifier: { namespace: 'fruiting-chamber', key: 'fc.water_vapor' },
             name: 'Water in air',
+            precision: 0,
             unit: 'mL',
             topic: '/fc1/derived/water_vapor',
             msgType: 'std_msgs/msg/Float32',
@@ -213,6 +224,25 @@
 
         return function install(openmct) {
 
+            // ── Display formats ──────────────────────────────────────────────
+            // Round values for DISPLAY only (LAD tables, value readouts, axis
+            // labels). The plotted line + stored history keep full precision —
+            // these formats are referenced by value metadata `format`, which
+            // OpenMCT applies at render time, not to the underlying datum.
+            function fixedFormat(key, digits) {
+                return {
+                    key: key,
+                    format: function (v) {
+                        return (typeof v === 'number' && isFinite(v)) ? v.toFixed(digits) : v;
+                    },
+                    parse: function (v) { return Number(v); },
+                    validate: function (v) { return isFinite(Number(v)); }
+                };
+            }
+            openmct.telemetry.addFormat(fixedFormat('fc.fixed0', 0));
+            openmct.telemetry.addFormat(fixedFormat('fc.fixed1', 1));
+            openmct.telemetry.addFormat(fixedFormat('fc.fixed2', 2));
+
             // ── Object type ──────────────────────────────────────────────────
             openmct.types.addType('fruiting-chamber.sensor', {
                 name: 'Chamber Sensor',
@@ -287,6 +317,11 @@
                                     unit: sensor.unit,
                                     min: sensor.min,
                                     max: sensor.max,
+                                    // Display-only rounding (full-precision data is unchanged).
+                                    format: sensor.precision === 2 ? 'fc.fixed2'
+                                          : sensor.precision === 1 ? 'fc.fixed1'
+                                          : sensor.precision === 0 ? 'fc.fixed0'
+                                          : undefined,
                                     hints: { range: 1 }
                                 },
                                 {
