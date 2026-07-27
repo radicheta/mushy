@@ -29,6 +29,7 @@ import os
 import signal
 import time
 
+import anthropic
 import httpx
 
 from farm_agent.tenancy.tenant import load as load_config
@@ -39,6 +40,8 @@ from farm_agent.signal_io.receive_loop import ReceiveLoop
 from farm_agent.capture.transcribe_client import create_transcribe_client
 from farm_agent.capture.pipeline import create_capture_pipeline
 from farm_agent.capture.retention import retention_loop
+from farm_agent.gate import create_event_gate
+from farm_agent.gate.classifier import create_haiku_classifier
 
 log = logging.getLogger(__name__)
 
@@ -70,7 +73,19 @@ async def main() -> None:
     http = httpx.AsyncClient()
     signal_client = SignalClient(config=config, http=http)
     transcribe_client = create_transcribe_client(config.whisper_url, http)
-    pipeline = create_capture_pipeline(pool, signal_client, transcribe_client, config)
+
+    # Phase 59: shared AsyncAnthropic singleton + event-gate (one per daemon lifetime).
+    # T-56-06-01: api_key flows only into the constructor and is NEVER logged.
+    anthropic_client = anthropic.AsyncAnthropic(
+        api_key=config.anthropic_api_key,
+        max_retries=2,
+    )
+    gate = create_event_gate(
+        haiku_classifier=create_haiku_classifier(client=anthropic_client),
+        log=log,
+    )
+
+    pipeline = create_capture_pipeline(pool, signal_client, transcribe_client, config, gate=gate)
 
     # Start the inbound drain (Phase 57 deferred -- now live).
     # T-58-03-05: only one ReceiveLoop constructed and started here.
@@ -101,5 +116,6 @@ async def main() -> None:
         await retention_task
     except asyncio.CancelledError:
         pass
+    await anthropic_client.close()
     await http.aclose()
     await pool.close()

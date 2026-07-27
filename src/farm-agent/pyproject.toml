@@ -3,6 +3,7 @@ name = "farm-agent"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "anthropic>=0.45",
     "pydantic>=2.13",
     "psycopg[binary]>=3.3",
     "psycopg-pool>=3.3",
@@ -23,6 +24,9 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "live_fire: real-API operator-run validation; skipped unless ANTHROPIC_API_KEY + GATE_LIVE_FIRE=1",
+]
 
 [tool.ruff]
 line-length = 100

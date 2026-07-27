@@ -135,6 +135,7 @@ def create_capture_pipeline(
     capture_repo: Any = None,
     dispatch_result: Callable | None = None,
     log: logging.Logger | None = None,
+    gate: dict | None = None,
 ) -> dict:
     """Factory returning {"handle": handle, "record_reply_capture": record_reply_capture}.
 
@@ -150,6 +151,11 @@ def create_capture_pipeline(
         dispatch_result:  Optional Phase 59+ seam. If set, called with the CaptureResult
                           after insert_capture completes (fire-forward, also try/except'd).
         log:              Optional logger; defaults to module logger.
+        gate:             Optional Phase 59 event-gate dict
+                          {"classify": async(env_ctx, last_bot_outbound, now_ms) -> {...}}.
+                          Default None = gate disabled (backward-compatible). When set,
+                          the gate is called fail-open after transcription -- a gate error
+                          never blocks capture from being persisted (T-59-03-02).
 
     Returns:
         {"handle": handle, "record_reply_capture": record_reply_capture}
@@ -259,6 +265,35 @@ def create_capture_pipeline(
                     )
                     degraded = True
 
+            # --- Step 3b: gate call (Phase 59 event-gate, fail-open) ---
+            # T-59-03-02: gate error never blocks capture from being persisted.
+            # T-59-03-01: log only gate outcome + masked sender; never env_ctx text/transcript.
+            extraction_gate: str | None = None
+            if gate is not None:
+                try:
+                    env_ctx = {
+                        "text": text,
+                        "transcript": transcript,
+                        "attachmentCount": len(attachment_paths),
+                    }
+                    # TODO(Phase 60): wire last_bot_outbound from capture_history.select_recent_outbound_by_recipient
+                    # so rule_negative can fast-reject short acks within the 30-min attestation window.
+                    gate_result = await gate["classify"](env_ctx, None, int(time.time() * 1000))
+                    extraction_gate = gate_result.get("gate")
+                    _log.info(
+                        "[capture] gate=%s allow_extract=%s sender=%s",
+                        gate_result.get("gate"),
+                        gate_result.get("allow_extract"),
+                        mask_number(source),
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    _log.warning(
+                        "[capture] gate error (fail-open): sender=%s err=%s",
+                        mask_number(source),
+                        exc,
+                    )
+                    # extraction_gate stays None -- capture is still persisted (T-59-03-02)
+
             # --- Step 4: persist signal_capture row (fail-open) ---
             row = {
                 "id": capture_id,
@@ -276,6 +311,7 @@ def create_capture_pipeline(
                 "quote_msg_ts": quote_msg_ts,
                 "quote_author_e164": quote_author,
                 # corpus_context: always None for live captures (T-58-03-04)
+                "extraction_gate": extraction_gate,  # Phase 59; VARCHAR(32), migration 007
             }
             persist_result = await _repo.insert_capture(pool, row)
             if not persist_result.get("ok"):

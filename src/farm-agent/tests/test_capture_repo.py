@@ -5,12 +5,14 @@ Covers:
   DB-independent (always run):
     - insert_capture fail-open: pool.connection() raises -> {ok:False, reason} never propagates
     - mark_expired_older_than fail-open: returns 0 on error, never raises
+    - _INSERT_SQL column list includes extraction_gate (CR-01 regression guard)
 
   DB-gated (@requires_db):
     - attachment_paths=["a.mp3","b.jpg"] round-trips as text[] == ["a.mp3","b.jpg"]  (NOT JSON)
     - transcript=None stores NULL
     - degraded=True/False round-trips bool
     - corpus_context is NULL in the written row (hard-coded None in INSERT)
+    - extraction_gate value round-trips (CR-01: was silently dropped before fix)
     - mark_expired_older_than sets expired=true only on rows older than age, returns count
 """
 
@@ -122,6 +124,15 @@ async def test_mark_expired_fail_open_returns_zero():
     assert count == 0
 
 
+def test_insert_sql_includes_extraction_gate():
+    """CR-01 regression guard: _INSERT_SQL column list must include extraction_gate."""
+    from farm_agent.capture.capture_repo import _INSERT_SQL  # noqa: PLC0415
+
+    assert "extraction_gate" in _INSERT_SQL, (
+        "extraction_gate is missing from _INSERT_SQL -- CR-01: gate decisions would be silently dropped"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Part 2: DB-gated -- round-trip tests
 # ---------------------------------------------------------------------------
@@ -216,6 +227,30 @@ async def test_corpus_context_is_null(pool):
     assert fetched is not None
     assert fetched[0] is None, (
         f"corpus_context must be NULL for live captures, got: {fetched[0]!r}"
+    )
+
+
+@_requires_db
+async def test_extraction_gate_roundtrips(pool):
+    """extraction_gate value round-trips (CR-01: was silently dropped before fix)."""
+    from farm_agent.capture.capture_repo import insert_capture  # noqa: PLC0415
+
+    sentinel_id = str(uuid.uuid4())
+    row = _capture_row(id=sentinel_id, extraction_gate="haiku_pass")
+
+    result = await insert_capture(pool, row)
+    assert result == {"ok": True}, f"insert_capture failed: {result}"
+
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            "SELECT extraction_gate FROM signal_capture WHERE id = %s",
+            (sentinel_id,),
+        )
+        fetched = await cur.fetchone()
+
+    assert fetched is not None
+    assert fetched[0] == "haiku_pass", (
+        f"extraction_gate must persist gate value, got: {fetched[0]!r}"
     )
 
 

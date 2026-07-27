@@ -27,15 +27,16 @@ from psycopg_pool import AsyncConnectionPool
 
 logger = logging.getLogger(__name__)
 
-# Column order must match signal_capture DDL exactly (17 columns).
+# Column order must match signal_capture DDL exactly (18 columns).
 # See 58-CONTEXT.md §interfaces and 58-PATTERNS.md §capture_repo.py.
 _INSERT_SQL = """
 INSERT INTO signal_capture
   (id, captured_at, sender, message_type, raw_text, attachment_paths,
    transcript, llm_session_tag, llm_reply, degraded,
    group_id, farmos_person, reply_target_kind,
-   signal_msg_ts, quote_msg_ts, quote_author_e164, corpus_context)
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+   signal_msg_ts, quote_msg_ts, quote_author_e164, corpus_context,
+   extraction_gate)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 """
 
 # Soft-expire rows older than age_seconds that are not already expired.
@@ -52,11 +53,12 @@ UPDATE signal_capture
 async def insert_capture(pool: AsyncConnectionPool, row: dict) -> dict:
     """Insert one row into signal_capture.
 
-    Column contract (exact order, 17 columns):
+    Column contract (exact order, 18 columns):
         id, captured_at, sender, message_type, raw_text, attachment_paths,
         transcript, llm_session_tag (None), llm_reply (None), degraded,
         group_id, farmos_person, reply_target_kind,
-        signal_msg_ts, quote_msg_ts, quote_author_e164, corpus_context (None)
+        signal_msg_ts, quote_msg_ts, quote_author_e164, corpus_context (None),
+        extraction_gate str | None -- Phase 59
 
     Row dict keys:
         id                 str  -- ULID string (required)
@@ -73,6 +75,7 @@ async def insert_capture(pool: AsyncConnectionPool, row: dict) -> dict:
         signal_msg_ts      int | None
         quote_msg_ts       int | None
         quote_author_e164  str | None
+        extraction_gate    str | None  -- VARCHAR(32) gate outcome; Phase 59
 
     corpus_context is ALWAYS None (hard-coded) -- only backfill harness sets it.
     llm_session_tag and llm_reply are ALWAYS None (Phase 59+).
@@ -101,6 +104,7 @@ async def insert_capture(pool: AsyncConnectionPool, row: dict) -> dict:
         row.get("quote_msg_ts"),                   # bigint | None
         row.get("quote_author_e164"),
         None,                                      # corpus_context -- ALWAYS None (T-58-02-02)
+        row.get("extraction_gate"),                # VARCHAR(32) | None -- Phase 59
     )
 
     try:
