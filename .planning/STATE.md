@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.12
 milestone_name: Farm-Agent Python Port
-status: planning
-last_updated: "2026-06-15T03:00:00.000Z"
+status: active
+last_updated: "2026-06-15T16:57:23.000Z"
 last_activity: 2026-06-15
 progress:
   total_phases: 10
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 6
+  completed_plans: 6
+  percent: 10
 ---
 
 # Project State
@@ -20,11 +20,35 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** v1.11 SHIPPED + archived 2026-06-14 (Phases 53/54/54.1/55/55B; fidelity hard gate verified live). Planning next milestone — v1.12 Farm-Agent Python port. Detail: `.planning/milestones/v1.11-ROADMAP.md`.
+**Current focus:** Phase 57 — Signal I/O (Phase 56 complete)
 
-## Phase 55B Update (2026-06-14) — HARD GATE GREEN; 2 FOLLOW-ONS OPEN
+## Phase 56 Closeout (2026-06-15) — COMPLETE; first phase of v1.12 done
 
-**Status:** Milestone complete
+**Status:** Phase complete + verified + code-reviewed. Ready to advance to Phase 57.
+
+6/6 plans executed and summarized. VERIFICATION.md: all five requirements
+(FND-01..05) VERIFIED. Code review (56-REVIEW.md) raised 9 findings; all 9 fixed
+and committed (56-REVIEW-FIX.md, commits through `0024bb0`). 45 tests pass with
+the test DB on :5434. Tree clean.
+
+**Non-blocking carry-forward (production-readiness only, not gating Phase 57):**
+
+- **Human verify:** full `alerter-py` boot on the elder-plops host (`docker compose
+  up alerter-py --build`, watch for "boot complete in X.XXs"). The automated proxy
+  `test_boot_completes_in_5s` PASSES against ephemeral Postgres; the host-env check
+  is for prod readiness only (56-VERIFICATION.md "Human Verification Required").
+- **SC3 wording:** resolved — ROADMAP SC3 already reads `uv run pytest tests/`
+  (not `tests/unit/`); the verifier's flagged "gap" was against the older
+  VALIDATION.md spec and is moot. No action needed.
+
+**Closeout housekeeping (this session):** stripped phantom Phase-56 plan checklists
+that had been copy-pasted into the ROADMAP details of all 9 not-yet-planned phases
+(57-65), each with a cascading-checkbox artifact; replaced with `**Plans**: TBD
+(not yet planned)`. Phase 56's own plan list untouched.
+
+## Phase 55B Update (2026-06-14, HISTORICAL) — HARD GATE GREEN; 2 FOLLOW-ONS OPEN
+
+**Status:** Phase complete — ready for verification
 (and we fixed + verified) three real bugs the auth wall had masked. The fidelity gate — the
 phase's whole purpose — now holds POY-as-KOY live. 1397 alerter tests green, tree clean.
 4 commits this session on `feat/phase-55-full-corpus` (see below). Phase NOT yet
@@ -168,12 +192,14 @@ All in `.planning/todos/pending/`:
 
 ## Current Position
 
-Phase: 56 (Foundation) — Not started
-Plan: —
-Status: Roadmap created; ready for /gsd-plan-phase 56
-Last activity: 2026-06-15 — v1.12 roadmap created (Phases 56-65, 28 requirements mapped, 100% coverage)
+Phase: 56 (foundation) — COMPLETE (verified + code-reviewed 2026-06-15)
+Next: Phase 57 (Signal I/O) — not yet discussed/planned
+Plan: 6 of 6
+Status: Phase 56 closed; ready to advance to Phase 57
+Last activity: 2026-06-15
 
 **v1.12 phase map:**
+
 - Phase 56: Foundation (FND-01..05) — asyncio skeleton, tenancy, migrations, schema-parity gate, Foray CI seam
 - Phase 57: Signal I/O (SIG-01..04) — signal-cli JSON-RPC, durable outbound, routing, Phase-50 quote fix
 - Phase 58: Capture + Transcription (CAP-01..02) — envelope capture, off-loop Whisper
@@ -186,6 +212,7 @@ Last activity: 2026-06-15 — v1.12 roadmap created (Phases 56-65, 28 requiremen
 - Phase 65: Cutover (CUT-01..03) — stop-start runbook, <2min rollback drill, observation window
 
 **Hard constraints (baked into phases):**
+
 - Origin guard (FWR-04) commits FIRST in Phase 62, before any write path runs
 - Parity gate (Phase 64) uses isolated :5434 DB only — never shared prod Timescale
 - Big-bang cutover: no dual-stack on shared DB; rollback = stop-py/start-node
@@ -307,6 +334,7 @@ Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (for
 - [Phase ?]: 44-05: D-19 prompt field — lastBotOutbound rendered as distinct '## Last thing you said to the farmer' block
 - [Phase ?]: Phase 44-06 path B: alerter secrets via env_file — tenants/mossrock/secrets.env (required:false); root .env retains shared secrets until v1.9
 - [v1.8 lesson, 44-04]: Anthropic SDK contract surprise — `signal` belongs in the request-options second arg of `client.messages.create(body, opts)`, NOT inside `body`. The SDK strict-validates the body schema and rejects unknown keys with 400 `invalid_request_error`. jest.fn() unit mocks accept any param shape, so this is invisible until a real SDK touches a real API. Caught by EVAL_RUN_LIVE=1 live-fire on round 1; fixed in `1429684` (test flipped from codifying-the-bug to asserting-SDK-correct-shape). Reinforces [[feedback_unit_tests_dont_catch_wiring]] — live-fire is the real ship-gate.
+- [Phase ?]: FND-05 gate: grep-in-pytest primary (Phase 56); import-linter .lint-imports secondary committed but inert until Phase 63 chamber/ lands
 
 ### Pending Todos
 
@@ -344,6 +372,7 @@ Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (for
 | Phase 44 P06 | 25 | 3 tasks | 7 files |
 | Phase 44 P03 | 5m44s | 2 tasks | 9 files |
 | Phase 55B-fidelity-corpus-unblock P03 | 12min | 2 tasks | 2 files |
+| Phase 56-foundation P03 | 5min | 1 tasks | 2 files |
 
 ## Deferred Items
 
@@ -412,8 +441,10 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 ## Session Continuity
 
-Last session: 2026-06-11T01:44:04.220Z
-Next up: Phase 45 (NORTH-STAR commit_failed ack + replay outstanding silent-failure drafts `b8a1e586` Vikki Rambo + `1fb28e70` Santi LIMA). Optional: 24-h v1.8 soak observation before starting Phase 45 scope work. v1.8 cutover already complete (alerter recreated 01:41:58 ART; bridge already on Phase 46 code).
+Last session: 2026-06-15T16:57:23.000Z
+Next up: Phase 57 (Signal I/O) — `/gsd-discuss-phase 57` then plan/execute. Phase 56 (foundation) complete + verified + code-reviewed 2026-06-15. Optional follow-on: human-verify alerter-py boot on elder-plops (prod-readiness only, non-blocking).
+
+(Historical, pre-v1.12) Next up: Phase 45 (NORTH-STAR commit_failed ack + replay outstanding silent-failure drafts `b8a1e586` Vikki Rambo + `1fb28e70` Santi LIMA). Optional: 24-h v1.8 soak observation before starting Phase 45 scope work. v1.8 cutover already complete (alerter recreated 01:41:58 ART; bridge already on Phase 46 code).
 
 Previously: kick off v1.8 Phase 1 (event-gate + signal_outbound). Plan-01 = 100-capture hand-classification smoke from mushdatadump-prod, BEFORE spec-locking the gate. Reference notes:
 

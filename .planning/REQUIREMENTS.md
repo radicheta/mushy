@@ -19,11 +19,11 @@
 
 ### FND — Foundation (tenancy, persistence, config, schema-parity gate)
 
-- [ ] **FND-01**: Python package skeleton boots as a single asyncio daemon (`boot.py` is the only module importing across all packages); `uv sync` + `python:3.12-slim` Docker image builds and runs under compose.
-- [ ] **FND-02**: `tenancy/TenantConfig` loads layered YAML+env config; no business module reads `env` directly; secrets stay env-only.
-- [ ] **FND-03**: `persistence/` provides a shared psycopg3 async pool + idempotent migrations covering the existing tables (`signal_capture`, `signal_draft`, `signal_outbound`, commit/audit tables); schema additions are additive-only (no breaking change to the live schema the Node stack also reads).
-- [ ] **FND-04**: pydantic v2 draft schemas emit JSON Schema that structurally matches the zod-derived schema the Node extractor sends to Claude; a JSON-Schema structural-diff check passes as a ship gate before any LLM call (`extra='forbid'` on every nested model; cross-field validators ported).
-- [ ] **FND-05**: Foray seam is statically enforced — a CI check fails the build if any non-`chamber` package imports from `chamber/`.
+- [x] **FND-01**: Python package skeleton boots as a single asyncio daemon (`boot.py` is the only module importing across all packages); `uv sync` + `python:3.12-slim` Docker image builds and runs under compose.
+- [x] **FND-02**: `tenancy/TenantConfig` loads layered YAML+env config; no business module reads `env` directly; secrets stay env-only.
+- [x] **FND-03**: `persistence/` provides a shared psycopg3 async pool + idempotent migrations covering the existing tables (`signal_capture`, `signal_draft`, `signal_outbound`, commit/audit tables); schema additions are additive-only (no breaking change to the live schema the Node stack also reads).
+- [x] **FND-04**: pydantic v2 draft schemas emit JSON Schema that structurally matches the zod-derived schema the Node extractor sends to Claude; a JSON-Schema structural-diff check passes as a ship gate before any LLM call (`extra='forbid'` on every nested model; cross-field validators ported).
+- [x] **FND-05**: Foray seam is statically enforced — a CI check fails the build if any non-`chamber` package imports from `chamber/`.
 
 ### SIG — Signal I/O
 
@@ -97,11 +97,11 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FND-01 | Phase 56 | Pending |
-| FND-02 | Phase 56 | Pending |
-| FND-03 | Phase 56 | Pending |
-| FND-04 | Phase 56 | Pending |
-| FND-05 | Phase 56 | Pending |
+| FND-01 | Phase 56 | Complete |
+| FND-02 | Phase 56 | Complete |
+| FND-03 | Phase 56 | Complete |
+| FND-04 | Phase 56 | Complete |
+| FND-05 | Phase 56 | Complete |
 | SIG-01 | Phase 57 | Pending |
 | SIG-02 | Phase 57 | Pending |
 | SIG-03 | Phase 57 | Pending |
