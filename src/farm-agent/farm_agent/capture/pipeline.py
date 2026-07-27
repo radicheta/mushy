@@ -136,6 +136,7 @@ def create_capture_pipeline(
     dispatch_result: Callable | None = None,
     log: logging.Logger | None = None,
     gate: dict | None = None,
+    extractor: dict | None = None,
 ) -> dict:
     """Factory returning {"handle": handle, "record_reply_capture": record_reply_capture}.
 

@@ -250,7 +250,7 @@ rollback (CR-01), no 55B-SECURITY.md.
 - [x] **Phase 57: Signal I/O** - signal-cli JSON-RPC, durable+rate-capped outbound, multi-farmer routing, Phase-50 quote-threading fix (completed 2026-06-22; verified 5/5, live-fire PASS 2026-06-21)
 - [x] **Phase 58: Capture + Transcription** - envelope/attachment capture, off-loop Whisper transcription (completed 2026-06-23)
 - [x] **Phase 59: Event Gate** - rule prefilter + Haiku classifier, reproduces Node gate accept/reject behavior (completed 2026-06-24)
-- [ ] **Phase 60: Extraction Pipeline** - multimodal tool-use, retry/SeedingSession/provenance, B5 minting
+- [x] **Phase 60: Extraction Pipeline** - multimodal tool-use, retry/SeedingSession/provenance, B5 minting (completed 2026-06-26)
 - [ ] **Phase 61: Confirm Loop** - YES/NO/EDIT FSM parity, strain-confirm, race-safe watchdog
 - [ ] **Phase 62: farmOS Write Path** - httpx client, field-scoped image route, stable-identity upsert, strain/fidelity guard, origin guard (FIRST in this phase)
 - [ ] **Phase 63: Chamber Alerter** - ROS-bridge WS alerts, TZ Montevideo fix (mushy-private chamber/ package)
@@ -265,7 +265,7 @@ rollback (CR-01), no 55B-SECURITY.md.
 | 57. Signal I/O | 3/4 | In Progress|  |
 | 58. Capture + Transcription | 4/4 | Complete   | 2026-06-23 |
 | 59. Event Gate | 4/4 | Complete   | 2026-06-24 |
-| 60. Extraction Pipeline | 0/TBD | Not started | - |
+| 60. Extraction Pipeline | 4/4 | Complete   | 2026-06-26 |
 | 61. Confirm Loop | 0/TBD | Not started | - |
 | 62. farmOS Write Path | 0/TBD | Not started | - |
 | 63. Chamber Alerter | 0/TBD | Not started | - |
@@ -367,11 +367,15 @@ Plans:
 **Success Criteria** (what must be TRUE):
 
   1. Replaying the 2026-05-22 audio+photo inoc session through the Python extractor produces one `seeding_session` draft with 5 groups, 11 children, correct `260522_SHI_1..3` / `260522_KOY_4..11` block names, and per-field provenance metadata.
-  2. A schema-invalid LLM response triggers the retry path (tool_result with `is_error: true` and correct `tool_use_id`) and resolves on the second attempt; the third failure produces a `needs_review` draft, not an exception.
+  2. A schema-invalid LLM response triggers the retry path (tool_result with `is_error: true` and correct `tool_use_id`) and resolves on the retry (Node does a max of 2 LLM calls: initial + 1 retry); the second failure produces a `needs_review` draft, not an exception. [reworded 2026-06-26 per Phase-60 discuss to match the Node 2-call source of truth; the original "third failure" wording implied 3 calls.]
   3. `BLOCK_NAME_RE` uses `re.fullmatch()`; `260522_SHI_1_EXTRA` is rejected while `260522_SHI_1` passes.
   4. A structural diff of the Python `model_json_schema()` versus the Node `SUBMISSION_JSON_SCHEMA` is clean (this is the FND-04 gate re-verified against the real extractor call).
 
-**Plans**: TBD (not yet planned)
+**Plans**: 4 plans
+- [x] 60-01-PLAN.md - Foundation: Pillow dep (legitimacy-gated), prompts.py verbatim, copy May-22 fixture, extend FakeAnthropicClient
+- [x] 60-02-PLAN.md - Leaf units: multimodal.py (Pillow downscale + fail-open) + seq_helper.py (B5 mint + per-session SEQ) + tests
+- [x] 60-03-PLAN.md - extractor.py (2-call retry + tu_fewshot_6 closer) + boot wiring + fixture replay + FND-04 re-verify
+- [x] 60-04-PLAN.md - Deferred real-Sonnet accuracy harness (marker/env-gated, operator-run, not CI-blocking)
 **UI hint**: no
 
 ### Phase 61: Confirm Loop

@@ -1,0 +1,117 @@
+{
+  "type": "seeding_session",
+  "event_date": "2026-05-22",
+  "groups": [
+    {
+      "parent": {
+        "value": "260304_SHI_5",
+        "confidence": 0.95,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "species": {
+        "value": "SHI",
+        "confidence": 0.98,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "qty": {
+        "value": 1,
+        "confidence": 0.98,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "child_block_names": {
+        "value": ["260522_SHI_1"],
+        "confidence": 0.95,
+        "sources": ["paper_log_photo"]
+      }
+    },
+    {
+      "parent": {
+        "value": "260118_SHI_23",
+        "confidence": 0.9,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "species": {
+        "value": "SHI",
+        "confidence": 0.98,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "qty": {
+        "value": 1,
+        "confidence": 0.98,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "child_block_names": {
+        "value": ["260522_SHI_2"],
+        "confidence": 0.95,
+        "sources": ["paper_log_photo"]
+      }
+    },
+    {
+      "parent": {
+        "value": "260118_SHI_26",
+        "confidence": 0.9,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "species": {
+        "value": "SHI",
+        "confidence": 0.98,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "qty": {
+        "value": 1,
+        "confidence": 0.98,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "child_block_names": {
+        "value": ["260522_SHI_3"],
+        "confidence": 0.95,
+        "sources": ["paper_log_photo"]
+      }
+    },
+    {
+      "parent": {
+        "value": "260118_KOY_12",
+        "confidence": 0.85,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "species": {
+        "value": "KOY",
+        "confidence": 0.98,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "qty": {
+        "value": 4,
+        "confidence": 0.95,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "child_block_names": {
+        "value": ["260522_KOY_4", "260522_KOY_5", "260522_KOY_6", "260522_KOY_7"],
+        "confidence": 0.95,
+        "sources": ["paper_log_photo"]
+      }
+    },
+    {
+      "parent": {
+        "value": "260425_KOY_4",
+        "confidence": 0.9,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "species": {
+        "value": "KOY",
+        "confidence": 0.98,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "qty": {
+        "value": 4,
+        "confidence": 0.95,
+        "sources": ["audio", "paper_log_photo"]
+      },
+      "child_block_names": {
+        "value": ["260522_KOY_8", "260522_KOY_9", "260522_KOY_10", "260522_KOY_11"],
+        "confidence": 0.95,
+        "sources": ["paper_log_photo"]
+      }
+    }
+  ],
+  "notes": "May 22 2026 inoc session: 11 sawdust bags across 5 parents, 2 species (SHI x 3, KOY x 8)."
+}

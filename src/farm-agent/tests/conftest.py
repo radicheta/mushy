@@ -294,3 +294,70 @@ def fake_anthropic_client() -> FakeAnthropicClient:
     To customize: FakeAnthropicClient(tool_input={...}, raise_exc=..., return_no_tool_use=True).
     """
     return FakeAnthropicClient()
+
+
+# ---------------------------------------------------------------------------
+# Phase 60: extraction suite fake (no DB required, always available)
+# ---------------------------------------------------------------------------
+
+
+class FakeAnthropicClientForExtractor:
+    """Multi-call Anthropic client fake for extraction unit tests.
+
+    Driven by a sequence of response entries consumed one-per-create() call.
+    Mirrors the FakeAnthropicClient pattern but supports replaying multiple
+    calls and simulating a 2-call retry flow.
+
+    Parameters
+    ----------
+    responses:
+        List of response dicts. Each entry is one of:
+          - {"tool_input": {...}}  -- return a tool_use response with that input
+          - {"raise": <Exception>} -- raise that exception instead of returning
+
+    Usage
+    -----
+        fake = FakeAnthropicClientForExtractor([
+            {"tool_input": {"drafts": [...], "continuity": "start_new", ...}},
+        ])
+        result = await fake.messages.create(model=..., messages=...)
+        assert fake.calls[0]["model"] == "..."
+    """
+
+    def __init__(self, responses: list[dict] | None = None) -> None:
+        self.responses: list[dict] = responses if responses is not None else []
+        self.calls: list[dict] = []
+        self.call_index: int = 0
+
+    def with_options(self, **kwargs) -> "FakeAnthropicClientForExtractor":
+        """Mirror client.with_options(timeout=...) -- returns self."""
+        return self
+
+    @property
+    def messages(self) -> "FakeAnthropicClientForExtractor":
+        """Mirror client.messages -- returns self so create() is callable."""
+        return self
+
+    async def create(self, **kwargs) -> MagicMock:
+        """Record kwargs; consume next response entry and raise or return."""
+        self.calls.append(kwargs)
+        # Use pre-increment index value as the block id (DISTINCT per call).
+        n = self.call_index
+        self.call_index += 1
+        entry = self.responses[n]
+        if "raise" in entry:
+            raise entry["raise"]
+        block = MagicMock()
+        block.type = "tool_use"
+        block.name = "submit_extraction"
+        block.id = f"tu_call_{n}"
+        block.input = entry["tool_input"]
+        usage = MagicMock()
+        usage.input_tokens = 100
+        usage.output_tokens = 20
+        usage.cache_creation_input_tokens = 50
+        usage.cache_read_input_tokens = 0
+        response = MagicMock()
+        response.content = [block]
+        response.usage = usage
+        return response

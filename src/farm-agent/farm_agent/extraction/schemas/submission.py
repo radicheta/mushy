@@ -20,6 +20,7 @@ After normalize_schema() inlines $refs, the result matches the fixture exactly.
 
 from __future__ import annotations
 
+import copy
 from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -63,4 +64,5 @@ class Submission(BaseModel):
     capture_kind: CaptureKind | None = None
 
 
-SUBMISSION_JSON_SCHEMA = Submission.model_json_schema()
+# Deep-copy so mutations in tests or Foray consumers do not corrupt future callers.
+SUBMISSION_JSON_SCHEMA: dict = copy.deepcopy(Submission.model_json_schema())
