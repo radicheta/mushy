@@ -50,7 +50,7 @@ function createOutboundDispatcher({
     return null;
   }
 
-  async function safeSend(body, target, relatedCaptureId) {
+  async function safeSend(body, target, relatedCaptureId, relatedDraftId) {
     try {
       // Phase 44 Plan-03 D-13/D-16: extraction outbound sends go through the
       // wrapped send with intent='extraction_preview' (covers ask-back replies,
@@ -59,6 +59,11 @@ function createOutboundDispatcher({
         to: target,
         intent: 'extraction_preview',
         relatedCaptureId: relatedCaptureId || null,
+        // 2026-05-24 fix: per-draft outbounds must record the draft they relate
+        // to, else forensic "every outbound for draft X" joins skip preview rows
+        // (related_draft_id was landing NULL). Batch summaries span many drafts
+        // and pass null. signal.js threads this to signal_outbound.related_draft_id.
+        relatedDraftId: relatedDraftId || null,
         sourceModule: 'extraction/outbound.js',
       });
       return res || { ok: true };
@@ -82,7 +87,7 @@ function createOutboundDispatcher({
     }
     const raw = (draftRow && draftRow.farmer_facing_preview) || '';
     const text = sanitize(raw);
-    const res = await safeSend(text, target, firstCaptureId(draftRow));
+    const res = await safeSend(text, target, firstCaptureId(draftRow), (draftRow && draftRow.id) || null);
     if (res.ok) {
       logger.info && logger.info(`[outbound] ask_back sent draft=${truncId(draftRow.id)} preview="${text.slice(0, 40)}"`);
     }
@@ -145,7 +150,7 @@ function createOutboundDispatcher({
     // Address Don Santiago by name (project memory: never "operator" as referent).
     const raw = `Hey Don Santiago, draft ${id} for ${sender} hit the 3-turn ask-back cap. Marked for manual review. Reason: ${reason}.`;
     const text = sanitize(raw);
-    const res = await safeSend(text, operatorRecipient);
+    const res = await safeSend(text, operatorRecipient, null, (draftRow && draftRow.id) || null);
     if (res.ok) {
       logger.info && logger.info(`[outbound] needs_review_ping sent draft=${id}`);
     }

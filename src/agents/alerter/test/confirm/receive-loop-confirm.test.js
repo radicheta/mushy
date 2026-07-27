@@ -400,4 +400,54 @@ describe('receive-loop confirm branch (Phase 39 D-01)', () => {
       expect(w.confirmDb.confirmDraft).toHaveBeenCalledWith({}, 'd-quoted');
     });
   });
+
+  // 2026-05-24 fix (signal-capture-missing-followup-messages): confirm-branch
+  // replies are consumed before the SLOW PATH, so they must persist their own
+  // paper-trail row via capturePipeline.recordReplyCapture. NOOP fall-through must
+  // NOT (full handle() persists it instead -- no double-write).
+  describe('confirm-thread replies persist to signal_capture (recordReplyCapture)', () => {
+    function makeCaptureSpy() {
+      return { handle: jest.fn().mockResolvedValue(null), recordReplyCapture: jest.fn().mockResolvedValue(null) };
+    }
+
+    it.each([
+      ['YES', { id: 'd1', sender_e164: '+15550001234' }],
+      ['NO', { id: 'd1', sender_e164: '+15550001234' }],
+      ['EDIT qty was 12', { id: 'd1', sender_e164: '+15550001234' }],
+    ])('consumed reply %p -> recordReplyCapture once, handle never', async (text, findResult) => {
+      const w = makeWiring({ findResult });
+      const capture = makeCaptureSpy();
+      const sig = makeSignalClient([makeEnvelope({ text })]);
+      const loop = createReceiveLoop({
+        signalClient: sig, dispatch: jest.fn(), config: baseConfig, capturePipeline: capture, logger: silentLogger(), ...w,
+      });
+      await runOneTick(loop);
+      expect(capture.recordReplyCapture).toHaveBeenCalledTimes(1);
+      expect(capture.handle).not.toHaveBeenCalled();
+    });
+
+    it('NOOP fall-through -> handle once, recordReplyCapture never (no double-persist)', async () => {
+      const w = makeWiring({ findResult: { id: 'd1', sender_e164: '+15550001234' } });
+      const capture = makeCaptureSpy();
+      const sig = makeSignalClient([makeEnvelope({ text: '👍' })]);
+      const loop = createReceiveLoop({
+        signalClient: sig, dispatch: jest.fn(), config: baseConfig, capturePipeline: capture, logger: silentLogger(), ...w,
+      });
+      await runOneTick(loop);
+      expect(capture.handle).toHaveBeenCalledTimes(1);
+      expect(capture.recordReplyCapture).not.toHaveBeenCalled();
+    });
+
+    it('no active draft -> handle once, recordReplyCapture never', async () => {
+      const w = makeWiring({ findResult: null });
+      const capture = makeCaptureSpy();
+      const sig = makeSignalClient([makeEnvelope({ text: 'fresh message' })]);
+      const loop = createReceiveLoop({
+        signalClient: sig, dispatch: jest.fn(), config: baseConfig, capturePipeline: capture, logger: silentLogger(), ...w,
+      });
+      await runOneTick(loop);
+      expect(capture.handle).toHaveBeenCalledTimes(1);
+      expect(capture.recordReplyCapture).not.toHaveBeenCalled();
+    });
+  });
 });

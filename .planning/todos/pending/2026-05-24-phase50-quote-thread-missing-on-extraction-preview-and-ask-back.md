@@ -3,6 +3,7 @@ filed: 2026-05-24
 source: Phase 50 LIVE-FIRE Step 3 (Santi-driven) — 50-LIVE-FIRE_ack-quote.jpg
 severity: design-gap (not regression — Phase 50 shipped with this scope explicitly)
 priority: high (covers the highest-traffic farmer ack path, not the rarest)
+resolves_phase: 57
 ---
 
 # Phase 50 quote-threading coverage gap: extraction_preview + ask_back not wired

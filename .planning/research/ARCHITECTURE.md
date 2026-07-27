@@ -1,256 +1,602 @@
-# Architecture Patterns: ROS2 Sensor Reading + Closed-Loop Control
+# Architecture: v1.12 Farm-Agent Python Port
 
-**Domain:** ROS2 Jazzy Python node — environmental sensor + on/off actuator control
-**Researched:** 2026-03-28
-**Overall confidence:** HIGH (patterns verified against official ROS2 Jazzy docs, existing codebase, community sources)
-
----
-
-## Recommended Architecture
-
-The existing codebase already follows the correct high-level separation: a dedicated sensor node (`fc_sensors`) publishes to topics, and a separate controller node (`fc_controller`) subscribes and drives actuators via a timer-based control loop. **This split is the right call and should not change.**
-
-What follows documents the specific patterns for implementing the humidity control path correctly within this architecture, including the gaps and improvements needed.
+**Domain:** Python rewrite of a live Node.js Signal/LLM/farmOS alerter agent with Foray OSS seams
+**Researched:** 2026-06-14
+**Confidence:** HIGH (derived directly from reading the live Node source; no speculation needed)
 
 ---
 
-## Component Boundaries
+## Overview
 
-| Component | Responsibility | Communicates With |
-|-----------|---------------|-------------------|
-| `FruitingChamberSensors` | Read DHT22, publish `fc/temperature` and `fc/humidity` at `sensor_read_interval` | Publisher to controller, display, telemetry |
-| `FruitingChamberController` | Subscribe to sensor topics, run control loop on timer, drive actuators | Subscriber of sensors; direct GPIO/PWM write |
-| `FruitingChamberDisplay` | Log current state to console | Subscriber of sensors |
-| `FruitingChamberTelemetry` | Emit JSON over WebSocket to OpenMCT | Subscriber of sensors |
+The Node alerter is a single-process, event-driven agent with three concurrent
+event sources that all funnel into one shared Postgres pool:
 
-The humidity control path lives entirely inside `FruitingChamberController`. The sensor node is already correct and does not need structural changes — only the controller's humidity logic needs to be hardened.
+1. Signal-cli HTTP polling (receive loop -- farmer inbound messages)
+2. WebSocket to the ROS bridge (chamber telemetry -- humidity/CO2/mode updates)
+3. Scheduled watchdogs (confirm timeout nudges, commit drainer, heartbeat)
+
+The Python port preserves this topology using `asyncio` as the event loop
+instead of Node's libuv. All three event sources become coroutines scheduled
+on a single event loop. No threads. No multiprocessing. One pool (asyncpg or
+psycopg3 async).
+
+The critical structural constraint is the Foray seam: the extractable slice
+(signal I/O + extraction + confirm + farmos client + persistence + tenancy)
+must form a dependency island that carries zero imports from the chamber side
+(ROS bridge, state machine, heartbeat, sensor snapshot).
 
 ---
 
-## Control Loop Pattern: Timer-Driven Subscriber Cache
-
-This is the canonical ROS2 pattern for closed-loop control. It is what the codebase already uses and is the correct choice.
+## System Overview
 
 ```
-Sensor node                Controller node
-────────────────           ─────────────────────────────────
-timer fires (2s)           subscription callback (async)
-  read DHT22                 humidity_callback(msg)
-  publish fc/humidity          self.current_humidity = msg.relative_humidity
-                               self.last_humidity_ts = self.get_clock().now()
-
-                           control timer fires (1s)
-                             control_loop()
-                               check if data is fresh
-                               compare current vs setpoint
-                               drive humidifier GPIO
+                         ┌────────────────────────────────────────────┐
+                         │         FORAY EXTRACTABLE SLICE            │
+                         │                                            │
+   signal-cli REST  ───► │  signal_io/  ──► receive_loop.py          │
+                         │                      │                    │
+                         │                      ▼                    │
+                         │              event_router.py              │
+                         │               │           │               │
+                         │               ▼           ▼               │
+                         │        extraction/    confirm/             │
+                         │        pipeline.py  state_machine.py      │
+                         │               │           │               │
+                         │               ▼           ▼               │
+                         │         farmos_client/  persistence/      │
+                         │         commit.py       repos.py          │
+                         │                                            │
+                         │         tenancy/   ◄── all modules above  │
+                         │         tenant.py       read from here    │
+                         └────────────────────────────────────────────┘
+                                          │
+                                          ▼
+                              ┌──────────────────────┐
+                              │   MUSHY-PRIVATE ONLY  │
+                              │                       │
+   ROS bridge WS  ─────────► │  bridge_client.py     │
+                              │  chamber_state.py     │
+                              │  alerter_state_machine│
+                              │  (RH/sensor/pi/       │
+                              │   humidifier alerts)  │
+                              │  heartbeat.py         │
+                              │  sensor_snapshot.py   │
+                              └──────────────────────┘
+                                          │
+                                          ▼
+                              ┌──────────────────────┐
+                              │   SHARED INFRA        │
+                              │                       │
+                              │  asyncpg pool         │
+                              │  Postgres/TimescaleDB │
+                              │  Whisper HTTP client  │
+                              │  Anthropic SDK        │
+                              └──────────────────────┘
 ```
-
-**Why this works:** The subscription callback fires asynchronously whenever a message arrives and caches the value. The control timer fires independently at the control frequency and reads the cached value. They never block each other in a `SingleThreadedExecutor` (the default for `rclpy.spin()`).
-
-**Threading note (confirmed against Jazzy docs):** With the default `SingleThreadedExecutor`, all callbacks including timers run serially. This is fine here — sensor reads at 2s intervals and control decisions at 1s intervals are not time-critical enough to require `MultiThreadedExecutor`. Do not add threading complexity unless profiling shows it is needed.
 
 ---
 
-## Hysteresis (Bang-Bang) Control Pattern
+## Recommended Package Layout
 
-The existing controller implements basic hysteresis for the humidifier — on below `target - tolerance`, off above `target + tolerance`. This is correct for an on/off actuator and should be preserved. The dead band (`humidity_tolerance = 0.05`, i.e. 5%) prevents constant switching at the setpoint.
+```
+src/agents/alerter-py/
+├── alerter/                      # top-level package (pip-installable)
+│   ├── __main__.py               # entrypoint: asyncio.run(main())
+│   ├── boot.py                   # wire all components, start event loop
+│   │
+│   ├── tenancy/                  # FORAY -- tenant primitive (no other imports)
+│   │   ├── __init__.py
+│   │   ├── tenant.py             # TenantConfig dataclass + load(tenant_id, env)
+│   │   └── loader.py             # load_tenant_file(tenant_id, filename)
+│   │
+│   ├── persistence/              # FORAY -- DB access layer (no business logic)
+│   │   ├── __init__.py
+│   │   ├── pool.py               # build_pool(config) -> asyncpg.Pool
+│   │   ├── migrations.py         # run_migrations(pool) -- CREATE TABLE IF NOT EXISTS
+│   │   ├── capture_repo.py       # signal_capture CRUD
+│   │   ├── draft_repo.py         # signal_draft CRUD
+│   │   ├── outbound_repo.py      # signal_outbound CRUD
+│   │   └── commit_repo.py        # commit columns on signal_draft
+│   │
+│   ├── signal_io/                # FORAY -- signal-cli I/O only; no extraction logic
+│   │   ├── __init__.py
+│   │   ├── client.py             # SignalClient: send/receive/fetch_attachment
+│   │   ├── router.py             # group/DM trigger detection, sender whitelist
+│   │   └── receive_loop.py       # async poll loop -> yields Envelope
+│   │
+│   ├── extraction/               # FORAY -- multimodal extract -> draft
+│   │   ├── __init__.py
+│   │   ├── pipeline.py           # ExtractionPipeline: enqueue/run
+│   │   ├── extractor.py          # Anthropic tool_use call + Zod-equiv Pydantic
+│   │   ├── multimodal.py         # build_content_blocks(captures)
+│   │   ├── state_machine.py      # pure: draft status transitions
+│   │   ├── seq_helper.py         # SEQ mint per-session
+│   │   ├── validator.py          # Pydantic schema validation + retry builder
+│   │   ├── preview_builder.py    # farmer-facing text renderers
+│   │   ├── event_gate/           # Haiku classifier + rule engine
+│   │   │   ├── classifier.py
+│   │   │   └── rules.py
+│   │   └── schemas/              # Pydantic models (seeding, observation, etc.)
+│   │       ├── seeding.py
+│   │       ├── seeding_session.py
+│   │       ├── observation.py
+│   │       ├── harvest.py
+│   │       ├── activity.py
+│   │       ├── input.py
+│   │       └── provenance.py
+│   │
+│   ├── confirm/                  # FORAY -- draft confirm/discard/edit loop
+│   │   ├── __init__.py
+│   │   ├── state_machine.py      # pure: awaiting_farmer transitions
+│   │   ├── parser.py             # parse YES/NO/EDIT from farmer text
+│   │   ├── outbound.py           # ConfirmOutbound: dispatch send_confirm_ack etc.
+│   │   ├── edit_handler.py       # EDIT turn handler (re-extraction)
+│   │   ├── watchdog.py           # async periodic: nudge/expire timed-out drafts
+│   │   └── strain_ask_back.py    # strain-unknown intercept
+│   │
+│   ├── farmos_client/            # FORAY -- farmOS HTTP write path
+│   │   ├── __init__.py
+│   │   ├── client.py             # FarmosClient: session-cookie auth + retries
+│   │   ├── assets.py             # asset get/create/patch
+│   │   ├── logs.py               # log create
+│   │   ├── files.py              # field-scoped image route (v1.11 fix)
+│   │   ├── fungi_type_cache.py   # fungi_type term cache
+│   │   ├── strain_resolver.py    # curated-code validation
+│   │   ├── merge.py              # upsert-by-stable-identity
+│   │   ├── audit_logger.py       # commit audit trail
+│   │   ├── commit_watchdog.py    # async periodic: drain confirmed drafts
+│   │   └── commits/              # per-type commit handlers
+│   │       ├── router.py
+│   │       ├── seeding.py
+│   │       ├── seeding_session.py
+│   │       ├── observation.py
+│   │       ├── harvest.py
+│   │       ├── activity.py
+│   │       └── input.py
+│   │
+│   ├── capture/                  # FORAY -- inbound capture + transcription
+│   │   ├── __init__.py
+│   │   ├── pipeline.py           # CapturePipeline: handle(envelope)
+│   │   ├── history.py            # CaptureHistory: recent-N context window
+│   │   ├── retention.py          # async cron: expire old captures
+│   │   └── transcribe_client.py  # Whisper HTTP client
+│   │
+│   ├── llm/                      # FORAY -- shared Anthropic client wrapper
+│   │   ├── __init__.py
+│   │   └── client.py             # LlmClient: chat reply (distinct from extractor)
+│   │
+│   ├── chamber/                  # MUSHY-PRIVATE -- ROS bridge + alerter state
+│   │   ├── __init__.py
+│   │   ├── bridge_client.py      # async WS client to Mission Control bridge
+│   │   ├── state.py              # RH/sensor/pi/humidifier alert state machine
+│   │   ├── rules.py              # isRhOob, isPiOffline, etc.
+│   │   ├── heartbeat.py          # daily heartbeat scheduler
+│   │   ├── sensor_snapshot.py    # HTTP fetch current sensor values from bridge
+│   │   └── message.py            # alert message formatters
+│   │
+│   └── config.py                 # Config dataclass: load(env) with tenant layer
+│
+├── tests/
+│   ├── unit/                     # pure module tests (no DB, no network)
+│   ├── integration/              # real asyncpg pool against isolated DB
+│   └── parity/                   # Node vs Python output comparison harness
+│       ├── replay.py             # read-only replay from snapshot DB
+│       ├── compare.py            # diff Node vs Python draft outputs
+│       └── fixtures/             # captured Node outputs for regression
+│
+├── pyproject.toml
+├── Dockerfile
+└── docker-compose.override-py.yml   # runs the Python alerter alongside the old one
+                                      # during parity validation (different ports, isolated DB)
+```
 
-**Current implementation (correct baseline):**
+---
+
+## Dependency Direction
+
+Strict one-way. No cycles.
+
+```
+config.py
+    ^
+    |
+tenancy/  (reads config; emits TenantConfig)
+    ^
+    |
+persistence/  (reads TenantConfig for tenant_id; no business-logic imports)
+    ^
+    |
+signal_io/  (reads TenantConfig + persistence for outbound writes)
+    ^
+    |
+capture/ + llm/ + extraction/  (reads signal_io + persistence + tenancy)
+    ^
+    |
+confirm/  (reads extraction schemas + persistence + signal_io)
+    ^
+    |
+farmos_client/  (reads confirm state, persistence, tenancy)
+    ^
+    |
+chamber/  (reads signal_io + config; NEVER imports extraction/confirm/farmos_client)
+    ^
+    |
+boot.py  (wires everything; the only file allowed to import from all packages)
+```
+
+The chamber/ package is the ONLY mushy-private package. Every package above
+it in this diagram is part of the Foray extractable slice. The Foray boundary
+is the horizontal line between `farmos_client/` and `chamber/`.
+
+**Enforcement:** chamber/ has no __init__ re-export into the foray packages.
+A grep for `from alerter.chamber` in any foray package is a CI gate failure.
+
+---
+
+## Where the Tenant Primitive Lives
+
+`tenancy/tenant.py` defines `TenantConfig` and `load()`. It is the lowest
+node in the dependency graph -- it imports nothing from the other packages.
+
 ```python
-if self.current_humidity < (target - tolerance):
-    self.set_humidifier(True)
-elif self.current_humidity > (target + tolerance):
-    self.set_humidifier(False)
-# else: inside dead band → no state change (implicit, correct)
+# tenancy/tenant.py (sketch)
+@dataclass(frozen=True)
+class TenantConfig:
+    tenant_id: str
+    signal_sender: str
+    signal_recipient: str
+    signal_group_id: str | None
+    signal_farmer_map: dict[str, str]   # e164 -> slug
+    farmos_url: str
+    farmos_username: str
+    farmos_integration: bool
+    strains: list[str]
+    event_gate_convo_mode: str
+    # ... (mirrors config.js load() output)
 ```
 
-**What is missing: minimum on/off time guard.** DHT22 humidity readings have noise. Without a minimum dwell time, the humidifier can switch rapidly near the dead-band edge (chattering), which degrades actuator lifespan and produces oscillating telemetry. The fix is to track `last_humidifier_change_ts` and enforce a minimum interval (e.g., 10 seconds) before allowing a state change.
+`load(tenant_id, env)` applies the layered resolution: read
+`tenants/<tenant_id>/config.yaml` + `strains.yaml` first, then env fallback,
+then hardcoded defaults. Secrets (ANTHROPIC_API_KEY, FARMOS_PASSWORD,
+SIGNAL_SENDER, TIMESCALE_PASSWORD) are env-only, never from tenant YAML.
 
-```
-Pattern:
-  when deciding to change humidifier state:
-    if time_since_last_change < min_dwell_time: skip
-    else: change state, record timestamp
-```
-
-The `min_dwell_time` should be a config parameter, not a hardcode, so it can be tuned per-chamber without a code change.
+For Foray, a tenant is a directory under `tenants/`. Clone `tenants/example/`
+for a second tenant. The rest of the system reads only from the `TenantConfig`
+object, not from env directly.
 
 ---
 
-## Stale Data Guard Pattern
+## Async Event Loop Organization
 
-**The existing code has a gap here.** The controller checks `if self.current_humidity is None: return` — this correctly handles the startup case before the first sensor message arrives. However, it does not handle the case where the sensor node restarts or the DHT22 fails after initially working: `current_humidity` will hold a stale value indefinitely and the controller will continue acting on it silently.
-
-**Recommended pattern — timestamp-based freshness check:**
+Single `asyncio` event loop in `boot.py`. No threads.
 
 ```
-In humidity_callback:
-  self.current_humidity = msg.relative_humidity
-  self.last_humidity_ts = self.get_clock().now()
-
-In control_loop:
-  if self.last_humidity_ts is None: return early  # no data yet
-  age = (self.get_clock().now() - self.last_humidity_ts).nanoseconds / 1e9
-  if age > sensor_stale_timeout:  # e.g. 10.0s = 5 missed reads
-    self.get_logger().warn('Humidity data stale, holding actuator state')
-    return
-  # else proceed with control decision
+asyncio.run(main())
+    |
+    ├── asyncpg pool (shared connection pool)
+    |
+    ├── receive_loop()          -- asyncio.create_task
+    |     polls signal-cli every RECEIVE_POLL_SEC seconds
+    |     yields Envelope objects to event_router()
+    |
+    ├── bridge_loop()           -- asyncio.create_task  [chamber/ only]
+    |     async WS client to Mission Control bridge
+    |     yields telemetry events to chamber state machine
+    |
+    ├── periodic_tick()         -- asyncio.create_task  [chamber/ only]
+    |     asyncio.sleep(30) loop
+    |     fires 'tick' into chamber state machine (pi-offline + stuck detectors)
+    |
+    ├── confirm_watchdog()      -- asyncio.create_task  [foray]
+    |     asyncio.sleep(DRAFT_WATCHDOG_INTERVAL_MS/1000) loop
+    |     nudge/expire awaiting_farmer drafts
+    |
+    ├── commit_watchdog()       -- asyncio.create_task  [foray]
+    |     asyncio.sleep(COMMIT_WATCHDOG_INTERVAL_MS/1000) loop
+    |     drain confirmed drafts to farmOS
+    |
+    ├── retention_job()         -- asyncio.create_task  [foray]
+    |     aiocron or asyncio.sleep-based cron
+    |     expire old signal_capture rows
+    |
+    └── heartbeat_scheduler()   -- asyncio.create_task  [chamber/ only]
+          checks clock at each tick, fires daily heartbeat at heartbeatHour
 ```
 
-`sensor_stale_timeout` should be a config parameter. A reasonable default is `5 * sensor_read_interval` (10 seconds at the default 2s read interval).
+All tasks share the single asyncpg pool. All tasks use structured concurrency
+(`asyncio.gather` with `return_exceptions=True`) so one crashed watchdog does
+not bring down the receive loop.
 
-**Why hold (not safe-off):** Turning the humidifier off on stale data is not obviously the right safe state for a mushroom farm. Holding the current actuator state is safer than forced-off, which could dry the chamber. If a safety override is needed, that is a separate explicit feature, not a default behavior.
+The receive loop is the only place where Signal inbound messages are consumed.
+It is a simple poll-sleep loop, not a streaming coroutine, which mirrors the
+Node architecture exactly. Poll interval stays at 30s for battery/rate reasons.
 
 ---
 
-## State Publishing Pattern
+## Integration Points
 
-The controller currently drives hardware directly but does not publish actuator state to any ROS topic. This means:
-- The display node reads sensor topics but cannot show actuator state
-- Telemetry has no visibility into what the controller is doing
-- Tests must inspect internal instance variables directly (a test smell visible in `test_controller.py`)
+| Integration | Protocol | Python library | Notes |
+|-------------|----------|---------------|-------|
+| signal-cli daemon | HTTP REST | `httpx` (async) | /v1/receive, /v2/send, /v1/attachments; same API as Node |
+| Postgres/TimescaleDB | TCP | `asyncpg` | async pool; mirrors node-postgres Pool |
+| Whisper | HTTP REST | `httpx` | POST to /transcribe; 200s timeout preserved |
+| Anthropic LLM | HTTPS | `anthropic` SDK (official) | tool_use for extraction; streaming not needed |
+| farmOS | HTTP REST | `httpx` | session-cookie + X-CSRF-Token; same pattern as farmos_client.py |
+| ROS bridge | WebSocket | `websockets` | WS reconnect with exponential backoff; chamber/ only |
+| ROS bridge health | HTTP | `httpx` | /health poll for fc1LastMsgTs; chamber/ only |
 
-**Recommended addition:** Publish humidifier state to a topic like `fc/actuators/humidifier` using `std_msgs/Bool`. This decouples state reporting from the controller's internals and allows display/telemetry nodes to subscribe without coupling to the controller implementation.
+`httpx` is the async equivalent of `requests`. The existing
+`src/farmos-agent/farmos_agent/farmos_client.py` uses `requests` (sync);
+the Python alerter uses `httpx.AsyncClient` everywhere so nothing blocks the
+event loop.
+
+---
+
+## Parity Validation Harness (Prod-Timescale-Leak-Safe)
+
+**The prod-leak problem:** The live Node commit-watchdog drains ALL
+`status='confirmed'` rows from the shared Timescale every 30 seconds. Any
+Python shadow process sharing that same DB will either (a) race the watchdog
+and commit test drafts to prod farmOS, or (b) have its confirmed rows drained
+by the Node watchdog before the Python commit path fires. Either outcome
+corrupts the parity signal.
+
+**Solution: isolated snapshot DB on a separate port.**
 
 ```
-Topic:   fc/actuators/humidifier
-Message: std_msgs/Bool  (data: True = ON)
-QoS:     Reliability=RELIABLE, Durability=TRANSIENT_LOCAL (last-value available to late-joiners)
+Parity validation topology:
+
+  prod Postgres :5432          snapshot Postgres :5434
+  (Node alerter live)          (Python alerter parity)
+        |                              |
+        |  pg_dump --schema-only       |
+        |  + copy signal_draft/        |
+        |    signal_capture rows       |
+        └─────────────────────────────►│
+          (one-time or nightly sync)   |
+                                       |
+                           Python alerter (parity mode)
+                             TIMESCALE_PORT=5434
+                             FARMOS_INTEGRATION=0   <- no farmOS writes
+                             PARITY_MODE=1          <- emit diffs, not commits
+                                       |
+                                       ▼
+                           parity/replay.py
+                             read signal_capture rows
+                             feed each capture to Python extraction
+                             compare draft_json to Node's stored draft_json
+                             emit diff report
 ```
 
-The `TRANSIENT_LOCAL` durability is important: when the display or telemetry node starts after the controller, it should receive the current state without waiting for the next control cycle.
+The parity harness does NOT run the Python alerter as a live process. It runs
+`parity/replay.py` as a batch script against the snapshot DB. The script:
+
+1. Reads `signal_capture` rows from the snapshot (read-only; no writes to snapshot)
+2. For each capture, calls the Python extraction pipeline in-process
+3. Compares the Python `draft_json` output to the stored `signal_draft.draft_json`
+   (which was written by the Node alerter)
+4. Writes a diff report (JSONL, one entry per capture) to a local file
+5. Exits 0 if diff rate is below the configured threshold (default: <5% field-level divergence)
+
+The snapshot DB is created fresh with `pg_dump | psql` from a prod snapshot taken
+at a specific timestamp, then left read-only. The Python process connecting to it
+uses a read-only Postgres role that cannot INSERT or UPDATE.
+
+This approach is identical to the Option A throwaway-pg pattern used during the
+backfill ([[project_backfill_confirmed_drafts_leak_to_prod_via_live_watchdog]]).
 
 ---
 
-## Parameter Configuration Pattern
+## Chamber Watchdog Decoupling
 
-All control parameters should be declared in `fc_config.yaml` and loaded via `declare_parameters()` in `__init__`. The existing pattern is correct.
+The chamber alerting watchdogs (RH OOB, pi-offline, sensor-offline,
+humidifier-stuck) depend on:
+- The ROS bridge WebSocket (chamber telemetry)
+- The chamber state machine (state.py, rules.py)
+- The bridge health poller (sensor_snapshot.py)
 
-**Gap identified:** The humidifier GPIO pin is hardcoded in `fc_controller.py` as `self.humidifier_pin = 17` and is not declared as a parameter. This means changing the pin requires a code edit. It should be promoted to a config parameter (`humidifier_pin: 17`) alongside `dht_pin` and `light_pin`.
+None of these exist in Foray. The decoupling is enforced by:
 
-**Live parameter updates:** For MVP, `get_parameter()` inside `control_loop()` on every tick is acceptable and is what the existing code does. It is slightly inefficient (a dict lookup each tick) but avoids stale parameter state. If performance profiling ever shows this as a bottleneck, cache with `add_on_set_parameters_callback()`. For Raspberry Pi at 1Hz control rate, this is not a concern.
+1. `chamber/` is a sibling package to the foray packages, not a parent or child.
+2. No foray package imports from `chamber/`.
+3. `boot.py` wires the chamber event sources to the chamber state machine
+   separately from the foray event sources.
+4. The chamber state machine's output (alert send actions) uses the same
+   `SignalClient` instance as the foray receive loop, but only via the
+   `boot.py`-injected reference, never via a direct import.
 
----
-
-## Node vs Nodelet / Composable Node
-
-Do not use composable nodes (nodelets) for this project. The rationale:
-
-- Composable nodes exist to reduce serialization overhead for high-frequency data between nodes running in the same process. This system runs at 1-2Hz, where serialization is irrelevant.
-- The existing plain `rclpy.node.Node` pattern is correct and adding composable nodes adds build complexity (requires `rclcpp_components`, not native to `ament_python`).
-- Keep separate processes: if the controller crashes, the sensor node keeps publishing. This isolation is valuable for a production system.
-
----
-
-## LifecycleNode Decision
-
-Do not use `LifecycleNode` for MVP. The rationale:
-
-- Lifecycle nodes are valuable when startup order dependencies are safety-critical (e.g., Nav2 where a failed planner should prevent the robot from moving). In this system, if the controller starts before the sensor, it simply waits for data (the `None` guard handles this).
-- The added complexity — explicit state transitions, lifecycle manager configuration, transition callbacks — is not justified for a single-chamber system with two loosely coupled nodes.
-- If the system grows to multiple chambers with strict startup ordering requirements, revisit this decision.
+In the future Foray repo, `chamber/` is simply absent. The `boot.py` in Foray
+does not start `bridge_loop()`, `heartbeat_scheduler()`, or `periodic_tick()`.
 
 ---
 
-## Data Flow: Humidity Control Path (Complete)
+## Safe Big-Bang Cutover Sequence
+
+The cutover is a container swap: Node alerter container stops, Python alerter
+container starts, pointing at the same Postgres.
+
+**Pre-conditions (all must hold before flip):**
+- Parity harness passes (<5% field divergence on the live corpus snapshot)
+- Python alerter runs cleanly in a staging compose profile for 30 minutes
+  with FARMOS_INTEGRATION=0 (no farmOS writes, but DB reads/writes active)
+- No in-flight `status='awaiting_farmer'` or `status='confirmed'` drafts in prod
+  (drain or manually expire them -- check with a SELECT before flip)
+
+**Cutover steps:**
+
+1. **Drain the Node outbound queue.** Wait for `signal_outbound` rows with
+   `sent_at IS NULL` to reach zero, or force-drain with a manual trigger.
+
+2. **Stop Node alerter.** `docker compose stop alerter`. The commit-watchdog
+   stops. The receive loop stops. No more Signal polling.
+
+3. **Verify quiescence.** `SELECT COUNT(*) FROM signal_draft WHERE status IN
+   ('confirmed', 'awaiting_farmer')` should be 0. If not, wait 30 more seconds
+   or manually inspect.
+
+4. **Start Python alerter.** `docker compose up -d alerter-py`. The Python
+   boot sequence runs migrations idempotently (all `CREATE TABLE IF NOT EXISTS`,
+   all `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`). The Python alerter connects
+   to the same Postgres pool and resumes where the Node alerter left off.
+
+5. **Smoke test.** Send a test Signal message from f1. Verify it appears in
+   `signal_capture`. Verify extraction fires. Verify preview arrives via Signal.
+
+6. **Remove old Node alerter service** from compose after 24h of clean Python
+   operation.
+
+**Config-flag gate (PYTHON_ALERTER=1):** Not needed for a big-bang cutover.
+The compose service name is the gate -- `alerter` vs `alerter-py`. Keep both
+service definitions in the compose file for the 24h observation window, but
+only one runs at a time.
+
+**Rollback:** `docker compose stop alerter-py && docker compose start alerter`.
+The Node alerter picks up from Postgres state. Any drafts created by the Python
+alerter during the observation window are compatible (same schema). The Node
+watchdogs will drain them correctly.
+
+---
+
+## Build Order (Respects Dependencies)
+
+Each phase builds on the previous. Integration points are tested before the
+layer that depends on them.
 
 ```
-DHT22 hardware / simulation
-        |
-        v  (every sensor_read_interval, default 2s)
-FruitingChamberSensors.read_sensors()
-        |
-        v  publish
-fc/humidity  (sensor_msgs/RelativeHumidity, field: relative_humidity [0.0–1.0])
-        |
-        v  subscription callback (async)
-FruitingChamberController.humidity_callback()
-   self.current_humidity = msg.relative_humidity
-   self.last_humidity_ts = self.get_clock().now()
-        |
-        v  (every control_interval, default 1s, independent timer)
-FruitingChamberController.control_loop()
-   1. freshness check: is data recent enough?
-   2. hysteresis: compare current vs [target ± tolerance]
-   3. dwell guard: has enough time passed since last state change?
-   4. set_humidifier(state) → GPIO.output() or sim variable
-   5. publish to fc/actuators/humidifier  [recommended addition]
-        |
-        v
-MOSFET GPIO pin → ultrasonic humidifier
+Phase 1: Foundation
+  - tenancy/ (TenantConfig, load, layered YAML/env resolution)
+  - persistence/ (asyncpg pool, all migrations, all repos)
+  - config.py (full env load, mirrors config.js, includes all knobs)
+  Verify: pytest unit tests; run migrations against a test DB
+
+Phase 2: Signal I/O
+  - signal_io/client.py (send, receive, fetch_attachment, group id translation)
+  - signal_io/router.py (whitelist, group trigger detection, quote resolution)
+  - signal_io/receive_loop.py (async poll loop)
+  Verify: integration test with real signal-cli (or httpx mock)
+
+Phase 3: Capture + Transcription
+  - capture/transcribe_client.py (Whisper HTTP)
+  - capture/history.py
+  - capture/pipeline.py (handle -> insert signal_capture, transcribe, LLM reply)
+  - capture/retention.py
+  - llm/client.py (Anthropic chat reply, not extractor)
+  Verify: send a voice note, confirm signal_capture row + transcript
+
+Phase 4: Extraction Pipeline
+  - extraction/schemas/ (Pydantic models for all log types)
+  - extraction/validator.py
+  - extraction/multimodal.py
+  - extraction/extractor.py (Anthropic tool_use)
+  - extraction/event_gate/ (Haiku classifier + rules)
+  - extraction/state_machine.py (pure)
+  - extraction/seq_helper.py
+  - extraction/preview_builder.py
+  - extraction/pipeline.py
+  Verify: parity harness Phase A (extraction output vs stored Node drafts)
+
+Phase 5: Confirm Loop
+  - confirm/parser.py (YES/NO/EDIT)
+  - confirm/state_machine.py (pure)
+  - confirm/outbound.py
+  - confirm/edit_handler.py
+  - confirm/strain_ask_back.py
+  - confirm/watchdog.py (async periodic)
+  Verify: send YES to a pending draft; verify signal_draft.status='confirmed'
+
+Phase 6: farmOS Commit Path
+  - farmos_client/client.py (session-cookie, retries, httpx)
+  - farmos_client/assets.py, logs.py, files.py
+  - farmos_client/fungi_type_cache.py, strain_resolver.py
+  - farmos_client/merge.py (upsert-by-stable-identity)
+  - farmos_client/audit_logger.py
+  - farmos_client/commits/ (all per-type handlers)
+  - farmos_client/commit_watchdog.py
+  Verify: confirm a seeding draft; verify seeding log appears in dev farmOS
+
+Phase 7: Chamber Alerter (Mushy-Private)
+  - chamber/bridge_client.py (async WS + reconnect)
+  - chamber/state.py + chamber/rules.py (RH/sensor/pi/humidifier)
+  - chamber/heartbeat.py
+  - chamber/sensor_snapshot.py
+  - chamber/message.py
+  Verify: induce fc-core stop; verify pi-offline alert fires via Signal
+
+Phase 8: Parity Harness + Cutover Gate
+  - tests/parity/replay.py (batch replay against snapshot DB)
+  - tests/parity/compare.py (field-level diff)
+  - parity gate: <5% divergence on live corpus snapshot
+  Verify: parity harness passes; then execute cutover sequence
+
+Phase 9: Cutover + Observation Window
+  - Drain Node queue, stop Node alerter, start Python alerter
+  - 24h observation with rollback option
+  - Remove Node alerter service after observation passes
 ```
 
 ---
 
-## Error Handling Patterns
+## New vs Modified Components
 
-| Scenario | Current Handling | Recommended |
-|----------|-----------------|-------------|
-| No humidity data yet | `return` if `current_humidity is None` | Keep; add `last_humidity_ts` init to `None` |
-| Sensor node stopped/crashed | Silent: uses stale value forever | Add timestamp freshness check, log warning |
-| DHT22 read failure | Logged in `fc_sensors`, no publish | Controller detects via stale data timeout |
-| GPIO write failure | No handling (real hardware) | Catch exception, log error, do not crash node |
-| Humidifier chattering | No handling | Minimum dwell time guard |
-| Invalid humidity value | No validation | Check value in [0.0, 1.0] range before use |
-
----
-
-## Anti-Patterns to Avoid
-
-### Blocking in Timer Callbacks
-
-**What:** Using `time.sleep()` inside a timer callback or subscription callback.
-
-**Current occurrence:** `fc_sensors.py` calls `time.sleep(2.0)` inside the `except RuntimeError` block of `read_sensors()`. This blocks the entire executor for 2 seconds while the ROS spin loop cannot process any other callbacks on that node.
-
-**Why bad:** With `SingleThreadedExecutor` (the default), `time.sleep()` in any callback blocks all other callbacks on that node until it returns. No other timer fires, no subscriptions are processed.
-
-**Instead:** Use a `self.retry_after` timestamp: set it when a read fails, and skip the read in subsequent timer fires until the time has passed. All callbacks remain non-blocking.
-
-### Hardcoded Hardware Pins
-
-**What:** GPIO pin numbers embedded in code rather than parameters.
-
-**Current occurrence:** `self.humidifier_pin = 17` in `fc_controller.py`.
-
-**Why bad:** Changing hardware requires a code edit rather than a config edit; makes testing harder; blocks multi-chamber scaling.
-
-**Instead:** Declare `humidifier_pin: 17` in `fc_config.yaml` and read via `get_parameter()` in `__init__`.
-
-### Testing Internal State Directly
-
-**What:** Tests checking `node.humidifier_pin == 1` to verify the humidifier turned on.
-
-**Current occurrence:** `test_controller.py` lines 66 and 74 test `node.humidifier_pin` as if it were a boolean state flag, but `humidifier_pin` is a GPIO pin number (17). This test is broken — it conflates the pin assignment with the pin output state.
-
-**Why bad:** Test couples to implementation internals; will break if humidifier state is stored differently; currently tests incorrect thing.
-
-**Instead:** Either expose a `get_humidifier_state()` method (already exists) and test that, or test that the published topic message is correct once the actuator state topic is added.
+| Component | Status | Notes |
+|-----------|--------|-------|
+| `tenancy/` | New | Replaces `config.js` tenant layer; Foray-first |
+| `persistence/` | New | Replaces 5 separate `*-db.js` files; asyncpg |
+| `signal_io/` | New | Replaces `signal.js` + `receive-loop.js` |
+| `extraction/` | New | Port of `extraction/*.js`; Pydantic replaces Zod |
+| `confirm/` | New | Port of `confirm/*.js`; includes Phase-50 quote fixes |
+| `farmos_client/` | New | Port of `farmos/*.js` + `farmos_agent/farmos_client.py`; httpx |
+| `capture/` | New | Port of `capture.js`, `capture-db.js`, `transcribe-client.js` |
+| `chamber/` | New | Port of `bridge-client.js`, `state.js`, `rules.js`, `heartbeat.js` |
+| `config.py` | New | Port of `config.js` |
+| Postgres schema | Unchanged | Same tables; Python runs idempotent migrations on boot |
+| `tenants/` directory | Unchanged | Same YAML structure; no migration needed |
+| signal-cli daemon | Unchanged | External; not part of this port |
+| `src/farmos-agent/` | Unchanged | Remains; Python alerter does NOT replace it |
+| `src/agents/alerter/` | Retired | Removed after 24h observation window passes |
 
 ---
 
-## Scalability Considerations
+## Key Architectural Decisions
 
-| Concern | At 1 chamber (MVP) | At 4 chambers | At 10+ chambers |
-|---------|-------------------|---------------|-----------------|
-| Node organization | Single fc_core package | Namespace per chamber (`fc1/`, `fc2/`) | Same namespacing, orchestrated via launch |
-| Config management | Single `fc_config.yaml` | Per-chamber config files | Templated config generation |
-| Topic naming | `fc/humidity` | `fc1/humidity`, `fc2/humidity` | Same pattern |
-| Hardware isolation | All in one controller | Separate controller node per chamber | Same pattern |
-| Control logic sharing | N/A | Shared base class or common module | Python module extracted to shared package |
+**asyncio over threading:** The Node alerter is single-threaded with a libuv
+event loop. asyncio is the direct Python equivalent. Using threads would
+introduce lock complexity with no benefit -- all I/O is network/DB, none is
+CPU-bound.
 
-For MVP, none of this needs to be built. The `fc/` topic prefix already accommodates future namespacing. Do not over-engineer for multi-chamber now.
+**asyncpg over psycopg2:** asyncpg is the correct async Postgres driver for
+asyncio (native protocol, no sync wrappers). psycopg3 is also async-capable
+but asyncpg has more production usage at this scale.
+
+**httpx over aiohttp:** httpx has a requests-compatible API, which mirrors the
+existing `farmos_client.py` pattern closely. Less boilerplate for session
+management.
+
+**Pydantic v2 over Zod:** Direct Python equivalent. JSON Schema generation is
+built in (needed for Anthropic tool_use input_schema). Pydantic v2's
+`model_json_schema()` replaces `zodToJsonSchema()`.
+
+**Single process, no worker queue:** The Node alerter uses no worker queue
+(no Redis, no Celery). The Python port stays the same. The commit watchdog
+IS the queue: it drains `status='confirmed'` rows on an interval. This
+simplicity is correct for the current scale (one farm, ~3 farmers).
+
+**Foray seam enforced by package structure, not runtime flag:** There is no
+`FORAY_MODE` env var. The seam is structural -- `chamber/` is a separate
+package with no downstream dependents in the foray slice. The Foray extraction
+is a filesystem operation (delete `chamber/`, delete chamber imports from
+`boot.py`), not a code path switch.
 
 ---
 
 ## Sources
 
-- [Using Callback Groups — ROS 2 Jazzy docs](https://docs.ros.org/en/jazzy/How-To-Guides/Using-callback-groups.html) — HIGH confidence (official)
-- [rclpy Timer API — ROS 2 Jazzy](https://docs.ros.org/en/jazzy/p/rclpy/api/timers.html) — HIGH confidence (official)
-- [Managed Nodes design article — ROS 2](https://design.ros2.org/articles/node_lifecycle.html) — HIGH confidence (official)
-- [How to Use ROS 2 Lifecycle Nodes — Foxglove](https://foxglove.dev/blog/how-to-use-ros2-lifecycle-nodes) — MEDIUM confidence (third-party, consistent with official docs)
-- [ROS2 rclpy Parameter Callback — Robotics Back-End](https://roboticsbackend.com/ros2-rclpy-parameter-callback/) — MEDIUM confidence (third-party tutorial, verified against official API)
-- [Handling sensor timeouts/disconnects in ROS2 — ROS Answers](https://answers.ros.org/question/414290/handling-sensor-timeoutsdisconnects-in-ros2/) — MEDIUM confidence (community, consistent with timestamp pattern)
-- [ROS 2 Common Issues and Mistakes — Karelics](https://karelics.fi/blog/2023/05/19/ros-2-common-issues-and-mistakes/) — MEDIUM confidence (practitioner post)
-- Existing codebase: `fc_controller.py`, `fc_sensors.py`, `fc_config.yaml`, `test_controller.py` — HIGH confidence (ground truth for current state)
+- Live source: `/mnt/slime-kingdom/opt/mushy/src/agents/alerter/src/` (read 2026-06-14)
+- Precedent: `/mnt/slime-kingdom/opt/mushy/src/farmos-agent/` (async patterns, farmOS client shape)
+- SEED-010: `.planning/seeds/SEED-010-foray-oss-extraction.md` (what lifts out vs stays)
+- PROJECT.md: `.planning/PROJECT.md` (v1.12 strategy decisions locked 2026-06-14)
+- Memory: `project_backfill_confirmed_drafts_leak_to_prod_via_live_watchdog` (Option A pattern)
+
+---
+*Architecture research for: v1.12 Farm-Agent Python Port*
+*Researched: 2026-06-14*

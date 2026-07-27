@@ -226,6 +226,17 @@ function createReceiveLoop({
         // Phase 39 confirm-reply branch (between snooze and capture).
         // Skip when wiring is incomplete (defensive back-compat for legacy tests).
         if (pool && confirmDb && confirmParser && confirmOutbound && editHandler && text) {
+          // 2026-05-24 fix (signal-capture-missing-followup-messages): every
+          // confirm-branch path below ends in `continue`, skipping the SLOW PATH
+          // capture write -- so follow-up replies (YES/NO/EDIT/strain) were never
+          // persisted to signal_capture. Persist the raw inbound paper trail right
+          // before we consume the message. Best-effort, never-throw; the NOOP
+          // fall-through still goes through full handle() (no double-persist).
+          const recordReply = () =>
+            (capturePipeline && typeof capturePipeline.recordReplyCapture === 'function'
+              ? capturePipeline.recordReplyCapture(env, captureCtx).catch((e) =>
+                  logger.warn(`[capture] reply persist error: ${e.message}`))
+              : Promise.resolve());
           // Phase 50 Plan-04 (CONTEXT D-04): quote-first routing. When the
           // farmer's incoming message carries a quote target, prefer the
           // resolved draft over the most-recent-active heuristic.
@@ -257,6 +268,7 @@ function createReceiveLoop({
               } else if (qr.status === 'committed' || qr.status === 'discarded' || qr.status === 'expired' || qr.status === 'needs_review' || qr.status === 'confirmed') {
                 // Terminal-state quote: polite "already closed" ack; do not mutate.
                 await confirmOutbound.dispatch('send_quote_closed', qr);
+                await recordReply();
                 continue;
               }
               // Other transitional statuses fall through to the most-recent-active path.
@@ -293,6 +305,7 @@ function createReceiveLoop({
                 activeDrafts,
                 senderE164: source,
               });
+              await recordReply();
               continue;
             }
             draftRow = activeDrafts[0] || null;
@@ -319,6 +332,7 @@ function createReceiveLoop({
                 } else {
                   logger.warn(`[receive] strain confirm error: ${r.reason}`);
                 }
+                await recordReply();
                 continue;
               } else if (strainReply.kind === 'correction') {
                 // Validate the correction target against the curated set.
@@ -343,6 +357,7 @@ function createReceiveLoop({
                   } else {
                     logger.warn(`[receive] strain correction confirm error: ${r.reason}`);
                   }
+                  await recordReply();
                   continue;
                 } else {
                   // Non-curated correction target: re-ask (do not confirm, do not mint).
@@ -351,6 +366,7 @@ function createReceiveLoop({
                     seenCode,
                     nearest: resolved.nearest || null,
                   });
+                  await recordReply();
                   continue;
                 }
               }
@@ -366,6 +382,7 @@ function createReceiveLoop({
               } else {
                 logger.warn(`[receive] confirm error: ${r.reason}`);
               }
+              await recordReply();
               continue;
             }
             if (parsed.kind === 'NO') {
@@ -373,6 +390,7 @@ function createReceiveLoop({
               if (r.ok && r.rowCount === 1) {
                 await confirmOutbound.dispatch('send_discard_ack', draftRow);
               }
+              await recordReply();
               continue;
             }
             if (parsed.kind === 'EDIT') {
@@ -388,6 +406,7 @@ function createReceiveLoop({
               } else {
                 logger.warn(`[receive] edit failed: ${eh && eh.reason}`);
               }
+              await recordReply();
               continue;
             }
             // parsed.kind === 'NOOP' -- fall through to capture pipeline.

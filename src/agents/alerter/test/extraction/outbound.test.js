@@ -66,6 +66,36 @@ describe('createOutboundDispatcher', () => {
     expect(call[1]).toMatchObject({ to: { groupId: 'internalIdAbc' }, intent: 'extraction_preview' });
   });
 
+  // 2026-05-24 fix: per-draft outbounds must carry relatedDraftId so
+  // signal_outbound.related_draft_id is populated (was landing NULL, breaking
+  // forensic "every outbound for draft X" joins + Phase 51 stub-merge audit).
+  test('send_ask_back -> signalClient.send carries relatedDraftId = draft.id', async () => {
+    const signalClient = makeSignalOk();
+    const d = createOutboundDispatcher({
+      signalClient, config: {}, logger: silentLogger,
+      previewBuilder, operatorRecipient: '+59892893012',
+    });
+    const row = makeDraftRow({ reply_target_kind: 'dm' });
+    await d.dispatch('send_ask_back', row);
+    expect(signalClient.send.mock.calls[0][1]).toMatchObject({
+      relatedDraftId: 'abcdef1234567890',
+    });
+  });
+
+  test('send_needs_review_ping -> signalClient.send carries relatedDraftId = draft.id', async () => {
+    const signalClient = makeSignalOk();
+    const d = createOutboundDispatcher({
+      signalClient, config: {}, logger: silentLogger,
+      previewBuilder, operatorRecipient: '+59892893012',
+    });
+    // sender != operator so the trinity-skip does not short-circuit the send.
+    const row = makeDraftRow({ sender_e164: '+59898018597', needs_review_reason: 'askback_cap' });
+    await d.dispatch('send_needs_review_ping', row);
+    expect(signalClient.send.mock.calls[0][1]).toMatchObject({
+      relatedDraftId: 'abcdef1234567890',
+    });
+  });
+
   test('send_ask_back strips em-dash from farmer_facing_preview', async () => {
     const signalClient = makeSignalOk();
     const d = createOutboundDispatcher({

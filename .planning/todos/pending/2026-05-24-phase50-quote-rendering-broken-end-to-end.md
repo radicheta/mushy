@@ -4,6 +4,7 @@ source: Phase 50 LIVE-FIRE Step 3 + controlled curl probe (Santi-side; bot-side 
 severity: CRITICAL — Phase 50's core wire-level mechanism is non-functional end-to-end
 priority: high but DEFERRED — investigation rolled into the alerter-Python port (`2026-05-14-port-alerter-to-farm-agent-python.md`). Quote-threading should be re-attested as part of that migration's wire-level smoke, not as a standalone fix on the current Node+REST stack. Until then Phase 50's QUOT-* requirements are HERMETIC-ATTESTED ONLY.
 disposition: defer-to-python-port
+resolves_phase: 57
 ---
 
 # Phase 50 quote-replies don't render on Signal clients despite REST returning 201

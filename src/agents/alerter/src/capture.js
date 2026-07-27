@@ -313,7 +313,78 @@ function createCapturePipeline({
     }
   }
 
-  return { handle };
+  // 2026-05-24 fix (signal-capture-missing-followup-messages): confirm-thread
+  // replies (YES / NO / EDIT / strain ask-back) are consumed by receive-loop's
+  // Phase 39 branch and `continue` before reaching handle(), so they never landed
+  // in signal_capture. That broke Phase 50 quote-routing (QUOT-02 needs the
+  // inbound's signal_msg_ts in the table), the Phase 51 stub-merge audit, and the
+  // farmer paper trail of literal YES/EDIT text.
+  //
+  // recordReplyCapture persists the raw inbound ONLY. It deliberately does NOT
+  // download attachments, transcribe, run the event-gate, enqueue extraction, or
+  // compose a convo reply -- the confirm-handler owns the farmer-facing response
+  // for these messages, and a fall-through NOOP still goes through full handle().
+  // Field derivation mirrors handle() Step 3; keep the two in sync.
+  async function recordReplyCapture(envWrapper, ctx = {}) {
+    const env = envWrapper.envelope || envWrapper;
+    const source = env.source || env.sourceNumber || '';
+    const dm = env.dataMessage || {};
+    const text = dm.message || null;
+    const attachments = dm.attachments || [];
+    const groupId = ctx.groupId ?? (dm.groupInfo?.groupId ?? null);
+    const farmosPerson = signalFarmerMap.get(source) ?? '(unassigned)';
+    const replyTargetKind = ctx.replyTargetKind ?? (groupId ? 'group' : 'dm');
+    const capturedAtMs = clock();
+    const id = ulid(capturedAtMs);
+    const sigMsgTs = (typeof dm.timestamp === 'number')
+      ? dm.timestamp
+      : (Number.isFinite(Number(dm.timestamp)) ? Number(dm.timestamp) : null);
+    const q = dm.quote || null;
+    const quoteMsgTsRaw = q ? (q.id != null ? q.id : q.timestamp) : null;
+    const quoteMsgTs = quoteMsgTsRaw != null && Number.isFinite(Number(quoteMsgTsRaw))
+      ? Number(quoteMsgTsRaw)
+      : null;
+    const quoteAuthor = q ? ((typeof q.author === 'string' && q.author) ? q.author
+                             : (typeof q.authorNumber === 'string' && q.authorNumber) ? q.authorNumber
+                             : null) : null;
+    try {
+      await insertCapture(pool, {
+        id,
+        captured_at: new Date(capturedAtMs),
+        sender: source,
+        message_type: classify(text || '', attachments),
+        raw_text: text ?? null,
+        attachment_paths: [],
+        transcript: null,
+        llm_session_tag: null,
+        llm_reply: null,
+        degraded: false,
+        group_id: groupId,
+        farmos_person: farmosPerson,
+        reply_target_kind: replyTargetKind,
+        signal_msg_ts: sigMsgTs,
+        quote_msg_ts: quoteMsgTs,
+        quote_author_e164: quoteAuthor,
+      });
+      // Tag the row so reply captures (no extraction ran) are distinguishable
+      // from full captures. Best-effort, mirrors handle()'s gate-audit UPDATE.
+      try {
+        await pool.query(
+          `UPDATE signal_capture SET extraction_gate = $1 WHERE id = $2`,
+          ['confirm_reply', id]
+        );
+      } catch (e) {
+        logger.warn(`[capture] reply gate-tag failed: ${e.message}`);
+      }
+      if (typeof logger.debug === 'function') {
+        logger.debug(`[capture] reply persisted (confirm-thread) sender=${maskNumber(source)} ts=${sigMsgTs}`);
+      }
+    } catch (e) {
+      logger.warn(`[capture] reply db insert failed: ${e.message}`);
+    }
+  }
+
+  return { handle, recordReplyCapture };
 }
 
 module.exports = { createCapturePipeline };
