@@ -232,6 +232,87 @@ async def test_migrations_create_expected_tables(pool):
 
 
 # ---------------------------------------------------------------------------
+# Task 3: origin column + Phase 40 commit columns (Phase 62 D-01)
+# ---------------------------------------------------------------------------
+
+
+@_requires_db
+async def test_migrations_origin_and_commit_columns(pool):
+    """Phase 62 D-01: origin column exists with default 'node'; all six Phase 40
+    commit-lifecycle columns are present after run_migrations.
+
+    Also verifies that a freshly-inserted signal_draft row defaults origin to 'node'
+    when origin is not specified at INSERT time (the structural guard that legacy
+    and Node-written rows are never misidentified as Python-owned).
+    """
+    async with pool.connection() as conn:
+        # --- origin column present with correct default ---
+        col_row = await conn.execute(
+            """
+            SELECT column_default
+            FROM information_schema.columns
+            WHERE table_name = 'signal_draft'
+              AND column_name = 'origin'
+            """
+        )
+        row = await col_row.fetchone()
+        assert row is not None, "signal_draft.origin column must exist after migration"
+        assert row[0] is not None and "node" in str(row[0]), (
+            f"signal_draft.origin default must be 'node', got: {row[0]!r}"
+        )
+
+        # --- all six Phase 40 commit-lifecycle columns present ---
+        commit_cols = [
+            "farmos_response",
+            "committed_at",
+            "commit_failed_reason",
+            "commit_attempt_count",
+            "committed_at_attempt",
+            "outcome_ack_sent_at",
+        ]
+        for col in commit_cols:
+            col_row = await conn.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'signal_draft'
+                  AND column_name = $1
+                """,
+                [col],
+            )
+            found = await col_row.fetchone()
+            assert found is not None, (
+                f"signal_draft.{col} column must exist after migration (Phase 40 commit lifecycle)"
+            )
+
+        # --- freshly-inserted row defaults origin to 'node' ---
+        test_id = "test-phase62-origin-default-check"
+        await conn.execute(
+            "DELETE FROM signal_draft WHERE id = $1",
+            [test_id],
+        )
+        await conn.execute(
+            """
+            INSERT INTO signal_draft (id, sender_e164, status)
+            VALUES ($1, '+10000000099', 'pending')
+            """,
+            [test_id],
+        )
+        val_row = await conn.execute(
+            "SELECT origin FROM signal_draft WHERE id = $1",
+            [test_id],
+        )
+        inserted = await val_row.fetchone()
+        assert inserted is not None, "Inserted test row must be found"
+        assert inserted[0] == "node", (
+            f"signal_draft.origin must default to 'node' on INSERT, got: {inserted[0]!r}"
+        )
+
+        # Cleanup
+        await conn.execute("DELETE FROM signal_draft WHERE id = $1", [test_id])
+
+
+# ---------------------------------------------------------------------------
 # Task 2: additive-only source guard (DB-INDEPENDENT -- MUST ALWAYS RUN)
 # ---------------------------------------------------------------------------
 

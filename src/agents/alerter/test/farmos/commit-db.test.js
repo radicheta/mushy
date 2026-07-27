@@ -4,14 +4,17 @@ const commitDb = require('../../src/farmos/commit-db');
 const { makeFakePool } = require('./fake-pool');
 
 describe('commit-db (Phase 40 D-02/D-07)', () => {
-  it('initDb issues 6 ALTER TABLE statements + 1 CREATE INDEX', async () => {
+  it('initDb issues 7 ALTER TABLE statements + 1 CREATE INDEX', async () => {
     const pool = makeFakePool();
     await commitDb.initDb(pool);
     const sqls = pool.queries.map((q) => q.sql);
     const alters = sqls.filter((s) => /^\s*ALTER TABLE/i.test(s));
     const indexes = sqls.filter((s) => /^\s*CREATE INDEX/i.test(s));
-    expect(alters.length).toBe(6);
+    expect(alters.length).toBe(7);
     expect(indexes.length).toBe(1);
+    // Phase 62 D-01: origin guard column ships at boot so findConfirmedCandidates'
+    // `AND origin != 'python'` clause never references a missing column on a clean DB.
+    expect(sqls.some((s) => /ADD COLUMN IF NOT EXISTS origin text NOT NULL DEFAULT 'node'/i.test(s))).toBe(true);
     // Phase 45 D-01: outcome_ack_sent_at column ships at boot, no new index.
     expect(sqls.some((s) => /outcome_ack_sent_at timestamptz/i.test(s))).toBe(true);
     expect(sqls.some((s) => /CREATE INDEX[\s\S]+outcome_ack_sent_at/i.test(s))).toBe(false);
@@ -26,6 +29,29 @@ describe('commit-db (Phase 40 D-02/D-07)', () => {
     const select = pool.queries.find((q) => /SELECT \* FROM signal_draft/i.test(q.sql));
     expect(select.params[0]).toBe(5);
     expect(rows.map((r) => r.id).sort()).toEqual(['a', 'b']);
+  });
+
+  it("findConfirmedCandidates excludes origin='python' rows (Phase 62 D-01 origin guard)", async () => {
+    const pool = makeFakePool();
+    // origin='python': must be excluded by the Node watchdog
+    pool.seedDraft({ id: 'py1', status: 'confirmed', origin: 'python' });
+    // origin='node': must be included
+    pool.seedDraft({ id: 'nd1', status: 'confirmed', origin: 'node' });
+    // origin omitted: defaults to 'node', must be included
+    pool.seedDraft({ id: 'df1', status: 'confirmed' });
+
+    const rows = await commitDb.findConfirmedCandidates(pool, 10);
+
+    // SQL must contain the origin guard clause
+    const select = pool.queries.find((q) => /SELECT \* FROM signal_draft/i.test(q.sql));
+    expect(select.sql).toMatch(/AND origin != 'python'/);
+
+    // origin='python' row must not appear in results
+    const ids = rows.map((r) => r.id).sort();
+    expect(ids).not.toContain('py1');
+    // origin='node' and default rows must appear
+    expect(ids).toContain('nd1');
+    expect(ids).toContain('df1');
   });
 
   it('acquireCommitLock rowCount=1 returns row', async () => {

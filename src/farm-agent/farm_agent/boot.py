@@ -41,6 +41,8 @@ from farm_agent.capture.transcribe_client import create_transcribe_client
 from farm_agent.capture.pipeline import create_capture_pipeline
 from farm_agent.capture.retention import retention_loop
 from farm_agent.confirm.watchdog import confirm_watchdog_loop
+from farm_agent.farmos.client import create_farmos_client
+from farm_agent.farmos.commit_watchdog import commit_watchdog_loop
 from farm_agent.gate import create_event_gate
 from farm_agent.gate.classifier import create_haiku_classifier
 from farm_agent.extraction.extractor import create_extractor
@@ -104,6 +106,17 @@ async def main() -> None:
     # Start confirm-loop watchdog task (nudge / expire awaiting_farmer drafts).
     confirm_task = asyncio.create_task(confirm_watchdog_loop(pool, signal_client, config))
 
+    # Start commit watchdog task only when farmOS integration is enabled (T-62-32).
+    # T-56-06-01: farmos_url, username, password are NEVER logged here.
+    commit_watchdog_task = None
+    if config.farmos_integration:
+        farmos_client = create_farmos_client(
+            config.farmos_url, config.farmos_username, config.farmos_password, http
+        )
+        commit_watchdog_task = asyncio.create_task(
+            commit_watchdog_loop(pool, farmos_client, config)
+        )
+
     elapsed = time.monotonic() - t0
     # T-56-06-01: only elapsed time is logged -- no config fields, no secrets.
     log.info("boot complete in %.2fs", elapsed)
@@ -130,6 +143,12 @@ async def main() -> None:
         await confirm_task
     except asyncio.CancelledError:
         pass
+    if commit_watchdog_task is not None:
+        commit_watchdog_task.cancel()
+        try:
+            await commit_watchdog_task
+        except asyncio.CancelledError:
+            pass
     await anthropic_client.close()
     await http.aclose()
     await pool.close()

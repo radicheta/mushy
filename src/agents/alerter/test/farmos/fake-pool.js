@@ -35,6 +35,9 @@ function makeFakePool() {
         commit_attempt_count: row.commit_attempt_count || 0,
         committed_at_attempt: row.committed_at_attempt || null,
         outcome_ack_sent_at: row.outcome_ack_sent_at || null,
+        // Phase 62 D-01: origin defaults to 'node' (mirrors DB DEFAULT 'node').
+        // Rows seeded without explicit origin behave like legacy/Node-written rows.
+        origin: 'node',
         created_at: row.created_at || _now(),
         updated_at: row.updated_at || _now(),
       },
@@ -63,11 +66,11 @@ function makeFakePool() {
     if (/^\s*CREATE INDEX/i.test(s)) return { rows: [], rowCount: 0 };
     if (/^\s*BEGIN|^\s*COMMIT|^\s*ROLLBACK/i.test(s)) return { rows: [], rowCount: 0 };
 
-    // findConfirmedCandidates
+    // findConfirmedCandidates (Phase 62 D-01: also excludes origin='python')
     if (/SELECT \* FROM signal_draft\s+WHERE status='confirmed'/i.test(s)) {
       const limit = params[0];
       const rows = Array.from(drafts.values())
-        .filter((r) => r.status === 'confirmed')
+        .filter((r) => r.status === 'confirmed' && r.origin !== 'python')
         .sort((a, b) => new Date(a.confirmed_at || 0) - new Date(b.confirmed_at || 0))
         .slice(0, limit);
       return { rows, rowCount: rows.length };
