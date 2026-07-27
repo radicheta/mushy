@@ -49,6 +49,8 @@ TEST_ENV = {
     "TENANT_YAML_BASE": "",
     "TIMEZONE": "America/Montevideo",
     "LOG_LEVEL": "INFO",
+    "DRAFT_NUDGE_FRACTION": "0.8",
+    "MAX_EDIT_TURNS": "3",
 }
 
 
@@ -178,6 +180,64 @@ def fake_capture_repo():
     To test fail-open: set repo.should_raise = True before calling.
     """
     return FakeCaptureRepo()
+
+
+# ---------------------------------------------------------------------------
+# Phase 61: confirm suite fakes (no DB required, always available)
+# ---------------------------------------------------------------------------
+
+
+class FakeConfirmRepo:
+    """In-memory confirm repo for confirm unit tests.
+
+    Records all calls in self.calls for assertion.
+    Returns {"ok": True, "rowcount": 1} by default for transition methods.
+    find_* candidates return [] / None as appropriate.
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def _record(self, fn: str, **kwargs) -> None:
+        self.calls.append({"fn": fn, **kwargs})
+
+    async def confirm_draft(self, pool: object, draft_id: str) -> dict:
+        self._record("confirm_draft", draft_id=draft_id)
+        return {"ok": True, "rowcount": 1}
+
+    async def discard_draft(self, pool: object, draft_id: str) -> dict:
+        self._record("discard_draft", draft_id=draft_id)
+        return {"ok": True, "rowcount": 1}
+
+    async def expire_draft(self, pool: object, draft_id: str, reason: str) -> dict:
+        self._record("expire_draft", draft_id=draft_id, reason=reason)
+        return {"ok": True, "rowcount": 1}
+
+    async def mark_nudge_sent(self, pool: object, draft_id: str) -> dict:
+        self._record("mark_nudge_sent", draft_id=draft_id)
+        return {"ok": True, "rowcount": 1}
+
+    async def bump_edit_turn(self, pool: object, draft_id: str) -> dict:
+        self._record("bump_edit_turn", draft_id=draft_id)
+        return {"ok": True, "edit_turn_count": 1, "rowcount": 1}
+
+    async def find_awaiting_for_sender(self, pool: object, sender_e164: str) -> dict | None:
+        self._record("find_awaiting_for_sender", sender_e164=sender_e164)
+        return None
+
+    async def find_nudge_candidates(self, pool: object, nudge_min: int) -> list:
+        self._record("find_nudge_candidates", nudge_min=nudge_min)
+        return []
+
+    async def find_expire_candidates(self, pool: object, timeout_min: int) -> list:
+        self._record("find_expire_candidates", timeout_min=timeout_min)
+        return []
+
+
+@pytest.fixture
+def fake_confirm_repo():
+    """Return a FakeConfirmRepo instance (default: succeeds with rowcount=1)."""
+    return FakeConfirmRepo()
 
 
 async def _fake_transcribe(arg) -> dict:
