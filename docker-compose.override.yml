@@ -44,7 +44,11 @@ services:
   # Account state persists in named volume — survive container recreation.
   # Internal only: NOT published to host, NOT Tailscale-served (D-13).
   signal-cli:
-    image: bbernhard/signal-cli-rest-api:0.200-dev
+    # 2026-07-26: bumped 0.200-dev (signal-cli 0.14.2) -> 0.100 (signal-cli 0.14.5).
+    # Signal enforced SPQR on 2026-03-06 and unregisters accounts on clients that
+    # lack it; +59891840205 was killed server-side 2026-07-19 02:43Z and re-register
+    # 403'd until the client was current. Upstream AsamK/signal-cli#1993.
+    image: bbernhard/signal-cli-rest-api:0.100
     restart: unless-stopped
     environment:
       - MODE=normal

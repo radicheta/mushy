@@ -42,6 +42,13 @@ from farm_agent.tenancy.tenant import TenantConfig, mask_number
 
 logger = logging.getLogger(__name__)
 
+# config.js:175 -- parseIntEnv(env, 'ALERT_MAX_SENDS_PER_HOUR', 20).
+# Phase 63 D-03: max_sends_per_hour moved to ChamberConfig, so this client no
+# longer reads it off TenantConfig. boot.py injects the live value via
+# get_max_sends_per_hour; this constant is the floor when no hook is wired, so
+# an unhooked client is still rate-capped rather than unbounded (T-63-03).
+_DEFAULT_MAX_SENDS_PER_HOUR = 20
+
 
 class SignalClient:
     """Wire-level Signal I/O client -- port of signal.js createSignalClient().
@@ -130,7 +137,7 @@ class SignalClient:
                     return int(v)
             except Exception:  # noqa: BLE001
                 pass
-        return self._config.max_sends_per_hour
+        return _DEFAULT_MAX_SENDS_PER_HOUR
 
     def sends_this_hour(self) -> int:
         """Return current send count in the rolling hour window (signal.js:226-229)."""

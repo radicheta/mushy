@@ -259,16 +259,8 @@ class TenantConfig:
     capture_base_dir: str
     capture_retention_days: int
 
-    # --- Alerter tuning (numeric) ---
-    rh_target: float
-    rh_band: float
-    pi_offline_min: int
-    sensor_offline_min: int
-    heartbeat_hour: int
-
     # --- Receive / send limits ---
     receive_poll_sec: int
-    max_sends_per_hour: int
 
     # --- Draft confirm loop ---
     draft_pending_timeout_min: int
@@ -285,7 +277,6 @@ class TenantConfig:
     fidelity_csv_path: str
 
     # --- General ---
-    timezone: str
     log_level: str
 
 
@@ -363,16 +354,8 @@ def load(env: dict[str, str] | None = None) -> TenantConfig:
     capture_base_dir = env.get("CAPTURE_BASE_PATH") or "/data/signal-capture"
     capture_retention_days = _parse_int_env(env, "CAPTURE_RETENTION_DAYS", 30)
 
-    # --- Alerter tuning ---
-    rh_target = _parse_float_env(env, "ALERT_RH_TARGET", 90.0)
-    rh_band = _parse_float_env(env, "ALERT_RH_BAND", 3.0)
-    pi_offline_min = _parse_int_env(env, "ALERT_PI_OFFLINE_MIN", 5)
-    sensor_offline_min = _parse_int_env(env, "ALERT_SENSOR_OFFLINE_MIN", 5)
-    heartbeat_hour = _parse_int_env(env, "ALERT_HEARTBEAT_HOUR", 8)
-
     # --- Receive / send limits ---
     receive_poll_sec = _parse_int_env(env, "ALERT_RECEIVE_POLL_SEC", 30)
-    max_sends_per_hour = _parse_int_env(env, "ALERT_MAX_SENDS_PER_HOUR", 20)
 
     # --- Draft confirm loop ---
     draft_pending_timeout_min = _parse_int_env(env, "DRAFT_PENDING_TIMEOUT_MIN", 30)
@@ -389,7 +372,6 @@ def load(env: dict[str, str] | None = None) -> TenantConfig:
     fidelity_csv_path = _pick(tenant_cfg, env, "FIDELITY_CSV_PATH", "")
 
     # --- General ---
-    timezone = env.get("TZ") or "America/Toronto"
     log_level = env.get("LOG_LEVEL") or "info"
 
     return TenantConfig(
@@ -414,13 +396,7 @@ def load(env: dict[str, str] | None = None) -> TenantConfig:
         whisper_url=whisper_url,
         capture_base_dir=capture_base_dir,
         capture_retention_days=capture_retention_days,
-        rh_target=rh_target,
-        rh_band=rh_band,
-        pi_offline_min=pi_offline_min,
-        sensor_offline_min=sensor_offline_min,
-        heartbeat_hour=heartbeat_hour,
         receive_poll_sec=receive_poll_sec,
-        max_sends_per_hour=max_sends_per_hour,
         draft_pending_timeout_min=draft_pending_timeout_min,
         draft_watchdog_interval_ms=draft_watchdog_interval_ms,
         draft_nudge_fraction=draft_nudge_fraction,
@@ -429,6 +405,5 @@ def load(env: dict[str, str] | None = None) -> TenantConfig:
         commit_watchdog_batch_cap=commit_watchdog_batch_cap,
         commit_retry_max=commit_retry_max,
         fidelity_csv_path=str(fidelity_csv_path),
-        timezone=timezone,
         log_level=log_level,
     )
