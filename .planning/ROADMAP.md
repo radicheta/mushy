@@ -249,7 +249,7 @@ rollback (CR-01), no 55B-SECURITY.md.
 - [x] **Phase 56: Foundation** - asyncio skeleton, tenancy, persistence/migrations, zod->pydantic schema-parity gate, Foray CI seam (completed 2026-06-15)
 - [x] **Phase 57: Signal I/O** - signal-cli JSON-RPC, durable+rate-capped outbound, multi-farmer routing, Phase-50 quote-threading fix (completed 2026-06-22; verified 5/5, live-fire PASS 2026-06-21)
 - [x] **Phase 58: Capture + Transcription** - envelope/attachment capture, off-loop Whisper transcription (completed 2026-06-23)
-- [ ] **Phase 59: Event Gate** - rule prefilter + Haiku classifier, reproduces Node gate accept/reject behavior
+- [x] **Phase 59: Event Gate** - rule prefilter + Haiku classifier, reproduces Node gate accept/reject behavior (completed 2026-06-24)
 - [ ] **Phase 60: Extraction Pipeline** - multimodal tool-use, retry/SeedingSession/provenance, B5 minting
 - [ ] **Phase 61: Confirm Loop** - YES/NO/EDIT FSM parity, strain-confirm, race-safe watchdog
 - [ ] **Phase 62: farmOS Write Path** - httpx client, field-scoped image route, stable-identity upsert, strain/fidelity guard, origin guard (FIRST in this phase)
@@ -264,7 +264,7 @@ rollback (CR-01), no 55B-SECURITY.md.
 | 56. Foundation | 6/6 | Complete   | 2026-06-15 |
 | 57. Signal I/O | 3/4 | In Progress|  |
 | 58. Capture + Transcription | 4/4 | Complete   | 2026-06-23 |
-| 59. Event Gate | 0/TBD | Not started | - |
+| 59. Event Gate | 4/4 | Complete   | 2026-06-24 |
 | 60. Extraction Pipeline | 0/TBD | Not started | - |
 | 61. Confirm Loop | 0/TBD | Not started | - |
 | 62. farmOS Write Path | 0/TBD | Not started | - |
@@ -352,7 +352,12 @@ Plans:
   2. Event recall on the same smoke is >=95% (no real farm events gate-rejected).
   3. A Haiku classifier timeout or API error causes the gate to fail-open (message proceeds to extraction), not fail-closed (message dropped); a WARNING log is emitted.
 
-**Plans**: TBD (not yet planned)
+**Plans**: 4 plans
+
+  - [x] 59-01-PLAN.md — Foundation: anthropic dep (legitimacy gate) + prompts.py verbatim + corpus fixture + FakeAnthropicClient
+  - [x] 59-02-PLAN.md — Leaf units: rules.py + classifier.py (verbatim Node ports) with unit tests
+  - [x] 59-03-PLAN.md — Facade event_gate.py + boot/pipeline wiring + 90-row corpus-replay parity test (SC-1/SC-2/SC-3)
+  - [x] 59-04-PLAN.md — Deferred real-Haiku full-100 validation harness (operator-run, non-CI-blocking)
 
 ### Phase 60: Extraction Pipeline
 

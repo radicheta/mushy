@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.12
 milestone_name: Farm-Agent Python Port
 status: executing
-last_updated: "2026-06-23T17:52:25.184Z"
-last_activity: 2026-06-23 -- Phase 58 execution started
+last_updated: "2026-06-25T16:46:44.986Z"
+last_activity: 2026-06-24 -- Phase 59 execution started
 progress:
   total_phases: 10
-  completed_phases: 2
-  total_plans: 14
-  completed_plans: 10
-  percent: 20
+  completed_phases: 3
+  total_plans: 18
+  completed_plans: 14
+  percent: 30
 ---
 
 # Project State
@@ -20,7 +20,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 58 — capture-transcription
+**Current focus:** Phase 59 — event-gate
 
 > **⚡ 2026-06-22 PRIORITY NOTE — Phase 999.33 (Digital Twin / chamber sim) BUMPED (farmer-requested):** "the more we deal with this the more we want the digital twin." Do lightweight Python ODE — shape (a) — before the next live control-tuning round. Driver: today's blind live-chamber feather calibration (humidifier feather + Mode C reserve, commit `30534ff` on `fc1/prod`) shipped a setpoint bug live + left a stack of experiments blocked on live-chamber exposure (slew limiter, temp feedforward, halve `decay_tau`, re-anchor feather on band_low). See ROADMAP §999.33 + memory `project_humidifier_feather_deployed_2026_06_22`. Promote via `gsd-review-backlog` / `gsd-plan-phase 999.33` when ready.
 
@@ -41,7 +41,7 @@ container and builds the same nested `quote` (`src/agents/alerter/src/signal.js:
 
 ## Phase 56 Closeout (2026-06-15) — COMPLETE; first phase of v1.12 done
 
-**Status:** Executing Phase 58
+**Status:** Executing Phase 59
 
 6/6 plans executed and summarized. VERIFICATION.md: all five requirements
 (FND-01..05) VERIFIED. Code review (56-REVIEW.md) raised 9 findings; all 9 fixed
@@ -210,11 +210,11 @@ All in `.planning/todos/pending/`:
 
 ## Current Position
 
-Phase: 58 (capture-transcription) — EXECUTING
+Phase: 59 (event-gate) — EXECUTING
 Next: Phase 57 (Signal I/O) — not yet discussed/planned
 Plan: 1 of 4
-Status: Executing Phase 58
-Last activity: 2026-06-23 -- Phase 58 execution started
+Status: Executing Phase 59
+Last activity: 2026-06-24 -- Phase 59 execution started
 
 **v1.12 phase map:**
 

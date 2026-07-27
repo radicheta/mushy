@@ -10,7 +10,9 @@ fake_transcribe_client: fixture returning an injected {transcribe} dict with a c
 whisper_http: respx-based httpx mock fixture for capture/transcribe_client unit tests.
 """
 
+import asyncio
 import os
+from unittest.mock import MagicMock
 
 import pytest
 import pytest_asyncio
@@ -213,3 +215,82 @@ def whisper_http():
 
     with respx.mock(assert_all_called=False) as mock_transport:
         yield mock_transport
+
+
+# ---------------------------------------------------------------------------
+# Phase 59: gate suite fakes (no DB required, always available)
+# ---------------------------------------------------------------------------
+
+
+class FakeAnthropicClient:
+    """MagicMock-based Anthropic client fake for event-gate unit tests.
+
+    Mirrors the FakeCaptureRepo / fake_transcribe_client pattern.
+
+    Parameters
+    ----------
+    tool_input:
+        The dict returned as block.input in the fake tool_use response.
+        Defaults to a canonical "is an event" result.
+    raise_exc:
+        If set, async create() raises this exception instead of returning.
+    return_no_tool_use:
+        If True, content=[] (simulates a response with no tool_use block).
+    """
+
+    _DEFAULT_TOOL_INPUT: dict = {
+        "is_event": True,
+        "kind": "event",
+        "confidence": 0.95,
+    }
+
+    def __init__(
+        self,
+        tool_input: dict | None = None,
+        raise_exc: Exception | None = None,
+        return_no_tool_use: bool = False,
+    ) -> None:
+        self.tool_input = tool_input if tool_input is not None else self._DEFAULT_TOOL_INPUT
+        self.raise_exc = raise_exc
+        self.return_no_tool_use = return_no_tool_use
+        self.calls: list[dict] = []
+
+    def with_options(self, **kwargs) -> "FakeAnthropicClient":
+        """Mirror client.with_options(timeout=...) — returns self."""
+        return self
+
+    @property
+    def messages(self) -> "FakeAnthropicClient":
+        """Mirror client.messages — returns self so create() is callable."""
+        return self
+
+    async def create(self, **kwargs) -> MagicMock:
+        """Record kwargs; raise or return a fake Anthropic response."""
+        self.calls.append(kwargs)
+        if self.raise_exc is not None:
+            raise self.raise_exc
+        response = MagicMock()
+        if self.return_no_tool_use:
+            response.content = []
+        else:
+            block = MagicMock()
+            block.type = "tool_use"
+            block.name = "classify_capture"
+            block.input = self.tool_input  # attribute access, NOT dict key
+            usage = MagicMock()
+            usage.input_tokens = 100
+            usage.output_tokens = 10
+            usage.cache_creation_input_tokens = 50
+            usage.cache_read_input_tokens = 0
+            response.content = [block]
+            response.usage = usage
+        return response
+
+
+@pytest.fixture
+def fake_anthropic_client() -> FakeAnthropicClient:
+    """Return a default FakeAnthropicClient (succeeds, returns is_event=True).
+
+    To customize: FakeAnthropicClient(tool_input={...}, raise_exc=..., return_no_tool_use=True).
+    """
+    return FakeAnthropicClient()
