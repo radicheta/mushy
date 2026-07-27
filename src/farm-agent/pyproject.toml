@@ -7,6 +7,7 @@ dependencies = [
     "psycopg[binary]>=3.3",
     "psycopg-pool>=3.3",
     "ruamel.yaml>=0.19",
+    "httpx>=0.28",
 ]
 
 [project.optional-dependencies]
@@ -15,6 +16,7 @@ dev = [
     "pytest-asyncio>=1.4",
     "ruff>=0.15",
     "import-linter>=2.11",
+    "respx>=0.23",
 ]
 
 [tool.pytest.ini_options]

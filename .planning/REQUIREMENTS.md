@@ -28,7 +28,7 @@
 ### SIG — Signal I/O
 
 - [ ] **SIG-01**: Python sends and receives Signal messages via signal-cli over the JSON-RPC UNIX socket (same compose topology), including attachment fetch, with send attribution verified by round-trip (not inferred from timing).
-- [ ] **SIG-02**: Outbound sends are persisted to `signal_outbound` (durable queue) and rate-capped; the rate-cap history is concurrency-safe under asyncio.
+- [x] **SIG-02**: Outbound sends are persisted to `signal_outbound` (durable queue) and rate-capped; the rate-cap history is concurrency-safe under asyncio.
 - [ ] **SIG-03**: Envelope routing reproduces multi-farmer behavior — replies go to `envelope.source`; DM vs group context is distinguished; group-ID `internal_id`↔`id` translation is ported (no silent group-message drops); unknown numbers tagged `(unassigned)`, never dropped.
 - [ ] **SIG-04**: Native quote threading works on outbound acks, with the Phase-50 fixes folded in (`quote.timestamp` coerced via `int(str(ts))`, fail-open to unquoted send on invalid shape); verified live against signal-cli.
 
@@ -103,7 +103,7 @@
 | FND-04 | Phase 56 | Complete |
 | FND-05 | Phase 56 | Complete |
 | SIG-01 | Phase 57 | Pending |
-| SIG-02 | Phase 57 | Pending |
+| SIG-02 | Phase 57 | Complete |
 | SIG-03 | Phase 57 | Pending |
 | SIG-04 | Phase 57 | Pending |
 | CAP-01 | Phase 58 | Pending |

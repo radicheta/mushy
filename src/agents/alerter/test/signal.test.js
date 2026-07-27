@@ -524,7 +524,7 @@ describe('signal.js', () => {
       return { query: jest.fn() };
     }
 
-    it('valid quote opts → /v2/send body includes top-level quote: {timestamp, author, message}', async () => {
+    it('valid quote opts → /v2/send body includes FLAT quote_timestamp/quote_author/quote_message', async () => {
       const result = await client.send('ack body', {
         intent: 'send_commit_outcome_ack',
         quote: { timestamp: 1779562666675, author: '+59891840205', message: 'original farmer text' },
@@ -535,8 +535,11 @@ describe('signal.js', () => {
         message: 'ack body',
         number: SENDER,
         recipients: [RECIPIENT],
-        quote: { timestamp: 1779562666675, author: '+59891840205', message: 'original farmer text' },
+        quote_timestamp: 1779562666675,
+        quote_author: '+59891840205',
+        quote_message: 'original farmer text',
       });
+      expect(server.sent[0]).not.toHaveProperty('quote');
     });
 
     it('no quote opt → /v2/send body has NO quote key (back-compat for ~14 callers)', async () => {
@@ -600,8 +603,8 @@ describe('signal.js', () => {
         intent: 'rh_alert',
         quote: { timestamp: 100, author: '+5', message: '' },
       });
-      expect(server.sent[0]).toHaveProperty('quote');
-      expect(server.sent[0].quote).toEqual({ timestamp: 100, author: '+5', message: '' });
+      expect(server.sent[0]).toHaveProperty('quote_timestamp');
+      expect(server.sent[0]).toMatchObject({ quote_timestamp: 100, quote_author: '+5', quote_message: '' });
     });
 
     it('quote.timestamp as numeric string is coerced via Number() in payload', async () => {
@@ -609,8 +612,8 @@ describe('signal.js', () => {
         intent: 'rh_alert',
         quote: { timestamp: '1779562666675', author: '+59891840205', message: 'hi' },
       });
-      expect(server.sent[0].quote).toEqual({
-        timestamp: 1779562666675, author: '+59891840205', message: 'hi',
+      expect(server.sent[0]).toMatchObject({
+        quote_timestamp: 1779562666675, quote_author: '+59891840205', quote_message: 'hi',
       });
     });
 

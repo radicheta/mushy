@@ -433,3 +433,84 @@ def test_no_other_module_reads_os_environ():
         "FND-02 VIOLATION: the following files read os.environ directly:\n"
         + "\n".join(hits)
     )
+
+
+# ---------------------------------------------------------------------------
+# 12. signal_api_url — Phase 57 foundation field
+# ---------------------------------------------------------------------------
+
+
+def test_signal_api_url_default(tmp_path, monkeypatch):
+    """signal_api_url defaults to 'http://signal-cli:8080' when SIGNAL_API_URL unset."""
+    monkeypatch.setattr(_tenant_mod, "TENANTS_BASE", tmp_path)
+    tenant_dir = tmp_path / "t1"
+    tenant_dir.mkdir()
+    (tenant_dir / "config.yaml").write_text("{}\n")
+    cfg = _tenant_mod.load(_env(TENANT_ID="t1"))
+    assert cfg.signal_api_url == "http://signal-cli:8080"
+
+
+def test_signal_api_url_env_override(tmp_path, monkeypatch):
+    """SIGNAL_API_URL env var overrides the default."""
+    monkeypatch.setattr(_tenant_mod, "TENANTS_BASE", tmp_path)
+    tenant_dir = tmp_path / "t1"
+    tenant_dir.mkdir()
+    (tenant_dir / "config.yaml").write_text("{}\n")
+    cfg = _tenant_mod.load(_env(TENANT_ID="t1", SIGNAL_API_URL="http://my-signal:9999"))
+    assert cfg.signal_api_url == "http://my-signal:9999"
+
+
+# ---------------------------------------------------------------------------
+# 13. signal_additional_senders — Phase 57 foundation field
+# ---------------------------------------------------------------------------
+
+
+def test_signal_additional_senders_default_empty(tmp_path, monkeypatch):
+    """signal_additional_senders defaults to [] when SIGNAL_ADDITIONAL_SENDERS unset."""
+    monkeypatch.setattr(_tenant_mod, "TENANTS_BASE", tmp_path)
+    tenant_dir = tmp_path / "t1"
+    tenant_dir.mkdir()
+    (tenant_dir / "config.yaml").write_text("{}\n")
+    cfg = _tenant_mod.load(_env(TENANT_ID="t1"))
+    assert cfg.signal_additional_senders == []
+
+
+def test_signal_additional_senders_parses_comma_list(tmp_path, monkeypatch):
+    """SIGNAL_ADDITIONAL_SENDERS '+1,+2 , ' parses to ['+1', '+2'] (strip, drop empties)."""
+    monkeypatch.setattr(_tenant_mod, "TENANTS_BASE", tmp_path)
+    tenant_dir = tmp_path / "t1"
+    tenant_dir.mkdir()
+    (tenant_dir / "config.yaml").write_text("{}\n")
+    cfg = _tenant_mod.load(_env(TENANT_ID="t1", SIGNAL_ADDITIONAL_SENDERS="+1,+2 , "))
+    assert cfg.signal_additional_senders == ["+1", "+2"]
+
+
+def test_signal_additional_senders_empty_string_yields_empty(tmp_path, monkeypatch):
+    """Explicit empty string for SIGNAL_ADDITIONAL_SENDERS yields []."""
+    monkeypatch.setattr(_tenant_mod, "TENANTS_BASE", tmp_path)
+    tenant_dir = tmp_path / "t1"
+    tenant_dir.mkdir()
+    (tenant_dir / "config.yaml").write_text("{}\n")
+    cfg = _tenant_mod.load(_env(TENANT_ID="t1", SIGNAL_ADDITIONAL_SENDERS=""))
+    assert cfg.signal_additional_senders == []
+
+
+# ---------------------------------------------------------------------------
+# 14. mask_number — Phase 57 foundation helper (module-level pure function)
+# ---------------------------------------------------------------------------
+
+
+def test_mask_number_typical():
+    """mask_number('+15551234567') == '+1XXXXXX4567'."""
+    assert _tenant_mod.mask_number("+15551234567") == "+1XXXXXX4567"
+
+
+def test_mask_number_short_string():
+    """mask_number('short') == 'XXXX' (len < 6 guard)."""
+    assert _tenant_mod.mask_number("short") == "XXXX"
+
+
+def test_mask_number_non_string():
+    """mask_number(non-str) == 'XXXX'."""
+    assert _tenant_mod.mask_number(None) == "XXXX"   # type: ignore[arg-type]
+    assert _tenant_mod.mask_number(12345) == "XXXX"  # type: ignore[arg-type]

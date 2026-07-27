@@ -9,6 +9,35 @@ resolves_phase: 57
 
 # Phase 50 quote-replies don't render on Signal clients despite REST returning 201
 
+## ROOT CAUSE FOUND + FIXED (Python side) — 2026-06-21, Phase 57-04 live-fire
+
+**The payload shape was wrong the whole time.** `signal-cli-rest-api:0.200-dev`
+`/v2/send` takes **FLAT** quote fields — `quote_timestamp`, `quote_author`,
+`quote_message`, `quote_mentions` — and has **no nested `quote` object** at all
+(confirmed against the live container's own `/swagger/doc.json`, model
+`api.SendMessageV2`). Every quote send in this todo (incl. the Test-1 curl) used a
+nested `quote:{timestamp,author,message}`, which the wrapper silently ignores ->
+201, no bubble. This refines ranked-cause #1: not "drops the field" but "wrong
+field names; nested shape is unrecognized." (Causes #3/#4 — ts-field mismatch,
+daemon RPC — were NOT the issue; the captured `dataMessage.timestamp` is correct.)
+
+**Fixed in the Python port:** `farm_agent/signal_io/client.py` now emits the flat
+fields; verified live 2026-06-21 (57-04 live-fire) — native quote bubble rendered
+on Santi's Android client. Tests updated (22 green). See
+`.planning/phases/57-signal-i-o/57-LIVE-FIRE.md` Result + `57-04-SUMMARY.md`.
+
+**STILL OPEN — Node prod exposure:** the live Node `alerter`
+(`src/agents/alerter/src/signal.js:118-131`) still builds the nested shape, so
+**farmer-facing quote-threading remains broken in prod** until either (a) a one-line
+Node patch (nested -> flat, mirroring the Python fix) or (b) the Python cutover
+(Phase 65). DECISION FOR SANTI: hot-patch Node now vs. accept degraded prod quotes
+until cutover. Keep this todo OPEN until that's decided.
+
+---
+
+## Original report (2026-05-24)
+
+
 ## What
 
 `signal-cli-rest-api 0.200` advertises `capabilities.v2/send: ["quotes","mentions"]` via `/v1/about`. POST `/v2/send` with a properly-shaped `quote: {timestamp, author, message}` payload returns HTTP 201 with no warning. But Signal clients (Santi's Android phone confirmed 2026-05-24) render the resulting message as a plain bubble — **no quote-reply attachment, no "Original message" preview, nothing**.

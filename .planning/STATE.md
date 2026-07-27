@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.12
 milestone_name: Farm-Agent Python Port
-status: active
-last_updated: "2026-06-15T16:57:23.000Z"
-last_activity: 2026-06-15
+status: executing
+last_updated: "2026-06-21T00:00:00.000Z"
+last_activity: 2026-06-21
 progress:
   total_phases: 10
-  completed_phases: 1
-  total_plans: 6
-  completed_plans: 6
-  percent: 10
+  completed_phases: 2
+  total_plans: 10
+  completed_plans: 10
+  percent: 20
 ---
 
 # Project State
@@ -20,11 +20,26 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 57 — Signal I/O (Phase 56 complete)
+**Current focus:** Phase 58 — Capture + Transcription (Phase 57 complete)
+
+## Phase 57 Closeout (2026-06-21) — COMPLETE; 2nd phase of v1.12 done
+
+4/4 plans executed. 57-04 live-fire PASSED against `signal-cli-rest-api:0.200-dev`:
+SC#1 (non-null bigint `signal_msg_ts` round-trip) + SC#3 (native quote bubble, operator-confirmed).
+
+**Live-fire caught a real bug** (the gate working as intended,
+[[feedback_unit_tests_dont_catch_wiring]]): the ported `SignalClient` sent a nested
+`quote:{...}` object; the live 0.200-dev `/v2/send` takes FLAT `quote_timestamp`/
+`quote_author`/`quote_message`. Nested shape silently dropped (201, no bubble). Fixed
+`client.py` to flat fields + updated tests (22 green). Was RESEARCH A2 (0.14.2->0.200 drift).
+
+**New finding (backlogged, Node side):** live Node `alerter` shares the same 0.200-dev
+container and builds the same nested `quote` (`src/agents/alerter/src/signal.js:118-131`)
+-> Phase-50 quote-threading likely silently broken in prod. See `.planning/todos/`.
 
 ## Phase 56 Closeout (2026-06-15) — COMPLETE; first phase of v1.12 done
 
-**Status:** Phase complete + verified + code-reviewed. Ready to advance to Phase 57.
+**Status:** Ready to execute
 
 6/6 plans executed and summarized. VERIFICATION.md: all five requirements
 (FND-01..05) VERIFIED. Code review (56-REVIEW.md) raised 9 findings; all 9 fixed
@@ -37,6 +52,7 @@ the test DB on :5434. Tree clean.
   up alerter-py --build`, watch for "boot complete in X.XXs"). The automated proxy
   `test_boot_completes_in_5s` PASSES against ephemeral Postgres; the host-env check
   is for prod readiness only (56-VERIFICATION.md "Human Verification Required").
+
 - **SC3 wording:** resolved — ROADMAP SC3 already reads `uv run pytest tests/`
   (not `tests/unit/`); the verifier's flagged "gap" was against the older
   VALIDATION.md spec and is moot. No action needed.
@@ -192,10 +208,10 @@ All in `.planning/todos/pending/`:
 
 ## Current Position
 
-Phase: 56 (foundation) — COMPLETE (verified + code-reviewed 2026-06-15)
+Phase: 57 (signal-i-o) — EXECUTING
 Next: Phase 57 (Signal I/O) — not yet discussed/planned
-Plan: 6 of 6
-Status: Phase 56 closed; ready to advance to Phase 57
+Plan: 2 of 4
+Status: Ready to execute
 Last activity: 2026-06-15
 
 **v1.12 phase map:**
@@ -335,6 +351,9 @@ Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (for
 - [Phase ?]: Phase 44-06 path B: alerter secrets via env_file — tenants/mossrock/secrets.env (required:false); root .env retains shared secrets until v1.9
 - [v1.8 lesson, 44-04]: Anthropic SDK contract surprise — `signal` belongs in the request-options second arg of `client.messages.create(body, opts)`, NOT inside `body`. The SDK strict-validates the body schema and rejects unknown keys with 400 `invalid_request_error`. jest.fn() unit mocks accept any param shape, so this is invisible until a real SDK touches a real API. Caught by EVAL_RUN_LIVE=1 live-fire on round 1; fixed in `1429684` (test flipped from codifying-the-bug to asserting-SDK-correct-shape). Reinforces [[feedback_unit_tests_dont_catch_wiring]] — live-fire is the real ship-gate.
 - [Phase ?]: FND-05 gate: grep-in-pytest primary (Phase 56); import-linter .lint-imports secondary committed but inert until Phase 63 chamber/ lands
+- [Phase ?]: [57-01] signal_api_url uses _pick Tier-D default, not _must_env (URL not a secret)
+- [Phase ?]: [57-01] outbound_repo.insert_outbound: fail-open try/except, returns {ok:false,reason} never raises (T-57-01-01/D-02)
+- [Phase ?]: [57-01] FakeOutboundRepo + signal_http fixture in conftest.py for Wave 2 plan re-use
 
 ### Pending Todos
 
@@ -441,7 +460,7 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 ## Session Continuity
 
-Last session: 2026-06-15T16:57:23.000Z
+Last session: 2026-06-15T21:26:00.831Z
 Next up: Phase 57 (Signal I/O) — `/gsd-discuss-phase 57` then plan/execute. Phase 56 (foundation) complete + verified + code-reviewed 2026-06-15. Optional follow-on: human-verify alerter-py boot on elder-plops (prod-readiness only, non-blocking).
 
 (Historical, pre-v1.12) Next up: Phase 45 (NORTH-STAR commit_failed ack + replay outstanding silent-failure drafts `b8a1e586` Vikki Rambo + `1fb28e70` Santi LIMA). Optional: 24-h v1.8 soak observation before starting Phase 45 scope work. v1.8 cutover already complete (alerter recreated 01:41:58 ART; bridge already on Phase 46 code).

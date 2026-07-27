@@ -188,6 +188,25 @@ def _resolve_farmos_integration(
 
 
 # ---------------------------------------------------------------------------
+# Public helper — phone masking (V7: never log full e164)
+# ---------------------------------------------------------------------------
+
+
+def mask_number(n: object) -> str:
+    """Mask a phone number for safe logging.
+
+    Port of config.js maskNumber():
+      - Non-string or len < 6 → 'XXXX'
+      - Otherwise: first 2 chars + (len-6) Xs + last 4 chars
+
+    Example: '+15551234567' → '+1XXXXXX4567'
+    """
+    if not isinstance(n, str) or len(n) < 6:
+        return "XXXX"
+    return n[:2] + "X" * (len(n) - 6) + n[-4:]
+
+
+# ---------------------------------------------------------------------------
 # TenantConfig dataclass
 # ---------------------------------------------------------------------------
 
@@ -211,6 +230,8 @@ class TenantConfig:
     farmos_password: str
 
     # --- Signal ---
+    signal_api_url: str
+    signal_additional_senders: list[str]
     signal_recipient: str
     signal_group_id: str | None
     signal_farmer_map: dict[str, str]        # e164 → slug
@@ -299,6 +320,10 @@ def load(env: dict[str, str] | None = None) -> TenantConfig:
     farmos_password = env.get("FARMOS_PASSWORD") or ""
 
     # --- Signal ---
+    signal_api_url = _pick(tenant_cfg, env, "SIGNAL_API_URL", "http://signal-cli:8080")
+    _raw_additional = env.get("SIGNAL_ADDITIONAL_SENDERS", "")
+    signal_additional_senders = [s for s in (x.strip() for x in _raw_additional.split(",")) if s]
+
     signal_recipient = _pick(tenant_cfg, env, "SIGNAL_RECIPIENT", None) or _must_env(
         env, "SIGNAL_RECIPIENT"
     )
@@ -363,6 +388,8 @@ def load(env: dict[str, str] | None = None) -> TenantConfig:
         timescale_password=timescale_password,
         anthropic_api_key=anthropic_api_key,
         farmos_password=farmos_password,
+        signal_api_url=str(signal_api_url),
+        signal_additional_senders=signal_additional_senders,
         signal_recipient=signal_recipient,
         signal_group_id=signal_group_id,
         signal_farmer_map=signal_farmer_map,

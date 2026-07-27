@@ -3,10 +3,13 @@ Shared pytest fixtures for farm-agent tests.
 
 TEST_ENV: a dict with all required TenantConfig env keys using safe test defaults.
 pool: session-scoped async pool fixture (activates once Plans 02+03 ship tenancy + persistence).
+signal_http: respx-based httpx mock fixture for signal_io unit tests (no DB required).
+FakeOutboundRepo: helper class whose insert_outbound can be toggled to raise (for fail-open tests).
 """
 
 import os
 
+import pytest
 import pytest_asyncio
 
 # TEST_ENV: all required TenantConfig keys with safe, non-real test defaults.
@@ -84,3 +87,56 @@ async def pool():
     await run_migrations(p)
     yield p
     await p.close()
+
+
+# ---------------------------------------------------------------------------
+# Phase 57: httpx mock + FakeOutboundRepo fixtures (no DB required, always available)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def signal_http():
+    """respx-based mock transport for httpx.AsyncClient in signal_io tests.
+
+    Usage in test:
+        async with httpx.AsyncClient(transport=signal_http) as client:
+            resp = await client.post(...)
+
+    Configure responses before use:
+        signal_http.post("http://signal-cli:8080/v2/send").mock(
+            return_value=httpx.Response(201, json={"timestamp": 1234567890})
+        )
+    """
+    import respx  # noqa: PLC0415
+    import httpx  # noqa: PLC0415
+
+    with respx.mock(assert_all_called=False) as mock_transport:
+        yield mock_transport
+
+
+class FakeOutboundRepo:
+    """In-memory outbound repo for signal_io unit tests.
+
+    Toggle should_raise to True to simulate a DB failure and test fail-open behavior.
+    Records all calls in self.calls for assertion.
+    """
+
+    def __init__(self, should_raise: bool = False):
+        self.should_raise = should_raise
+        self.calls: list[dict] = []
+
+    async def insert_outbound(self, pool: object, row: dict) -> dict:
+        """Mimic outbound_repo.insert_outbound signature."""
+        self.calls.append(row)
+        if self.should_raise:
+            raise RuntimeError("FakeOutboundRepo: simulated insert failure")
+        return {"ok": True}
+
+
+@pytest.fixture
+def fake_outbound_repo():
+    """Return a FakeOutboundRepo instance (default: succeeds).
+
+    To test fail-open: set repo.should_raise = True before calling.
+    """
+    return FakeOutboundRepo()
