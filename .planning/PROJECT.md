@@ -16,6 +16,35 @@ A closed-loop humidity control system for fruiting chamber 1 (FC-1) running on R
 > NOTE: the per-milestone sections below this point are stale (last full review 2026-05-03,
 > pre-v1.7) and pending a dedicated PROJECT.md reconciliation alongside the REQUIREMENTS.md drift.
 
+## Current Milestone: v1.12 Farm-Agent Python Port
+
+**Goal:** Rewrite the live ~16k-LOC JS alerter/extraction stack (`src/agents/alerter/`) as a Python stack — Signal I/O, multimodal extractor, draft state machine, and farmOS commit path — validated against the live corpus and cut over in a single switch, with clean Foray-ready module seams.
+
+**Target features:**
+- Python Signal I/O layer (signal-cli send/receive, envelope routing, quote threading) — folds in the Phase-50 wire-level quote-rendering bugs deferred from v1.9
+- Python multimodal extractor (audio+image+text fusion → schema-aware draft with per-field provenance; confidence + ask-back)
+- Python draft state machine + commit path (idempotent upsert-by-stable-identity; v1.11 fidelity hard gate preserved)
+- Python farmOS write client (asset/log creates + patches, field-scoped image route, retries)
+- Pre-cutover parity/validation gate against the live corpus (Node-vs-Python output match before flip)
+- Foray-ready module seams + tenant primitive (separable units so SEED-010 carve-out is near-free later)
+
+**Strategy decisions (locked 2026-06-14 with Santi):**
+- **Big-bang rewrite** — build full Python stack, validate against corpus, single prod cutover (no dual-stack period).
+- **Port + opportunistic cleanup** — fold in the Phase-50 quote-rendering bugs and fix obvious wrongs as encountered; not strict 1:1 parity.
+- **Foray-ready seams** — clean module boundaries + tenant primitive for the eventual Apache-2.0 Foray extraction.
+
+**Key context / constraints:**
+- The Node alerter is LIVE in prod (Signal alerts + draft commits). A pre-cutover parity/validation gate against the live corpus is mandatory ([[feedback_unit_tests_dont_catch_wiring]], [[feedback_real_data_before_ship_gate_pass]]).
+- `src/farmos-agent/` is already Python — reference, not re-port.
+- Must not regress the v1.11 fidelity hard gate (commit-time CSV cross-check) or v1.10 upsert-by-stable-identity guarantees.
+- Shared-Timescale prod-leak hazard ([[project_backfill_confirmed_drafts_leak_to_prod_via_live_watchdog]]) applies to any shadow/validation runs.
+
+**Out of scope (carry):**
+- The full Foray repo extraction itself (separate milestone; this only sets up the seams)
+- v1.13 auto-commit narrowing (depends on v1.11 confirm corpus)
+- The 2 open 55B follow-ons (receipt dup false-positive, D-03 image-on-session) unless trivially folded in
+- `fc_core` / Mission Control / camera / VPS hub (stay Node/ROS; only the alerter slice ports)
+
 ## Requirements
 
 ### Validated
@@ -142,7 +171,7 @@ Phase 32 (VPS WireGuard hub) + Phase 33 (heartbeat receiver + Signal Tier 1) + P
 
 ---
 
-## Current Milestone: v1.7 Multimodal Signal → FarmOS Events
+## Prior Milestone Frame: v1.7 Multimodal Signal → FarmOS Events (superseded — kept for context)
 
 **Goal:** Ship the multimodal extraction pipeline (photo + voice + text → LLM → farmOS event writes) that exercises and validates the 2026-05-11 schema lock, ending with one SHI-on-sawdust block driven end-to-end through farmOS by Signal alone.
 
@@ -283,4 +312,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-06-14 — v1.11 shipped (current-state marker added at top; full section reconciliation still pending)*
+*Last updated: 2026-06-14 — v1.12 Farm-Agent Python Port milestone opened (Current Milestone section added; v1.7 frame demoted; full section reconciliation still pending)*

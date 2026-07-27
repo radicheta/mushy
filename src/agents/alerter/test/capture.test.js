@@ -368,4 +368,59 @@ describe('createCapturePipeline', () => {
       expect(updateCall).toBeUndefined();
     });
   });
+
+  // 2026-05-24 fix (signal-capture-missing-followup-messages): paper-trail-only
+  // persistence for confirm-thread replies consumed by receive-loop.
+  describe('recordReplyCapture', () => {
+    function replyEnv({ text = 'YES', timestamp = 1779560222000, quote = null } = {}) {
+      const dataMessage = { message: text, attachments: [], timestamp };
+      if (quote) dataMessage.quote = quote;
+      return { envelope: { source: '+59892893012', dataMessage } };
+    }
+
+    test('persists raw inbound: INSERT with raw_text + signal_msg_ts, empty attachment_paths', async () => {
+      await pipeline.recordReplyCapture(replyEnv({ text: 'looking great today' }), {});
+      const insertCall = pool.query.mock.calls.find((c) => /INSERT INTO signal_capture/i.test(c[0]));
+      expect(insertCall).toBeDefined();
+      const [, params] = insertCall;
+      // column order: ...raw_text=$5, attachment_paths=$6, ...signal_msg_ts=$14
+      expect(params[4]).toBe('looking great today');
+      expect(params[5]).toEqual([]);
+      expect(params[13]).toBe(1779560222000);
+    });
+
+    test('does NOT download attachments, transcribe, or compose a convo reply', async () => {
+      await pipeline.recordReplyCapture(replyEnv({ text: 'YES' }), {});
+      expect(signalClient.fetchAttachment).not.toHaveBeenCalled();
+      expect(transcribeClient.transcribe).not.toHaveBeenCalled();
+      expect(llmClient.compose).not.toHaveBeenCalled();
+    });
+
+    test('tags the row extraction_gate=confirm_reply via follow-up UPDATE', async () => {
+      await pipeline.recordReplyCapture(replyEnv({ text: 'NO' }), {});
+      const tag = pool.query.mock.calls.find(
+        (c) => /UPDATE signal_capture SET extraction_gate/.test(c[0])
+      );
+      expect(tag).toBeDefined();
+      expect(tag[1][0]).toBe('confirm_reply');
+    });
+
+    test('captures quote fields when the reply itself used Signal quote/reply UI', async () => {
+      await pipeline.recordReplyCapture(
+        replyEnv({ text: 'YES', quote: { id: 1779560000000, author: '+59891840205' } }),
+        {}
+      );
+      const insertCall = pool.query.mock.calls.find((c) => /INSERT INTO signal_capture/i.test(c[0]));
+      const [, params] = insertCall;
+      // quote_msg_ts=$15, quote_author_e164=$16
+      expect(params[14]).toBe(1779560000000);
+      expect(params[15]).toBe('+59891840205');
+    });
+
+    test('never throws when the DB insert fails (best-effort paper trail)', async () => {
+      pool.query.mockRejectedValueOnce(new Error('db down'));
+      await expect(pipeline.recordReplyCapture(replyEnv(), {})).resolves.toBeUndefined();
+      expect(logger.warn).toHaveBeenCalled();
+    });
+  });
 });

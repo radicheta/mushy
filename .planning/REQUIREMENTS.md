@@ -1,177 +1,128 @@
-# Requirements: v1.7 Multimodal Signal → FarmOS Events
+# Requirements: v1.12 Farm-Agent Python Port
 
-**Milestone goal:** Ship the multimodal extraction pipeline (photo + voice + text → LLM → farmOS event writes) that exercises and validates the 2026-05-11 schema lock, ending with one SHI-on-sawdust block driven end-to-end through farmOS by Signal alone.
+**Milestone goal:** Rewrite the live ~16k-LOC JS alerter/extraction stack (`src/agents/alerter/`) as a Python (asyncio) stack — Signal I/O, multimodal extractor, draft state machine, and farmOS commit path — validated against the live corpus and cut over in a single big-bang switch, with clean Foray-ready module seams.
 
-**Schema source-of-truth** (locked 2026-05-11, farmos repo `d4e5a30`):
-- `/mnt/slime-kingdom/shared/farmos/.planning/notes/2026-05-09-fungi-schema-strawman.md`
-- `/mnt/slime-kingdom/shared/farmos/.planning/notes/2026-05-11-session-chat.md`
+**Strategy (locked 2026-06-14 with Santi):**
+- **Big-bang rewrite** — build full Python stack, validate against corpus, single prod cutover (no dual-stack period on the shared TimescaleDB).
+- **Port + opportunistic cleanup** — reproduce Node behavior except an explicit pre-accepted delta list (TZ Toronto→Montevideo, Phase-50 quote-threading fixes); fix obvious wrongs as encountered.
+- **Foray-ready seams** — `chamber/` is the only mushy-private package; every other package is a Foray-extractable island (CI grep gate). Tenant primitive is the lowest dependency node.
 
-**Hard rule (NORTH-STAR + SEED-002):** every farmOS write goes through farmer YES/NO/EDIT confirm. No auto-commit path in v1.7.
+**Research:** `.planning/research/SUMMARY.md` (+ STACK / FEATURES / ARCHITECTURE / PITFALLS), committed `c702eea`. HIGH confidence.
+
+**Stack (locked targets):** Python 3.12 / asyncio, pydantic v2 (←zod), psycopg3 (←pg), anthropic AsyncAnthropic, httpx, websockets, signal-cli via raw JSON-RPC over UNIX socket, `python:3.12-slim` (no ROS), `uv` packaging.
+
+**Hard invariants preserved:** v1.11 commit-time CSV fidelity hard gate; v1.10 upsert-by-stable-identity; NORTH-STAR farmer YES/NO/EDIT before every farmOS write.
 
 ---
 
 ## Active Requirements
 
-### PRE — Signal pre-gate (hard prereq for everything downstream)
+### FND — Foundation (tenancy, persistence, config, schema-parity gate)
 
-- [ ] **PRE-01**: signal-cli is re-registered as primary (deviceId=1) on the bot account, unblocking the receive 400 limitation that's been blocking Signal-driven UAT since Phase 25. Recipe in memory `project_signal_cli_primary_reregister_path`; spike PASS recorded 2026-04-27 (`project_phase25_pregate_spike_state`).
-- [ ] **PRE-02**: alerter + bridge identity-trust survives the re-registration (verified via test message round-trip from at least two farmers).
+- [ ] **FND-01**: Python package skeleton boots as a single asyncio daemon (`boot.py` is the only module importing across all packages); `uv sync` + `python:3.12-slim` Docker image builds and runs under compose.
+- [ ] **FND-02**: `tenancy/TenantConfig` loads layered YAML+env config; no business module reads `env` directly; secrets stay env-only.
+- [ ] **FND-03**: `persistence/` provides a shared psycopg3 async pool + idempotent migrations covering the existing tables (`signal_capture`, `signal_draft`, `signal_outbound`, commit/audit tables); schema additions are additive-only (no breaking change to the live schema the Node stack also reads).
+- [ ] **FND-04**: pydantic v2 draft schemas emit JSON Schema that structurally matches the zod-derived schema the Node extractor sends to Claude; a JSON-Schema structural-diff check passes as a ship gate before any LLM call (`extra='forbid'` on every nested model; cross-field validators ported).
+- [ ] **FND-05**: Foray seam is statically enforced — a CI check fails the build if any non-`chamber` package imports from `chamber/`.
 
-### ROUTE — Multi-farmer routing (load-bearing, was 999.20)
+### SIG — Signal I/O
 
-- [x] **ROUTE-01
-**: Bot replies to `envelope.source` (the message sender), not a fixed recipient — DM-to-DM is correct for every farmer.
-- [x] **ROUTE-02
-**: Bot participates in the "Mushroom Farm" group thread — distinguishes DM context from group context; in groups, only responds to explicit commands and @mentions (default: no spam).
-- [x] **ROUTE-03
-**: Per-farmer identity binding — incoming messages are tagged with the farmer's farmOS person record (resolved through Signal phone number → farmOS people directory lookup). Unknown numbers tagged `(unassigned)` per B6 sentinel pattern; never silently dropped.
+- [ ] **SIG-01**: Python sends and receives Signal messages via signal-cli over the JSON-RPC UNIX socket (same compose topology), including attachment fetch, with send attribution verified by round-trip (not inferred from timing).
+- [ ] **SIG-02**: Outbound sends are persisted to `signal_outbound` (durable queue) and rate-capped; the rate-cap history is concurrency-safe under asyncio.
+- [ ] **SIG-03**: Envelope routing reproduces multi-farmer behavior — replies go to `envelope.source`; DM vs group context is distinguished; group-ID `internal_id`↔`id` translation is ported (no silent group-message drops); unknown numbers tagged `(unassigned)`, never dropped.
+- [ ] **SIG-04**: Native quote threading works on outbound acks, with the Phase-50 fixes folded in (`quote.timestamp` coerced via `int(str(ts))`, fail-open to unquoted send on invalid shape); verified live against signal-cli.
 
-### EXT — Schema-aware LLM extraction
+### CAP — Capture + Transcription
 
-- [x] **EXT-01**: Extraction returns JSON-mode output constrained to the locked schema (`fungi` assets: sterilization batch / block / harvest batch / bag; logs: seeding / activity / input / observation / harvest per B7). No off-schema fields.
-- [x] **EXT-02**: Block-naming extraction emits `{YYMMDD}_{SPECIES3}_{SEQ}` per B5 when the farmer's paper-log convention applies (e.g. "260511_SHI_4"). When the convention is ambiguous, the bot asks for the SEQ rather than guessing.
-- [x] **EXT-03**: Multimodal fusion — when a message bundles text + audio + photo, the bot combines all three signals into one draft event (not three separate ones). Audio transcripts (Whisper, Phase 25 pipeline) feed extraction alongside text; photos contribute QR scans + optional vision-derived context (e.g. visible block tags).
-- [x] **EXT-04**: Confidence-aware behavior — when extraction confidence below threshold OR required field unresolved, bot ASKS the farmer (Signal reply with a targeted question) instead of guessing. Conversation state survives across multiple farmer turns until draft is complete.
-- [x] **EXT-05**: Lineage extraction — multi-parent log refs per C4 (e.g. harvest batch from N source blocks) are extracted from natural-language lineage cues ("from blocks 3, 4, and 5").
+- [ ] **CAP-01**: Inbound envelopes are captured to `signal_capture` (ULID id) with attachments downloaded to disk; farmer slug resolved from the Signal number → farmOS people directory.
+- [ ] **CAP-02**: Audio attachments are transcribed via the local Whisper client without blocking the event loop (off-loop execution); transcript feeds extraction alongside text + image.
 
-### CONF — Farmer-in-the-loop confirmation
+### GATE — Event gate
 
-- [ ] **CONF-01**: After every successful extraction, bot replies with a structured draft summary (asset creates + log creates, human-readable) and "Reply YES to commit, NO to discard, EDIT <text> to amend".
-- [ ] **CONF-02**: Commit happens only on YES; the write is idempotent (a duplicate YES does not double-write).
-- [ ] **CONF-03**: NO discards the draft cleanly; transcript and original message remain in the Signal capture store (Phase 25 path) for audit. Bot acknowledges discard.
-- [ ] **CONF-04**: EDIT routes the farmer's correction back through the LLM as additional context on the same conversation, producing a revised draft. Loop allowed N≥3 times before the bot escalates to "I can't get this right — try splitting the message."
-- [ ] **CONF-05**: Pending drafts have a timeout (e.g. 30 min) after which the bot pings once, then auto-discards with a "draft expired" note. Stale drafts never auto-commit.
+- [ ] **GATE-01**: A rule pre-filter + Haiku classifier (forced tool-use, short timeout, fail-open) decides which inbound messages enter the extraction pipeline, reproducing the Node gate's accept/reject behavior.
 
-### FOS — FarmOS write path
+### XTR — Extraction pipeline
 
-- [ ] **FOS-01**: farmOS API client with auth (token-based; mushy holds its own `farmos_agent` creds), retries (idempotent on transient failures), and idempotency keys (per-draft UUID prevents duplicate writes on network flap).
-- [ ] **FOS-02**: Asset creation for the four `fungi` types per B1–B4 — sterilization batch (anonymous, `BATCH-` prefix, no QR), block (parent = batch, species set, `farm_id_tag` QR-bound at inoc), harvest batch (multi-parent = source blocks, single-strain), bag (parent = harvest batch, QR-bound at bagging).
-- [ ] **FOS-03**: Log creation per B7 mapping — `seeding` (inoc), `activity name=sterilize|sterilize_failed|water|relocate|cold_shock|archive_spent|contam`, `input` (recipe lots), `observation` (state checks, pin emergence, photos), `harvest` (picks and bagging). Native types only per C5.
-- [ ] **FOS-04**: QR `farm_id_tag` binding writes through `farmos_asset_link` resolution (scan → asset). Bot handles both "QR not yet bound" (new asset → create + bind) and "QR already bound" (read existing asset → append log).
-- [ ] **FOS-05**: Photos attached to the originating Signal message are uploaded as file entities on the corresponding `observation` or `harvest` log (per the Phase 22 contract — bridge already serves frames).
-- [ ] **FOS-06**: Write path is observable — every committed write emits a structured log entry (Mission Control telemetry topic or bridge log) including draft UUID, farmer, asset/log IDs, and farmOS response. Operator can audit "what did the bot write today" from one query.
+- [ ] **XTR-01**: Multimodal extractor fuses text + audio transcript + image into a single draft via Claude tool-use against the pydantic schema, with cacheable system prompt + few-shot turns ported (prompt-cache breakpoints preserved).
+- [ ] **XTR-02**: Schema-invalid model output triggers the same retry behavior; the multi-parent SeedingSession shape (N children from M>1 parents) and per-field provenance are reproduced.
+- [ ] **XTR-03**: B5 block-name minting (`{YYMMDD}_{SPECIES3}_{SEQ}`, per-session SEQ) is reproduced; `BLOCK_NAME_RE` uses anchored full-match; drafts persist to `signal_draft` (hex-SHA id).
 
-### INGEST — Multi-source ingestion (P3 validation)
+### CNF — Confirm loop
 
-- [ ] **INGEST-01**: Synthetic ingest harness — a fixture corpus of crafted Signal-message inputs (text/audio/image), each with expected extracted output. Drives unit + integration tests; runs in CI.
-- [ ] **INGEST-02**: Historical paper-log replay — at least one batch of existing paper inoc logs (photographed) flows through the same pipeline. Expected outputs hand-labeled by the operator/farmer. Comparison report: extracted vs labeled, per-field error rate.
-- [ ] **INGEST-03**: Audio recording replay — existing field recordings (operator/farmer narrating inoc sessions, observations) flow through Whisper + extraction. Same expected-vs-actual report.
-- [ ] **INGEST-04**: Across all three streams, the pipeline produces the **same** schema writes for the same underlying event (e.g. a paper-log photo of inoc session N and the audio recording of the same session both yield identical `seeding` log content).
+- [ ] **CNF-01**: The YES/NO/EDIT/expiry confirm state machine is reproduced as a pure function with table-driven 100% parity tests; a duplicate YES does not double-commit.
+- [ ] **CNF-02**: Strain-confirm-before-mint, compact session-preview rendering, edit handler, and nudge/expire watchdog are reproduced; watchdog ticks are serialized (`while: await sleep; await tick`, conditional-UPDATE guard) — no asyncio race producing duplicate nudges/expires.
 
-### PILOT — SHI-on-sawdust end-to-end (P4/P5 validation)
+### FWR — farmOS write path
 
-- [ ] **PILOT-01**: Sterilization batch created via Signal (anonymous count, `BATCH-` prefix, no QR). Verifies B1 + extraction + confirm + write.
-- [ ] **PILOT-02**: Inoculation — sterilization batch → 1 block at inoc. New `fungi` asset created, species=SHI, substrate=sawdust on field, `farm_id_tag` QR-bound. `seeding` log writes lineage (block parent = batch). Verifies B2 + C3 + C4.
-- [ ] **PILOT-03**: Colonizing → cold_shock → fruiting transitions captured via `observation` and `activity` logs from natural Signal messages over the lifecycle. Current-stage derivation (C1) returns the right stage at every checkpoint.
-- [ ] **PILOT-04**: Bagging — harvest batch created from the block (`harvest` log multi-parent ref) + N bag assets created with QR bind at bagging. Verifies B3 + B4 + QR-bind-via-natural-message.
-- [ ] **PILOT-05**: Archive_spent — block archived via `activity name=archive_spent`. Lineage walk (bag → harvest batch → block → sterilization batch) returns clean per C4.
-- [ ] **PILOT-06**: End-to-end pilot run completed on the dev stack (`:18080`) per P2, with all writes visible in farmOS, all transitions queryable, and the operator able to reconstruct the lifecycle entirely from farmOS logs without referring back to Signal.
+- [ ] **FWR-01**: Confirmed drafts commit to farmOS via an httpx async client reproducing all log types and asset creates/patches, including the field-scoped image upload route (`POST /api/asset/{type}/{uuid}/image`).
+- [ ] **FWR-02**: Upsert-by-stable-identity is byte-identical to Node — a cross-language fixture proves the same input yields the same stable-identity digest (Node hex == Python hex); writes patch existing entities, never create duplicates.
+- [ ] **FWR-03**: Strain resolver reproduces curated-14-code exact matching + variant normalization (the POY-as-KOY class of bug is regression-guarded); the v1.11 commit-time CSV fidelity gate is preserved.
+- [ ] **FWR-04**: An **origin guard** is committed before any write path runs — a Python validation/shadow process never has its drafts drained by the live Node commit-watchdog (shared-prod-Timescale leak is structurally prevented).
 
----
+### CHM — Chamber alerting (mushy-private)
 
-## Future Requirements (deferred, possibly v1.8+)
+- [ ] **CHM-01**: The ROS-bridge WebSocket client + alert state machine (RH out-of-band, pi-offline/chamber-dark, sensor staleness, humidifier-stuck) with cooldown/snooze/mute and daily heartbeat are reproduced in the `chamber/` package.
+- [ ] **CHM-02**: Farmer-facing time/number formatting uses `ZoneInfo('America/Montevideo')` (the Toronto-since-Phase-13 bug is fixed) and round-number formatting; this TZ change is pre-declared as an intentional parity delta.
 
-- Vision-based extraction (contamination spots, pin emergence, growth stage) — blocked on 999.26 camera coverage.
-- High-confidence auto-commit (no farmer confirm) for narrow patterns — earned after v1.7 produces ≥4 weeks of clean confirm data.
-- Multi-chamber rollout (FC-2/FC-3) — depends on 999.6.
-- Farmer-app "Captured events" review surface (SEED-003 composable) — slot if cheap, otherwise v1.8.
-- farmOS admin actions (Phase 19) — still Zoy/farm-team gated.
-- Group-thread richer behavior (proactive nudges, multi-farmer collaboration on the same draft) — minimum-viable group support only in v1.7.
+### PAR — Parity / validation gate
 
-## Out of Scope (explicit exclusions)
+- [ ] **PAR-01**: A golden-corpus replay harness runs the Python extractor against a read-only snapshot DB on an isolated port (`:5434`) and field-diffs `draft_json` vs the stored Node output; the gate passes at ≥95% field match (the 10-page Phase-55B set + May-22 inoc session are named minimums).
+- [ ] **PAR-02**: The intentional-delta list (TZ fix, quote-ts coercion, fmtNum edge cases) is formally enumerated and excluded from the parity threshold so legitimate fixes are not miscounted as failures.
+- [ ] **PAR-03**: Confirm-FSM parity (100%, pure function) and farmOS-payload identity-field parity (100% on stable-identity fields, dry-run, no live write) pass before cutover.
 
-- **ML vision pipelines.** v1.7 uses LLM only; vision is text-extraction-via-OCR-when-needed, not image classifiers.
-- **farmOS UI work.** All farmOS schema-side UI (admin actions, custom views, mobile workflows) is Zoy's domain.
-- **Schema changes.** v1.7 ships against the locked schema. Any schema drift goes through Zoy first.
-- **Non-mushroom domains.** Animal / tomato / forestry assets are out — the schema is farm-wide but v1.7 only exercises the mushroom slice (B1–B7).
-- **Backfilling historical farmOS data.** Pipeline writes new events going forward; no retroactive bulk-import of pre-v1.7 paper logs into farmOS (the historical-log INGEST stream is for *validation*, not data migration).
+### CUT — Cutover
+
+- [ ] **CUT-01**: A documented stop-then-start cutover runbook drains/force-expires in-flight `awaiting_farmer` drafts, stops Node, starts Python (which drains the signal-cli backlog on boot); no dual-run window on the shared DB.
+- [ ] **CUT-02**: Rollback is drilled and executable in under ~2 minutes from a tagged image (`stop alerter-py && start alerter`); both stacks share the same additive schema so either watchdog reads the other's rows correctly.
+- [ ] **CUT-03**: A post-cutover observation window confirms live farmer traffic flows end-to-end (Signal → extract → confirm → farmOS) on the Python stack with no regression vs the Node baseline.
 
 ---
+
+## Future Requirements (deferred)
+
+- Full Foray repo extraction (Apache-2.0 carve-out, README/docs, public launch) — SEED-010; this milestone only builds the seams.
+- v1.13 auto-commit narrowing — depends on the v1.11 confirm corpus.
+- The 2 open 55B follow-ons (receipt dup false-positive, D-03 image-on-session) — fold in only if trivial during the relevant phase.
+- Origin-guard generalization to a full dev/prod origin split (v1.13 watchdog-origin-guard candidate) — PAR/FWR ship the minimal guard.
+
+## Out of Scope
+
+- Porting `fc_core` / Mission Control / OpenMCT bridge / camera / VPS hub — these stay Node/ROS; only the alerter slice ports.
+- Re-porting `src/farmos-agent/` — already Python; reference only.
+- QR-scan binding flow — not exercised; multimodal-only is the commitment.
+- Dual-stack / traffic-splitting between Node and Python — unsafe on the shared 30s-drain watchdog DB; big-bang cutover only.
+- ML vision (contamination/pin detection) — needs camera-coverage prereq.
 
 ## Traceability
 
-| REQ-ID | Phase | Status |
-|---|---|---|
-| PRE-01 | Phase 36 | Pending |
-| PRE-02 | Phase 36 | Pending |
-| ROUTE-01 | Phase 37 | Pending |
-| ROUTE-02 | Phase 37 | Pending |
-| ROUTE-03 | Phase 37 | Pending |
-| EXT-01 | Phase 38 | Complete |
-| EXT-02 | Phase 38 | Complete |
-| EXT-03 | Phase 38 | Complete |
-| EXT-04 | Phase 38 | Complete |
-| EXT-05 | Phase 38 | Complete |
-| CONF-01 | Phase 39 | Pending |
-| CONF-02 | Phase 39 | Pending |
-| CONF-03 | Phase 39 | Pending |
-| CONF-04 | Phase 39 | Pending |
-| CONF-05 | Phase 39 | Pending |
-| FOS-01 | Phase 40 | Pending |
-| FOS-02 | Phase 40 | Pending |
-| FOS-03 | Phase 40 | Pending |
-| FOS-04 | Phase 40 | Pending |
-| FOS-05 | Phase 40 | Pending |
-| FOS-06 | Phase 40 | Pending |
-| INGEST-01 | Phase 41 | Pending |
-| INGEST-02 | Phase 41 | Pending |
-| INGEST-03 | Phase 41 | Pending |
-| INGEST-04 | Phase 41 | Pending |
-| PILOT-01 | Phase 42 | Pending |
-| PILOT-02 | Phase 42 | Pending |
-| PILOT-03 | Phase 42 | Pending |
-| PILOT-04 | Phase 42 | Pending |
-| PILOT-05 | Phase 42 | Pending |
-| PILOT-06 | Phase 42 | Pending |
-
----
-
-# Milestone v1.9 Requirements — Inoc-Session Correctness (scaffolded 2026-05-22, planning deferred until v1.8 ships)
-
-**Milestone goal:** The canonical multi-parent inoc session works end-to-end — capture → extract → confirm → commit → surface — with the 2026-05-22 paper-log session as the live ship gate.
-
-**Driver:** May 22 exposed that Phase 38's eval set lacked the canonical multi-parent inoc shape. 10 of 11 bags fell on the floor. This milestone fixes the structural gap and adds the missing real-session eval coverage.
-
-**Schema source-of-truth:**
-- `/mnt/slime-kingdom/shared/farmos/.planning/notes/2026-05-11-session-chat.md` (B5/B7/C4/C5 lock)
-- `/mnt/slime-kingdom/shared/farmos/.planning/notes/2026-05-22-b5-seq-clarification.md` (SEQ per-session disambiguation)
-
-**Honors:** [[project_inoc_shape_multi_parent_batch]], [[project_extraction_holistic_multi_source_fusion]], [[project_session_is_production_shape_per_bag_is_storage]], [[project_b5_seq_is_per_session_not_per_strain]], [[feedback_real_data_before_ship_gate_pass]].
-
-## Active Requirements
-
-### INOC — Inoc-session extraction and commit
-
-- [ ] **INOC-01**: Extraction emits the groups shape (`{type: "seeding", event_date, groups: [{parent, species, qty, child_block_names[]}]}`) for any inoc capture, regardless of whether the session is single-parent or multi-parent, single-species or mixed-species. Locked-schema-only output (no off-schema fields per C5).
-- [ ] **INOC-02**: Multi-source fusion — when a turn bundles audio+image+text, all sources are read holistically into one draft. Per-field provenance tracked in `signal_draft.per_field_confidence` (which source(s) contributed). Cross-source agreement is silent; disagreement surfaces in the confirm UX with both values, never silently picked.
-- [ ] **INOC-03**: B5 block-name minting uses session-wide SEQ (1..N across all strains), sourced primarily from paper-log photo OCR/vision when present. Format `{YYMMDD}_{SPECIES3}_{SESSION_SEQ}` per the 2026-05-22 clarification. No auto-generated SEQ when paper-log photo unavailable — ask-back is preferred over guessing.
-- [ ] **INOC-04**: Session entity modeled as an anonymous `fungi` asset (no QR, no individuated name), serving as a secondary `parent` ref on every child block of the same inoc session. Reconstructable by query — "show me May 22 session" returns the asset + its children.
-- [ ] **INOC-05**: Commit fan-out — a confirmed groups-shape draft writes N per-block `seeding` logs (each child's primary asset = the child block, source ref = its specific parent block) plus 1 session asset. Idempotent on duplicate YES (no double-write).
-- [ ] **INOC-06**: Confirm preview is session-shaped (compact group-by-parent table, not flat list of 11 records). Farmer can scan the preview against paper notebook / shelf in seconds. SEQ numbers visible per-bag.
-- [ ] **INOC-07**: Real-session eval corpus ≥3 inoc sessions added to CI eval set, drawn from `/mnt/mossrock/shared/mushdatadump-prod/` paper logs + paired audio when available. 2026-05-22 session is the named regression guard. CI fails if any of the named sessions regresses.
-
-## Future Requirements (deferred to v1.10+)
-
-- Harvest-session shape (same structural concern, different log type)
-- Multi-session-per-day SEQ disambiguation (defer until it happens; flagged in B5 clarification note)
-- Auto-generated SEQ fallback when paper-log photo absent (current behavior: ask-back; future: confidence-tiered emit)
-- Session "label print + scan" QR-bind flow (locked v1.0 path; multimodal-only is the v1.6+ commitment)
-
-## Out of Scope (explicit exclusions)
-
-- **Phase 45 NORTH-STAR commit_failed ack.** That's v1.8; here the [[feedback_hard_rules_relaxed_when_farmer_is_santi]] posture holds. When v1.9 ships to other farmers, re-tighten.
-- **Phase 42 SHI-on-sawdust full lifecycle pilot.** Still calendar-deferred. v1.9 is about inoc-session correctness, not full lifecycle.
-- **Backfilling pre-v1.9 inoc sessions into farmOS.** May 22 IS backfilled as the ship gate, but other historical sessions stay paper-only unless explicitly opted in.
-- **Schema changes.** v1.9 ships against the 2026-05-11 lock + 2026-05-22 clarification. Any further schema drift goes through zoy-side first.
-
-## Traceability
-
-| REQ-ID | Phase | Status |
-|---|---|---|
-| INOC-01 | Phase 47 | Scaffolded |
-| INOC-02 | Phase 47 | Scaffolded |
-| INOC-03 | Phase 47 | Scaffolded |
-| INOC-04 | Phase 48 | Scaffolded |
-| INOC-05 | Phase 48 | Scaffolded |
-| INOC-06 | Phase 48 | Scaffolded |
-| INOC-07 | Phase 49 | Scaffolded |
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| FND-01 | Phase 56 | Pending |
+| FND-02 | Phase 56 | Pending |
+| FND-03 | Phase 56 | Pending |
+| FND-04 | Phase 56 | Pending |
+| FND-05 | Phase 56 | Pending |
+| SIG-01 | Phase 57 | Pending |
+| SIG-02 | Phase 57 | Pending |
+| SIG-03 | Phase 57 | Pending |
+| SIG-04 | Phase 57 | Pending |
+| CAP-01 | Phase 58 | Pending |
+| CAP-02 | Phase 58 | Pending |
+| GATE-01 | Phase 59 | Pending |
+| XTR-01 | Phase 60 | Pending |
+| XTR-02 | Phase 60 | Pending |
+| XTR-03 | Phase 60 | Pending |
+| CNF-01 | Phase 61 | Pending |
+| CNF-02 | Phase 61 | Pending |
+| FWR-01 | Phase 62 | Pending |
+| FWR-02 | Phase 62 | Pending |
+| FWR-03 | Phase 62 | Pending |
+| FWR-04 | Phase 62 | Pending |
+| CHM-01 | Phase 63 | Pending |
+| CHM-02 | Phase 63 | Pending |
+| PAR-01 | Phase 64 | Pending |
+| PAR-02 | Phase 64 | Pending |
+| PAR-03 | Phase 64 | Pending |
+| CUT-01 | Phase 65 | Pending |
+| CUT-02 | Phase 65 | Pending |
+| CUT-03 | Phase 65 | Pending |

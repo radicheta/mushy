@@ -17,7 +17,7 @@
 - ✅ **v1.10 Order-Independent Writes (upsert-by-stable-identity)** — Phase 51 (shipped 2026-05-24; UPSERT-01..07 all verified; live-fire on dev farmOS: 16 assets patched / 0 created, 11 logs patched / 0 created, zero duplicates). See `.planning/milestones/v1.10-ROADMAP.md`.
 - 📋 **v1.10.1 Session-Entity Adoption (asset--group)** — Phase 52 (planned 2026-05-24; reverses Phase 48 "no session entity" interim now that farmos team enabled `farm_group` on dev+prod, commit `1857037`; session = `asset--group`, membership = `activity` log with `is_group_assignment=true`).
 - ✅ **v1.11 2025-Notebook Backfill** — Phases 53–55B (shipped 2026-06-14; runs the mushdatadump 2025 paper-log corpus through the now-unblocked extraction+upsert pipeline; gated on Phase 38 batch-mode fix + year-context shim).
-- 📋 **v1.12 Farm-Agent Python Port** — Phases 56–? (planned 2026-05-24; ports the Node alerter/extraction stack to Python, unblocks Phase 50 wire-level quote-rendering bugs deferred from v1.9, sets up Foray v2.0 surface).
+- 📋 **v1.12 Farm-Agent Python Port** — Phases 56–65 (planned 2026-06-15; big-bang Python rewrite of the live Node alerter stack — Signal I/O, multimodal extractor, draft state machine, farmOS commit path; cutover gated on ≥95% parity against live corpus).
 - 📋 **v1.13 Auto-Commit Narrowing** — Phases TBD (planned 2026-05-24; carves per-shape auto-commit lanes gated on ≥99% historical YES rate + n≥50, with UNDO + auto-demotion; structurally depends on v1.11 generating the confirm corpus).
 
 ## Phases
@@ -231,15 +231,158 @@ Carried forward: full 73-page corpus run (parked, GA2/Cycle-2), live F2 reconcil
 rollback (CR-01), no 55B-SECURITY.md.
 </details>
 
-## v1.12 Farm-Agent Python Port (Phases 56–?) — PLANNED 2026-05-24
+## v1.12 Farm-Agent Python Port (Phases 56–65) — PLANNED 2026-06-15
 
-**Driver:** Phase 50 live-fire (2026-05-23/24) hit a wire-level Signal quote-rendering bug that REST 201s succeed but client-side renders unquoted. Fix-in-place means forking a Go wrapper of signal-cli — the entire stack is being replaced anyway. Per `2026-05-14-port-alerter-to-farm-agent-python.md`, port to Python with signal-cli library bindings (or alternative client) where quote-threading is first-class. Also absorbs `2026-05-24-signal-capture-missing-followup-messages.md`, `2026-05-24-phase50-quote-thread-missing-on-extraction-preview-and-ask-back.md`, `2026-05-24-phase50-extraction-preview-related-draft-id-null.md`, and `2026-05-21-alerter-tz-montevideo-and-local-time-rendering.md`.
+**Goal:** Rewrite the live ~16k-LOC Node alerter/extraction stack (`src/agents/alerter/`) as a Python (asyncio) stack — Signal I/O, multimodal extractor, draft state machine, and farmOS commit path — validated against the live corpus and cut over in a single big-bang switch, with clean Foray-ready module seams. Absorbs the Phase-50 wire-level quote-rendering bugs. Fixes the TZ-Toronto legacy bug (America/Montevideo). Sets up the Foray v2.0 OSS surface.
 
-**Strategic role:** Sets up the OSS-Foray v2.0 surface (Python is the Foray reference impl per [[project_2026_05_17_oss_foray_alpha_lock]]). Tenant_id-aware from day one (already paid the tax since v1.8).
+**Strategy (locked 2026-06-14 with Santi):** Big-bang rewrite + corpus parity gate + single atomic cutover. No dual-stack on the shared TimescaleDB.
 
-**Hard constraint:** Atomic cutover with rollback. Node alerter is the current production farmer-facing pipeline; a botched cutover blacks out f1 alerts. Both stacks coexist behind a feature flag until live-fire attestation on f1 passes.
+**Hard constraints:**
+- Origin guard lands in Phase 62 BEFORE any write path runs (shared-Timescale prod-leak prevention).
+- Parity gate (Phase 64) must pass at >=95% field match on isolated :5434 DB before cutover.
+- v1.11 CSV fidelity hard gate and v1.10 upsert-by-stable-identity preserved byte-identical.
+- Validation runs use throwaway isolated DB only (never shared prod Timescale).
 
-**Phases:** TBD during plan-phase. Likely 4-6 phases covering: capture+receive parity, extraction+confirm parity, write-path+upsert parity, quote-threading native, cutover + Node retire.
+### Phase Summary Checklist (v1.12)
+
+- [ ] **Phase 56: Foundation** - asyncio skeleton, tenancy, persistence/migrations, zod->pydantic schema-parity gate, Foray CI seam
+- [ ] **Phase 57: Signal I/O** - signal-cli JSON-RPC, durable+rate-capped outbound, multi-farmer routing, Phase-50 quote-threading fix
+- [ ] **Phase 58: Capture + Transcription** - envelope/attachment capture, off-loop Whisper transcription
+- [ ] **Phase 59: Event Gate** - rule prefilter + Haiku classifier, reproduces Node gate accept/reject behavior
+- [ ] **Phase 60: Extraction Pipeline** - multimodal tool-use, retry/SeedingSession/provenance, B5 minting
+- [ ] **Phase 61: Confirm Loop** - YES/NO/EDIT FSM parity, strain-confirm, race-safe watchdog
+- [ ] **Phase 62: farmOS Write Path** - httpx client, field-scoped image route, stable-identity upsert, strain/fidelity guard, origin guard (FIRST in this phase)
+- [ ] **Phase 63: Chamber Alerter** - ROS-bridge WS alerts, TZ Montevideo fix (mushy-private chamber/ package)
+- [ ] **Phase 64: Parity Gate** - golden-corpus >=95% field match on isolated :5434, intentional-delta enumeration, FSM+payload parity
+- [ ] **Phase 65: Cutover** - stop-start runbook, <2min rollback drill, post-cutover observation window
+
+### Progress Table (v1.12)
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 56. Foundation | 0/TBD | Not started | - |
+| 57. Signal I/O | 0/TBD | Not started | - |
+| 58. Capture + Transcription | 0/TBD | Not started | - |
+| 59. Event Gate | 0/TBD | Not started | - |
+| 60. Extraction Pipeline | 0/TBD | Not started | - |
+| 61. Confirm Loop | 0/TBD | Not started | - |
+| 62. farmOS Write Path | 0/TBD | Not started | - |
+| 63. Chamber Alerter | 0/TBD | Not started | - |
+| 64. Parity Gate | 0/TBD | Not started | - |
+| 65. Cutover | 0/TBD | Not started | - |
+
+## Phase Details (v1.12)
+
+### Phase 56: Foundation
+**Goal**: The Python package boots as a testable asyncio daemon with layered config, async DB pool, idempotent migrations, and a statically-enforced Foray boundary — before any Signal or LLM code runs.
+**Depends on**: Nothing (first phase of v1.12)
+**Requirements**: FND-01, FND-02, FND-03, FND-04, FND-05
+**Success Criteria** (what must be TRUE):
+  1. `uv sync && docker compose up alerter-py` starts without error and the Python daemon logs "boot complete" within 5 seconds.
+  2. `run_migrations()` against a blank test DB produces all expected tables (`signal_capture`, `signal_draft`, `signal_outbound`, commit/audit tables) with correct column types; re-running is a no-op.
+  3. `python -m pytest tests/unit/` passes; a structural diff of `model.model_json_schema()` output versus the Node `SUBMISSION_JSON_SCHEMA` shows zero discrepancies (`extra='forbid'` present on every nested model).
+  4. CI fails the build if any non-`chamber/` package contains `from alerter.chamber` (Foray seam enforced statically).
+  5. No business module imports `os.environ` directly; all config flows through `TenantConfig`.
+**Plans**: TBD
+
+### Phase 57: Signal I/O
+**Goal**: The Python stack can send and receive Signal messages through signal-cli over the JSON-RPC UNIX socket, with durable outbound queuing, correct multi-farmer routing, and wire-level quote threading that reproduces the Phase-50 fixes.
+**Depends on**: Phase 56
+**Requirements**: SIG-01, SIG-02, SIG-03, SIG-04
+**Success Criteria** (what must be TRUE):
+  1. A live round-trip test sends a Signal message from the Python stack and receives a reply; `signal_outbound.signal_msg_ts` is populated as a bigint (not null, not float-coerced).
+  2. A group message sent from the Python stack lands in the Signal group (not 400, not silently dropped); group ID translated via `/v1/groups` cache, not raw `internal_id` form.
+  3. Sending a quote-threaded reply with a string `timestamp` field passes `int(str(ts))` coercion and renders as a native quote bubble on the Signal client; invalid quote shapes fail-open (send unquoted, log warning, no exception).
+  4. The rate-cap history is protected by `asyncio.Lock`; two concurrent send coroutines do not exceed `maxSendsPerHour`.
+  5. Unknown sender numbers are tagged `(unassigned)` and processed, never dropped.
+**Plans**: TBD
+
+### Phase 58: Capture + Transcription
+**Goal**: Inbound envelopes are reliably captured to `signal_capture` with attachments downloaded and audio transcribed off-loop via Whisper, without blocking the event loop.
+**Depends on**: Phase 57
+**Requirements**: CAP-01, CAP-02
+**Success Criteria** (what must be TRUE):
+  1. Sending a voice note via Signal produces a `signal_capture` row with ULID id, correct farmer slug (resolved from farmOS people directory), and a non-null `transcript` column populated by the Whisper client.
+  2. Whisper transcription runs in a `ProcessPoolExecutor` (off-loop); the receive loop continues processing new envelopes during a long audio transcription without queuing delay.
+  3. The attachment file path is verified to exist on disk before being passed to the extractor (no attachment-download race; extractor never receives a path to a file that does not yet exist).
+**Plans**: TBD
+
+### Phase 59: Event Gate
+**Goal**: A rule prefilter and Haiku classifier decide which inbound messages enter the extraction pipeline, reproducing the Node gate's accept/reject behavior with fail-open semantics.
+**Depends on**: Phase 58
+**Requirements**: GATE-01
+**Success Criteria** (what must be TRUE):
+  1. The 100-capture hand-classified prod-corpus smoke (same fixture as Phase 44 Plan-01) replayed through the Python gate produces zero chit-chat messages reaching the extraction pipeline (0% false-positive rate on labeled negatives).
+  2. Event recall on the same smoke is >=95% (no real farm events gate-rejected).
+  3. A Haiku classifier timeout or API error causes the gate to fail-open (message proceeds to extraction), not fail-closed (message dropped); a WARNING log is emitted.
+**Plans**: TBD
+
+### Phase 60: Extraction Pipeline
+**Goal**: The Python multimodal extractor fuses text, audio transcript, and image into a schema-valid draft via Claude tool-use, reproducing all Node extraction behaviors including SeedingSession multi-parent shape, per-field provenance, retry logic, and B5 block-name minting.
+**Depends on**: Phase 59
+**Requirements**: XTR-01, XTR-02, XTR-03
+**Success Criteria** (what must be TRUE):
+  1. Replaying the 2026-05-22 audio+photo inoc session through the Python extractor produces one `seeding_session` draft with 5 groups, 11 children, correct `260522_SHI_1..3` / `260522_KOY_4..11` block names, and per-field provenance metadata.
+  2. A schema-invalid LLM response triggers the retry path (tool_result with `is_error: true` and correct `tool_use_id`) and resolves on the second attempt; the third failure produces a `needs_review` draft, not an exception.
+  3. `BLOCK_NAME_RE` uses `re.fullmatch()`; `260522_SHI_1_EXTRA` is rejected while `260522_SHI_1` passes.
+  4. A structural diff of the Python `model_json_schema()` versus the Node `SUBMISSION_JSON_SCHEMA` is clean (this is the FND-04 gate re-verified against the real extractor call).
+**Plans**: TBD
+**UI hint**: no
+
+### Phase 61: Confirm Loop
+**Goal**: The YES/NO/EDIT/expiry state machine is reproduced as a pure Python function with 100% table-driven parity tests, and the async watchdog serializes ticks to prevent duplicate nudge/expire races.
+**Depends on**: Phase 60
+**Requirements**: CNF-01, CNF-02
+**Success Criteria** (what must be TRUE):
+  1. A 100% parity test suite (pure function, no DB, no network) covers all valid and invalid transitions of the YES/NO/EDIT/expiry FSM; the Node transition table and the Python table match on every case.
+  2. Sending YES twice to the same draft produces exactly one `confirmed` state transition and one farmOS commit attempt (duplicate YES does not double-commit).
+  3. Two concurrent `tick_once()` watchdog calls against the same `awaiting_farmer` row produce exactly one nudge send (conditional UPDATE `WHERE nudge_sent IS FALSE RETURNING id` guards the race).
+  4. Strain-confirm-before-mint intercepts unknown codes and holds the draft pending farmer reply; known curated-14-code strains pass through without a double-check.
+**Plans**: TBD
+
+### Phase 62: farmOS Write Path
+**Goal**: The origin guard is committed first (preventing the shared-Timescale prod-leak), then confirmed drafts commit to farmOS via an httpx async client with byte-identical stable-identity upserts, the field-scoped image route, and the v1.11 CSV fidelity gate preserved.
+**Depends on**: Phase 61
+**Requirements**: FWR-01, FWR-02, FWR-03, FWR-04
+**Success Criteria** (what must be TRUE):
+  1. The origin guard is the first commit in this phase; a Python validation process cannot have its `signal_draft` rows drained by the live Node commit-watchdog (structural prevention, not a runbook step).
+  2. A cross-language fixture test produces the same stable-identity hex digest from both the Node `merge.js` and the Python `merge.py` for the same input; running the Python commit path twice against dev farmOS produces 0 duplicate assets (upsert-by-stable-identity is byte-identical).
+  3. A confirmed seeding draft with an attached image uploads via `POST /api/asset/{type}/{uuid}/image` (field-scoped route); the image appears on the `image` field of the asset in dev farmOS.
+  4. The v1.11 CSV fidelity gate is active: a draft whose block name disagrees with the CSV cross-check is held as `fidelity_cross_check_unverified`, not committed; POY is never silently committed as KOY.
+  5. The curated-14-code strain resolver rejects unknown codes and surfaces them for farmer confirmation; the POY->KOY silent-misattribution class is regression-guarded by a named fixture test.
+**Plans**: TBD
+
+### Phase 63: Chamber Alerter
+**Goal**: The ROS-bridge WebSocket alerter (RH out-of-band, pi-offline/chamber-dark, sensor staleness, humidifier-stuck) and daily heartbeat are reproduced in the `chamber/` mushy-private package, with the TZ bug fixed to America/Montevideo.
+**Depends on**: Phase 62
+**Requirements**: CHM-01, CHM-02
+**Success Criteria** (what must be TRUE):
+  1. Inducing an fc-core stop (or bridge disconnect) causes the Python chamber alerter to fire a pi-offline Signal alert to f1 within the configured timeout window.
+  2. All farmer-facing time values in alerter messages use `ZoneInfo('America/Montevideo')` (UYT, UTC-3); a snapshot test of a formatted alert message shows the correct local time (not UTC, not Toronto/EDT).
+  3. RH out-of-band, sensor-offline, and humidifier-stuck detectors each fire a Signal alert under their respective trigger conditions in integration testing; the `chamber/` package has zero imports from any non-chamber Foray package (enforced by the Phase 56 CI gate).
+**Plans**: TBD
+
+### Phase 64: Parity Gate
+**Goal**: The Python extractor is validated against a golden corpus replayed on an isolated snapshot DB at :5434 and achieves >=95% field-level match versus stored Node outputs; the intentional-delta list is formally enumerated so legitimate fixes are not miscounted as parity failures.
+**Depends on**: Phase 63
+**Requirements**: PAR-01, PAR-02, PAR-03
+**Success Criteria** (what must be TRUE):
+  1. The parity harness runs `parity/replay.py` against a read-only snapshot DB at :5434 (never the shared prod Timescale at :5432); the Node alerter container is confirmed stopped (`docker compose ps`) before any replay run.
+  2. The field-level diff rate across the golden corpus (>=10-page Phase-55B set + May-22 inoc session) is <5% (>=95% field match); the gate exits 0.
+  3. The intentional-delta list is a committed file enumerating: TZ fix (Toronto->Montevideo), quote-ts coercion fix (Phase-50), fmtNum edge cases. Fields matching the delta list are excluded from the parity threshold and do not count as failures.
+  4. Confirm-FSM parity tests pass at 100% on all FSM transitions (pure function, no DB).
+  5. farmOS-payload stable-identity fields (name, type, upsert digest) match 100% between Node and Python on a dry-run commit against the snapshot corpus (no live farmOS write).
+**Plans**: TBD
+
+### Phase 65: Cutover
+**Goal**: The Node alerter is stopped, the Python alerter is started against the same Postgres, live farmer traffic flows end-to-end on the Python stack, and rollback is proven executable in under 2 minutes from a tagged image.
+**Depends on**: Phase 64
+**Requirements**: CUT-01, CUT-02, CUT-03
+**Success Criteria** (what must be TRUE):
+  1. The documented cutover runbook is executed: `signal_outbound` queue drained, `SELECT COUNT(*) FROM signal_draft WHERE status IN ('confirmed','awaiting_farmer')` returns 0 before Python starts, Node stopped, Python started, smoke test Signal message round-trips end-to-end within 60 seconds.
+  2. Rollback drill is completed before the cutover: `docker compose stop alerter-py && docker compose start alerter` restores the Node stack in under 2 minutes from the tagged image with no data loss.
+  3. A 24-hour post-cutover observation window confirms live farmer Signal messages flow through Signal -> extract -> confirm -> farmOS on the Python stack with no `needs_review` rows attributable to Python bugs and no regression in alert timeliness vs the Node baseline.
+**Plans**: TBD
 
 ---
 

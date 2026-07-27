@@ -1,187 +1,278 @@
-# Technology Stack
+# Stack Research
 
-**Project:** Mushroom Farm FC-1 Humidity Control
-**Researched:** 2026-03-28
-**Overall Confidence:** MEDIUM-HIGH
+**Domain:** Python port of live Node.js Signal-bot / LLM-extraction / farmOS-commit agent (v1.12 Farm-Agent Python Port)
+**Researched:** 2026-06-14
+**Confidence:** HIGH (all versions verified from PyPI live; signal-cli interop verified from upstream docs and discussion threads; Anthropic SDK and pydantic verified via Context7)
 
 ---
 
 ## Recommended Stack
 
-### Core Framework
+### Core Technologies
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| ROS2 Jazzy | LTS (jazzy) | Node runtime, pub/sub messaging, parameter system | Already in production; Jazzy is the current LTS on Ubuntu 24.04; do not change |
-| rclpy | 3.x (bundled with Jazzy) | Python ROS2 client library | The only correct choice for Python nodes; rclcpp is C++ only |
-| Python | 3.12 (Ubuntu 24.04 default) | Node implementation language | Already used throughout; Python 3.12 ships with Ubuntu 24.04 base image |
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| Python | 3.12 | Runtime | `python:3.12-slim-bookworm` Docker base. Structural `match/case` useful for state machines. `asyncio` native. No ROS dependency -- do not use the ROS image. |
+| asyncio (stdlib) | built-in | Async runtime | All I/O is I/O-bound (signal-cli socket, Postgres, LLM, WebSocket). Single event loop, no threads. Direct port of the Node event loop model. |
+| anthropic | 0.109.1 | Anthropic Claude API | Official SDK. `AsyncAnthropic` is asyncio-native. `output_format=PydanticModel` enables direct structured output; tool-use passes `Model.model_json_schema()` as `input_schema`. Replaces `@anthropic-ai/sdk`. |
+| pydantic | 2.13.4 | Schema validation + JSON-schema export for LLM | Replaces `zod` + `zod-to-json-schema`. `Model.model_json_schema()` emits OpenAPI-compatible JSON Schema; `Model.model_validate(data)` replaces `schema.parse(data)`. Rust core, fast. |
+| psycopg (with [binary] extra) | 3.3.4 | PostgreSQL / TimescaleDB driver | See rationale below. Replaces `pg` (Node). Use `AsyncConnection` + `AsyncConnectionPool`. |
+| psycopg-pool | 3.3.1 | Connection pooling for psycopg3 | Separate package; required for `AsyncConnectionPool`. |
+| websockets | 16.0 | WebSocket client to ROS bridge | Replaces `ws` npm package in bridge-client.js. Pure asyncio; `connect()` is an async context manager. |
+| python-ulid | 3.1.0 | ULID generation | Replaces `ulid` npm package. `ULID()` generates; sortable, stores as TEXT or UUID in Postgres. |
+| Pillow | 12.2.0 | Image prep for LLM vision | Replaces `jimp`. Resize + JPEG re-encode before base64 encoding for Claude. |
+| ruamel.yaml | 0.19.1 | Tenant config parsing | Replaces `yaml` npm package. Preserves YAML comments on round-trip (useful if config is ever written back). |
+| httpx | 0.28.1 | farmOS HTTP client (async) | Replaces the implicit `node-fetch` / axios patterns in farmos/client.js. `httpx.AsyncClient` works inside asyncio. Do NOT use `requests` (blocking -- will stall the event loop). |
 
-### Sensor Library (DHT22)
+### Supporting Libraries
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| adafruit-circuitpython-dht | 3.7.x | DHT22 temperature/humidity reading | Already in the codebase and Dockerfile; verified functional |
+| Library | Version | Purpose | When to Use |
+|---------|---------|---------|-------------|
+| APScheduler | 3.11.2 | Watchdog / cron schedulers | Replaces `node-cron`. Use `AsyncIOScheduler` for the commit-watchdog and draft-expiry watchdog. Pin `<4` -- v4 is a breaking API rewrite not yet production-stable. For simple interval watchdogs, a bare `asyncio.create_task` + `asyncio.sleep` loop is fine and avoids the APScheduler dependency entirely. |
+| pytest | 9.1.0 | Test runner | Standard. |
+| pytest-asyncio | 1.4.0 | Async test support | Required for testing asyncio coroutines. Set `asyncio_mode = "auto"` in `pyproject.toml`. |
+| ruff | 0.15.17 | Linter + formatter | Replaces flake8 + isort + black as a single tool. Millisecond feedback. Replaces `ament_flake8`. |
 
-**Critical warning:** `adafruit-circuitpython-dht` depends on `libgpiod.so.2`. On **Raspberry Pi OS (Bookworm)** this works correctly. On **Ubuntu 24.04** the system ships `libgpiod3` (not `libgpiod2`), causing an import failure. The current Dockerfile installs `RPi.GPIO` and `adafruit-circuitpython-dht` but does **not** resolve this ABI mismatch.
+### Development Tools
 
-**Mitigation for MVP:** If the Pi is running Raspberry Pi OS (Bookworm), not Ubuntu, this is not an issue. Confirm the OS before treating this as a blocker. If Ubuntu 24.04 is confirmed, the workaround is `sudo apt-get install libgpiod2` inside the container, or pin the container base to Raspberry Pi OS. Do not attempt to switch the sensor library mid-MVP — fix the OS/library pairing first.
-
-**Confidence:** MEDIUM — libgpiod compatibility is a real, documented issue on forum threads from 2024-2025. Confirmed that Pi OS Bookworm still ships libgpiod2 and is unaffected.
-
-### GPIO Control
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| RPi.GPIO | 0.7.x | MOSFET/humidifier pin control (HIGH/LOW) | Already in codebase; fine for simple on/off GPIO on Raspberry Pi OS |
-| rpi-hardware-pwm | 0.3.1 | Fan speed via hardware PWM | Already in use; v0.3.1 released Feb 2026; requires `dtoverlay=pwm-2chan` in `/boot/firmware/config.txt` |
-
-**On Ubuntu 24.04:** `RPi.GPIO` does not reliably work. The drop-in replacement is `rpi-lgpio` (same import interface, built on lgpio/libgpiod). For the MVP, the humidifier pin uses simple on/off (`GPIO.output`), so rpi-lgpio is a safe swap with one caveat: debounce behavior differs slightly, but debounce is not used here.
-
-**Recommendation for MVP:** Keep `RPi.GPIO` if the target hardware runs Raspberry Pi OS. If Ubuntu 24.04, add `rpi-lgpio` as a dependency and no code changes are needed — it is a drop-in replacement with the same API surface.
-
-**Confidence:** MEDIUM-HIGH — rpi-lgpio compatibility claims are corroborated by multiple forum reports and the library's own documentation.
-
-### Closed-Loop Control Algorithm
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| simple-pid | 2.0.1 | PID feedback loop for humidity setpoint | Zero dependencies, MIT license, well-tested, actively maintained |
-
-**Rationale:** The existing controller uses bang-bang (hysteresis) control: humidifier ON below setpoint - tolerance, OFF above setpoint + tolerance. This is adequate for MVP and already implemented. `simple-pid` is the standard library for Python PID in ROS2 projects. It is the library referenced in `simple-ros-pid` (the most-cited ROS2 Python PID project), extracted as a standalone dependency-free package.
-
-**For MVP:** Do not add simple-pid yet unless the bang-bang hysteresis approach proves unstable on the physical hardware. The existing hysteresis controller is correct for a binary actuator (humidifier is either ON or OFF — not PWM-controlled), and a PID output on a binary actuator requires pulse-width modulation of the humidifier on/off cycle, which adds complexity. Defer PID to Phase 2.
-
-**If PID is needed later:** `pip install simple-pid==2.0.1`. Use `sample_time` equal to the control loop interval (1.0 s). Clamp output to `[0.0, 1.0]` representing humidifier duty cycle. Set integral bounds to prevent windup.
-
-**Confidence:** HIGH — verified against PyPI, GitHub, and official docs.
-
-### ROS2 Message Types
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| sensor_msgs/RelativeHumidity | Jazzy built-in | Humidity topic message type | Standard message; includes `header` (stamp + frame_id) and `relative_humidity` (float64, 0.0-1.0) and `variance` (0.0 = unknown) |
-| sensor_msgs/Temperature | Jazzy built-in | Temperature topic message type | Same pattern; already used |
-| std_msgs/Bool | Jazzy built-in | Humidifier actuator state publication | Publish actuator state for observability/OpenMCT |
-
-**Note on RelativeHumidity:** The field is in the range [0.0, 1.0], not percentage. The existing sensor code has an inconsistency: simulation mode sets `sim_humidity` to values like 0.85 (correct), but the hardware path divides by 100.0 after reading — DHT22 already returns 0-100, so that division is correct. The simulation and hardware paths are not equivalent. This is a pre-existing bug to fix.
-
-### Testing
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| pytest | 7.x (via system/pip) | Unit tests for node logic | Already in use; standard for ROS2 Python packages |
-| unittest.mock | stdlib | Mock GPIO, DHT22, hardware calls in tests | No additional dependency; prevents hardware calls in CI |
-| ament_flake8 | Jazzy bundled | Linting | Already configured |
-| ament_pep257 | Jazzy bundled | Docstring style | Already configured |
-
-**ROS2 test patterns:** For unit tests of node logic (control algorithm, parameter handling), instantiate the node directly after `rclpy.init()` and call callbacks/methods directly. Do not use `rclpy.spin()` in tests. Use `unittest.mock.patch` to mock GPIO imports that would fail in CI without hardware.
-
-**Integration test pattern:** Use `launch_testing` for end-to-end tests that need a full ROS2 graph. For MVP, pure pytest unit tests are sufficient.
-
-**Confidence:** HIGH — verified against official ROS2 Jazzy testing docs and existing test file patterns in the codebase.
-
-### Build and Packaging
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| colcon | current | Workspace build orchestrator | Standard for ROS2; already used |
-| ament_python | Jazzy bundled | Python package build system within colcon | Standard for pure-Python ROS2 packages |
-| rosdep | current | ROS dependency resolution | Already initialized in Dockerfile |
+| Tool | Purpose | Notes |
+|------|---------|-------|
+| uv | Dependency management + venv | Deterministic lockfile (`uv.lock`), fast installs, pyproject.toml-native. Use `uv sync` in Dockerfile. Replaces pip + venv + requirements.txt. |
+| pyproject.toml | Single config file | All tool config (ruff, pytest, mypy if desired) goes here. No setup.py. |
+| python:3.12-slim-bookworm | Docker base image | Alerter has zero ROS dependency -- use slim Python base, not `ros:jazzy-ros-core`. Smaller, cleaner. |
 
 ---
 
-## Alternatives Considered
+## The signal-cli Interop Decision
 
-| Category | Recommended | Alternative | Why Not |
-|----------|-------------|-------------|---------|
-| PID control | simple-pid (deferred) | ros2_control PID controller | ros2_control is heavyweight machinery for robotics actuators; overkill for a humidity loop; requires hardware interface abstractions not needed here |
-| PID control | simple-pid (deferred) | Custom PID implementation | simple-pid is well-tested, handles anti-windup, supports sample_time; no reason to reimplement |
-| GPIO (Ubuntu) | rpi-lgpio | python3-gpiod (low-level) | rpi-lgpio is a drop-in API replacement; gpiod requires rewriting all GPIO calls |
-| GPIO (Ubuntu) | rpi-lgpio | gpiozero | gpiozero does not currently support DHT22; would require adafruit library anyway |
-| DHT22 reading | adafruit-circuitpython-dht | Adafruit_Python_DHT (legacy) | Legacy library is archived/unmaintained since 2021; use circuitpython variant |
-| DHT22 reading | adafruit-circuitpython-dht | Pure bit-bang Python (bullet64/DHT22_Python) | Unreliable timing on Linux; not recommended for production |
-| Control algorithm | Bang-bang hysteresis (MVP) | PID | Humidifier is binary ON/OFF; PID output on a digital pin requires duty-cycle scheduling (adds complexity). Hysteresis is correct for this actuator type in MVP. |
+This is the most consequential architecture choice in the port. Four options exist:
+
+### Option A: Raw JSON-RPC over UNIX socket -- RECOMMENDED
+
+signal-cli runs in `daemon` mode exposing a UNIX socket (path: `$XDG_RUNTIME_DIR/signal-cli/socket`, or a fixed compose volume path). The Python process opens an asyncio `StreamReader`/`StreamWriter` to this socket and exchanges newline-terminated JSON-RPC 2.0 messages.
+
+Receive: signal-cli in `--receive-mode=on-start` (default) pushes unsolicited `{"jsonrpc":"2.0","method":"receive","params":{...}}` notifications on the persistent connection. A background `asyncio.Task` reads these in a `async for line in reader` loop and dispatches envelopes to the receive-loop handler.
+
+Send: `{"jsonrpc":"2.0","method":"send","params":{"recipient":["+NNN"],"message":"..."},"id":"<ulid>"}` + newline.
+
+**Why this is correct:**
+- The existing Node alerter already uses the JSON-RPC socket. This preserves the deployment topology (signal-cli as a sidecar in compose) exactly.
+- Zero new runtime dependencies -- stdlib `asyncio` streams only.
+- Full control over envelope parsing, quote-threading (Phase-50 bugs), and attachment (audio/image) enumeration at the wire level.
+- Implementation is ~150-200 lines of straightforward async I/O.
+
+### Option B: signalbot 1.2.2
+
+An async Python bot framework that communicates with signal-cli via an intermediate `signal-cli-rest-api` HTTP/WebSocket sidecar.
+
+**Why not:** Requires an additional `signal-cli-rest-api` container. Adds a framework abstraction over the envelope format. The alerter needs envelope-level control (quote threading, multi-farmer routing, attachment enumeration) that signalbot's `Command` model fights. Signalbot is designed for simple command-response bots.
+
+### Option C: DBus (pydbus)
+
+signal-cli exposes a DBus interface (`org.asamk.Signal`). pydbus can subscribe to `MessageReceived` signals.
+
+**Why not:** DBus is session IPC designed for desktop environments. Making it work inside Docker requires a dbus-daemon and session management -- non-trivial and not the existing stack's approach. Ruled out.
+
+### Option D: subprocess stdin/stdout (jsonRpc command)
+
+Run `signal-cli jsonRpc` as a subprocess; communicate via stdin/stdout.
+
+**Why not:** More fragile than a socket. Subprocess restart semantics, signal propagation, and EOF handling need manual plumbing. The `daemon` + socket model is strictly superior.
+
+**Decision: Option A (raw JSON-RPC UNIX socket).** No new deps. Same topology. Full control.
 
 ---
 
-## What to Avoid
+## Postgres Driver: psycopg3 over asyncpg
 
-### RPi.GPIO on Ubuntu 24.04
-`RPi.GPIO` uses the legacy `/sys/class/gpio` sysfs interface deprecated in kernel 6.6. On Ubuntu 24.04 (kernel 6.8+), it will fail silently or error. Use `rpi-lgpio` as a drop-in replacement if targeting Ubuntu. If the Pi runs Raspberry Pi OS Bookworm, RPi.GPIO continues to work.
+Both are production async Postgres drivers. The choice is **psycopg3**.
 
-### Installing both RPi.GPIO and rpi-lgpio
-Only one should be installed. `rpi-lgpio` conflicts with `RPi.GPIO` if both are present because they both expose the `RPi.GPIO` module name.
+**Rationale:**
 
-### adafruit-circuitpython-dht on Ubuntu 24.04 without libgpiod2
-The library links to `libgpiod.so.2`. Ubuntu 24.04 ships `libgpiod3` (`.so.3`). Install `libgpiod2` explicitly, or use Raspberry Pi OS as the container base where `libgpiod2` is present.
+1. **farmos-agent precedent.** The existing Python service uses `psycopg2`. psycopg3 is its direct successor -- same `%s` param syntax, same connection string format, same `cursor.fetchone()` / `fetchall()` API. Port effort is minimal.
 
-### PID control with a digital-only actuator without duty-cycle logic
-Applying a PID controller output directly to a GPIO HIGH/LOW without implementing duty-cycle switching is incorrect. A PID output of 0.7 on a digital pin should mean "ON for 70% of the control period", not just "set HIGH if > 0.5". Implement duty-cycle scheduling or stay with hysteresis for MVP.
+2. **SQL param syntax continuity.** asyncpg uses PostgreSQL-native `$1`-style positional params. The existing Node `pg` package uses `$1` syntax too, but the mental overhead of writing Python with asyncpg's record types and then context-switching to psycopg3 in `farmos-agent` (when both touch the same Timescale DB) is not worth the performance gain.
 
-### time.sleep() inside ROS2 callbacks
-`fc_sensors.py` currently calls `time.sleep(2.0)` in the exception handler inside a timer callback. This blocks the ROS2 executor thread and can cascade into missed control loop ticks. Replace with a logged error and return; rely on the timer interval for retry.
+3. **Performance gap is irrelevant for this workload.** asyncpg benchmarks 25-35% faster than psycopg3 at high concurrency. The alerter's DB workload is single-row inserts and point lookups (one row per envelope, one per draft state change). asyncpg's throughput advantage does not materialize.
 
-### rclpy.spin_until_future_complete() in callbacks
-Causes sync deadlock in the ROS2 executor. Use `call_async()` and handle via future callbacks if service calls are needed.
+4. **psycopg3 is actively maintained** (3.3.4 as of June 2026).
+
+Install: `psycopg[binary]>=3.3` + `psycopg-pool>=3.3`. The `[binary]` extra bundles its own libpq -- no system package needed in Docker.
+
+---
+
+## Async Runtime Model
+
+**Pure asyncio. No threads. No trio.**
+
+The alerter runs three concurrent I/O streams:
+1. signal-cli UNIX socket reader (envelope receive loop)
+2. Anthropic LLM calls (extraction, gating, confirm parsing) -- `AsyncAnthropic`
+3. Postgres writes (draft state, outbound queue) -- `psycopg.AsyncConnection`
+4. WebSocket to ROS bridge (if telemetry queries needed) -- `websockets`
+
+All are I/O-bound. asyncio handles them correctly. The JS state machines (confirm/, event-gate/) translate directly to Python `async def` + `await` with identical structure.
+
+**Watchdogs:** For simple interval watchdogs (commit-watchdog, draft-expiry), use a bare `asyncio.create_task` wrapping a `while True: await asyncio.sleep(N)` loop. This is simpler than APScheduler for periodic tasks with no cron expression requirement. Use APScheduler only if you need a time-of-day cron trigger or job persistence.
+
+---
+
+## Schema Validation + LLM Structured Extraction
+
+pydantic v2 replaces both `zod` and `zod-to-json-schema`:
+
+```python
+from pydantic import BaseModel, Field
+import json
+
+class InocolationDraft(BaseModel):
+    session_id: str = Field(description="ULID of the inoculation session")
+    parent_block_names: list[str] = Field(description="Source substrate block names")
+    # ...
+
+# For tool-use extraction -- replaces zodToJsonSchema(schema)
+tool_schema = InocolationDraft.model_json_schema()
+
+# For validating LLM response -- replaces schema.parse(data)
+draft = InocolationDraft.model_validate(llm_json_response)
+```
+
+The Anthropic SDK also supports `output_format=InocolationDraft` in `messages.stream()` for direct structured output without tool-use. Either pattern works; tool-use is more explicit and matches the existing pipeline's approach.
+
+---
+
+## farmOS HTTP Client
+
+Use `httpx.AsyncClient` with a persistent session (reuse across requests). Session-cookie auth pattern is identical to `farmos-agent`'s `requests.Session`, just async:
+
+```python
+async with httpx.AsyncClient() as client:
+    resp = await client.post(f"{farmos_url}/user/login", ...)
+    csrf = resp.json()["csrf_token"]
+    client.headers["X-CSRF-Token"] = csrf
+```
+
+Do NOT use `requests` -- it blocks the event loop on every call.
 
 ---
 
 ## Installation
 
-### Production container (Dockerfile additions)
+```toml
+# pyproject.toml
+[project]
+name = "mushy-alerter"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.109",
+    "pydantic>=2.13",
+    "psycopg[binary]>=3.3",
+    "psycopg-pool>=3.3",
+    "websockets>=16.0",
+    "python-ulid>=3.1",
+    "Pillow>=12.2",
+    "ruamel.yaml>=0.19",
+    "httpx>=0.28",
+    "APScheduler>=3.10,<4",    # v4 is a breaking rewrite; stay on v3.x
+]
 
-```bash
-# If Ubuntu 24.04 base — add libgpiod2 for adafruit-circuitpython-dht compatibility
-RUN apt-get update && apt-get install -y libgpiod2 && rm -rf /var/lib/apt/lists/*
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.1",
+    "pytest-asyncio>=1.4",
+    "ruff>=0.15",
+]
 
-# Replace RPi.GPIO with rpi-lgpio on Ubuntu 24.04
-# (skip if using Raspberry Pi OS base image)
-RUN pip3 install --break-system-packages rpi-lgpio
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
 
-# PID library — defer to Phase 2
-# RUN pip3 install --break-system-packages simple-pid==2.0.1
+[tool.ruff]
+line-length = 100
 ```
 
-### Dev/test environment
-
-```bash
-pip install simple-pid==2.0.1
-pip install pytest
-# GPIO libraries are mocked in tests; do not install hardware libs in CI
+```dockerfile
+# Dockerfile (alerter)
+FROM python:3.12-slim-bookworm
+RUN pip install uv
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+RUN uv sync --no-dev
+COPY src/ ./src/
+CMD ["uv", "run", "python", "-m", "alerter"]
 ```
 
 ---
 
-## Docker Device Mounts (Production Raspberry Pi)
+## Alternatives Considered
 
-For GPIO and DHT22 access from a container, the following device mounts are required in `docker-compose.yml`:
+| Recommended | Alternative | When to Use Alternative |
+|-------------|-------------|-------------------------|
+| psycopg3 | asyncpg | If throughput on bulk inserts (>1k rows/s) is a concern; not the case for the alerter's envelope-per-message workload. |
+| raw JSON-RPC socket | signalbot | If building a simple command-response bot with no multimodal pipeline and happy to run signal-cli-rest-api as an extra sidecar. |
+| httpx.AsyncClient | aiohttp | Either works; httpx has a more requests-compatible API that eases the port from farmos-agent. |
+| APScheduler 3.x | asyncio.create_task loop | For simple interval watchdogs a bare while-loop task is simpler. Use APScheduler if you need cron expressions or job persistence. |
+| ruamel.yaml | PyYAML 6.0.3 | PyYAML is fine if configs are strictly read-only. Prefer ruamel.yaml if configs are written back. |
+| python:3.12-slim-bookworm | ros:jazzy-ros-core | farmos-agent uses the ROS base because it is a ROS2 lifecycle node. The alerter has zero ROS dependency; use the slim Python base -- smaller, faster builds. |
 
-```yaml
-devices:
-  - /dev/gpiomem:/dev/gpiomem
-  - /dev/gpiochip0:/dev/gpiochip0   # for lgpio/libgpiod
-privileged: true                     # or use specific device grants
-```
+---
 
-`--privileged` is the bluntest tool; for tighter security, mount only `/dev/gpiomem` and the specific `/dev/gpiochipX` device. The container user needs to be in the `gpio` group.
+## What NOT to Add
+
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| SQLAlchemy / Tortoise ORM | Heavy ORM for direct SQL with known schemas; adds a mapping layer with no benefit | Raw psycopg3 with typed row factories |
+| FastAPI / Starlette / Flask | The alerter is not an HTTP server; it is a long-running daemon with socket I/O | Plain asyncio entry point (`asyncio.run(main())`) |
+| Celery + Redis | Task queue overkill for a single-process sequential pipeline | `asyncio.Queue` for internal fan-out between receive-loop and extraction workers |
+| dbus-python / pydbus | DBus signal-cli interface is Docker-hostile; existing stack does not use it | JSON-RPC UNIX socket (Option A) |
+| tenacity / retry library | Simple exponential backoff for LLM + farmOS is ~10 lines | Inline retry loop |
+| signalbot / pysignalclijsonrpc | Both add abstraction layers over the JSON-RPC socket with no gain for envelope-level pipeline control | Raw asyncio stream reads (Option A) |
+| APScheduler 4.x | API is a complete rewrite (different scheduler class hierarchy, different import paths); not yet production-stable | APScheduler 3.x pinned `<4` |
+| PydanticAI | Agent framework that abstracts the LLM call; the alerter's state machine IS the agent -- adding another agent framework creates two competing control flows | anthropic SDK directly |
+| requests (blocking) | Blocks the asyncio event loop on every HTTP call | httpx.AsyncClient |
+| node-cron Python equivalents (schedule, crontab) | Thread-based; fight asyncio | APScheduler AsyncIOScheduler or bare asyncio.sleep loops |
+
+---
+
+## Version Compatibility
+
+| Package | Compatible With | Notes |
+|---------|-----------------|-------|
+| anthropic 0.109.x | pydantic 2.x | SDK uses pydantic internally; no conflict. |
+| psycopg 3.3 | psycopg-pool 3.3 | Major versions must match. Install both. |
+| psycopg[binary] | Python 3.11/3.12, TimescaleDB | Bundles libpq; no system package needed in Docker. If using psycopg[c] instead, add `libpq-dev` to apt. |
+| APScheduler 3.11.x | Python 3.11/3.12, asyncio | Do NOT upgrade to 4.x without reading migration guide. |
+| websockets 16.0 | Python 3.11/3.12 | API stable; `websockets.connect()` is the async context manager. |
+| pytest-asyncio 1.4.0 | pytest 9.x | Set `asyncio_mode = "auto"` in pyproject.toml to avoid per-test decorator. |
+| Pillow 12.2.0 | Python 3.11/3.12 | Install `libjpeg-dev` in Docker apt if building from source; `[binary]` wheels include it. Standard slim image works with the pre-built wheel. |
+
+---
+
+## Existing Python Precedent: farmos-agent
+
+`src/farmos-agent/` is a ROS2 Python lifecycle node that:
+- Uses `requests` (sync, acceptable because it runs in a ROS2 executor thread, not asyncio)
+- Uses `python3-psycopg2` (via apt, not pip)
+- Uses `python3-apscheduler` (via apt)
+- Has no `pyproject.toml`; uses `setup.py` (ROS2 convention)
+
+The new alerter diverges from this on purpose: it uses async equivalents (`httpx`, `psycopg3`) because it runs in a pure asyncio loop, and `pyproject.toml` + `uv` because it is not a ROS2 package. Do not inherit the farmos-agent's sync patterns into the alerter.
 
 ---
 
 ## Sources
 
-- [ROS2 Jazzy rclpy documentation](https://docs.ros.org/en/jazzy/p/rclpy/rclpy.html) — HIGH confidence
-- [simple-pid GitHub (m-lundberg)](https://github.com/m-lundberg/simple-pid) — HIGH confidence
-- [simple-pid PyPI](https://pypi.org/project/simple-pid/) — HIGH confidence
-- [adafruit-circuitpython-dht PyPI](https://pypi.org/project/adafruit-circuitpython-dht/) — HIGH confidence
-- [rpi-hardware-pwm PyPI v0.3.1](https://pypi.org/project/rpi-hardware-pwm/) — HIGH confidence
-- [libgpiod.so.2 missing issue on Trixie/Ubuntu](https://forums.raspberrypi.com/viewtopic.php?t=393326) — MEDIUM confidence (forum, multiple confirmations)
-- [Pi 4 Ubuntu 24.04 DHT22 unresolved thread](https://forums.raspberrypi.com/viewtopic.php?t=384938) — MEDIUM confidence (confirms problem, no clean solution)
-- [rpi-lgpio differences from RPi.GPIO](https://github.com/waveform80/rpi-lgpio/blob/main/docs/differences.rst) — MEDIUM confidence (GitHub source)
-- [Ubuntu GPIO configuration guide 2026-03-02](https://oneuptime.com/blog/post/2026-03-02-how-to-configure-gpio-access-on-ubuntu-for-raspberry-pi/view) — MEDIUM confidence
-- [ROS2 Jazzy pytest unit test tutorial](https://automaticaddison.com/how-to-create-unit-tests-with-pytest-ros-2-jazzy/) — MEDIUM confidence
-- [Docker GPIO access for ROS2 on Raspberry Pi](https://forums.docker.com/t/accessing-gpios-in-a-docker-container-created-from-a-ros2-image/147545) — MEDIUM confidence
-- [sensor_msgs/RelativeHumidity message definition](https://docs.ros.org/en/api/sensor_msgs/html/msg/RelativeHumidity.html) — HIGH confidence
+- `/anthropics/anthropic-sdk-python` (Context7) -- async client, structured output with pydantic, tool-use input_schema pattern
+- `/pydantic/pydantic` (Context7) -- `model_json_schema()` export, v2 validation API
+- `/psycopg/psycopg` (Context7) -- `AsyncConnectionPool`, async connection patterns, pool with FastAPI lifespan (analogous pattern)
+- PyPI live versions verified 2026-06-14: anthropic 0.109.1, pydantic 2.13.4, psycopg 3.3.4, psycopg-pool 3.3.1, asyncpg 0.31.0, websockets 16.0, python-ulid 3.1.0, Pillow 12.2.0, APScheduler 3.11.2, ruamel.yaml 0.19.1, httpx 0.28.1, ruff 0.15.17, pytest 9.1.0, pytest-asyncio 1.4.0, PyYAML 6.0.3
+- https://github.com/AsamK/signal-cli/wiki/JSON-RPC-service -- JSON-RPC transport options, receive-mode semantics
+- https://github.com/AsamK/signal-cli/discussions/799 -- socket path, newline-terminated protocol, subscribeReceive for manual mode
+- https://github.com/AsamK/signal-cli/blob/master/man/signal-cli-jsonrpc.5.adoc -- full JSON-RPC method list and notification format
+- https://pypi.org/project/signalbot/ -- signalbot 1.2.2; confirmed signal-cli-rest-api dependency (extra sidecar required)
+- https://fernandoarteaga.dev/blog/psycopg-vs-asyncpg/ -- psycopg3 vs asyncpg benchmark; 25-35% asyncpg advantage at scale; MEDIUM confidence
+- `src/farmos-agent/Dockerfile` + `farmos_client.py` -- existing Python precedent (psycopg2, requests, APScheduler in apt)
 
 ---
-
-*Stack research: 2026-03-28*
+*Stack research for: v1.12 Farm-Agent Python Port (mushy alerter)*
+*Researched: 2026-06-14*

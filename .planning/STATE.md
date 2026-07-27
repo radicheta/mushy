@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.11
-milestone_name: Extraction prereqs + 2025-paper backfill
-status: milestone_complete
-last_updated: 2026-06-14T23:41:44.285Z
-last_activity: 2026-06-14
+milestone: v1.12
+milestone_name: Farm-Agent Python Port
+status: planning
+last_updated: "2026-06-15T03:00:00.000Z"
+last_activity: 2026-06-15
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 19
-  completed_plans: 19
-  percent: 100
-stopped_at: v1.11 milestone complete + archived (Phase 55B was final phase)
+  total_phases: 10
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -37,33 +36,40 @@ Full detail: memory [[project_phase55b_hard_gate_green_2026_06_14]], `55B-A1-SMO
 [[project_farmos_image_upload_needs_field_scoped_route]].
 
 **Fixed + verified this session:**
+
 - **Dev :18080 creds** — was a password mismatch (not a missing account). Reset dev
   `mushy-bot` via drush to match `secrets.env`; login now 200.
+
 - **`bbd9212` image-attach** — the A1 `patchGroupAssetFiles` design was FALSIFIED live: this
   farmOS has no octet-stream route at `/api/file/file` (415, identical dev+prod; the upload
   path never worked) and the `file` field rejects jpg. Rewrote to the field-scoped route
   `POST /api/asset/group/{uuid}/image` (creates+links in one call; photos -> `image` field).
   `a1-probe.js` rewritten; A1 PASS. `patchGroupAssetFiles` removed.
+
 - **`96d1cd0` fidelity-gate wiring** — main() called `processDraftsForCapture` WITHOUT
   `csvRowsForPage/csvBudget/pageDate`, so the gate guard was always false and EVERY draft
   auto-confirmed (re-smoke run 1 reproduced POY-committed-as-KOY). Wired the inputs at
   `backfill-notebook.js:1050`. Re-smoke run 2: IMG_3776 POY-misread-as-KOY HELD as
   `fidelity_cross_check_unverified`, not committed. 31 held / 33 committed.
+
 - **`0526025` receipt dup false-positive** — session aggregation credited the whole
   session's asset_ids to every constituent draft -> false `duplicate_asset_count=22` +
   inflated totals. Now credits one representative; rest `session_member:true` empty. Re-smoke
   run 3: `duplicate_asset_count: 0 (PASS)`, totals sane, hard gate intact.
 
 **OPEN follow-ons (none blocking the hard-gate PASS; do as separate scoped pieces):**
+
 1. **Strain gate (Phase 54.1) is ALSO unwired** in this driver — `curatedStrains` not passed
    at `backfill-notebook.js:1050`; `require('../src/config').strains` is empty. Needs a
    curated-strain SOURCE decision first (live farmOS `fungi_type` terms vs the hardcoded
    14/24 set). Not the 55B hard gate, but the same call-site gap.
+
 2. **D-03 page-image-on-session, live** — the A1 attach mechanism is proven standalone
    (55B-A1-SMOKE.md), but the re-smoke routes via the per-page seeding_session and the image
    landing on the session group asset is NOT yet confirmed (F2 reconcile, runbook STEP 7).
 
 **RESUME STEPS (next session):**
+
 1. Decide whether to do follow-on #1 (#strain-gate source) and/or #2 (#image-on-session F2).
 2. Then close 55B-04 (write `55B-04-SUMMARY.md`), run phase verification + completion
    (code-review gate still pending). The parked 73-page full-corpus run stays Phase 55 /
@@ -78,11 +84,14 @@ throwaway). Re-smoke writes to dev farmOS :18080 (rebuild-acceptable; assets acc
 re-runs -> idempotent reuse, so a clean asset count needs a fresh farmOS).
 
 ### Original pause (2026-06-10) — superseded, kept only as the "what 55B-01..04 shipped" record
+
 - **55B-01:** `patchGroupAssetFiles` helper (REMOVED 2026-06-14, falsified) + RED scaffolds.
 - **55B-02:** Commit-time CSV fidelity hold gate (`fidelity_cross_check_no_csv`/`_unverified`/
   `_nonseeding`; `buildCsvBudget`/`consumeCsvBudget`). Now actually wired (`96d1cd0`).
+
 - **55B-03:** `aggregateSeedingDraftsToSessionJson` + session dispatch + page-image attach
   (attach rewired to field-scoped route `bbd9212`; attribution fixed `0526025`).
+
 - **55B-04:** `55B-RE-SMOKE-RUNBOOK.md` authored; live re-smoke now RUN (runs 1-3 above).
 
 ## Phase 54 Closeout (2026-05-24/25, plans 01-04)
@@ -159,42 +168,29 @@ All in `.planning/todos/pending/`:
 
 ## Current Position
 
-Phase: 55B
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-06-14
+Phase: 56 (Foundation) — Not started
+Plan: —
+Status: Roadmap created; ready for /gsd-plan-phase 56
+Last activity: 2026-06-15 — v1.12 roadmap created (Phases 56-65, 28 requirements mapped, 100% coverage)
 
-**Phase 53 commit chain:**
+**v1.12 phase map:**
+- Phase 56: Foundation (FND-01..05) — asyncio skeleton, tenancy, migrations, schema-parity gate, Foray CI seam
+- Phase 57: Signal I/O (SIG-01..04) — signal-cli JSON-RPC, durable outbound, routing, Phase-50 quote fix
+- Phase 58: Capture + Transcription (CAP-01..02) — envelope capture, off-loop Whisper
+- Phase 59: Event Gate (GATE-01) — rule prefilter + Haiku classifier
+- Phase 60: Extraction Pipeline (XTR-01..03) — multimodal tool-use, SeedingSession, B5 minting
+- Phase 61: Confirm Loop (CNF-01..02) — YES/NO/EDIT FSM parity, race-safe watchdog
+- Phase 62: farmOS Write Path (FWR-01..04) — httpx client, origin guard FIRST, stable-identity, fidelity gate
+- Phase 63: Chamber Alerter (CHM-01..02) — ROS-bridge WS alerts, TZ Montevideo fix
+- Phase 64: Parity Gate (PAR-01..03) — >=95% field match on isolated :5434, intentional-delta list
+- Phase 65: Cutover (CUT-01..03) — stop-start runbook, <2min rollback drill, observation window
 
-- `bf721e2` feat(53-01): add corpus_context JSONB column to signal_capture
-- `9d25ec7` feat(53-01): plumb corpus_context capture -> pipeline -> extractor
-- `9835caf` feat(53-02): route small-N high-conf multi-draft to per-draft confirm (closes DT-tubs todo)
-- `52f0874` feat(53-03): add optional capture_kind enum to Submission envelope
-- `673c413` feat(53-03): teach extractor capture_kind via 2 new few-shots (tu_fewshot_5 + tu_fewshot_6)
-- `a2467ea` feat(53-04): scaffold BACK-04 hermetic eval gate (fixtures pending operator)
-- `cc95c8d` feat(53-04): populate BACK-04 hermetic eval corpus (8 notebook-2025 fixtures)
-
-**Phase 53 deviations:**
-
-- 53-02: bumped existing Plan-08 batch integration tests B1/B2 from 3/5 → 6 drafts to keep batch-mode coverage under the new >5 threshold (BACK-02 intended behavior change).
-- 53-03: DT-tubs few-shot uses `type=seeding` not `type=activity` because the locked ACTIVITY_NAMES enum does not include `'inoc'` — fresh spawn-tub inoculation IS a seeding event per the locked schema.
-- 53-04 (original): Task 1 + Task 3 not auto-executed; harness shipped green-when-empty pending operator labels.
-- 53-04 (retry 2026-05-24): Corpus path corrected (`/mnt/slime-kingdom/shared/mushdatadump/`, not `/mnt/mossrock/shared/mushdatadump-prod/`); 8 fixtures hand-curated from the 829-row CSV ground truth; physical-object-photo coverage gap accepted (the corpus is exclusively notebook pages); IMG_3790/3810/3820 skipped due to species-regex incompatibility (CA3, WEDGE) or page-continuation ambiguity.
-
-**BLOCKERS (open):**
-
-- None for Phase 53.
-- Phase 54 (backfill harness) is now UNBLOCKED — ready to author 54-PLAN.md.
-
-**Phase 52 commit chain:**
-
-- 52-01 (groupAssets.js primitives): `96dabcc`
-- 52-02 (activityLogs.js membership log): `7ca0639`
-- 52-03 (commit-seeding-session.js rewire): `8a6601a`
-- 52-04 (hermetic tests at new counts): `a180635`
-- 52-05 (live-fire-52.js + runbook; awaits operator): `a5b40ba`
-
-Operator action: `cd src/agents/alerter && FARMOS_URL=http://10.68.155.50:18080 FARMOS_USERNAME=mushy-bot FARMOS_PASSWORD=... node scripts/live-fire-52.js` then paste the JSON receipt into 52-LIVE-FIRE.md.
+**Hard constraints (baked into phases):**
+- Origin guard (FWR-04) commits FIRST in Phase 62, before any write path runs
+- Parity gate (Phase 64) uses isolated :5434 DB only — never shared prod Timescale
+- Big-bang cutover: no dual-stack on shared DB; rollback = stop-py/start-node
+- v1.11 CSV fidelity hard gate and v1.10 upsert-by-stable-identity preserved byte-identical
+- Intentional-delta list (TZ fix, quote-ts coercion, fmtNum) enumerated in Phase 64 and excluded from parity threshold
 
 ## Previous Milestones
 
@@ -371,6 +367,7 @@ Items acknowledged and deferred at **v1.11 milestone close on 2026-06-14** (22 o
 | verification | (1 prior-phase carry) | as previously noted |
 
 v1.11-specific carry-forward (owned by the parked full-corpus run / v1.13):
+
 - Full 73-page corpus run parked (Phase-55/GA2, Cycle-2 farmer sign-off).
 - Strain gate unwired in the backfill driver (code review CR-02/WR-06) — needs a curated-strain source decision.
 - Session `qty>1` whole-page rollback (code review CR-01) — fix before full run.
