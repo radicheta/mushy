@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.12
 milestone_name: Farm-Agent Python Port
 status: executing
-last_updated: "2026-06-21T00:00:00.000Z"
-last_activity: 2026-06-21
+last_updated: "2026-06-23T17:52:25.184Z"
+last_activity: 2026-06-23 -- Phase 58 execution started
 progress:
   total_phases: 10
   completed_phases: 2
-  total_plans: 10
+  total_plans: 14
   completed_plans: 10
   percent: 20
 ---
@@ -20,7 +20,9 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 58 — Capture + Transcription (Phase 57 complete)
+**Current focus:** Phase 58 — capture-transcription
+
+> **⚡ 2026-06-22 PRIORITY NOTE — Phase 999.33 (Digital Twin / chamber sim) BUMPED (farmer-requested):** "the more we deal with this the more we want the digital twin." Do lightweight Python ODE — shape (a) — before the next live control-tuning round. Driver: today's blind live-chamber feather calibration (humidifier feather + Mode C reserve, commit `30534ff` on `fc1/prod`) shipped a setpoint bug live + left a stack of experiments blocked on live-chamber exposure (slew limiter, temp feedforward, halve `decay_tau`, re-anchor feather on band_low). See ROADMAP §999.33 + memory `project_humidifier_feather_deployed_2026_06_22`. Promote via `gsd-review-backlog` / `gsd-plan-phase 999.33` when ready.
 
 ## Phase 57 Closeout (2026-06-21) — COMPLETE; 2nd phase of v1.12 done
 
@@ -39,7 +41,7 @@ container and builds the same nested `quote` (`src/agents/alerter/src/signal.js:
 
 ## Phase 56 Closeout (2026-06-15) — COMPLETE; first phase of v1.12 done
 
-**Status:** Ready to execute
+**Status:** Executing Phase 58
 
 6/6 plans executed and summarized. VERIFICATION.md: all five requirements
 (FND-01..05) VERIFIED. Code review (56-REVIEW.md) raised 9 findings; all 9 fixed
@@ -208,11 +210,11 @@ All in `.planning/todos/pending/`:
 
 ## Current Position
 
-Phase: 57 (signal-i-o) — EXECUTING
+Phase: 58 (capture-transcription) — EXECUTING
 Next: Phase 57 (Signal I/O) — not yet discussed/planned
-Plan: 2 of 4
-Status: Ready to execute
-Last activity: 2026-06-15
+Plan: 1 of 4
+Status: Executing Phase 58
+Last activity: 2026-06-23 -- Phase 58 execution started
 
 **v1.12 phase map:**
 
@@ -460,7 +462,7 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 ## Session Continuity
 
-Last session: 2026-06-15T21:26:00.831Z
+Last session: 2026-06-21T16:18:05.382Z
 Next up: Phase 57 (Signal I/O) — `/gsd-discuss-phase 57` then plan/execute. Phase 56 (foundation) complete + verified + code-reviewed 2026-06-15. Optional follow-on: human-verify alerter-py boot on elder-plops (prod-readiness only, non-blocking).
 
 (Historical, pre-v1.12) Next up: Phase 45 (NORTH-STAR commit_failed ack + replay outstanding silent-failure drafts `b8a1e586` Vikki Rambo + `1fb28e70` Santi LIMA). Optional: 24-h v1.8 soak observation before starting Phase 45 scope work. v1.8 cutover already complete (alerter recreated 01:41:58 ART; bridge already on Phase 46 code).

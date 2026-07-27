@@ -1,30 +1,54 @@
 ---
 phase: 56-foundation
 verified: 2026-06-15T17:00:00Z
-status: human_needed
-score: 4/5
+reverified: 2026-06-21T15:05:00Z
+status: passed
+score: 5/5
 overrides_applied: 0
 human_verification:
   - test: "Run `docker compose up alerter-py` on elder-plops and confirm the container logs 'boot complete in' within 5s with the live Node alerter still responding"
     expected: "alerter-py container starts, logs 'boot complete in X.XXs', stays running; the existing Node alerter service continues processing normally"
     why_human: "Requires the real host's compose environment, host-networking, shared TimescaleDB reachability, and secrets.env file -- cannot be verified from the verifier environment without starting infrastructure"
-gaps:
-  - truth: "pytest tests/unit/ passes (Success Criterion 3 literal)"
-    status: partial
-    reason: "tests/unit/ subdirectory was never created. Plan 01 explicitly set testpaths=[\"tests\"] and tests landed directly in tests/. Running `pytest tests/unit/` exits with code 4 (no such directory). The functional intent is fully satisfied: all 42 tests pass via `pytest tests/` including every FND-04 parity test. This is a naming deviation from the ROADMAP SC3 wording."
-    artifacts:
-      - path: "src/farm-agent/tests/"
-        issue: "No unit/ subdirectory; tests live directly in tests/"
-    missing:
-      - "Either create tests/unit/ as a symlink or subdirectory that routes to the existing tests, OR update ROADMAP SC3 to say `pytest tests/` instead of `pytest tests/unit/`. No test logic needs to change."
+    result: "DONE 2026-06-21 on elder-plops. First build FAILED — Dockerfile ran `uv sync` before copying farm_agent/, so hatchling had no source to build the project wheel (a real bug, never previously caught because host-uv tests and `docker compose config` never exercise the image build). Fixed in commit 13e71e9 (--no-install-project deps layer, then post-COPY sync). Rebuild succeeded; alerter-py logged 'boot complete in 0.07s', migrations ran, no secrets in log; mushy-alerter-1 (Node) stayed healthy throughout; container stopped cleanly (exit 0)."
+gaps: []
+resolved_gaps:
+  - truth: "pytest tests/ passes (Success Criterion 3)"
+    status: resolved
+    reason: "ROADMAP SC3 reads `uv run pytest tests/` (not `tests/unit/`); the original 'partial' was a wording mismatch against a stale literal. Re-run 2026-06-21: `uv run pytest tests/` = 127 passed, 10 skipped (DB-gated), 0 failed. No source-of-truth change needed; ROADMAP already correct."
 ---
 
 # Phase 56: Foundation Verification Report
 
 **Phase Goal:** The Python package boots as a testable asyncio daemon with layered config, async DB pool, idempotent migrations, and a statically-enforced Foray boundary -- before any Signal or LLM code runs.
 **Verified:** 2026-06-15T17:00:00Z
-**Status:** human_needed
-**Re-verification:** No -- initial verification
+**Re-verified:** 2026-06-21T15:05:00Z
+**Status:** passed (5/5)
+**Re-verification:** Yes -- 2026-06-21 closed the human-verification boot check + SC3 wording gap (see addendum below)
+
+> ## Re-Verification Addendum — 2026-06-21
+>
+> Both outstanding items from the 2026-06-15 `human_needed` report are now closed.
+> The original report below is preserved verbatim as the historical record.
+>
+> **1. Human boot check (truth #1) — PASSED, and found+fixed a real bug.**
+> Running the deferred check on elder-plops surfaced that `alerter-py` had never
+> actually built in Docker: the Dockerfile ran `uv sync` before `COPY farm_agent/`,
+> so hatchling had no source to build the project wheel and the build failed. This
+> was invisible to the 2026-06-15 verification because the automated proxy
+> (`test_boot_completes_in_5s`) runs via host `uv`, and `docker compose config`
+> validates YAML without building. Fixed in **commit 13e71e9** (split into a
+> `--no-install-project` deps layer, then a post-`COPY` `uv sync`). Rebuild
+> succeeded; the container logged **`boot complete in 0.07s`**, migrations ran, no
+> secrets appeared in the log, `mushy-alerter-1` (Node) stayed healthy throughout,
+> and the container stopped cleanly (exit 0). Reinforces the standing lesson that
+> host-green ≠ container-boots.
+>
+> **2. SC3 `tests/unit/` gap — moot.** ROADMAP SC3 reads `uv run pytest tests/`
+> (not `tests/unit/`); the original "partial" was a mismatch against a stale
+> literal. Re-run 2026-06-21: `uv run pytest tests/` = **127 passed, 10 skipped
+> (DB-gated), 0 failed**. No source-of-truth change required.
+>
+> **Score: 4/5 → 5/5. Status: human_needed → passed.**
 
 ## Goal Achievement
 

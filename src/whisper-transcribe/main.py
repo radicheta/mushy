@@ -19,6 +19,7 @@ earlier mistakes downstream in the same recording.
 """
 import os
 import time
+import threading
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -29,6 +30,19 @@ MODEL_NAME = os.getenv("WHISPER_MODEL", "medium")
 DEVICE = os.getenv("WHISPER_DEVICE", "cuda")
 COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "float16")
 ALLOWED_ROOT = Path(os.getenv("ALLOWED_ROOT", "/data/signal-capture")).resolve()
+
+# --- model-load resilience (2026-06-21) ---
+# elder-plops shares one 6GB GPU across desktop + other workloads, so the medium
+# model load intermittently hits "CUDA out of memory". A single failed load used
+# to wedge the service unhealthy forever (nothing retried). Instead: retry with
+# backoff to ride out transient contention, alert the operator once if the quick
+# retries are exhausted, then keep slow-retrying so it self-heals when VRAM frees.
+_LOAD_BACKOFFS_S = [5, 15, 45, 120]   # quick recovery attempts before alerting
+_SLOW_RETRY_S = 300                   # steady self-heal cadence after alerting
+ALERT_URL = os.getenv("WHISPER_ALERT_URL", "http://127.0.0.1:8085")
+ALERT_SENDER = os.getenv("SIGNAL_SENDER", "")
+# Ops alert -> operator. Prefer an explicit recipient; fall back to the shared one.
+ALERT_RECIPIENT = os.getenv("WHISPER_ALERT_RECIPIENT") or os.getenv("SIGNAL_RECIPIENT", "")
 
 app = FastAPI()
 _model = None
@@ -89,23 +103,61 @@ def transcribe(req: TranscribeReq):
     }
 
 
+def _notify(message: str):
+    """Best-effort ops alert to the operator via signal-cli REST. Never raises."""
+    if not (ALERT_SENDER and ALERT_RECIPIENT):
+        print(f"[whisper alert suppressed: SIGNAL_SENDER/recipient unset] {message}", flush=True)
+        return
+    try:
+        import httpx
+        httpx.post(
+            f"{ALERT_URL}/v2/send",
+            json={"message": message, "number": ALERT_SENDER, "recipients": [ALERT_RECIPIENT]},
+            timeout=10.0,
+        )
+    except Exception as e:
+        print(f"[whisper alert send failed: {type(e).__name__}: {e}] {message}", flush=True)
+
+
+def _warm_load_loop():
+    """Load the model with backoff; alert once if quick retries fail; then keep
+    slow-retrying so the service self-heals when GPU memory frees up.
+
+    Runs in a daemon thread so startup never blocks: /health returns 503 until
+    the model is loaded (covered by the compose start_period), 200 thereafter.
+    """
+    global _model, _health_ok, _health_reason
+    attempt = 0
+    alerted = False
+    while not _health_ok:
+        try:
+            _probe_model()
+            _health_ok = True
+            _health_reason = "ok"
+            if alerted:
+                _notify("whisper-transcribe recovered: model loaded, transcription back online.")
+            return
+        except Exception as e:
+            _model = None  # drop any half-built model so the next attempt is clean
+            attempt += 1
+            _health_reason = f"{type(e).__name__}: {str(e)[:200]} (attempt {attempt})"
+            print(f"[whisper warm-load] attempt {attempt} failed: {_health_reason}", flush=True)
+            if attempt >= len(_LOAD_BACKOFFS_S) and not alerted:
+                _notify(
+                    f"whisper-transcribe DOWN: model load failed after {attempt} attempts "
+                    f"({type(e).__name__}: {str(e)[:120]}). Likely GPU out of memory from other "
+                    f"elder-plops activity. Auto-retrying every {_SLOW_RETRY_S // 60} min; "
+                    f"free VRAM to speed recovery."
+                )
+                alerted = True
+            delay = _LOAD_BACKOFFS_S[attempt - 1] if attempt <= len(_LOAD_BACKOFFS_S) else _SLOW_RETRY_S
+            time.sleep(delay)
+
+
 @app.on_event("startup")
 def _startup_probe():
-    """Eagerly load model + run synthetic transcription at startup.
-
-    Why: compose healthcheck timeout is short (5s) but cold-loading the medium
-    model on cuda takes ~30s. If we probed lazily in /health, the first
-    healthcheck would time out, compose would mark unhealthy, restart the
-    container, and loop forever. Loading at startup means /health is cheap
-    and the slow cost lives in the boot window (start_period in compose).
-    """
-    global _health_ok, _health_reason
-    try:
-        _probe_model()
-        _health_ok = True
-        _health_reason = "ok"
-    except Exception as e:
-        _health_reason = f"{type(e).__name__}: {str(e)[:200]}"
+    """Kick off the resilient warm-load in the background (see _warm_load_loop)."""
+    threading.Thread(target=_warm_load_loop, name="whisper-warm-load", daemon=True).start()
 
 
 @app.get("/health")

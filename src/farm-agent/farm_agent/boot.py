@@ -10,13 +10,17 @@ Boot sequence:
   2. Load TenantConfig from env (tenancy.load)
   3. Open the psycopg3 async pool (persistence.build_pool)
   4. Run idempotent migrations (persistence.run_migrations)
-  5. Log "boot complete in %.2fs"
-  6. Idle on asyncio.Event waiting for SIGTERM / SIGINT
-  7. Close the pool on shutdown
+  5. Build httpx.AsyncClient + SignalClient + transcribe_client + capture pipeline
+  6. Start ReceiveLoop (dispatch=pipeline["handle"]) -- exactly ONE poller (T-58-03-05/A3)
+  7. Start asyncio retention task (retention_loop)
+  8. Log "boot complete in %.2fs" + "capture pipeline live"
+  9. Idle on asyncio.Event waiting for SIGTERM / SIGINT
+ 10. Graceful shutdown: stop loop, cancel retention, close http + pool
 
 T-56-06-01 (Information Disclosure): this module NEVER logs the config
 object or any field that could contain a secret value. Only the elapsed
 time and module-level lifecycle messages are emitted.
+T-58-03-05: exactly ONE ReceiveLoop started on the farmer account (A3 dual-poller guard).
 """
 
 import asyncio
@@ -25,15 +29,22 @@ import os
 import signal
 import time
 
+import httpx
+
 from farm_agent.tenancy.tenant import load as load_config
 from farm_agent.persistence.pool import build_pool
 from farm_agent.persistence.migrations import run_migrations
+from farm_agent.signal_io.client import SignalClient
+from farm_agent.signal_io.receive_loop import ReceiveLoop
+from farm_agent.capture.transcribe_client import create_transcribe_client
+from farm_agent.capture.pipeline import create_capture_pipeline
+from farm_agent.capture.retention import retention_loop
 
 log = logging.getLogger(__name__)
 
 
 async def main() -> None:
-    """Wire the daemon: config -> pool -> migrations -> idle on SIGTERM.
+    """Wire the daemon: config -> pool -> migrations -> capture pipeline -> idle on SIGTERM.
 
     Designed to be called from __main__.py via asyncio.run(main()).
     Also used directly in tests (the test cancels the task after boot completes).
@@ -54,11 +65,28 @@ async def main() -> None:
     # FND-03: run idempotent additive-only migrations.
     await run_migrations(pool)
 
+    # Phase 58: build HTTP client + signal client + transcribe client + capture pipeline.
+    # T-58-03-05 / A3: exactly ONE ReceiveLoop is started on the farmer account.
+    http = httpx.AsyncClient()
+    signal_client = SignalClient(config=config, http=http)
+    transcribe_client = create_transcribe_client(config.whisper_url, http)
+    pipeline = create_capture_pipeline(pool, signal_client, transcribe_client, config)
+
+    # Start the inbound drain (Phase 57 deferred -- now live).
+    # T-58-03-05: only one ReceiveLoop constructed and started here.
+    receive_loop = ReceiveLoop(signal_client, dispatch=pipeline["handle"], config=config)
+    await receive_loop.start()
+
+    # Start daily retention task.
+    retention_task = asyncio.create_task(retention_loop(pool, config))
+
     elapsed = time.monotonic() - t0
     # T-56-06-01: only elapsed time is logged -- no config fields, no secrets.
     log.info("boot complete in %.2fs", elapsed)
+    # T-56-06-01: no config fields logged here (whisper_url etc. excluded).
+    log.info("capture pipeline live")
 
-    # Idle until SIGTERM or SIGINT (Phase 57+ will add real tasks here).
+    # Idle until SIGTERM or SIGINT.
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
@@ -66,5 +94,12 @@ async def main() -> None:
 
     await stop.wait()
 
-    # Graceful shutdown: close the pool cleanly.
+    # Graceful shutdown: stop receive loop, cancel retention, close http + pool.
+    await receive_loop.stop()
+    retention_task.cancel()
+    try:
+        await retention_task
+    except asyncio.CancelledError:
+        pass
+    await http.aclose()
     await pool.close()

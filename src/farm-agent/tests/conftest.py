@@ -5,6 +5,9 @@ TEST_ENV: a dict with all required TenantConfig env keys using safe test default
 pool: session-scoped async pool fixture (activates once Plans 02+03 ship tenancy + persistence).
 signal_http: respx-based httpx mock fixture for signal_io unit tests (no DB required).
 FakeOutboundRepo: helper class whose insert_outbound can be toggled to raise (for fail-open tests).
+FakeCaptureRepo: helper class whose insert_capture can be toggled to raise (for fail-open tests).
+fake_transcribe_client: fixture returning an injected {transcribe} dict with a canned async result.
+whisper_http: respx-based httpx mock fixture for capture/transcribe_client unit tests.
 """
 
 import os
@@ -140,3 +143,73 @@ def fake_outbound_repo():
     To test fail-open: set repo.should_raise = True before calling.
     """
     return FakeOutboundRepo()
+
+
+# ---------------------------------------------------------------------------
+# Phase 58: capture suite fakes (no DB required, always available)
+# ---------------------------------------------------------------------------
+
+
+class FakeCaptureRepo:
+    """In-memory capture repo for capture unit tests.
+
+    Toggle should_raise to True to simulate a DB failure and test fail-open behavior.
+    Records all calls in self.calls for assertion.
+    """
+
+    def __init__(self, should_raise: bool = False):
+        self.should_raise = should_raise
+        self.calls: list[dict] = []
+
+    async def insert_capture(self, pool: object, row: dict) -> dict:
+        """Mimic capture_repo.insert_capture signature."""
+        self.calls.append(row)
+        if self.should_raise:
+            raise RuntimeError("FakeCaptureRepo: simulated insert failure")
+        return {"ok": True}
+
+
+@pytest.fixture
+def fake_capture_repo():
+    """Return a FakeCaptureRepo instance (default: succeeds).
+
+    To test fail-open: set repo.should_raise = True before calling.
+    """
+    return FakeCaptureRepo()
+
+
+async def _fake_transcribe(arg) -> dict:
+    """Canned async transcribe result for pipeline unit tests (Option B -- no respx)."""
+    return {"ok": True, "text": "fake transcript", "duration_ms": 100, "language": "es"}
+
+
+@pytest.fixture
+def fake_transcribe_client():
+    """Return an injected {transcribe} dict with a canned async result.
+
+    Mirrors the create_transcribe_client() factory shape.
+    Use for test_capture_pipeline.py tests that inject the transcribe_client directly
+    rather than testing the HTTP layer.
+    """
+    return {"transcribe": _fake_transcribe}
+
+
+@pytest.fixture
+def whisper_http():
+    """respx-based mock transport for httpx.AsyncClient in transcribe_client tests.
+
+    Usage in test:
+        async with httpx.AsyncClient(transport=whisper_http) as client:
+            resp = await client.post(...)
+
+    Configure responses before use:
+        whisper_http.post("http://host.docker.internal:8090/transcribe").mock(
+            return_value=httpx.Response(200, json={
+                "text": "Test transcript", "duration_ms": 1500, "language": "es"
+            })
+        )
+    """
+    import respx  # noqa: PLC0415
+
+    with respx.mock(assert_all_called=False) as mock_transport:
+        yield mock_transport

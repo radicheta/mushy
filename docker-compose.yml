@@ -105,6 +105,13 @@ services:
       - WHISPER_COMPUTE_TYPE=float16
       - ALLOWED_ROOT=/data/signal-capture
       - HF_HOME=/cache/huggingface   # Plan 09: persist model cache across rebuilds
+      # Model-load failure alert (2026-06-21): host-networked, so signal-cli is on
+      # 127.0.0.1:8085 (same loopback the bridge uses). Recipient defaults to the
+      # shared SIGNAL_RECIPIENT; set WHISPER_ALERT_RECIPIENT to pin it to the operator.
+      - WHISPER_ALERT_URL=${WHISPER_ALERT_URL:-http://127.0.0.1:8085}
+      - SIGNAL_SENDER=${SIGNAL_SENDER:-}
+      - SIGNAL_RECIPIENT=${SIGNAL_RECIPIENT:-}
+      - WHISPER_ALERT_RECIPIENT=${WHISPER_ALERT_RECIPIENT:-}
     volumes:
       - /data/signal-capture:/data/signal-capture:ro   # V13: read-only audio access
       - whisper-hf-cache:/cache/huggingface             # Plan 09: HF model cache
