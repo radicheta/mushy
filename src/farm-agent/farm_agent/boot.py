@@ -40,6 +40,7 @@ from farm_agent.signal_io.receive_loop import ReceiveLoop
 from farm_agent.capture.transcribe_client import create_transcribe_client
 from farm_agent.capture.pipeline import create_capture_pipeline
 from farm_agent.capture.retention import retention_loop
+from farm_agent.confirm.watchdog import confirm_watchdog_loop
 from farm_agent.gate import create_event_gate
 from farm_agent.gate.classifier import create_haiku_classifier
 from farm_agent.extraction.extractor import create_extractor
@@ -100,6 +101,9 @@ async def main() -> None:
     # Start daily retention task.
     retention_task = asyncio.create_task(retention_loop(pool, config))
 
+    # Start confirm-loop watchdog task (nudge / expire awaiting_farmer drafts).
+    confirm_task = asyncio.create_task(confirm_watchdog_loop(pool, signal_client, config))
+
     elapsed = time.monotonic() - t0
     # T-56-06-01: only elapsed time is logged -- no config fields, no secrets.
     log.info("boot complete in %.2fs", elapsed)
@@ -114,11 +118,16 @@ async def main() -> None:
 
     await stop.wait()
 
-    # Graceful shutdown: stop receive loop, cancel retention, close http + pool.
+    # Graceful shutdown: stop receive loop, cancel retention + confirm tasks, close http + pool.
     await receive_loop.stop()
     retention_task.cancel()
     try:
         await retention_task
+    except asyncio.CancelledError:
+        pass
+    confirm_task.cancel()
+    try:
+        await confirm_task
     except asyncio.CancelledError:
         pass
     await anthropic_client.close()

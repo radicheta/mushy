@@ -251,7 +251,7 @@ rollback (CR-01), no 55B-SECURITY.md.
 - [x] **Phase 58: Capture + Transcription** - envelope/attachment capture, off-loop Whisper transcription (completed 2026-06-23)
 - [x] **Phase 59: Event Gate** - rule prefilter + Haiku classifier, reproduces Node gate accept/reject behavior (completed 2026-06-24)
 - [x] **Phase 60: Extraction Pipeline** - multimodal tool-use, retry/SeedingSession/provenance, B5 minting (completed 2026-06-26)
-- [ ] **Phase 61: Confirm Loop** - YES/NO/EDIT FSM parity, strain-confirm, race-safe watchdog
+- [x] **Phase 61: Confirm Loop** - YES/NO/EDIT FSM parity, strain-confirm, race-safe watchdog (completed 2026-06-28)
 - [ ] **Phase 62: farmOS Write Path** - httpx client, field-scoped image route, stable-identity upsert, strain/fidelity guard, origin guard (FIRST in this phase)
 - [ ] **Phase 63: Chamber Alerter** - ROS-bridge WS alerts, TZ Montevideo fix (mushy-private chamber/ package)
 - [ ] **Phase 64: Parity Gate** - golden-corpus >=95% field match on isolated :5434, intentional-delta enumeration, FSM+payload parity
@@ -266,7 +266,7 @@ rollback (CR-01), no 55B-SECURITY.md.
 | 58. Capture + Transcription | 4/4 | Complete   | 2026-06-23 |
 | 59. Event Gate | 4/4 | Complete   | 2026-06-24 |
 | 60. Extraction Pipeline | 4/4 | Complete   | 2026-06-26 |
-| 61. Confirm Loop | 0/TBD | Not started | - |
+| 61. Confirm Loop | 3/3 | Complete   | 2026-06-28 |
 | 62. farmOS Write Path | 0/TBD | Not started | - |
 | 63. Chamber Alerter | 0/TBD | Not started | - |
 | 64. Parity Gate | 0/TBD | Not started | - |
@@ -390,7 +390,10 @@ Plans:
   3. Two concurrent `tick_once()` watchdog calls against the same `awaiting_farmer` row produce exactly one nudge send (conditional UPDATE `WHERE nudge_sent IS FALSE RETURNING id` guards the race).
   4. Strain-confirm-before-mint intercepts unknown codes and holds the draft pending farmer reply; known curated-14-code strains pass through without a double-check.
 
-**Plans**: TBD (not yet planned)
+**Plans**: 3 plans
+- [x] 61-01-PLAN.md (wave 1) -- foundation: confirm_repo DAO + TenantConfig fields + tests/confirm scaffold (CNF-01)
+- [x] 61-02-PLAN.md (wave 2) -- pure FSM state_machine.py + 100% table-parity test (CNF-01)
+- [x] 61-03-PLAN.md (wave 3) -- watchdog + strain ask-back + dispatch + boot wiring + intercept/race tests (CNF-02)
 
 ### Phase 62: farmOS Write Path
 

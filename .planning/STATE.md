@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.12
 milestone_name: Farm-Agent Python Port
 status: executing
-last_updated: "2026-06-28T17:02:44.715Z"
-last_activity: 2026-06-26 -- Phase 60 execution started
+last_updated: "2026-06-28T19:02:37.769Z"
+last_activity: 2026-06-28 -- Phase 61 execution started
 progress:
   total_phases: 10
-  completed_phases: 4
-  total_plans: 22
-  completed_plans: 18
-  percent: 40
+  completed_phases: 5
+  total_plans: 25
+  completed_plans: 22
+  percent: 50
 ---
 
 # Project State
@@ -20,7 +20,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 60 — extraction-pipeline
+**Current focus:** Phase 61 — confirm-loop
 
 > **⚡ 2026-06-22 PRIORITY NOTE — Phase 999.33 (Digital Twin / chamber sim) BUMPED (farmer-requested):** "the more we deal with this the more we want the digital twin." Do lightweight Python ODE — shape (a) — before the next live control-tuning round. Driver: today's blind live-chamber feather calibration (humidifier feather + Mode C reserve, commit `30534ff` on `fc1/prod`) shipped a setpoint bug live + left a stack of experiments blocked on live-chamber exposure (slew limiter, temp feedforward, halve `decay_tau`, re-anchor feather on band_low). See ROADMAP §999.33 + memory `project_humidifier_feather_deployed_2026_06_22`. Promote via `gsd-review-backlog` / `gsd-plan-phase 999.33` when ready.
 
@@ -41,7 +41,7 @@ container and builds the same nested `quote` (`src/agents/alerter/src/signal.js:
 
 ## Phase 56 Closeout (2026-06-15) — COMPLETE; first phase of v1.12 done
 
-**Status:** Executing Phase 60
+**Status:** Executing Phase 61
 
 6/6 plans executed and summarized. VERIFICATION.md: all five requirements
 (FND-01..05) VERIFIED. Code review (56-REVIEW.md) raised 9 findings; all 9 fixed
@@ -210,11 +210,11 @@ All in `.planning/todos/pending/`:
 
 ## Current Position
 
-Phase: 60 (extraction-pipeline) — EXECUTING
+Phase: 61 (confirm-loop) — EXECUTING
 Next: Phase 57 (Signal I/O) — not yet discussed/planned
-Plan: 1 of 4
-Status: Executing Phase 60
-Last activity: 2026-06-26 -- Phase 60 execution started
+Plan: 1 of 3
+Status: Executing Phase 61
+Last activity: 2026-06-28 -- Phase 61 execution started
 
 **v1.12 phase map:**
 

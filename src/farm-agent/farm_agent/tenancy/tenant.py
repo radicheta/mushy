@@ -273,6 +273,8 @@ class TenantConfig:
     # --- Draft confirm loop ---
     draft_pending_timeout_min: int
     draft_watchdog_interval_ms: int
+    draft_nudge_fraction: float
+    max_edit_turns: int
 
     # --- Commit watchdog ---
     commit_watchdog_interval_ms: int
@@ -372,6 +374,8 @@ def load(env: dict[str, str] | None = None) -> TenantConfig:
     # --- Draft confirm loop ---
     draft_pending_timeout_min = _parse_int_env(env, "DRAFT_PENDING_TIMEOUT_MIN", 30)
     draft_watchdog_interval_ms = _parse_int_env(env, "DRAFT_WATCHDOG_INTERVAL_MS", 60000)
+    draft_nudge_fraction = _parse_float_env(env, "DRAFT_NUDGE_FRACTION", 0.8)
+    max_edit_turns = _parse_int_env(env, "MAX_EDIT_TURNS", 3)
 
     # --- Commit watchdog ---
     commit_watchdog_interval_ms = _parse_int_env(env, "COMMIT_WATCHDOG_INTERVAL_MS", 30000)
@@ -413,6 +417,8 @@ def load(env: dict[str, str] | None = None) -> TenantConfig:
         max_sends_per_hour=max_sends_per_hour,
         draft_pending_timeout_min=draft_pending_timeout_min,
         draft_watchdog_interval_ms=draft_watchdog_interval_ms,
+        draft_nudge_fraction=draft_nudge_fraction,
+        max_edit_turns=max_edit_turns,
         commit_watchdog_interval_ms=commit_watchdog_interval_ms,
         commit_watchdog_batch_cap=commit_watchdog_batch_cap,
         commit_retry_max=commit_retry_max,
