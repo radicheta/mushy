@@ -2,19 +2,53 @@
 gsd_state_version: 1.0
 milestone: v1.12
 milestone_name: Farm-Agent Python Port
-status: ready_to_plan
-last_updated: 2026-06-29T00:56:54.687Z
-last_activity: 2026-06-29
+status: executing
+last_updated: "2026-07-25T00:00:00.000Z"
+last_activity: 2026-07-25 -- Phase 63 executed autonomously, 8/8 plans; awaiting verify + code review
 progress:
   total_phases: 10
-  completed_phases: 6
-  total_plans: 37
-  completed_plans: 114
-  percent: 60
-stopped_at: Phase 62 complete (12/12) — ready to discuss Phase 63
+  completed_phases: 7
+  total_plans: 61
+  completed_plans: 45
+  percent: 74
 ---
 
 # Project State
+
+## Phase 63 Execution (2026-07-25) — 8/8 PLANS SHIPPED, NOT YET VERIFIED
+
+Branch `feat/phase-63-chamber-alerter`, 27 commits since the plan-rewrite pointer
+`1246faf`, tree clean. Full suite
+**842 passed / 36 skipped / 0 failed**; `lint-imports` 1 kept 0 broken and now
+NON-VACUOUS (`farm_agent/chamber/` exists, so the Plan 01 seam contract finally
+has a real target). Every plan has a `63-NN-SUMMARY.md`.
+
+The chamber alerter is ported: config, 5 detectors, snooze grammar, message
+formatting (CHM-02 TZ fix), heartbeat, WS client, the FSM, and boot wiring on the
+single shared SignalClient/ReceiveLoop (D-05).
+
+**OPEN — needs Don Santiago:**
+
+1. ~~**Plan 02 Task 1 human gate not signed off.**~~ **CLOSED 2026-07-26** — operator
+   approved `websockets` 16.1.1 + `tzdata` **2026.3**. Re-verified live against the
+   PyPI JSON API before sign-off, and the `uv.lock` sdist sha256 for each locked
+   version was confirmed to match PyPI's own digest (a check the execution run did
+   not do). `tzdata` was bumped 2026.2 → 2026.3 at sign-off, after a byte-diff of
+   both sdists proved `America/Montevideo` IDENTICAL across the releases (only
+   Casablanca/El_Aaiun, the Mountain-time zones, leapseconds and the index tabs
+   differ). Suite unchanged at 842/36/0. See `63-02-SUMMARY.md`.
+2. **4 Phase-64 delta CANDIDATES** reproduced-not-fixed, listed in
+   `63-07-SUMMARY.md`. The heartbeat `>=` vs `==` one is a real silent-failure
+   path (a restart after `heartbeat_hour` burns the day). → **MUSHY-44**
+3. **`63-RESEARCH.md` Pitfall 3 is factually wrong** about the tick/pi call site
+   and should be corrected before Phase 64 plans against it. (Corrected on-branch
+   in `44cab25`; noted on **MUSHY-3** so Phase 64 does not re-derive from the old text.)
+4. **3 pre-existing DB-test failures** surfaced (unrelated to 63, verified by
+   stashing). They are invisible in CI because those tests skip without a DB.
+   See `63-08-SUMMARY.md`. → **MUSHY-47**
+5. **Manual leg outstanding:** live pi-offline Signal alert to f1 on fc-core stop.
+   → tracked on **MUSHY-3** (it is the phase's stated Done condition).
+6. Phase not yet run through verify-work / code-review. → **MUSHY-49**
 
 > **⚠ Phase 62 planning override (2026-06-28):** decision-coverage gate reported 0/7 (false-negative — D-ids cited in plan bodies/actions, not in `must_haves` blocks). Operator chose "Proceed anyway"; plan-checker independently verified Dimension 7 (Context Compliance) as Full coverage for D-01..D-08. verify-phase should confirm decision implementation directly, not rely on the gate.
 
@@ -44,7 +78,7 @@ container and builds the same nested `quote` (`src/agents/alerter/src/signal.js:
 
 ## Phase 56 Closeout (2026-06-15) — COMPLETE; first phase of v1.12 done
 
-**Status:** Ready to plan
+**Status:** Ready to execute
 
 6/6 plans executed and summarized. VERIFICATION.md: all five requirements
 (FND-01..05) VERIFIED. Code review (56-REVIEW.md) raised 9 findings; all 9 fixed
@@ -213,11 +247,41 @@ All in `.planning/todos/pending/`:
 
 ## Current Position
 
-Phase: 63
-Next: Phase 57 (Signal I/O) — not yet discussed/planned
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-06-29
+Phase: 63 (chamber-alerter) — EXECUTED 8/8 plans, NOT YET VERIFIED
+Next: run verify-work + code-review on Phase 63, then decide the 6 open items above
+Plans: 8 plans / 16 tasks / 4 waves, all executed 2026-07-25 (every task RED-first)
+Status: Awaiting verification gate; branch left unmerged for review
+Branch: `feat/phase-63-chamber-alerter` (tree clean)
+Last activity: 2026-07-25 -- Phase 63 executed autonomously, 8/8 plans
+
+Phases 56-62 are COMPLETE (summaries on disk: 6/4/4/4/4/3/12 plans respectively).
+Phase 62 shipped 12 plans with no closeout section below and no code-review artifact —
+see "Open before v1.12 closes".
+
+**Phase 63 execution notes (as shipped):**
+- Every task carried an explicit RED step, witnessed before implementation.
+- Parity is the spec and `state.js` is internally inconsistent. Four asymmetries are
+  reproduced-and-pinned by `*_parity_quirk_*` tests, NOT fixed: tick/pi does not fast-fire
+  while pi_liveness/pi does; sensor fires on 1 error but recovers on 5; sht30/scd41
+  watchdogs never see Tier B/C overrides; heartbeat `==` hour vs scheduler `>=` hour.
+  All four are filed in 63-07-SUMMARY.md as Phase-64 intentional-delta CANDIDATES.
+- The only sanctioned behavioural change is the CHM-02 TZ fix (Toronto/UTC → Montevideo).
+- `63-RESEARCH.md` Pitfall 3 was found factually wrong about the tick/pi call site and
+  corrected on-branch (`44cab25`) — do not re-derive Phase 64 plans from the old text.
+
+## Open before v1.12 closes
+
+- **Phase 62 has no REVIEW artifact** despite being the largest phase (12 plans) and
+  carrying the origin-guard hard constraint. Its decision-coverage gate also reported 0/7
+  and was overridden (see the note at the top of this file); no evidence verify-phase
+  confirmed the decisions directly. Run the code-review gate before Phase 64.
+- **Phase 57 has no REVIEW artifact** either.
+- **Phase 55B never closed**: no `55B-04-SUMMARY.md`, verification `human_needed`, no
+  SECURITY doc. The milestone moved past it.
+- **Three manual/live-fire legs are open and unattested**: 55B F2 reconcile, Phase 56
+  host boot on elder-plops, Phase 63 SC1 live send to f1. All feed Phase 64/65.
+- **Branch sprawl**: `feat/phase-56-foundation` is ~285 commits ahead of `main` and spans
+  phases 56-63. Resolve before the Phase 65 cutover, where rollback needs to be clean.
 
 **v1.12 phase map:**
 
@@ -470,8 +534,17 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 ## Session Continuity
 
-Last session: 2026-06-29T00:02:29.557Z
-Next up: Phase 57 (Signal I/O) — `/gsd-discuss-phase 57` then plan/execute. Phase 56 (foundation) complete + verified + code-reviewed 2026-06-15. Optional follow-on: human-verify alerter-py boot on elder-plops (prod-readiness only, non-blocking).
+Last session: 2026-07-25 — Phase 63 executed autonomously, 8/8 plans shipped.
+Next up: **verify + code-review Phase 63**, then work the remaining open items in the
+Phase 63 section at the top of this file. Item 1 (Plan 02 package-legitimacy gate) was
+signed off by the operator 2026-07-26; 5 items remain.
+
+(Superseded: the pre-execution wave plan was 1 → {01, 02, 03} · 2 → {04, 05, 06} ·
+3 → {07} · 4 → {08}. All four waves are done.)
+
+(Superseded 2026-07-13 pointer: "Next up: Phase 57 (Signal I/O)" — Phases 57-62 have all
+since shipped. Phase 56 complete + verified + code-reviewed 2026-06-15; the elder-plops
+alerter-py host-boot check remains an open manual leg.)
 
 (Historical, pre-v1.12) Next up: Phase 45 (NORTH-STAR commit_failed ack + replay outstanding silent-failure drafts `b8a1e586` Vikki Rambo + `1fb28e70` Santi LIMA). Optional: 24-h v1.8 soak observation before starting Phase 45 scope work. v1.8 cutover already complete (alerter recreated 01:41:58 ART; bridge already on Phase 46 code).
 
@@ -491,13 +564,52 @@ v1.7 phase order (hard sequencing):
   Phase 42: SHI-on-Sawdust Pilot — last; requires 40+41+39 (PILOT-01..06)
 
 ---
-*Roadmap phases: v1.0 (1–8), v1.1 (9–10), v1.2 (11–13), v1.2.1 (14–16), v1.3 (17–20), v1.4 (21–26), v1.5 (27–31), v1.5.0.1 (27.1, 27.2), v1.6 (32–35 + 999.43.1) — scaffolding deferred*
-*Last updated: 2026-05-11 — post v1.6 outage+recovery stack ship + backlog sweep*
+*Roadmap phases: v1.0 (1–8), v1.1 (9–10), v1.2 (11–13), v1.2.1 (14–16), v1.3 (17–20), v1.4 (21–26), v1.5 (27–31), v1.5.0.1 (27.1, 27.2), v1.6 (32–35 + 999.43.1), v1.12 (56–65)*
+*Last updated: 2026-07-25 — Phase 63 executed, 8/8 plans*
 
-**Last completed:** Phase 35 (vps-tierA-backup) SHIPPED 2026-05-11
+**Last completed:** Phase 62 (farmos-write-path) — 12 plans, 2026-07-13
 
-**Planned Phase:** 37 (multi-farmer-routing) — 4 plans — 2026-05-11T20:23:31.281Z
+**Current Phase:** 63 (chamber-alerter) — 8/8 plans executed; verification gate pending
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+Every open item below is now tracked in Plane (MUSHY). Ticket is the source of truth;
+this list is the index.
+
+- **MUSHY-49** — run verify-work + code-review on Phase 63, and retro-close the same
+  gate on Phases 57 and 62 (neither has a REVIEW artifact).
+- **MUSHY-44** — decide keep-or-fix on the 4 Node parity quirks. Blocks Phase 64
+  (MUSHY-4): the parity gate scores them as matches while prod keeps the defect.
+- **MUSHY-46** — land the v1.12 branch stack on main. Blocks Phase 65 (MUSHY-5):
+  rollback is only clean if main represents what is deployed. Main has none of 56-63.
+- **MUSHY-47** — the 3 pre-existing DB-test failures (`test_confirm_repo` ×2,
+  `test_persistence` ×1). Invisible in CI because they skip without a DB.
+- **MUSHY-48** — tenant config `FARMOS_USERNAME: farmos_agent` never matched the real
+  `mushy-bot` account; silent 400 on every commit if alerter-py boots off the config.
+- **MUSHY-45** — deployed Tier-A backup script is missing the signal-cli staging block,
+  so the Signal identity is not in the nightly backup. Was audit #4, previously unticketed.
+- **MUSHY-50** — formally close Phase 55B (no 04-SUMMARY, verification `human_needed`).
+- Manual leg still open, no ticket of its own (it is Phase 63's stated Done condition,
+  tracked on **MUSHY-3**): live pi-offline Signal alert to f1 on fc-core stop.
+- ~~Plan 02 package-legitimacy gate~~ — DONE, operator-approved 2026-07-26.
+
+## Triage sweep 2026-07-26
+
+Suite re-run independently and confirmed: **842 passed / 36 skipped / 0 failed**.
+
+- Phase 63 moved to **In Progress** in Plane (was Todo) — executed, not verified.
+- 7 tickets filed for previously untracked work (MUSHY-44..50).
+- Audit `docs/AUDIT-2026-07-02.md` top-10 is now fully ticketed; item 4 (Tier-A backup)
+  was the only gap and is MUSHY-45.
+- The 3 live-fire deferral todos for Phases 58/59/60 sat in `.planning/todos/` root where
+  triage never looked (audit item 10); moved into `todos/pending/`. They already carry
+  tickets MUSHY-21/22/23.
+- `milestone/fc1-humidity-mvp` deleted — fully merged into main, 0 ahead.
+- Branch survey posted to MUSHY-32. Still stranded and unticketed:
+  `fix/mute-signal-convo-spam` (26 ahead) and `hotfix/pwm-cap-0.9` (6 ahead / 741 behind).
+- Tooling note: the `plane-mossrock` MCP server (plane-mcp-server 0.2.10) 404s against
+  this Plane build — it does not use the `/api/v1/` path the instance serves. Plane work
+  this session went through the REST API directly.
+
+*(The three lines above previously read "Last updated: 2026-05-11", "Last completed: Phase 35",
+"Planned Phase: 37" — stale since v1.6. Corrected 2026-07-25.)*

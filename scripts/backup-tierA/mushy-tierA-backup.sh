@@ -16,7 +16,7 @@ set -uo pipefail
 # Config (env-overridable for testing)
 VPS_HOST="${VPS_HOST:-mushy@178.105.84.13}"
 VPS_REPO="${VPS_REPO:-/var/backups/mushy-tierA}"
-RECIPIENT_PUB="${RECIPIENT_PUB:-/home/santi/.ssh/id_ed25519.pub}"
+RECIPIENT_PUB="${RECIPIENT_PUB:-/etc/mushy/tierA-recipients.txt}"
 BRIDGE_HEARTBEAT_URL="${BRIDGE_HEARTBEAT_URL:-http://localhost:8081/heartbeat-alert}"
 RETENTION_DAYS="${RETENTION_DAYS:-30}"
 

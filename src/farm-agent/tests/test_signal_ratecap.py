@@ -16,19 +16,31 @@ from tests.conftest import TEST_ENV
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_client(max_sends: int = 2, get_max_hook=None):
-    """Build a SignalClient with a custom cap for rate-cap tests."""
+_UNSET = object()
+
+
+def _make_client(max_sends: int = 2, get_max_hook=_UNSET):
+    """Build a SignalClient with a custom cap for rate-cap tests.
+
+    Phase 63 D-03: max_sends_per_hour moved off TenantConfig, so seeding
+    ALERT_MAX_SENDS_PER_HOUR into the env no longer influences the cap. The
+    helper now injects the cap through the dynamic hook instead -- the same
+    channel boot.py uses in production (get_max_sends_per_hour=lambda:
+    chamber_config.max_sends_per_hour).
+
+    Pass get_max_hook=None EXPLICITLY to exercise the no-hook fallback path.
+    """
     from farm_agent.signal_io.client import SignalClient  # noqa: PLC0415
     from farm_agent.tenancy.tenant import load as load_config  # noqa: PLC0415
 
-    env = {**TEST_ENV, "ALERT_MAX_SENDS_PER_HOUR": str(max_sends)}
-    config = load_config(env)
+    config = load_config(TEST_ENV)
+    hook = (lambda: max_sends) if get_max_hook is _UNSET else get_max_hook
     http_client = httpx.AsyncClient()
     return SignalClient(
         config=config,
         http=http_client,
         default_target="+10000000001",
-        get_max_sends_per_hour=get_max_hook,
+        get_max_sends_per_hour=hook,
     )
 
 
@@ -110,8 +122,14 @@ async def test_dynamic_cap_hook_overrides_config(respx_mock):
     assert ok_count == 3
 
 
-async def test_dynamic_cap_hook_raising_falls_back_to_config(respx_mock):
-    """Hook that raises falls back to config.max_sends_per_hour."""
+async def test_dynamic_cap_hook_raising_falls_back_to_default(respx_mock):
+    """Hook that raises falls back to the hardcoded default, not a config field.
+
+    Pre-Phase-63 this fell back to config.max_sends_per_hour. That field moved to
+    ChamberConfig (D-03), so the fallback is now _DEFAULT_MAX_SENDS_PER_HOUR.
+    """
+    from farm_agent.signal_io.client import _DEFAULT_MAX_SENDS_PER_HOUR  # noqa: PLC0415
+
     respx_mock.post("http://signal-cli:8080/v2/send").mock(
         return_value=httpx.Response(201, json={"timestamp": "555"})
     )
@@ -119,16 +137,45 @@ async def test_dynamic_cap_hook_raising_falls_back_to_config(respx_mock):
     def bad_hook():
         raise RuntimeError("hook failure")
 
-    client = _make_client(max_sends=2, get_max_hook=bad_hook)
+    client = _make_client(get_max_hook=bad_hook)
+    assert client._current_cap() == _DEFAULT_MAX_SENDS_PER_HOUR == 20
+
     async with client.http:
         results = await asyncio.gather(
             client.send("a"), client.send("b"), client.send("c")
         )
+    # cap 20 > 3 sends, so all three go through
+    assert sum(1 for r in results if r.get("ok") is True) == 3
 
-    ok_count = sum(1 for r in results if r.get("ok") is True)
-    cap_count = sum(1 for r in results if r.get("reason") == "rate-cap")
-    assert ok_count == 2
-    assert cap_count == 1
+
+def test_no_hook_uses_hardcoded_default():
+    """Pitfall 9: with no hook at all, _current_cap must not touch TenantConfig."""
+    from farm_agent.signal_io.client import _DEFAULT_MAX_SENDS_PER_HOUR  # noqa: PLC0415
+
+    client = _make_client(get_max_hook=None)
+    assert client._current_cap() == _DEFAULT_MAX_SENDS_PER_HOUR == 20
+
+
+def test_tenant_config_no_longer_carries_alerter_knobs():
+    """D-03: the 7 alerter knobs are gone from TenantConfig; neighbours remain."""
+    from farm_agent.tenancy.tenant import load as load_config  # noqa: PLC0415
+
+    cfg = load_config(TEST_ENV)
+    for gone in (
+        "rh_target",
+        "rh_band",
+        "pi_offline_min",
+        "sensor_offline_min",
+        "heartbeat_hour",
+        "max_sends_per_hour",
+        "timezone",
+    ):
+        assert not hasattr(cfg, gone), f"TenantConfig still carries {gone}"
+
+    # Retained neighbours (regression guard for over-deletion)
+    assert cfg.receive_poll_sec == 30
+    assert cfg.draft_pending_timeout_min == 30
+    assert cfg.log_level
 
 
 # ---------------------------------------------------------------------------

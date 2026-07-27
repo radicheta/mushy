@@ -268,9 +268,11 @@ def test_int_field_from_env(tmp_path, monkeypatch):
     tenant_dir = tmp_path / "t1"
     tenant_dir.mkdir()
     (tenant_dir / "config.yaml").write_text("{}\n")
-    cfg = _tenant_mod.load(_env(TENANT_ID="t1", ALERT_PI_OFFLINE_MIN="99"))
-    assert cfg.pi_offline_min == 99
-    assert isinstance(cfg.pi_offline_min, int)
+    # Phase 63 D-03: ALERT_PI_OFFLINE_MIN moved to ChamberConfig; retargeted onto
+    # a retained int field so the coercion coverage survives the move.
+    cfg = _tenant_mod.load(_env(TENANT_ID="t1", CAPTURE_RETENTION_DAYS="99"))
+    assert cfg.capture_retention_days == 99
+    assert isinstance(cfg.capture_retention_days, int)
 
 
 def test_float_field_from_env(tmp_path, monkeypatch):
@@ -279,9 +281,11 @@ def test_float_field_from_env(tmp_path, monkeypatch):
     tenant_dir = tmp_path / "t1"
     tenant_dir.mkdir()
     (tenant_dir / "config.yaml").write_text("{}\n")
-    cfg = _tenant_mod.load(_env(TENANT_ID="t1", ALERT_RH_TARGET="92.5"))
-    assert cfg.rh_target == 92.5
-    assert isinstance(cfg.rh_target, float)
+    # Phase 63 D-03: ALERT_RH_TARGET moved to ChamberConfig; retargeted onto a
+    # retained float field so the coercion coverage survives the move.
+    cfg = _tenant_mod.load(_env(TENANT_ID="t1", DRAFT_NUDGE_FRACTION="0.55"))
+    assert cfg.draft_nudge_fraction == 0.55
+    assert isinstance(cfg.draft_nudge_fraction, float)
 
 
 def test_int_default_used_when_absent(tmp_path, monkeypatch):
@@ -291,8 +295,8 @@ def test_int_default_used_when_absent(tmp_path, monkeypatch):
     tenant_dir.mkdir()
     (tenant_dir / "config.yaml").write_text("{}\n")
     cfg = _tenant_mod.load(_env(TENANT_ID="t1"))
-    # config.js default for ALERT_PI_OFFLINE_MIN is 5
-    assert cfg.pi_offline_min == 5
+    # config.js:174 default for ALERT_RECEIVE_POLL_SEC is 30
+    assert cfg.receive_poll_sec == 30
 
 
 # ---------------------------------------------------------------------------
@@ -407,7 +411,14 @@ def test_tenants_base_parent_is_repo_root():
 
 
 def test_no_other_module_reads_os_environ():
-    """FND-02: grep that os.environ is only read in tenancy/tenant.py (and boot.py)."""
+    """FND-02: grep that os.environ is only read in the sanctioned config loaders.
+
+    Phase 63 D-02 adds chamber/config.py as the second (and only other) env
+    reader: the chamber knob set is env-only, with no tenant-YAML layer. It is
+    allowlisted here rather than being allowed to read secrets -- it takes
+    identity/secrets by injection from an already-loaded TenantConfig and only
+    reads its own ALERT_*/TZ/BRIDGE_* knobs from env.
+    """
     import subprocess
 
     farm_agent_dir = (
@@ -427,7 +438,9 @@ def test_no_other_module_reads_os_environ():
     hits = [
         line
         for line in result.stdout.splitlines()
-        if "tenancy/tenant.py" not in line and "boot.py" not in line
+        if "tenancy/tenant.py" not in line
+        and "boot.py" not in line
+        and "chamber/config.py" not in line
     ]
     assert hits == [], (
         "FND-02 VIOLATION: the following files read os.environ directly:\n"

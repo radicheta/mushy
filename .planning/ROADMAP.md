@@ -336,6 +336,7 @@ Plans:
   3. The attachment file path is verified to exist on disk before being passed to the extractor (no attachment-download race; extractor never receives a path to a file that does not yet exist).
 
 **Plans**: 4 plans (4 waves)
+
 - [x] 58-01-PLAN.md — Wave-0 foundation: python-ulid legitimacy gate + add + A1 API probe; capture/ package; conftest fakes
 - [x] 58-02-PLAN.md — leaf units: transcribe_client.py (never-throws httpx port, D-01) + capture_repo.py (signal_capture INSERT + soft-expiry, D-04)
 - [x] 58-03-PLAN.md — pipeline.py (handle + record_reply_capture, D-03/D-04/D-05) + capture_history + retention + boot wiring (live inbound drain)
@@ -372,10 +373,12 @@ Plans:
   4. A structural diff of the Python `model_json_schema()` versus the Node `SUBMISSION_JSON_SCHEMA` is clean (this is the FND-04 gate re-verified against the real extractor call).
 
 **Plans**: 4 plans
+
 - [x] 60-01-PLAN.md - Foundation: Pillow dep (legitimacy-gated), prompts.py verbatim, copy May-22 fixture, extend FakeAnthropicClient
 - [x] 60-02-PLAN.md - Leaf units: multimodal.py (Pillow downscale + fail-open) + seq_helper.py (B5 mint + per-session SEQ) + tests
 - [x] 60-03-PLAN.md - extractor.py (2-call retry + tu_fewshot_6 closer) + boot wiring + fixture replay + FND-04 re-verify
 - [x] 60-04-PLAN.md - Deferred real-Sonnet accuracy harness (marker/env-gated, operator-run, not CI-blocking)
+
 **UI hint**: no
 
 ### Phase 61: Confirm Loop
@@ -391,6 +394,7 @@ Plans:
   4. Strain-confirm-before-mint intercepts unknown codes and holds the draft pending farmer reply; known curated-14-code strains pass through without a double-check.
 
 **Plans**: 3 plans
+
 - [x] 61-01-PLAN.md (wave 1) -- foundation: confirm_repo DAO + TenantConfig fields + tests/confirm scaffold (CNF-01)
 - [x] 61-02-PLAN.md (wave 2) -- pure FSM state_machine.py + 100% table-parity test (CNF-01)
 - [x] 61-03-PLAN.md (wave 3) -- watchdog + strain ask-back + dispatch + boot wiring + intercept/race tests (CNF-02)
@@ -411,6 +415,7 @@ Plans:
 **Note (SC2 wording, D-05)**: stable identity is NAME-BASED, not a hex digest. SC2 is satisfied by `merge.py` producing a byte-identical merged JSON:API payload to Node `merge.js` for the same input (cross-language golden fixture) plus 0 duplicate assets on a second dev-farmOS commit -- NOT a hex-digest match.
 
 **Plans**: 12 plans (origin guard FIRST per D-02; all commit-write work depends on it)
+
 - [x] 62-01-PLAN.md (wave 1) -- origin guard: migration (origin column + Phase 40 commit cols) + Node commit-db.js `AND origin != 'python'` patch + prod redeploy checkpoint (FWR-04)
 - [x] 62-02-PLAN.md (wave 2) -- httpx farmOS client: session-cookie + CSRF, never-throws, retry/backoff, octet-stream (FWR-01)
 - [x] 62-03-PLAN.md (wave 2) -- merge.py byte-identical port + cross-language golden fixture (FWR-02)
@@ -435,7 +440,28 @@ Plans:
   2. All farmer-facing time values in alerter messages use `ZoneInfo('America/Montevideo')` (UYT, UTC-3); a snapshot test of a formatted alert message shows the correct local time (not UTC, not Toronto/EDT).
   3. RH out-of-band, sensor-offline, and humidifier-stuck detectors each fire a Signal alert under their respective trigger conditions in integration testing; the `chamber/` package has zero imports from any non-chamber Foray package (enforced by the Phase 56 CI gate).
 
-**Plans**: TBD (not yet planned)
+**Plans**: 8 plans in 4 waves
+
+Plans:
+**Wave 1**
+
+- [ ] 63-01-PLAN.md — Foray seam gate activation (fix .lint-imports + FORAY_PACKAGES; wire lint-imports into pytest) [Wave 1]
+- [ ] 63-02-PLAN.md — Dependency legitimacy gate + `uv add websockets tzdata` [Wave 1]
+- [ ] 63-03-PLAN.md — D-03 config relocation (7 knobs → ChamberConfig) + SignalClient rate-cap decouple + ChamberConfig (Montevideo default) [Wave 1]
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 63-04-PLAN.md — chamber/rules.py detectors + chamber/snooze.py grammar [Wave 2]
+- [ ] 63-05-PLAN.md — chamber/message.py TZ fix (SC2 snapshot) + chamber/heartbeat.py scheduler [Wave 2]
+- [ ] 63-06-PLAN.md — chamber/ws_client.py bridge client + hand-rolled backoff [Wave 2]
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 63-07-PLAN.md — chamber/state.py FSM (Tier A/B/C resolver, all 6 alert types) [Wave 3]
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 63-08-PLAN.md — chamber/service.py + boot.py composite dispatch wiring (D-05, SC1) [Wave 4]
 
 ### Phase 64: Parity Gate
 

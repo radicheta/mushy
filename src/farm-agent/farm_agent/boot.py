@@ -46,6 +46,8 @@ from farm_agent.farmos.commit_watchdog import commit_watchdog_loop
 from farm_agent.gate import create_event_gate
 from farm_agent.gate.classifier import create_haiku_classifier
 from farm_agent.extraction.extractor import create_extractor
+from farm_agent.chamber.config import load as load_chamber_config
+from farm_agent.chamber.service import ChamberService, make_composite_dispatch
 
 log = logging.getLogger(__name__)
 
@@ -66,6 +68,10 @@ async def main() -> None:
     # FND-02: tenancy.load is the sole env reader; config object is NEVER logged.
     config = load_config(os.environ)
 
+    # Phase 63: chamber (mushy-private) config composes the Foray TenantConfig (D-02).
+    # T-56-06-01: never logged.
+    chamber_config = load_chamber_config(os.environ, tenant_config=config)
+
     # FND-03: open the shared async pool.
     pool = await build_pool(config)
 
@@ -75,7 +81,13 @@ async def main() -> None:
     # Phase 58: build HTTP client + signal client + transcribe client + capture pipeline.
     # T-58-03-05 / A3: exactly ONE ReceiveLoop is started on the farmer account.
     http = httpx.AsyncClient()
-    signal_client = SignalClient(config=config, http=http)
+    # Phase 63 / Pitfall 9: the outbound cap now lives on ChamberConfig (D-03), so
+    # boot supplies it through the hook. SignalClient's own constant is only a floor.
+    signal_client = SignalClient(
+        config=config,
+        http=http,
+        get_max_sends_per_hour=lambda: chamber_config.max_sends_per_hour,
+    )
     transcribe_client = create_transcribe_client(config.whisper_url, http)
 
     # Phase 59: shared AsyncAnthropic singleton + event-gate (one per daemon lifetime).
@@ -95,10 +107,25 @@ async def main() -> None:
 
     pipeline = create_capture_pipeline(pool, signal_client, transcribe_client, config, gate=gate, extractor=extractor)
 
+    # Phase 63 / D-05: chamber reuses the ONE SignalClient and the ONE ReceiveLoop.
+    # A second poller on the same Signal number would silently eat inbound messages.
+    chamber_service = ChamberService(
+        config=chamber_config, signal_client=signal_client, http=http, log=log
+    )
+    chamber_dispatch = make_composite_dispatch(
+        chamber_service=chamber_service,
+        pipeline_handle=pipeline["handle"],
+        signal_client=signal_client,
+        config=chamber_config,
+    )
+
     # Start the inbound drain (Phase 57 deferred -- now live).
     # T-58-03-05: only one ReceiveLoop constructed and started here.
-    receive_loop = ReceiveLoop(signal_client, dispatch=pipeline["handle"], config=config)
+    receive_loop = ReceiveLoop(signal_client, dispatch=chamber_dispatch, config=config)
     await receive_loop.start()
+
+    # Phase 63: chamber background tasks (ws reconnect + heartbeat + eval tick).
+    await chamber_service.start()
 
     # Start daily retention task.
     retention_task = asyncio.create_task(retention_loop(pool, config))
@@ -122,6 +149,8 @@ async def main() -> None:
     log.info("boot complete in %.2fs", elapsed)
     # T-56-06-01: no config fields logged here (whisper_url etc. excluded).
     log.info("capture pipeline live")
+    # T-56-06-01: lifecycle-only -- no chamber config fields logged.
+    log.info("chamber alerter live")
 
     # Idle until SIGTERM or SIGINT.
     stop = asyncio.Event()
@@ -133,6 +162,8 @@ async def main() -> None:
 
     # Graceful shutdown: stop receive loop, cancel retention + confirm tasks, close http + pool.
     await receive_loop.stop()
+    # Phase 63: the service owns cancelling its own tasks, keeping this block flat.
+    await chamber_service.stop()
     retention_task.cancel()
     try:
         await retention_task

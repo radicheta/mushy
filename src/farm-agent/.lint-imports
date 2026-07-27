@@ -1,14 +1,15 @@
 # import-linter 2.11 config — Foray CI seam (FND-05)
 #
-# Primary gate (Phase 56): grep-in-pytest (tests/test_foray_seam.py).
-# Secondary gate (Phase 63): this contract, activated when chamber/ lands.
+# Primary gate: grep-in-pytest (tests/test_foray_seam.py).
+# Secondary gate: this contract. ACTIVATED in Phase 63 — it now runs inside the
+# pytest suite via tests/test_import_linter_contract.py.
 #
 # Run: lint-imports  (or: uv run lint-imports)
-# Integrated into CI via: uv run lint-imports --config .lint-imports
 #
-# NOTE: chamber/ does not exist yet (added in Phase 63). The contract is
-# inert until then — import-linter skips forbidden_modules that don't exist.
-# Do NOT add import-linter to the pytest run until Phase 63.
+# source_modules MUST list every real Foray package. import-linter hard-errors on
+# an entry that does not resolve (unlike forbidden_modules, which may be absent).
+# chamber/ is deliberately NOT a source module — it is the forbidden target, and it
+# is free to import any Foray package (D-00).
 
 [importlinter]
 root_packages =
@@ -23,8 +24,8 @@ source_modules =
     farm_agent.extraction
     farm_agent.signal_io
     farm_agent.confirm
-    farm_agent.farmos_client
+    farm_agent.farmos
     farm_agent.capture
-    farm_agent.llm
+    farm_agent.gate
 forbidden_modules =
     farm_agent.chamber

@@ -20,12 +20,18 @@ import tempfile
 import os
 from pathlib import Path
 
-# Phase 56 foray packages that exist now.
-# signal_io, confirm, farmos_client, capture, llm are not created this phase.
+# Every Foray (extractable-island) package. chamber/ is deliberately absent —
+# it is the forbidden TARGET of the seam, and may freely import these (D-00).
+# Kept honest by test_foray_packages_covers_every_package_on_disk below.
 FORAY_PACKAGES = [
     "farm_agent/tenancy",
     "farm_agent/persistence",
     "farm_agent/extraction",
+    "farm_agent/signal_io",
+    "farm_agent/confirm",
+    "farm_agent/farmos",
+    "farm_agent/capture",
+    "farm_agent/gate",
 ]
 
 # Pattern catches both `from farm_agent.chamber import X`
@@ -103,3 +109,35 @@ def test_seam_trips_on_bare_import_form():
             f"exit {result.returncode}"
         )
         assert "farm_agent.chamber" in result.stdout
+
+
+def test_foray_packages_covers_every_package_on_disk():
+    """Drift guard (Pitfall 8): FORAY_PACKAGES must not fall behind the filesystem.
+
+    Phase 56 wrote the list by hand with 3 entries. Phases 57-62 added five more
+    packages and nobody updated it, so the primary seam gate was grepping 3/8 of
+    the island. Derive the expected set from disk so this cannot recur.
+
+    chamber/ is EXCLUDED by design: it is the forbidden target of the contract, not
+    a source module. A chamber/ that imports signal_io is correct (D-00).
+    """
+    farm_agent_root = Path(__file__).parent.parent
+    pkg_root = farm_agent_root / "farm_agent"
+
+    on_disk = {
+        f"farm_agent/{p.name}"
+        for p in pkg_root.iterdir()
+        if p.is_dir() and not p.name.startswith(("_", "."))
+    }
+    on_disk.discard("farm_agent/chamber")  # forbidden target, never a source
+
+    missing = on_disk - set(FORAY_PACKAGES)
+    stale = set(FORAY_PACKAGES) - on_disk
+
+    assert not missing, (
+        f"FORAY_PACKAGES does not scan these real packages: {sorted(missing)}. "
+        "The seam gate is blind to them — add them to the list."
+    )
+    assert not stale, (
+        f"FORAY_PACKAGES lists packages that no longer exist: {sorted(stale)}."
+    )
