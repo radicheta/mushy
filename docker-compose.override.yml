@@ -171,6 +171,58 @@ services:
       - signal-net
       - default
 
+  # alerter-py: Python port of mushy-alerter (farm-agent, FND-01).
+  # Coexists with the live Node `alerter` service until Phase 65 cutover.
+  # Shares no files with alerter; touches the shared TimescaleDB only via the
+  # additive migrations from Plan 05 (T-56-06-03 mitigation).
+  alerter-py:
+    build:
+      context: ./src/farm-agent
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      # 2026-06-15: simple STRING form for compose v2.40 -- the object form
+      # (`- path: ... required: false`) parses to env_file:None silently on
+      # this version, so secrets never arrive and the container crash-loops.
+      # Mirrors the same hotfix comment in the alerter: block above (2026-05-23).
+      - tenants/mossrock/secrets.env
+    environment:
+      # ANTHROPIC_API_KEY is sourced from tenants/mossrock/secrets.env (env_file above).
+      # Do NOT add it here -- that would override the per-tenant secret with whatever
+      # is in repo-root .env, repeating the 2026-05-23 alerter outage pattern.
+      - TENANT_ID=mossrock
+      - TIMESCALE_HOST=${TIMESCALE_HOST:-timescale}
+      - TIMESCALE_DB=${TIMESCALE_DB:-postgres}
+      - TIMESCALE_USER=${TIMESCALE_USER:-postgres}
+      - TIMESCALE_PASSWORD=${TIMESCALE_PASSWORD}
+      - SIGNAL_RECIPIENT=${SIGNAL_RECIPIENT}
+      - SIGNAL_ADDITIONAL_SENDERS=${SIGNAL_ADDITIONAL_SENDERS}
+      - SIGNAL_GROUP_ID=${SIGNAL_GROUP_ID}
+      - SIGNAL_FARMER_MAP=${SIGNAL_FARMER_MAP}
+      - ALERT_RH_TARGET=${ALERT_RH_TARGET:-90}
+      - ALERT_RH_BAND=${ALERT_RH_BAND:-3}
+      - ALERT_PI_OFFLINE_MIN=${ALERT_PI_OFFLINE_MIN:-5}
+      - ALERT_SENSOR_OFFLINE_MIN=${ALERT_SENSOR_OFFLINE_MIN:-1440}
+      - ALERT_HEARTBEAT_HOUR=${ALERT_HEARTBEAT_HOUR:-8}
+      - ALERT_RECEIVE_POLL_SEC=${ALERT_RECEIVE_POLL_SEC:-30}
+      - ALERT_MAX_SENDS_PER_HOUR=${ALERT_MAX_SENDS_PER_HOUR:-20}
+      - FARMOS_URL=${FARMOS_URL:-http://10.68.155.50:18080}
+      - FARMOS_USERNAME=${FARMOS_USERNAME}
+      - FARMOS_INTEGRATION=${FARMOS_INTEGRATION:-0}
+      - DRAFT_PENDING_TIMEOUT_MIN=${DRAFT_PENDING_TIMEOUT_MIN:-30}
+      - DRAFT_WATCHDOG_INTERVAL_MS=${DRAFT_WATCHDOG_INTERVAL_MS:-60000}
+      - COMMIT_WATCHDOG_INTERVAL_MS=${COMMIT_WATCHDOG_INTERVAL_MS:-30000}
+      - COMMIT_WATCHDOG_BATCH_CAP=${COMMIT_WATCHDOG_BATCH_CAP:-10}
+      - COMMIT_RETRY_MAX=${COMMIT_RETRY_MAX:-3}
+      - WHISPER_URL=${WHISPER_URL:-http://host.docker.internal:8090}
+      - CAPTURE_BASE_PATH=${CAPTURE_BASE_PATH:-/data/signal-capture}
+      - CAPTURE_RETENTION_DAYS=${CAPTURE_RETENTION_DAYS:-30}
+      - TZ=${TZ:-America/Montevideo}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    networks:
+      - signal-net
+      - default
+
 networks:
   signal-net:
     driver: bridge
