@@ -42,6 +42,7 @@ from farm_agent.capture.pipeline import create_capture_pipeline
 from farm_agent.capture.retention import retention_loop
 from farm_agent.gate import create_event_gate
 from farm_agent.gate.classifier import create_haiku_classifier
+from farm_agent.extraction.extractor import create_extractor
 
 log = logging.getLogger(__name__)
 
@@ -85,7 +86,11 @@ async def main() -> None:
         log=log,
     )
 
-    pipeline = create_capture_pipeline(pool, signal_client, transcribe_client, config, gate=gate)
+    # Phase 60: shared AsyncAnthropic singleton reused -- no second client constructed.
+    # T-56-06-01: api_key stays in the one constructor above; never referenced here.
+    extractor = create_extractor(client=anthropic_client)
+
+    pipeline = create_capture_pipeline(pool, signal_client, transcribe_client, config, gate=gate, extractor=extractor)
 
     # Start the inbound drain (Phase 57 deferred -- now live).
     # T-58-03-05: only one ReceiveLoop constructed and started here.
