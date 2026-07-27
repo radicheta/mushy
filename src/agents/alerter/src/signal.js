@@ -113,16 +113,21 @@ function createSignalClient({ apiUrl, sender, recipient, defaultTarget, maxSends
 
     // Phase 50 Plan-02: build payload with optional quote.
     // - quote === undefined or null  -> no quote key in payload (back-compat)
-    // - quote present + valid        -> nested {timestamp:Number,author,message}
+    // - quote present + valid        -> FLAT quote_timestamp/quote_author/quote_message
     // - quote present + invalid      -> warn + unquoted send (fail-open)
+    //
+    // signal-cli-rest-api /v2/send takes FLAT quote fields, NOT a nested `quote`
+    // object. The nested shape (used since Phase 50) renders only on signal-cli
+    // 0.14.2; on the live 0.200 container it is silently dropped (201, no bubble).
+    // Confirmed via the container's /swagger/doc.json (api.SendMessageV2) and the
+    // Phase 57-04 Python live-fire (2026-06-21). See todo
+    // 2026-05-24-phase50-quote-rendering-broken-end-to-end.md.
     const payload = { message: body, number: sender, recipients };
     if (quote !== undefined && quote !== null) {
       if (isValidQuote(quote)) {
-        payload.quote = {
-          timestamp: Number(quote.timestamp),
-          author: quote.author,
-          message: quote.message,
-        };
+        payload.quote_timestamp = Number(quote.timestamp);
+        payload.quote_author = quote.author;
+        payload.quote_message = quote.message;
       } else {
         let dump;
         try { dump = JSON.stringify(quote); } catch (_) { dump = '[unstringifiable]'; }
