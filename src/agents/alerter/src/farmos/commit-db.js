@@ -17,6 +17,14 @@
 // No em-dashes anywhere in this file (memory: feedback_no_em_dashes_in_artifacts).
 
 async function initDb(pool) {
+  // Phase 62 D-01: the origin guard column must exist before findConfirmedCandidates
+  // runs its `AND origin != 'python'` clause, otherwise the SELECT throws and the
+  // never-throws wrapper returns [] (prod commits silently freeze). Adding it here
+  // makes the patched alerter self-sufficient on a clean DB; the Python migration
+  // adds the identical column independently (idempotent ADD COLUMN IF NOT EXISTS).
+  await pool.query(
+    `ALTER TABLE signal_draft ADD COLUMN IF NOT EXISTS origin text NOT NULL DEFAULT 'node'`
+  );
   await pool.query(
     `ALTER TABLE signal_draft ADD COLUMN IF NOT EXISTS farmos_response jsonb`
   );
@@ -48,7 +56,7 @@ async function findConfirmedCandidates(pool, batchCap) {
   try {
     const r = await pool.query(
       `SELECT * FROM signal_draft
-        WHERE status='confirmed'
+        WHERE status='confirmed' AND origin != 'python'
         ORDER BY confirmed_at ASC NULLS LAST
         LIMIT $1`,
       [batchCap]

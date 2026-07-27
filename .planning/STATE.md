@@ -2,25 +2,28 @@
 gsd_state_version: 1.0
 milestone: v1.12
 milestone_name: Farm-Agent Python Port
-status: executing
-last_updated: "2026-06-28T19:02:37.769Z"
-last_activity: 2026-06-28 -- Phase 61 execution started
+status: ready_to_plan
+last_updated: 2026-06-29T00:56:54.687Z
+last_activity: 2026-06-29
 progress:
   total_phases: 10
-  completed_phases: 5
-  total_plans: 25
-  completed_plans: 22
-  percent: 50
+  completed_phases: 6
+  total_plans: 37
+  completed_plans: 114
+  percent: 60
+stopped_at: Phase 62 complete (12/12) — ready to discuss Phase 63
 ---
 
 # Project State
+
+> **⚠ Phase 62 planning override (2026-06-28):** decision-coverage gate reported 0/7 (false-negative — D-ids cited in plan bodies/actions, not in `must_haves` blocks). Operator chose "Proceed anyway"; plan-checker independently verified Dimension 7 (Context Compliance) as Full coverage for D-01..D-08. verify-phase should confirm decision implementation directly, not rely on the gate.
 
 ## Project Reference
 
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 61 — confirm-loop
+**Current focus:** Phase 63 — chamber alerter
 
 > **⚡ 2026-06-22 PRIORITY NOTE — Phase 999.33 (Digital Twin / chamber sim) BUMPED (farmer-requested):** "the more we deal with this the more we want the digital twin." Do lightweight Python ODE — shape (a) — before the next live control-tuning round. Driver: today's blind live-chamber feather calibration (humidifier feather + Mode C reserve, commit `30534ff` on `fc1/prod`) shipped a setpoint bug live + left a stack of experiments blocked on live-chamber exposure (slew limiter, temp feedforward, halve `decay_tau`, re-anchor feather on band_low). See ROADMAP §999.33 + memory `project_humidifier_feather_deployed_2026_06_22`. Promote via `gsd-review-backlog` / `gsd-plan-phase 999.33` when ready.
 
@@ -41,7 +44,7 @@ container and builds the same nested `quote` (`src/agents/alerter/src/signal.js:
 
 ## Phase 56 Closeout (2026-06-15) — COMPLETE; first phase of v1.12 done
 
-**Status:** Executing Phase 61
+**Status:** Ready to plan
 
 6/6 plans executed and summarized. VERIFICATION.md: all five requirements
 (FND-01..05) VERIFIED. Code review (56-REVIEW.md) raised 9 findings; all 9 fixed
@@ -210,11 +213,11 @@ All in `.planning/todos/pending/`:
 
 ## Current Position
 
-Phase: 61 (confirm-loop) — EXECUTING
+Phase: 63
 Next: Phase 57 (Signal I/O) — not yet discussed/planned
-Plan: 1 of 3
-Status: Executing Phase 61
-Last activity: 2026-06-28 -- Phase 61 execution started
+Plan: Not started
+Status: Ready to execute
+Last activity: 2026-06-29
 
 **v1.12 phase map:**
 
@@ -270,7 +273,7 @@ Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (for
 
 **Velocity:**
 
-- Total plans completed: 86 (v1.0 + v1.1 + v1.2 + v1.2.1 + v1.3 Phase 17)
+- Total plans completed: 98 (v1.0 + v1.1 + v1.2 + v1.2.1 + v1.3 Phase 17)
 - Average duration: ~25 min/plan (estimated)
 - v1.2 plans completed: 0
 
@@ -356,6 +359,7 @@ Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (for
 - [Phase ?]: [57-01] signal_api_url uses _pick Tier-D default, not _must_env (URL not a secret)
 - [Phase ?]: [57-01] outbound_repo.insert_outbound: fail-open try/except, returns {ok:false,reason} never raises (T-57-01-01/D-02)
 - [Phase ?]: [57-01] FakeOutboundRepo + signal_http fixture in conftest.py for Wave 2 plan re-use
+- [Phase ?]: merge.py: copy.deepcopy for deepClone; golden fixture from Node merge.js; 8 cross-language parity cases
 
 ### Pending Todos
 
@@ -394,6 +398,10 @@ Phases 27 (PID), 28 (mode primitive), 29 (alerter modes), 30 (schedule), 31 (for
 | Phase 44 P03 | 5m44s | 2 tasks | 9 files |
 | Phase 55B-fidelity-corpus-unblock P03 | 12min | 2 tasks | 2 files |
 | Phase 56-foundation P03 | 5min | 1 tasks | 2 files |
+| Phase 62-farmos-write-path P03 | 10m | 3 tasks | 3 files |
+| Phase 62-farmos-write-path P06 | 214 | 2 tasks | 2 files |
+| Phase 62-farmos-write-path P07 | 423 | 2 tasks | 2 files |
+| Phase 62-farmos-write-path P11 | 1200 | 2 tasks | 5 files |
 
 ## Deferred Items
 
@@ -462,7 +470,7 @@ Items acknowledged and deferred at v1.4 milestone close on 2026-05-01:
 
 ## Session Continuity
 
-Last session: 2026-06-21T16:18:05.382Z
+Last session: 2026-06-29T00:02:29.557Z
 Next up: Phase 57 (Signal I/O) — `/gsd-discuss-phase 57` then plan/execute. Phase 56 (foundation) complete + verified + code-reviewed 2026-06-15. Optional follow-on: human-verify alerter-py boot on elder-plops (prod-readiness only, non-blocking).
 
 (Historical, pre-v1.12) Next up: Phase 45 (NORTH-STAR commit_failed ack + replay outstanding silent-failure drafts `b8a1e586` Vikki Rambo + `1fb28e70` Santi LIMA). Optional: 24-h v1.8 soak observation before starting Phase 45 scope work. v1.8 cutover already complete (alerter recreated 01:41:58 ART; bridge already on Phase 46 code).

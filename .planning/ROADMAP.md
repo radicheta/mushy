@@ -252,7 +252,7 @@ rollback (CR-01), no 55B-SECURITY.md.
 - [x] **Phase 59: Event Gate** - rule prefilter + Haiku classifier, reproduces Node gate accept/reject behavior (completed 2026-06-24)
 - [x] **Phase 60: Extraction Pipeline** - multimodal tool-use, retry/SeedingSession/provenance, B5 minting (completed 2026-06-26)
 - [x] **Phase 61: Confirm Loop** - YES/NO/EDIT FSM parity, strain-confirm, race-safe watchdog (completed 2026-06-28)
-- [ ] **Phase 62: farmOS Write Path** - httpx client, field-scoped image route, stable-identity upsert, strain/fidelity guard, origin guard (FIRST in this phase)
+- [x] **Phase 62: farmOS Write Path** - httpx client, field-scoped image route, stable-identity upsert, strain/fidelity guard, origin guard (FIRST in this phase) (completed 2026-06-29)
 - [ ] **Phase 63: Chamber Alerter** - ROS-bridge WS alerts, TZ Montevideo fix (mushy-private chamber/ package)
 - [ ] **Phase 64: Parity Gate** - golden-corpus >=95% field match on isolated :5434, intentional-delta enumeration, FSM+payload parity
 - [ ] **Phase 65: Cutover** - stop-start runbook, <2min rollback drill, post-cutover observation window
@@ -267,7 +267,7 @@ rollback (CR-01), no 55B-SECURITY.md.
 | 59. Event Gate | 4/4 | Complete   | 2026-06-24 |
 | 60. Extraction Pipeline | 4/4 | Complete   | 2026-06-26 |
 | 61. Confirm Loop | 3/3 | Complete   | 2026-06-28 |
-| 62. farmOS Write Path | 0/TBD | Not started | - |
+| 62. farmOS Write Path | 12/12 | Complete    | 2026-06-29 |
 | 63. Chamber Alerter | 0/TBD | Not started | - |
 | 64. Parity Gate | 0/TBD | Not started | - |
 | 65. Cutover | 0/TBD | Not started | - |
@@ -408,7 +408,21 @@ Plans:
   4. The v1.11 CSV fidelity gate is active: a draft whose block name disagrees with the CSV cross-check is held as `fidelity_cross_check_unverified`, not committed; POY is never silently committed as KOY.
   5. The curated-14-code strain resolver rejects unknown codes and surfaces them for farmer confirmation; the POY->KOY silent-misattribution class is regression-guarded by a named fixture test.
 
-**Plans**: TBD (not yet planned)
+**Note (SC2 wording, D-05)**: stable identity is NAME-BASED, not a hex digest. SC2 is satisfied by `merge.py` producing a byte-identical merged JSON:API payload to Node `merge.js` for the same input (cross-language golden fixture) plus 0 duplicate assets on a second dev-farmOS commit -- NOT a hex-digest match.
+
+**Plans**: 12 plans (origin guard FIRST per D-02; all commit-write work depends on it)
+- [x] 62-01-PLAN.md (wave 1) -- origin guard: migration (origin column + Phase 40 commit cols) + Node commit-db.js `AND origin != 'python'` patch + prod redeploy checkpoint (FWR-04)
+- [x] 62-02-PLAN.md (wave 2) -- httpx farmOS client: session-cookie + CSRF, never-throws, retry/backoff, octet-stream (FWR-01)
+- [x] 62-03-PLAN.md (wave 2) -- merge.py byte-identical port + cross-language golden fixture (FWR-02)
+- [x] 62-04-PLAN.md (wave 2) -- CSV fidelity gate + POY->KOY regression fixture + config field (FWR-03)
+- [x] 62-05-PLAN.md (wave 3) -- qr + fungi_type/xing caches + field-scoped image upload files.py (FWR-01, FWR-02)
+- [x] 62-06-PLAN.md (wave 3) -- logs.py create + upsert-by-stable-key (FWR-02)
+- [x] 62-07-PLAN.md (wave 4) -- assets.py name-based upsert merge cycle (FWR-02)
+- [x] 62-08-PLAN.md (wave 5) -- normalize.py + activity/input/observation/harvest handlers (FWR-01)
+- [x] 62-09-PLAN.md (wave 5) -- group/activity logs + commit_seeding + commit_seeding_session (image attach + rollback) (FWR-01)
+- [x] 62-10-PLAN.md (wave 6) -- commit_router + origin-guarded commit_db DAO (FWR-01, FWR-04)
+- [x] 62-11-PLAN.md (wave 7) -- commit_watchdog (fidelity-gate pre-commit hold) + boot wiring (FWR-04, FWR-01, FWR-03)
+- [x] 62-12-PLAN.md (wave 8) -- dev farmOS :18080 live-fire: 0-dup upsert + image-on-field + fidelity-hold (FWR-01, FWR-02, FWR-03)
 
 ### Phase 63: Chamber Alerter
 

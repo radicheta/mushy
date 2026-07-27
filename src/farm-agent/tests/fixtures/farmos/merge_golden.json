@@ -1,0 +1,774 @@
+[
+  {
+    "id": "array_ref_union_order",
+    "description": "set-union on relationships.parent.data preserves existing-first order",
+    "existing": {
+      "id": "a1",
+      "type": "asset--fungi",
+      "attributes": {
+        "name": "X",
+        "notes": {
+          "value": "",
+          "format": "plain_text"
+        }
+      },
+      "relationships": {
+        "parent": {
+          "data": [
+            {
+              "id": "p1",
+              "type": "asset--fungi"
+            }
+          ]
+        },
+        "qr_codes": {
+          "data": []
+        },
+        "farm_id_tag": {
+          "data": []
+        },
+        "fungi_type": {
+          "data": null
+        },
+        "fungi_xing": {
+          "data": null
+        }
+      }
+    },
+    "incoming": {
+      "id": "a1",
+      "type": "asset--fungi",
+      "attributes": {
+        "name": "X",
+        "notes": {
+          "value": "",
+          "format": "plain_text"
+        }
+      },
+      "relationships": {
+        "parent": {
+          "data": [
+            {
+              "id": "p2",
+              "type": "asset--fungi"
+            }
+          ]
+        },
+        "qr_codes": {
+          "data": []
+        },
+        "farm_id_tag": {
+          "data": []
+        },
+        "fungi_type": {
+          "data": null
+        },
+        "fungi_xing": {
+          "data": null
+        }
+      }
+    },
+    "merged": {
+      "id": "a1",
+      "type": "asset--fungi",
+      "attributes": {
+        "name": "X",
+        "notes": {
+          "value": "",
+          "format": "plain_text"
+        }
+      },
+      "relationships": {
+        "parent": {
+          "data": [
+            {
+              "id": "p1",
+              "type": "asset--fungi"
+            },
+            {
+              "id": "p2",
+              "type": "asset--fungi"
+            }
+          ]
+        },
+        "qr_codes": {
+          "data": []
+        },
+        "farm_id_tag": {
+          "data": []
+        },
+        "fungi_type": {
+          "data": null
+        },
+        "fungi_xing": {
+          "data": null
+        }
+      }
+    },
+    "conflicts": []
+  },
+  {
+    "id": "array_ref_union_dedup",
+    "description": "set-union dedup drops duplicate ids",
+    "existing": {
+      "id": "a1",
+      "type": "asset--fungi",
+      "attributes": {
+        "name": "X",
+        "notes": {
+          "value": "",
+          "format": "plain_text"
+        }
+      },
+      "relationships": {
+        "parent": {
+          "data": [
+            {
+              "id": "p1",
+              "type": "asset--fungi"
+            },
+            {
+              "id": "p2",
+              "type": "asset--fungi"
+            }
+          ]
+        },
+        "qr_codes": {
+          "data": []
+        },
+        "farm_id_tag": {
+          "data": []
+        },
+        "fungi_type": {
+          "data": null
+        },
+        "fungi_xing": {
+          "data": null
+        }
+      }
+    },
+    "incoming": {
+      "id": "a1",
+      "type": "asset--fungi",
+      "attributes": {
+        "name": "X",
+        "notes": {
+          "value": "",
+          "format": "plain_text"
+        }
+      },
+      "relationships": {
+        "parent": {
+          "data": [
+            {
+              "id": "p2",
+              "type": "asset--fungi"
+            },
+            {
+              "id": "p3",
+              "type": "asset--fungi"
+            }
+          ]
+        },
+        "qr_codes": {
+          "data": []
+        },
+        "farm_id_tag": {
+          "data": []
+        },
+        "fungi_type": {
+          "data": null
+        },
+        "fungi_xing": {
+          "data": null
+        }
+      }
+    },
+    "merged": {
+      "id": "a1",
+      "type": "asset--fungi",
+      "attributes": {
+        "name": "X",
+        "notes": {
+          "value": "",
+          "format": "plain_text"
+        }
+      },
+      "relationships": {
+        "parent": {
+          "data": [
+            {
+              "id": "p1",
+              "type": "asset--fungi"
+            },
+            {
+              "id": "p2",
+              "type": "asset--fungi"
+            },
+            {
+              "id": "p3",
+              "type": "asset--fungi"
+            }
+          ]
+        },
+        "qr_codes": {
+          "data": []
+        },
+        "farm_id_tag": {
+          "data": []
+        },
+        "fungi_type": {
+          "data": null
+        },
+        "fungi_xing": {
+          "data": null
+        }
+      }
+    },
+    "conflicts": []
+  },
+  {
+    "id": "scalar_rel_equal_noop",
+    "description": "scalar singleton equal is a noop (no conflict, value preserved)",
+    "existing": {
+      "id": "a1",
+      "type": "asset--fungi",
+      "attributes": {
+        "name": "X",
+        "notes": {
+          "value": "",
+          "format": "plain_text"
+        }
+      },
+      "relationships": {
+        "parent": {
+          "data": []
+        },
+        "qr_codes": {
+          "data": []
+        },
+        "farm_id_tag": {
+          "data": []
+        },
+        "fungi_type": {
+          "data": {
+            "id": "ft-shi",
+            "type": "taxonomy_term--fungi_type"
+          }
+        },
+        "fungi_xing": {
+          "data": null
+        }
+      }
+    },
+    "incoming": {
+      "id": "a1",
+      "type": "asset--fungi",
+      "attributes": {
+        "name": "X",
+        "notes": {
+          "value": "",
+          "format": "plain_text"
+        }
+      },
+      "relationships": {
+        "parent": {
+          "data": []
+        },
+        "qr_codes": {
+          "data": []
+        },
+        "farm_id_tag": {
+          "data": []
+        },
+        "fungi_type": {
+          "data": {
+            "id": "ft-shi",
+            "type": "taxonomy_term--fungi_type"
+          }
+        },
+        "fungi_xing": {
+          "data": null
+        }
+      }
+    },
+    "merged": {
+      "id": "a1",
+      "type": "asset--fungi",
+      "attributes": {
+        "name": "X",
+        "notes": {
+          "value": "",
+          "format": "plain_text"
+        }
+      },
+      "relationships": {
+        "parent": {
+          "data": []
+        },
+        "qr_codes": {
+          "data": []
+        },
+        "farm_id_tag": {
+          "data": []
+        },
+        "fungi_type": {
+          "data": {
+            "id": "ft-shi",
+            "type": "taxonomy_term--fungi_type"
+          }
+        },
+        "fungi_xing": {
+          "data": null
+        }
+      }
+    },
+    "conflicts": []
+  },
+  {
+    "id": "scalar_rel_differ_conflict",
+    "description": "scalar singleton differ surfaces conflict and retains existing",
+    "existing": {
+      "id": "a1",
+      "type": "asset--fungi",
+      "attributes": {
+        "name": "X",
+        "notes": {
+          "value": "",
+          "format": "plain_text"
+        }
+      },
+      "relationships": {
+        "parent": {
+          "data": []
+        },
+        "qr_codes": {
+          "data": []
+        },
+        "farm_id_tag": {
+          "data": []
+        },
+        "fungi_type": {
+          "data": {
+            "id": "ft-shi",
+            "type": "taxonomy_term--fungi_type"
+          }
+        },
+        "fungi_xing": {
+          "data": null
+        }
+      }
+    },
+    "incoming": {
+      "id": "a1",
+      "type": "asset--fungi",
+      "attributes": {
+        "name": "X",
+        "notes": {
+          "value": "",
+          "format": "plain_text"
+        }
+      },
+      "relationships": {
+        "parent": {
+          "data": []
+        },
+        "qr_codes": {
+          "data": []
+        },
+        "farm_id_tag": {
+          "data": []
+        },
+        "fungi_type": {
+          "data": {
+            "id": "ft-koy",
+            "type": "taxonomy_term--fungi_type"
+          }
+        },
+        "fungi_xing": {
+          "data": null
+        }
+      }
+    },
+    "merged": {
+      "id": "a1",
+      "type": "asset--fungi",
+      "attributes": {
+        "name": "X",
+        "notes": {
+          "value": "",
+          "format": "plain_text"
+        }
+      },
+      "relationships": {
+        "parent": {
+          "data": []
+        },
+        "qr_codes": {
+          "data": []
+        },
+        "farm_id_tag": {
+          "data": []
+        },
+        "fungi_type": {
+          "data": {
+            "id": "ft-shi",
+            "type": "taxonomy_term--fungi_type"
+          }
+        },
+        "fungi_xing": {
+          "data": null
+        }
+      }
+    },
+    "conflicts": [
+      {
+        "field": "fungi_type",
+        "existing": "ft-shi",
+        "incoming": "ft-koy",
+        "kind": "scalar_conflict"
+      }
+    ]
+  },
+  {
+    "id": "notes_dedup",
+    "description": "notes dedup splits on STABLE_NOTES_SEPARATOR and appends only new entries",
+    "existing": {
+      "id": "a1",
+      "type": "asset--fungi",
+      "attributes": {
+        "name": "X",
+        "notes": {
+          "value": "entry_A\n---\nentry_B",
+          "format": "plain_text"
+        }
+      },
+      "relationships": {
+        "parent": {
+          "data": []
+        },
+        "qr_codes": {
+          "data": []
+        },
+        "farm_id_tag": {
+          "data": []
+        },
+        "fungi_type": {
+          "data": null
+        },
+        "fungi_xing": {
+          "data": null
+        }
+      }
+    },
+    "incoming": {
+      "id": "a1",
+      "type": "asset--fungi",
+      "attributes": {
+        "name": "X",
+        "notes": {
+          "value": "entry_B\n---\nentry_C",
+          "format": "plain_text"
+        }
+      },
+      "relationships": {
+        "parent": {
+          "data": []
+        },
+        "qr_codes": {
+          "data": []
+        },
+        "farm_id_tag": {
+          "data": []
+        },
+        "fungi_type": {
+          "data": null
+        },
+        "fungi_xing": {
+          "data": null
+        }
+      }
+    },
+    "merged": {
+      "id": "a1",
+      "type": "asset--fungi",
+      "attributes": {
+        "name": "X",
+        "notes": {
+          "value": "entry_A\n---\nentry_B\n---\nentry_C",
+          "format": "plain_text"
+        }
+      },
+      "relationships": {
+        "parent": {
+          "data": []
+        },
+        "qr_codes": {
+          "data": []
+        },
+        "farm_id_tag": {
+          "data": []
+        },
+        "fungi_type": {
+          "data": null
+        },
+        "fungi_xing": {
+          "data": null
+        }
+      }
+    },
+    "conflicts": []
+  },
+  {
+    "id": "stub_marker_survives",
+    "description": "STUB_BACKFILL_MARKER text survives merge unstripped",
+    "existing": {
+      "id": "a1",
+      "type": "asset--fungi",
+      "attributes": {
+        "name": "X",
+        "notes": {
+          "value": "STUB - awaits 2025-paper-scan backfill",
+          "format": "plain_text"
+        }
+      },
+      "relationships": {
+        "parent": {
+          "data": []
+        },
+        "qr_codes": {
+          "data": []
+        },
+        "farm_id_tag": {
+          "data": []
+        },
+        "fungi_type": {
+          "data": null
+        },
+        "fungi_xing": {
+          "data": null
+        }
+      }
+    },
+    "incoming": {
+      "id": "a1",
+      "type": "asset--fungi",
+      "attributes": {
+        "name": "X",
+        "notes": {
+          "value": "real inoc 2026-05-22",
+          "format": "plain_text"
+        }
+      },
+      "relationships": {
+        "parent": {
+          "data": []
+        },
+        "qr_codes": {
+          "data": []
+        },
+        "farm_id_tag": {
+          "data": []
+        },
+        "fungi_type": {
+          "data": null
+        },
+        "fungi_xing": {
+          "data": null
+        }
+      }
+    },
+    "merged": {
+      "id": "a1",
+      "type": "asset--fungi",
+      "attributes": {
+        "name": "X",
+        "notes": {
+          "value": "STUB - awaits 2025-paper-scan backfill\n---\nreal inoc 2026-05-22",
+          "format": "plain_text"
+        }
+      },
+      "relationships": {
+        "parent": {
+          "data": []
+        },
+        "qr_codes": {
+          "data": []
+        },
+        "farm_id_tag": {
+          "data": []
+        },
+        "fungi_type": {
+          "data": null
+        },
+        "fungi_xing": {
+          "data": null
+        }
+      }
+    },
+    "conflicts": []
+  },
+  {
+    "id": "scalar_rel_null_take",
+    "description": "scalar singleton null=take: existing null, incoming has value -> take it",
+    "existing": {
+      "id": "a1",
+      "type": "asset--fungi",
+      "attributes": {
+        "name": "X",
+        "notes": {
+          "value": "",
+          "format": "plain_text"
+        }
+      },
+      "relationships": {
+        "parent": {
+          "data": []
+        },
+        "qr_codes": {
+          "data": []
+        },
+        "farm_id_tag": {
+          "data": []
+        },
+        "fungi_type": {
+          "data": null
+        },
+        "fungi_xing": {
+          "data": null
+        }
+      }
+    },
+    "incoming": {
+      "id": "a1",
+      "type": "asset--fungi",
+      "attributes": {
+        "name": "X",
+        "notes": {
+          "value": "",
+          "format": "plain_text"
+        }
+      },
+      "relationships": {
+        "parent": {
+          "data": []
+        },
+        "qr_codes": {
+          "data": []
+        },
+        "farm_id_tag": {
+          "data": []
+        },
+        "fungi_type": {
+          "data": {
+            "id": "ft-shi",
+            "type": "taxonomy_term--fungi_type"
+          }
+        },
+        "fungi_xing": {
+          "data": null
+        }
+      }
+    },
+    "merged": {
+      "id": "a1",
+      "type": "asset--fungi",
+      "attributes": {
+        "name": "X",
+        "notes": {
+          "value": "",
+          "format": "plain_text"
+        }
+      },
+      "relationships": {
+        "parent": {
+          "data": []
+        },
+        "qr_codes": {
+          "data": []
+        },
+        "farm_id_tag": {
+          "data": []
+        },
+        "fungi_type": {
+          "data": {
+            "id": "ft-shi",
+            "type": "taxonomy_term--fungi_type"
+          }
+        },
+        "fungi_xing": {
+          "data": null
+        }
+      }
+    },
+    "conflicts": []
+  },
+  {
+    "id": "identity_mutation_name",
+    "description": "throws IdentityMutationError when attributes.name changes",
+    "existing": {
+      "id": "a1",
+      "type": "asset--fungi",
+      "attributes": {
+        "name": "X",
+        "notes": {
+          "value": "",
+          "format": "plain_text"
+        }
+      },
+      "relationships": {
+        "parent": {
+          "data": []
+        },
+        "qr_codes": {
+          "data": []
+        },
+        "farm_id_tag": {
+          "data": []
+        },
+        "fungi_type": {
+          "data": null
+        },
+        "fungi_xing": {
+          "data": null
+        }
+      }
+    },
+    "incoming": {
+      "id": "a1",
+      "type": "asset--fungi",
+      "attributes": {
+        "name": "Y",
+        "notes": {
+          "value": "",
+          "format": "plain_text"
+        }
+      },
+      "relationships": {
+        "parent": {
+          "data": []
+        },
+        "qr_codes": {
+          "data": []
+        },
+        "farm_id_tag": {
+          "data": []
+        },
+        "fungi_type": {
+          "data": null
+        },
+        "fungi_xing": {
+          "data": null
+        }
+      }
+    },
+    "merged": null,
+    "conflicts": null,
+    "thrown": {
+      "field": "name",
+      "existing": "X",
+      "incoming": "Y",
+      "message": "identity_mutation:name"
+    }
+  }
+]

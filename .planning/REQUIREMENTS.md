@@ -54,10 +54,10 @@
 
 ### FWR — farmOS write path
 
-- [ ] **FWR-01**: Confirmed drafts commit to farmOS via an httpx async client reproducing all log types and asset creates/patches, including the field-scoped image upload route (`POST /api/asset/{type}/{uuid}/image`).
-- [ ] **FWR-02**: Upsert-by-stable-identity is byte-identical to Node — a cross-language fixture proves the same input yields the same stable-identity digest (Node hex == Python hex); writes patch existing entities, never create duplicates.
-- [ ] **FWR-03**: Strain resolver reproduces curated-14-code exact matching + variant normalization (the POY-as-KOY class of bug is regression-guarded); the v1.11 commit-time CSV fidelity gate is preserved.
-- [ ] **FWR-04**: An **origin guard** is committed before any write path runs — a Python validation/shadow process never has its drafts drained by the live Node commit-watchdog (shared-prod-Timescale leak is structurally prevented).
+- [x] **FWR-01**: Confirmed drafts commit to farmOS via an httpx async client reproducing all log types and asset creates/patches, including the field-scoped image upload route (`POST /api/asset/{type}/{uuid}/image`).
+- [x] **FWR-02**: Upsert-by-stable-identity is byte-identical to Node — a cross-language fixture proves the same input yields the same stable-identity digest (Node hex == Python hex); writes patch existing entities, never create duplicates.
+- [x] **FWR-03**: Strain resolver reproduces curated-14-code exact matching + variant normalization (the POY-as-KOY class of bug is regression-guarded); the v1.11 commit-time CSV fidelity gate is preserved.
+- [x] **FWR-04**: An **origin guard** is committed before any write path runs — a Python validation/shadow process never has its drafts drained by the live Node commit-watchdog (shared-prod-Timescale leak is structurally prevented).
 
 ### CHM — Chamber alerting (mushy-private)
 
@@ -114,10 +114,10 @@
 | XTR-03 | Phase 60 | Pending |
 | CNF-01 | Phase 61 | Pending |
 | CNF-02 | Phase 61 | Pending |
-| FWR-01 | Phase 62 | Pending |
-| FWR-02 | Phase 62 | Pending |
-| FWR-03 | Phase 62 | Pending |
-| FWR-04 | Phase 62 | Pending |
+| FWR-01 | Phase 62 | Complete |
+| FWR-02 | Phase 62 | Complete |
+| FWR-03 | Phase 62 | Complete |
+| FWR-04 | Phase 62 | Complete |
 | CHM-01 | Phase 63 | Pending |
 | CHM-02 | Phase 63 | Pending |
 | PAR-01 | Phase 64 | Pending |

@@ -151,3 +151,93 @@ async def test_boot_logs_no_secrets(monkeypatch, caplog):
             assert secret not in record.getMessage(), (
                 f"Secret value '{secret}' found in log record: {record.getMessage()!r}"
             )
+
+
+# ---------------------------------------------------------------------------
+# test_boot_commit_watchdog_created_when_farmos_integration_true
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_boot_commit_watchdog_created_when_farmos_integration_true(monkeypatch, caplog):
+    """
+    When FARMOS_INTEGRATION=1, boot starts the commit_watchdog_loop task
+    and logs the '[commit_watchdog] started' line.
+
+    Requires a reachable test DB (the watchdog ticks immediately on boot
+    and calls release_stale_locks + find_confirmed_candidates against the DB).
+    """
+    if not _db_reachable():
+        pytest.skip("no test DB reachable -- start postgres:14 on port 5434")
+
+    from tests.conftest import TEST_ENV  # noqa: PLC0415
+    import os
+    for k, v in TEST_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("FARMOS_INTEGRATION", "1")
+
+    from farm_agent.boot import main  # noqa: PLC0415
+
+    with caplog.at_level(logging.INFO, logger="farm_agent"):
+        task = asyncio.create_task(main())
+        try:
+            await asyncio.wait_for(asyncio.shield(task), timeout=5.0)
+        except asyncio.TimeoutError:
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    messages = [r.getMessage() for r in caplog.records]
+    assert any("commit_watchdog" in m and "started" in m for m in messages), (
+        f"[commit_watchdog] started not found in logs: {messages}"
+    )
+    assert any("boot complete" in m for m in messages), (
+        f"boot complete not logged -- boot may have hung"
+    )
+
+
+# ---------------------------------------------------------------------------
+# test_boot_commit_watchdog_not_created_when_farmos_integration_false
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_boot_commit_watchdog_not_created_when_farmos_integration_false(monkeypatch, caplog):
+    """
+    When FARMOS_INTEGRATION is not set (default False), no commit_watchdog task
+    is started and '[commit_watchdog] started' does NOT appear in logs.
+    """
+    if not _db_reachable():
+        pytest.skip("no test DB reachable -- start postgres:14 on port 5434")
+
+    from tests.conftest import TEST_ENV  # noqa: PLC0415
+    import os
+    for k, v in TEST_ENV.items():
+        monkeypatch.setenv(k, v)
+    # Ensure FARMOS_INTEGRATION is explicitly 0 (default False)
+    monkeypatch.setenv("FARMOS_INTEGRATION", "0")
+
+    from farm_agent.boot import main  # noqa: PLC0415
+
+    with caplog.at_level(logging.INFO, logger="farm_agent"):
+        task = asyncio.create_task(main())
+        try:
+            await asyncio.wait_for(asyncio.shield(task), timeout=5.0)
+        except asyncio.TimeoutError:
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    messages = [r.getMessage() for r in caplog.records]
+    assert not any("commit_watchdog" in m and "started" in m for m in messages), (
+        f"[commit_watchdog] started found in logs but should NOT be (farmos_integration=False): {messages}"
+    )
+    assert any("boot complete" in m for m in messages), (
+        f"boot complete not logged -- boot may have hung"
+    )

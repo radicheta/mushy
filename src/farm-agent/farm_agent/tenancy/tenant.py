@@ -281,6 +281,9 @@ class TenantConfig:
     commit_watchdog_batch_cap: int
     commit_retry_max: int
 
+    # --- farmOS fidelity gate ---
+    fidelity_csv_path: str
+
     # --- General ---
     timezone: str
     log_level: str
@@ -382,6 +385,9 @@ def load(env: dict[str, str] | None = None) -> TenantConfig:
     commit_watchdog_batch_cap = _parse_int_env(env, "COMMIT_WATCHDOG_BATCH_CAP", 10)
     commit_retry_max = _parse_int_env(env, "COMMIT_RETRY_MAX", 3)
 
+    # --- farmOS fidelity gate ---
+    fidelity_csv_path = _pick(tenant_cfg, env, "FIDELITY_CSV_PATH", "")
+
     # --- General ---
     timezone = env.get("TZ") or "America/Toronto"
     log_level = env.get("LOG_LEVEL") or "info"
@@ -422,6 +428,7 @@ def load(env: dict[str, str] | None = None) -> TenantConfig:
         commit_watchdog_interval_ms=commit_watchdog_interval_ms,
         commit_watchdog_batch_cap=commit_watchdog_batch_cap,
         commit_retry_max=commit_retry_max,
+        fidelity_csv_path=str(fidelity_csv_path),
         timezone=timezone,
         log_level=log_level,
     )

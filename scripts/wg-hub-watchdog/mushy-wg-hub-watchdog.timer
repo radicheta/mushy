@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the wg-hub watchdog every 2 minutes — MUSHY-29
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+Unit=mushy-wg-hub-watchdog.service
+
+[Install]
+WantedBy=timers.target

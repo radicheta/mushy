@@ -1,0 +1,11 @@
+[Unit]
+Description=Mushy wg-hub watchdog (bounce wg-quick@wg-hub on stale handshake) — MUSHY-29
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Runs as root: `wg show` and `systemctl restart wg-quick@wg-hub` both require it.
+ExecStart=/usr/local/bin/wg-hub-watchdog.sh
+StandardOutput=journal
+StandardError=journal

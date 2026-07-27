@@ -328,7 +328,7 @@ async def _run_outbound_migrations(conn) -> None:
 
 
 # ---------------------------------------------------------------------------
-# signal_draft commit columns (commit-db.js / Phase 40 + Phase 45)
+# signal_draft commit columns (commit-db.js / Phase 40 + Phase 45 + Phase 62)
 # ---------------------------------------------------------------------------
 
 async def _run_commit_migrations(conn) -> None:
@@ -336,7 +336,28 @@ async def _run_commit_migrations(conn) -> None:
 
     All ADD COLUMN IF NOT EXISTS so safe to run after _run_draft_migrations
     on a DB that already has these columns.
+
+    Allowed signal_draft.status values after all migrations (validated in
+    application code, NOT via pg CHECK constraint -- mirrors Phase 38/39
+    precedent):
+      pending | awaiting_farmer | confirmed | discarded | expired |
+      needs_review | committing | committed | commit_failed |
+      fidelity_cross_check_unverified
+
+    fidelity_cross_check_unverified (Phase 62 D-06): Python commit_db holds a
+    draft here when the CSV fidelity cross-check cannot verify the extraction;
+    the Node commit-watchdog never drains this status (it only polls
+    status='confirmed' AND origin != 'python').
     """
+    # Phase 62 D-01: origin guard column. Default 'node' so all legacy rows
+    # and Node-written rows are drained by the Node commit-watchdog unchanged.
+    # Python commit_db writes origin='python'; findConfirmedCandidates in the
+    # Node watchdog filters AND origin != 'python' so Python-owned drafts
+    # cannot leak to prod farmOS via the 30s drain loop.
+    await conn.execute(
+        "ALTER TABLE signal_draft ADD COLUMN IF NOT EXISTS origin text NOT NULL DEFAULT 'node'"
+    )
+
     # Phase 40 D-02 / D-07: farmOS write columns.
     await conn.execute(
         "ALTER TABLE signal_draft ADD COLUMN IF NOT EXISTS farmos_response jsonb"

@@ -1,0 +1,11 @@
+{
+  "log_type": "seeding",
+  "id": "lf-seed-001",
+  "block_name": "LF_BLOCK_PLACEHOLDER",
+  "draft_json": {
+    "block_name": "LF_BLOCK_PLACEHOLDER",
+    "species_code": "SHI",
+    "timestamp": 1750000000,
+    "notes": "live-fire seeding test fixture (block_name overridden at runtime)"
+  }
+}
