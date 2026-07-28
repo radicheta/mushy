@@ -129,7 +129,11 @@ services:
       - ALERT_HEARTBEAT_HOUR=${ALERT_HEARTBEAT_HOUR:-8}
       - ALERT_RECEIVE_POLL_SEC=${ALERT_RECEIVE_POLL_SEC:-30}
       - DASHBOARD_URL=${DASHBOARD_URL:-http://100.96.10.66:8080/}
-      - TZ=America/Toronto
+      # The farm is in Uruguay (UYT, UTC-3). Toronto was a Phase-13 scaffolding
+      # default and made node-cron schedules + ALERT_HEARTBEAT_HOUR fire an hour
+      # late in local terms. Safe on non-UTC only because node-cron is pinned
+      # ^3.0.3 -- 4.x breaks on non-UTC TZ. Matches alerter-py below.
+      - TZ=${TZ:-America/Montevideo}
       # Phase 25 capture pipeline env (consumed by capture-db, transcribe-client, llm-client)
       # TIMESCALE_HOST=timescale resolves via the default compose network (alerter joins it below).
       # host.docker.internal won't work because timescale binds 127.0.0.1:5432 on the host.
