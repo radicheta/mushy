@@ -13,7 +13,7 @@ from typing import Optional
 from statistics import median
 from fc_core import scheduler
 from fc_core.vendor.simple_pid import PID
-from fc_core.control_kernel import BandSpec, project_error_pct
+from fc_core.control_kernel import BandSpec, duty_bias_factor, project_error_pct
 from fc_msgs.msg import Mode
 from fc_msgs.srv import SetMode, StartExperiment, CancelExperiment
 from rcl_interfaces.msg import SetParametersResult
@@ -1712,9 +1712,8 @@ class FruitingChamberController(Node):
             # The projection itself lives in fc_core.control_kernel so the
             # offline simulator (fc_core.sim) exercises the SAME arithmetic
             # this loop runs. Do not re-inline it here.
-            projected = project_error_pct(
-                rh, BandSpec(mode.band_low, mode.band_high, mode.defend_side)
-            )
+            band = BandSpec(mode.band_low, mode.band_high, mode.defend_side)
+            projected = project_error_pct(rh, band)
             if projected is None:
                 # defend_side=low: don't fight upward. Clamp duty + freeze
                 # integrator. Bumpless re-engage on return into band uses
@@ -1800,9 +1799,16 @@ class FruitingChamberController(Node):
                 # slew limiter nor integrator-decay changes did anything.
                 # Set to the chamber's measured equilibrium duty. Default 0.0
                 # (disabled) — an over-large bias raises the operating point.
+                #
+                # MUSHY-57: scaled by duty_bias_factor, which fades the bias
+                # from full at the band midpoint to 0 at band_high. Added after
+                # the PID's own (0,1) clamp, a FLAT bias would become the
+                # minimum commandable duty — on a high-ambient day the chamber
+                # could never idle, and the humidifier can only add moisture.
                 bias = self.get_parameter('humidifier_duty_bias').value
                 if bias > 0.0:
-                    duty = max(0.0, min(1.0, duty + bias))
+                    duty = max(0.0, min(
+                        1.0, duty + bias * duty_bias_factor(rh, band)))
 
             self._publish_duty(duty)
 

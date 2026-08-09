@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from math import exp
 from typing import List, Optional
 
-from fc_core.control_kernel import BandSpec, project_error_pct
+from fc_core.control_kernel import BandSpec, duty_bias_factor, project_error_pct
 from fc_core.sim.chamber_model import ChamberModel, ChamberParams
 from fc_core.sim.pwm_window import PwmConfig, PwmSimulator
 from fc_core.vendor.simple_pid import PID
@@ -146,8 +146,11 @@ def run_closed_loop(hours: float,
 
                 # Feedforward bias -- PID branch only, mirroring
                 # fc_controller. The freeze and Mode C paths must not get it.
+                # MUSHY-57: faded across the upper band so it can never floor
+                # the output; a genuine zero-demand day still reaches duty 0.
                 if duty_bias > 0.0:
-                    duty = max(0.0, min(1.0, duty + duty_bias))
+                    duty = max(0.0, min(
+                        1.0, duty + duty_bias * duty_bias_factor(rh_frac, band)))
 
         duty = apply_slew(duty, last_duty, dt, climb_seconds)
         last_duty = duty

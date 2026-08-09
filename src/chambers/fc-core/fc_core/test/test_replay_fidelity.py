@@ -111,6 +111,37 @@ def test_recommended_config_discards_nothing(recommended):
     assert recommended.discarded_s == 0.0
 
 
+# ---------------------------------------------------------------------------
+# MUSHY-57: the bias must not become a duty floor.
+#
+# The high-ambient day is modelled as leak_pts_per_hour = 0.0 -- the chamber
+# holds its own RH, so the correct standing duty is zero, not equilibrium_duty.
+# A flat bias cannot express that: the humidifier only adds moisture, so the
+# chamber would climb without limit.
+# ---------------------------------------------------------------------------
+
+HIGH_AMBIENT = ChamberParams(leak_pts_per_hour=0.0)
+
+
+@pytest.fixture(scope='module')
+def high_ambient():
+    return run_closed_loop(hours=6.0, params=HIGH_AMBIENT, pwm_cfg=RECOMMENDED,
+                           rh0=92.0, duty_bias=EQUILIBRIUM_BIAS)
+
+
+def test_high_ambient_day_reaches_zero_duty(high_ambient):
+    """Above the band with nothing draining it, the bias must let go entirely."""
+    last_hour = high_ambient.duty_series[-3600:]
+    assert max(last_hour) == pytest.approx(0.0, abs=1e-12), (
+        f'humidifier never turned off; min commandable duty was '
+        f'{min(last_hour):.3f}')
+
+
+def test_high_ambient_day_does_not_run_rh_away(high_ambient):
+    """With a floored duty the chamber climbs ~2.25 pts/h forever."""
+    assert high_ambient.rh_max < 92.5
+
+
 def test_slew_limiter_cannot_bind_and_is_therefore_not_shipped():
     """Documents a NEGATIVE result so nobody re-proposes it from intuition.
 

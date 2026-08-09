@@ -6,7 +6,7 @@ the live fruiting band [0.885, 0.915]: midpoint 0.900, w = 1.5 pct.
 """
 import pytest
 
-from fc_core.control_kernel import BandSpec, project_error_pct
+from fc_core.control_kernel import BandSpec, duty_bias_factor, project_error_pct
 
 FRUITING = BandSpec(band_low=0.885, band_high=0.915, defend_side='both')
 
@@ -96,6 +96,66 @@ def test_degenerates_to_linear_when_band_has_zero_width():
 def test_error_is_monotonic_nonincreasing_as_rh_falls(rh):
     """Drier air must never produce a weaker humidify command."""
     assert project_error_pct(rh, FRUITING) <= project_error_pct(rh + 0.001, FRUITING) + 1e-12
+
+
+# ---------------------------------------------------------------------------
+# MUSHY-57: the feedforward duty bias must never impose a floor on the output.
+#
+# The bias is added after the PID's own (0,1) clamp, so a flat bias makes the
+# bias itself the minimum commandable duty. On a high-ambient day, when the
+# chamber should idle, the humidifier could then never turn off -- and it can
+# only ADD moisture. The factor fades the bias out across the upper half of
+# the band so a genuine zero-demand condition still reaches duty 0.
+# ---------------------------------------------------------------------------
+
+def test_bias_factor_is_full_at_the_midpoint():
+    """The midpoint is where the feather zeroes the error and the standing
+    duty is needed most. Bias must be undiminished there."""
+    assert duty_bias_factor(0.900, FRUITING) == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize('rh', [0.870, 0.885, 0.895])
+def test_bias_factor_is_full_below_the_midpoint(rh):
+    assert duty_bias_factor(rh, FRUITING) == pytest.approx(1.0)
+
+
+def test_bias_factor_is_zero_at_band_high():
+    """The whole point: at the top of the band the bias must be gone, so the
+    controller can command a true zero."""
+    assert duty_bias_factor(0.915, FRUITING) == pytest.approx(0.0)
+
+
+@pytest.mark.parametrize('rh', [0.916, 0.930, 1.0])
+def test_bias_factor_stays_zero_above_band_high(rh):
+    assert duty_bias_factor(rh, FRUITING) == pytest.approx(0.0)
+
+
+def test_bias_factor_ramps_linearly_across_the_upper_band():
+    # Midpoint 0.900, band_high 0.915 -> 0.9075 is exactly halfway.
+    assert duty_bias_factor(0.9075, FRUITING) == pytest.approx(0.5, abs=1e-9)
+    assert duty_bias_factor(0.9037, FRUITING) == pytest.approx(
+        (0.915 - 0.9037) / 0.015, abs=1e-9)
+
+
+def test_bias_factor_is_continuous_at_the_midpoint():
+    """A step here would inject a `bias`-sized jump into commanded duty every
+    time RH crossed the midpoint -- the discard-zone chatter we are avoiding."""
+    eps = 1e-9
+    below = duty_bias_factor(0.900 - eps, FRUITING)
+    above = duty_bias_factor(0.900 + eps, FRUITING)
+    assert below == pytest.approx(above, abs=1e-6)
+
+
+@pytest.mark.parametrize('rh', [0.880, 0.890, 0.900, 0.905, 0.910, 0.915, 0.920])
+def test_bias_factor_is_monotonic_nonincreasing_as_rh_rises(rh):
+    """Wetter air must never earn MORE standing duty."""
+    assert duty_bias_factor(rh + 0.001, FRUITING) <= duty_bias_factor(rh, FRUITING) + 1e-12
+
+
+def test_bias_factor_handles_zero_width_band_without_dividing_by_zero():
+    band = BandSpec(band_low=0.900, band_high=0.900, defend_side='both')
+    assert duty_bias_factor(0.890, band) == pytest.approx(1.0)
+    assert duty_bias_factor(0.900, band) == pytest.approx(0.0)
 
 
 # ---------------------------------------------------------------------------
