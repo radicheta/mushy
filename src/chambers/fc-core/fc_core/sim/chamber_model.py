@@ -1,45 +1,81 @@
-"""Empirically-fitted first-order-plus-dead-time model of FC-1's humidity.
+"""Chamber humidity model as an absolute-moisture balance (MUSHY-60).
 
-Parameters are fitted to the 2026-08-08 26 h trace, NOT derived from air mass.
+The prior model balanced RH percentage points per hour, which is NOT a
+conserved quantity -- the same gram of water is a different number of RH
+points at 3 C than at 20 C (see ``psychrometrics.absolute_humidity_g_m3``).
+This version balances grams of water per cubic metre and derives RH from
+temperature on read, so the moisture balance itself does not have to know
+what temperature the chamber is at.
 
-Why not first principles: the prior 999.33 plan specified ``air_mass_kg=7.0``
-and ``mister_rate_g_per_min=6.0``. At 4.8 C the chamber's 5.76 m3 holds only
-~38 g of water at saturation, so 1 pct RH is ~0.38 g and 6 g/min would move RH
-at roughly 950 pts/h. Measured rise is 22.5 pts/h -- off by a factor of ~40.
-The missing capacitance is the substrate: a fruiting chamber full of wet blocks
-is a moisture buffer orders of magnitude larger than its air volume. Rather
-than model the substrate explicitly, fit the aggregate response.
+Fitted constants (Task 2, see 999.33-06-FIT-RESULTS.md):
+
+    FITTED_Q = 0.9634   # m3/h
+    FITTED_F = 6.776    # g/h
+
+Task 2's identification found that the only WELL-IDENTIFIED quantity is the
+ratio F/Q = 7.0337 (computed independently as mean_gradient/mean_duty, so it
+does not depend on Q, on the lag model, or on the quiet-band choice). Absolute
+Q and F each carry a systematic uncertainty of roughly +/-20% from the band
+choice. F is therefore set as Q * (F/Q) = 0.9634 * 7.0337 = 6.776 -- NOT the
+fit's headline 7.11 -- so that the model's steady-state behaviour matches the
+identified ratio exactly. Using 7.11 instead would put steady-state duty 5%
+off the one number we actually trust. This is a deliberate decision.
 """
 from collections import deque
 from dataclasses import dataclass
 
+from fc_core.sim.psychrometrics import CHAMBER_VOLUME_M3, absolute_humidity_g_m3, relative_humidity_pct
+
 
 @dataclass
 class ChamberParams:
-    """All rates in RH percentage points per hour. Measured unless noted."""
+    """Moisture-balance coefficients for FC-1. Fitted, not derived.
 
-    fill_pts_per_hour: float = 22.5     # measured: gross rise at delivered duty 1.0
-    leak_pts_per_hour: float = 2.24     # measured: fall at delivered duty 0
-    dead_time_s: float = 360.0          # fitted: transport + mixing lag
-    tau_s: float = 600.0                # fitted: first-order mixing constant
+    ``air_exchange_m3_per_h`` is NOT a physical air-exchange rate, despite
+    the name being the least-bad available. It is an EFFECTIVE
+    MOISTURE-LOSS COEFFICIENT that lumps together infiltration, condensation
+    on cold steel walls, substrate exchange, AND an unrecorded ~15 min/hour
+    vent fan. Do not present it to anyone as a real air-exchange rate. It was
+    fitted at ~25% vent duty -- if the vent schedule changes, this value is
+    wrong and needs refitting.
 
-    @property
-    def equilibrium_duty(self) -> float:
-        """Delivered duty that exactly cancels the leak (~0.10 for FC-1)."""
-        return self.leak_pts_per_hour / self.fill_pts_per_hour
+    ``fill_g_per_h`` is an aggregate ~50x below the misting head's ~360 g/h
+    nameplate output, because most emitted water lands in the substrate
+    rather than the air. See MUSHY-68.
+
+    Together, steady-state behaviour is well identified (via the F/Q ratio,
+    see module docstring); the TRANSIENT response carries roughly a
+    factor-1.2 uncertainty from the band choice, because the response time
+    is set by V/Q. This simulator is for RELATIVE comparison between control
+    configurations, not absolute prediction.
+    """
+
+    air_exchange_m3_per_h: float = 0.9634   # fitted (Task 2); see class docstring
+    fill_g_per_h: float = 6.776             # fitted (Task 2); see class docstring
+    dead_time_s: float = 360.0              # fitted: transport + mixing lag
+    tau_s: float = 600.0                    # fitted: first-order mixing constant
+
+    def equilibrium_duty(self, ah_in_g_m3: float, ah_out_g_m3: float) -> float:
+        """Delivered duty that exactly cancels the loss for a given
+        inside/outside absolute-humidity gradient. Clamped to [0, 1]."""
+        if self.fill_g_per_h <= 0.0:
+            return 0.0
+        return max(0.0, min(1.0,
+            self.air_exchange_m3_per_h * (ah_in_g_m3 - ah_out_g_m3) / self.fill_g_per_h))
 
 
 class ChamberModel:
-    """Delayed first-order humidity response to delivered duty.
+    """Delayed first-order absolute-moisture response to delivered duty.
 
     ``delivered_duty`` means vapour actually leaving the outlet. The PWM
     simulator subtracts pipe transit loss before calling this -- do not apply
     that loss twice.
     """
 
-    def __init__(self, params: ChamberParams, rh0: float):
+    def __init__(self, params: ChamberParams, rh0_pct: float, temp_c: float):
         self.p = params
-        self._rh = float(rh0)
+        self.temp_c = float(temp_c)
+        self._ah = absolute_humidity_g_m3(self.temp_c, rh0_pct)
         self._now_s = 0.0
         self._applied = 0.0                 # duty after mixing lag
         self._emerged = 0.0                 # duty that has cleared the dead time
@@ -47,9 +83,16 @@ class ChamberModel:
 
     @property
     def rh(self) -> float:
-        return self._rh
+        return relative_humidity_pct(self.temp_c, self._ah)
 
-    def step(self, delivered_duty: float, dt_s: float) -> float:
+    @property
+    def ah(self) -> float:
+        return self._ah
+
+    def step(self, delivered_duty: float, dt_s: float, ambient_ah_g_m3: float,
+              temp_c: float = None) -> float:
+        if temp_c is not None:
+            self.temp_c = float(temp_c)
         self._now_s += dt_s
 
         # Transport delay: duty commanded now takes effect dead_time_s later.
@@ -61,7 +104,8 @@ class ChamberModel:
         alpha = min(1.0, dt_s / max(self.p.tau_s, 1e-9))
         self._applied += alpha * (self._emerged - self._applied)
 
-        hours = dt_s / 3600.0
-        self._rh += (self._applied * self.p.fill_pts_per_hour
-                     - self.p.leak_pts_per_hour) * hours
-        return self._rh
+        dah_dt = (self.p.fill_g_per_h * self._applied
+                  - self.p.air_exchange_m3_per_h * (self._ah - ambient_ah_g_m3)
+                  ) / CHAMBER_VOLUME_M3          # g/m3 per hour
+        self._ah = max(0.0, self._ah + dah_dt * (dt_s / 3600.0))
+        return self.rh
