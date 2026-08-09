@@ -1,0 +1,68 @@
+iso_utc,phase,temp_c,rh_pct
+2026-08-09T02:32:49+00:00,baseline,4.743,89.323
+2026-08-09T02:32:54+00:00,baseline,4.759,89.323
+2026-08-09T02:32:59+00:00,baseline,4.716,89.332
+2026-08-09T02:33:04+00:00,baseline,4.743,89.300
+2026-08-09T02:33:09+00:00,baseline,4.730,89.302
+2026-08-09T02:33:14+00:00,baseline,4.716,89.302
+2026-08-09T02:33:19+00:00,HEATER_ON,,
+2026-08-09T02:33:22+00:00,HEATER_OFF,,
+2026-08-09T02:33:22+00:00,recovery,4.743,89.306
+2026-08-09T02:33:27+00:00,recovery,4.730,89.297
+2026-08-09T02:33:32+00:00,recovery,4.716,89.291
+2026-08-09T02:33:37+00:00,recovery,4.730,89.293
+2026-08-09T02:33:42+00:00,recovery,4.743,89.297
+2026-08-09T02:33:47+00:00,recovery,4.730,89.337
+2026-08-09T02:33:52+00:00,recovery,4.730,89.323
+2026-08-09T02:33:57+00:00,recovery,4.743,89.302
+2026-08-09T02:34:03+00:00,recovery,4.716,89.364
+2026-08-09T02:34:08+00:00,recovery,4.730,89.393
+2026-08-09T02:34:13+00:00,recovery,4.730,89.342
+2026-08-09T02:34:18+00:00,recovery,4.716,89.374
+2026-08-09T02:34:23+00:00,recovery,4.743,89.380
+2026-08-09T02:34:28+00:00,recovery,4.759,89.412
+2026-08-09T02:34:33+00:00,recovery,4.743,89.380
+2026-08-09T02:34:38+00:00,recovery,4.730,89.397
+2026-08-09T02:34:43+00:00,recovery,4.730,89.412
+2026-08-09T02:34:48+00:00,recovery,4.730,89.430
+2026-08-09T02:34:53+00:00,recovery,4.730,89.360
+2026-08-09T02:34:58+00:00,recovery,4.703,89.393
+2026-08-09T02:35:03+00:00,recovery,4.730,89.389
+2026-08-09T02:35:08+00:00,recovery,4.730,89.401
+2026-08-09T02:35:13+00:00,recovery,4.730,89.342
+2026-08-09T02:35:18+00:00,recovery,4.730,89.378
+2026-08-09T02:35:23+00:00,recovery,4.730,89.332
+2026-08-09T02:35:28+00:00,recovery,4.730,89.355
+2026-08-09T02:35:33+00:00,recovery,4.716,89.343
+2026-08-09T02:35:38+00:00,recovery,4.730,89.314
+2026-08-09T02:35:43+00:00,recovery,4.730,89.355
+2026-08-09T02:35:48+00:00,recovery,4.759,89.360
+2026-08-09T02:35:53+00:00,recovery,4.730,89.355
+2026-08-09T02:35:58+00:00,recovery,4.730,89.374
+Traceback (most recent call last):
+  File "/tmp/sht30-heater-pulse.py", line 33, in <module>
+    sample("recovery"); time.sleep(5)
+    ^^^^^^^^^^^^^^^^^^
+  File "/tmp/sht30-heater-pulse.py", line 20, in sample
+    print(f"{ts()},{phase},{s.temperature:.3f},{s.relative_humidity:.3f}", flush=True)
+                            ^^^^^^^^^^^^^
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/adafruit_sht31d.py", line 361, in temperature
+    temperature, _ = self._read()
+                     ^^^^^^^^^^^^
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/adafruit_sht31d.py", line 259, in _read
+    self._cached_temperature, self._cached_humidity = self._data()
+                                                      ^^^^^^^^^^^^
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/adafruit_sht31d.py", line 242, in _data
+    i2c.readinto(data)
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/adafruit_bus_device/i2c_device.py", line 79, in readinto
+    self.i2c.readfrom_into(self.device_address, buf, start=start, end=end)
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/busio.py", line 213, in readfrom_into
+    return self._i2c.readfrom_into(address, buffer, stop=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/adafruit_blinka/microcontroller/generic_linux/i2c.py", line 75, in readfrom_into
+    readin = self._i2c_bus.read_bytes(address, end - start)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/Adafruit_PureIO/smbus.py", line 170, in read_bytes
+    return self._device.read(number)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 5] Input/output error
