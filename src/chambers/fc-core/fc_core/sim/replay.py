@@ -84,6 +84,7 @@ def run_closed_loop(hours: float,
                     rh0: float = 90.0,
                     target: float = DEFAULT_TARGET,
                     climb_seconds: float = 0.0,
+                    duty_bias: float = 0.0,
                     dt: float = 1.0) -> RunMetrics:
     params = params or ChamberParams()
     pwm_cfg = pwm_cfg or PwmConfig()
@@ -142,6 +143,11 @@ def run_closed_loop(hours: float,
                     d_filtered = alpha * d_raw + (1 - alpha) * d_filtered
                     raw = max(0.0, min(1.0, p_term + i_term + d_filtered))
                 duty = raw
+
+                # Feedforward bias -- PID branch only, mirroring
+                # fc_controller. The freeze and Mode C paths must not get it.
+                if duty_bias > 0.0:
+                    duty = max(0.0, min(1.0, duty + duty_bias))
 
         duty = apply_slew(duty, last_duty, dt, climb_seconds)
         last_duty = duty

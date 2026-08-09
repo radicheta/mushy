@@ -240,3 +240,71 @@ def test_clamps_above_one_to_one(ros_context):
     node._duty_callback(Float32(data=1.5))
     assert node._latest_duty == 1.0
     node.destroy_node()
+
+
+# ---------------------------------------------------------------------------
+# Sub-threshold pulse accumulation (2026-08-09). Default OFF -- the first test
+# pins that, because turning it on by accident changes actuator behaviour on a
+# live grow.
+# ---------------------------------------------------------------------------
+
+def test_accumulate_subthreshold_defaults_off(ros_context):
+    node = _make_driver(ros_context)
+    assert node.get_parameter('accumulate_subthreshold').value is False
+    node.destroy_node()
+
+
+def test_accumulation_off_still_discards_subthreshold(ros_context):
+    """Default path must be byte-identical to the pre-change behaviour."""
+    node = _make_driver(ros_context)
+    _advance_to_new_window(node, duty=0.05, t_before_ns=0, t_after_ns=int(121e9))
+    assert node._window_on_seconds == 0.0
+    node.destroy_node()
+
+
+def test_accumulation_banks_then_fires_a_full_pulse(ros_context):
+    """duty=0.05 -> 6s/window. Banks until >= 10s, then emits exactly 10s."""
+    node = _make_driver(ros_context)
+    node.set_parameters([Parameter(
+        'accumulate_subthreshold', Parameter.Type.BOOL, True)])
+
+    t = 0
+    fired = []
+    for _ in range(6):
+        t += int(121e9)
+        _advance_to_new_window(node, duty=0.05, t_before_ns=t - int(121e9), t_after_ns=t)
+        fired.append(node._window_on_seconds)
+
+    # 6s banked per window: windows 1 and 2 bank (0s out), window 2 reaches 12s
+    # so it fires 10s and carries 2s. Never a pulse shorter than min_pulse.
+    assert any(f > 0.0 for f in fired), f'accumulation never fired: {fired}'
+    assert all(f == 0.0 or f >= 10.0 for f in fired), f'short pulse emitted: {fired}'
+
+
+def test_accumulation_preserves_mean_duty(ros_context):
+    """Banked demand must come out, not vanish. Mean over many windows ~= 0.05."""
+    node = _make_driver(ros_context)
+    node.set_parameters([Parameter(
+        'accumulate_subthreshold', Parameter.Type.BOOL, True)])
+
+    t = 0
+    total_on = 0.0
+    windows = 40
+    for _ in range(windows):
+        t += int(121e9)
+        _advance_to_new_window(node, duty=0.05, t_before_ns=t - int(121e9), t_after_ns=t)
+        total_on += node._window_on_seconds
+
+    mean_duty = total_on / (windows * 120.0)
+    assert mean_duty == pytest.approx(0.05, rel=0.25), f'got {mean_duty:.4f}'
+    node.destroy_node()
+
+
+def test_accumulation_is_noop_above_the_floor(ros_context):
+    """Duty above min_pulse/window must be untouched by accumulation."""
+    node = _make_driver(ros_context)
+    node.set_parameters([Parameter(
+        'accumulate_subthreshold', Parameter.Type.BOOL, True)])
+    _advance_to_new_window(node, duty=0.25, t_before_ns=0, t_after_ns=int(121e9))
+    assert node._window_on_seconds == pytest.approx(30.0, abs=0.001)
+    node.destroy_node()
