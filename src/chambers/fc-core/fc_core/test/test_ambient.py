@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from fc_core.sim.ambient import AmbientSample, AmbientSeries
+from fc_core.sim.ambient import AmbientSample, AmbientSeries, DEFAULT_FIXTURE
 
 CSV = """time_utc,temp_c,rh_pct,precip_mm
 2026-04-11T00:00:00+00:00,10.0,80.0,0.0
@@ -74,3 +74,44 @@ def test_empty_file_raises(tmp_path):
     p.write_text('time_utc,temp_c,rh_pct,precip_mm\n')
     with pytest.raises(ValueError, match='no rows'):
         AmbientSeries.from_csv(p)
+
+
+# ---------------------------------------------------------------------------
+# The committed fixture itself. These assert the artifact is fit for fitting,
+# not that the loader works -- that is covered above.
+# ---------------------------------------------------------------------------
+
+TELEMETRY_START = datetime(2026, 4, 11, tzinfo=timezone.utc)
+
+
+@pytest.fixture(scope='module')
+def real():
+    return AmbientSeries.from_csv(DEFAULT_FIXTURE)
+
+
+def test_fixture_covers_the_telemetry_window(real):
+    assert real.start <= TELEMETRY_START
+    assert real.end >= datetime(2026, 8, 3, tzinfo=timezone.utc)
+
+
+def test_fixture_is_hourly_with_no_gaps(real):
+    """A gap would silently become a long linear interpolation across it."""
+    gaps = [(real._times[i] - real._times[i - 1]).total_seconds()
+            for i in range(1, len(real._times))]
+    assert set(gaps) == {3600.0}, f'non-hourly spacing present: {sorted(set(gaps))[:5]}'
+
+
+def test_fixture_values_are_physically_plausible(real):
+    for ts in (real.start, TELEMETRY_START, real.end):
+        s = real.at(ts)
+        assert -15.0 < s.temp_c < 50.0
+        assert 0.0 <= s.rh_pct <= 100.0
+        assert s.precip_mm >= 0.0
+
+
+def test_fixture_shows_austral_winter_cooling(real):
+    """April is autumn, June is midwinter. If this fails the window or the
+    hemisphere is wrong."""
+    april = real.at(datetime(2026, 4, 15, 12, tzinfo=timezone.utc)).temp_c
+    june = real.at(datetime(2026, 6, 22, 12, tzinfo=timezone.utc)).temp_c
+    assert june < april
