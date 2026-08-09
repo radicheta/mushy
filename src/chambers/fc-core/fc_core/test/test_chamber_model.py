@@ -140,3 +140,51 @@ def test_same_rh_at_higher_temperature_is_more_water():
     warm = ChamberModel(params(), rh0_pct=90.0, temp_c=20.0)
     cold = ChamberModel(params(), rh0_pct=90.0, temp_c=5.0)
     assert warm.ah > cold.ah
+
+
+def test_step_is_dt_invariant():
+    """1 s and 10 s ticks must agree, or replay resolution changes results.
+
+    The new model is a forward-Euler integrator, so 1 s and 10 s stepping
+    will NOT agree exactly -- local error is O(dt). Measured directly: at
+    duty 0.3 (this test's condition) over 1.5 h, 1 s vs 10 s stepping
+    differ by ~0.0077 RH pts; the worst case checked (full duty, 1-2 h) was
+    ~0.03 pts. abs=0.02 sits comfortably above the measured 0.3-duty
+    discrepancy (>2x headroom) while still being tight enough to catch a
+    real integration bug (e.g. a dropped dt_s/3600 conversion, which would
+    misagree by orders of magnitude, not fractions of a point).
+    """
+    p = params()
+    ambient_ah = absolute_humidity_g_m3(TEMP_C, 70.0)
+    a = ChamberModel(p, rh0_pct=RH0, temp_c=TEMP_C)
+    b = ChamberModel(p, rh0_pct=RH0, temp_c=TEMP_C)
+    run(a, 0.3, ambient_ah, 5400.0, dt_s=1.0)
+    run(b, 0.3, ambient_ah, 5400.0, dt_s=10.0)
+    assert a.rh == pytest.approx(b.rh, abs=0.02)
+
+
+def test_no_rclpy_dependency():
+    """The whole point of fc_core.sim is that it runs without ROS.
+
+    Checked in a CLEAN subprocess: this test dir's conftest imports rclpy for
+    the ROS-dependent modules, so asserting on this process's sys.modules would
+    only measure conftest, not the sim package.
+    """
+    import pathlib
+    import subprocess
+    import sys
+
+    pkg_root = pathlib.Path(__file__).resolve().parents[2]
+    probe = (
+        'import sys; '
+        'import fc_core.sim.chamber_model, fc_core.sim.pwm_window; '
+        "leaked = [m for m in ('rclpy', 'RPi', 'RPi.GPIO') if m in sys.modules]; "
+        'print(",".join(leaked))'
+    )
+    result = subprocess.run(
+        [sys.executable, '-c', probe],
+        capture_output=True, text=True, cwd=str(pkg_root),
+        env={'PYTHONPATH': str(pkg_root), 'PATH': '/usr/bin:/bin'},
+    )
+    assert result.returncode == 0, f'sim package failed to import alone:\n{result.stderr}'
+    assert result.stdout.strip() == '', f'sim package pulled in ROS deps: {result.stdout}'

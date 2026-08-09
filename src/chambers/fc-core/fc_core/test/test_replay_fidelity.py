@@ -145,6 +145,20 @@ def recommended():
 
 
 def test_recommended_config_removes_the_limit_cycle(recommended):
+    """NOTE (MUSHY-60): this assertion no longer distinguishes recommended
+    from baseline. burst_count == 0 for BOTH configs now, because the burst
+    detector counts duty crossing 0.5 upward, and both configs peak around
+    duty ~0.475 -- under the threshold. That is a detector-cliff artifact,
+    not evidence that recommended has removed cycling that baseline still
+    has. Do not read a pass here as "recommended beats baseline."
+
+    The genuine before/after evidence lives in
+    test_recommended_config_shrinks_the_swing (rh_p2p 2.767 -> 1.113, a 60%
+    reduction) and test_recommended_config_stays_nearer_the_setpoint, both
+    of which have real margins. If the model's amplitude is ever raised to
+    match reality (duty peaks push past 0.5 again), this test regains its
+    original meaning and should be trusted again.
+    """
     assert recommended.burst_count == 0, (
         f'expected no bursts, got {recommended.burst_count}')
 
