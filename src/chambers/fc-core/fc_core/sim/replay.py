@@ -26,20 +26,23 @@ from fc_core.vendor.simple_pid import PID
 DEFAULT_BAND = BandSpec(band_low=0.885, band_high=0.915, defend_side='both')
 DEFAULT_TARGET = 0.90
 
-# Baseline synthetic conditions, chosen to match the 2026-08-08 fidelity trace
-# (999.33-04-DESIGN-absolute-moisture.md, design limitation 5):
-#   - chamber and ambient run at nearly the same temperature in August
-#     (monthly means 10.7 C in / 10.5-11.0 C out), so DEFAULT_TEMP_C is used
-#     for both sides of the gradient rather than modelling a separate ambient
-#     temperature.
-#   - the measured August chamber-minus-ambient gradient is ~0.30 g/m3 (the
-#     table's Aug row), which the design doc reads as roughly RH_in ~94% vs
-#     RH_out ~86% at that temperature. DEFAULT_AMBIENT_AH_G_M3 is the chamber's
-#     90%-RH absolute humidity at 10.7 C (8.84 g/m3) minus 0.30 g/m3, i.e.
-#     8.54 g/m3 -- equivalent to ~87% RH at 10.7 C, consistent with that
-#     reading.
-DEFAULT_TEMP_C = 10.7
-DEFAULT_AMBIENT_AH_G_M3 = absolute_humidity_g_m3(DEFAULT_TEMP_C, 90.0) - 0.30
+# Baseline synthetic conditions: the MEASURED conditions of the 2026-08-08
+# fidelity trace itself (queried directly), NOT August monthly means:
+#   chamber temperature              6.00 C
+#   ambient temperature              6.20 C
+#   chamber RH                       90.51 %
+#   chamber-minus-ambient AH gap     mean 0.703 g/m3 (min -0.296, max 2.641)
+#
+# An earlier version of this file used the August MONTHLY means from
+# 999.33-04-DESIGN-absolute-moisture.md design limitation 5 (10.7 C, ~0.30
+# g/m3 gradient) on the mistaken assumption that they stood in for the
+# specific day. They do not: 2026-08-08 ran 4.7 C colder than the monthly
+# mean with a 2.3x larger gradient, and the fidelity gate FAILED at the
+# monthly-mean conditions as a direct result (see task-4-report.md). Do not
+# repeat that substitution -- if this fixture is ever revisited, query the
+# actual day's numbers again rather than reaching for a monthly table.
+DEFAULT_TEMP_C = 6.0
+DEFAULT_AMBIENT_AH_G_M3 = absolute_humidity_g_m3(DEFAULT_TEMP_C, 90.0) - 0.703
 
 
 @dataclass

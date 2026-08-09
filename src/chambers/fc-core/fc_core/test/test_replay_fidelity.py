@@ -19,27 +19,34 @@ KNOWN FIDELITY LIMITS, RH-points model (measured 2026-08-09, not hidden):
   * Sim under-represents the discarded band: 9.7 % vs 22.3 % of samples.
   * Sim never fires Mode C bypass; the real chamber hit duty 1.0 for 2.9 %.
 
-MUSHY-60 UPDATE (2026-08-09): the moisture-balance model FAILS this gate at
-the baseline fixture's physically-motivated conditions (temp_c=10.7,
-ambient_ah_g_m3 giving the ~0.30 g/m3 August gradient -- see replay.py). Five
-of the six assertions below fail: no oscillation develops (rh_p2p=1.09,
-burst_count=0), mean commanded duty is 0.078 (target 0.142 +/- 0.05), and RH
-never reaches the band edges (max 90.60, min 89.50). A parameter sweep over
-ambient_ah_g_m3 (0.3-8.0 g/m3 gradient) at temp_c=10.7 found NO value that
-satisfies all six assertions simultaneously: the p2p amplitude tops out
-around 2.5-2.6 near gradient~1.2-1.3 g/m3 (duty already 0.32-0.37, well above
-the 0.142+/-0.05 band by then) and rh_max never exceeds ~91.44 for any
-gradient tried, so `rh_max > 91.5` cannot be satisfied at this temperature at
-all. All six assertions pass only at an implausibly cold chamber temperature
-(~5 C, versus the measured ~10.7 C August mean) -- i.e. only by picking
-physically implausible conditions. Per the task-4 brief this is reported as a
-finding, not tuned away: the moisture-balance model, at the conditions it
-claims to model, does not reproduce the observed 2026-08-08 limit cycle.
-See task-4-report.md for the full sweep.
+MUSHY-60 UPDATE, round 1 (2026-08-09): using August MONTHLY MEANS
+(temp_c=10.7, ~0.30 g/m3 gradient) as the baseline conditions -- WRONG, see
+round 2 -- the model failed 5 of 6 assertions: no oscillation developed
+(rh_p2p=1.09, burst_count=0), mean duty 0.078 (target 0.142 +/- 0.05), RH
+never reached the band edges (max 90.60, min 89.50).
+
+MUSHY-60 UPDATE, round 2 (2026-08-09): round 1's conditions were August
+MONTHLY MEANS, not the actual 2026-08-08 day. Queried directly, that day ran
+at chamber 6.00 C / ambient 6.20 C with a mean AH gap of 0.703 g/m3 -- 4.7 C
+colder and 2.3x the gradient of round 1's numbers. Re-run at the corrected,
+measured conditions (temp_c=6.0, ambient_ah_g_m3 for 0.703 g/m3 gradient --
+see replay.py): 4 of 6 assertions now pass outright (duty=0.143 vs 0.142
++/-0.05, rh_max=91.87>91.5, rh_min=89.11<89.5, and discarded_s/equilibrium
+sanity checks). The model DOES produce a genuine ~3 h limit cycle at these
+conditions (RH visibly cycles 89.1-91.9 with a ~3 h period, confirmed by
+sampling rh_series directly), but `rh_p2p > 3.0` and `burst_count >= 3` still
+fail: p2p is 2.77 (13 % short), and burst_count is 0 because peak duty during
+each cycle only reaches ~0.475 -- never crossing the burst detector's 0.5
+threshold, even though the underlying oscillation is real and the period
+(~3 h) is within the [1.5, 4.0] window the disabled test would have checked.
+This reads as a genuine amplitude shortfall (and a burst-detector threshold
+calibrated to an OFF/ON old-model or real-fc1 duty profile that this
+smoother moisture-balance model's duty never quite reaches), not a
+reproduction failure of the underlying phenomenon. See task-4-report.md for
+the full trace.
 
 So: use this model for RELATIVE comparison between control configurations,
-which is what it is for. Do not quote its absolute numbers as predictions,
-and do not trust its baseline to reproduce fc1's actual limit cycle.
+which is what it is for. Do not quote its absolute numbers as predictions.
 """
 import pytest
 
