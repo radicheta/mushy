@@ -13,6 +13,7 @@ from typing import Optional
 from statistics import median
 from fc_core import scheduler
 from fc_core.vendor.simple_pid import PID
+from fc_core.control_kernel import BandSpec, project_error_pct
 from fc_msgs.msg import Mode
 from fc_msgs.srv import SetMode, StartExperiment, CancelExperiment
 from rcl_interfaces.msg import SetParametersResult
@@ -1707,34 +1708,28 @@ class FruitingChamberController(Node):
             # half-width in pct; for a symmetric band, midpoint == target and
             # w == humidity_tolerance*100. With w<=0 the feather degenerates to the
             # plain linear projection.
-            midpoint = (mode.band_low + mode.band_high) / 2.0
-            w = (mode.band_high - mode.band_low) / 2.0 * 100.0
-            if rh < midpoint:
-                s = (midpoint - rh) * 100.0             # pct below band midpoint (>0)
-                if w > 0 and s <= w:
-                    error_pct = -(s * s) / (2.0 * w)     # quadratic feather
-                else:
-                    error_pct = -(s - w / 2.0)           # linear, C1 with feather
-            elif rh > mode.band_high:
-                if mode.defend_side in ('high', 'both'):
-                    error_pct = (rh - mode.band_high) * 100.0
-                else:
-                    # defend_side=low: don't fight upward. Clamp duty + freeze
-                    # integrator. Bumpless re-engage on return into band uses
-                    # the same primitive as Mode C exit (next tick re-enters
-                    # the in-band branch which calls set_auto_mode(True, ...)).
-                    if self._pid.auto_mode:
-                        self._pid.set_auto_mode(False)
-                    self._publish_duty(0.0)
-                    ht_msg = Float32()
-                    ht_msg.data = float(self._effective_setpoint)
-                    self._humidity_target_pub.publish(ht_msg)
-                    po_msg = Float32()
-                    po_msg.data = 0.0
-                    self._pid_output_pub.publish(po_msg)
-                    return
-            else:
-                error_pct = 0.0
+            # The projection itself lives in fc_core.control_kernel so the
+            # offline simulator (fc_core.sim) exercises the SAME arithmetic
+            # this loop runs. Do not re-inline it here.
+            projected = project_error_pct(
+                rh, BandSpec(mode.band_low, mode.band_high, mode.defend_side)
+            )
+            if projected is None:
+                # defend_side=low: don't fight upward. Clamp duty + freeze
+                # integrator. Bumpless re-engage on return into band uses
+                # the same primitive as Mode C exit (next tick re-enters
+                # the in-band branch which calls set_auto_mode(True, ...)).
+                if self._pid.auto_mode:
+                    self._pid.set_auto_mode(False)
+                self._publish_duty(0.0)
+                ht_msg = Float32()
+                ht_msg.data = float(self._effective_setpoint)
+                self._humidity_target_pub.publish(ht_msg)
+                po_msg = Float32()
+                po_msg.data = 0.0
+                self._pid_output_pub.publish(po_msg)
+                return
+            error_pct = projected
 
             # Phase 28 D-11: Mode C bypass keys off NEAREST DEFENDED edge,
             # not target_humidity. Otherwise pinning's cosmetic target=0.85
