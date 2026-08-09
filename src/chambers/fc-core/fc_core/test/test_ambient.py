@@ -3,6 +3,8 @@
 No network: the loader is stdlib-only by design, and the test container runs
 with --network none.
 """
+import hashlib
+import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -115,3 +117,18 @@ def test_fixture_shows_austral_winter_cooling(real):
     april = real.at(datetime(2026, 4, 15, 12, tzinfo=timezone.utc)).temp_c
     june = real.at(datetime(2026, 6, 22, 12, tzinfo=timezone.utc)).temp_c
     assert june < april
+
+
+def test_fixture_matches_its_checksum_sidecar():
+    """Open-Meteo serves preliminary ERA5T values for recent days and later
+    replaces them with final ERA5 -- different values, same timestamps. A
+    re-run of the fetch script months from now could silently alter historic
+    rows while every other test here (coverage, spacing, bounds, seasonal
+    ordering) keeps passing. The sha256 in the meta sidecar turns that silent
+    drift into a loud failure."""
+    meta_path = DEFAULT_FIXTURE.with_name(DEFAULT_FIXTURE.stem + '.meta.json')
+    meta = json.loads(meta_path.read_text())
+    actual = hashlib.sha256(DEFAULT_FIXTURE.read_bytes()).hexdigest()
+    assert actual == meta['sha256'], (
+        'fixture bytes do not match the recorded checksum -- the CSV changed '
+        'without regenerating the meta sidecar')
