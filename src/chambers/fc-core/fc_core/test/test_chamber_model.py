@@ -72,7 +72,27 @@ def test_step_is_dt_invariant():
 
 
 def test_no_rclpy_dependency():
-    """The whole point of fc_core.sim is that it runs without ROS."""
+    """The whole point of fc_core.sim is that it runs without ROS.
+
+    Checked in a CLEAN subprocess: this test dir's conftest imports rclpy for
+    the ROS-dependent modules, so asserting on this process's sys.modules would
+    only measure conftest, not the sim package.
+    """
+    import pathlib
+    import subprocess
     import sys
-    import fc_core.sim.chamber_model  # noqa: F401
-    assert 'rclpy' not in sys.modules
+
+    pkg_root = pathlib.Path(__file__).resolve().parents[2]
+    probe = (
+        'import sys; '
+        'import fc_core.sim.chamber_model, fc_core.sim.pwm_window; '
+        "leaked = [m for m in ('rclpy', 'RPi', 'RPi.GPIO') if m in sys.modules]; "
+        'print(",".join(leaked))'
+    )
+    result = subprocess.run(
+        [sys.executable, '-c', probe],
+        capture_output=True, text=True, cwd=str(pkg_root),
+        env={'PYTHONPATH': str(pkg_root), 'PATH': '/usr/bin:/bin'},
+    )
+    assert result.returncode == 0, f'sim package failed to import alone:\n{result.stderr}'
+    assert result.stdout.strip() == '', f'sim package pulled in ROS deps: {result.stdout}'
