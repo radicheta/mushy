@@ -98,16 +98,21 @@ MAX_RH_STEP_PCT = 3.0               # sensor-failover step guard (see design lim
 QUIET_NEED_DEFAULT = int(DEAD_TIME_S / 60.0) + QUIET_SETTLE_MIN   # 16
 QUIET_NEED_SWEEP = [7, 16, 46, 136]     # minutes of zero-duty run required (diagnostic only)
 DUTY_CROSS_CHECK_TOL = 0.05             # abort if monthly means disagree > 5%
-U_APP_EPS = 1e-6            # "meaningfully active" floor for u_app, see fit_f_regression
 RELAY_HOLD_CAP_MIN = 60     # cap on an uninterrupted NONZERO relay hold; see module docstring
 Q_BAND_LO = QUIET_NEED_DEFAULT   # 16 -- same lower bound the dead-time argument requires
 # Q_BAND_HI excludes the >120 min tail that dominates (79%) and pulls the
-# unbounded fit down toward its asymptote.
+# unbounded fit down toward its asymptote. This is a JUDGMENT CALL, not a
+# derived quantity -- see q_band_sweep and "The band sets F" in the report:
+# nothing in the model has a 120-minute timescale (tau=600s, dead_time=360s).
 Q_BAND_HI = 120
 OLD_MODEL_LEAK_G_PER_H = 0.865   # previous RH-points model's implied leak, for sanity-check only
 N_BOOT = 2000
+N_BOOT_RATIO = 4000
 BOOT_SEED = 0
 EFFECTIVE_Q_BUCKETS = [(1, 3), (4, 8), (9, 16), (17, 40), (41, 120), (121, float('inf'))]
+# Sweeps for q_band_sweep -- see "The band sets F" in the report.
+Q_HI_SWEEP = [30, 45, 60, 90, 120, 180, 240, 480, 1440, float('inf')]
+Q_LO_SWEEP = [1, 4, 8, 12, 16, 20, 30, 40, 80]
 DEFAULT_REPORT = (REPO_ROOT / '.planning' / 'phases'
                   / '999.33-digital-twin-chamber-sim'
                   / '999.33-06-FIT-RESULTS.md')
@@ -408,35 +413,65 @@ def with_derivatives(samples):
     return out
 
 
-def quiet_mask(samples, need):
+def zero_run_lengths(samples):
+    """Consecutive zero-duty run length in minutes for each sample, reset
+    both when duty is nonzero AND whenever consecutive samples in the list
+    are not exactly 60 s apart in wall-clock time.
+
+    BUG FIXED (round 3): the run counter previously walked the SAMPLE LIST,
+    not wall-clock time, and did not reset across an excluded or missing
+    minute sitting between two list entries. `with_derivatives` already
+    drops any (a, b) pair not exactly 60 s apart when computing dah_dt, but
+    that does not guarantee consecutive entries of its OUTPUT list are 60 s
+    apart from EACH OTHER -- if an excluded sample sits between two kept
+    ones, both may still individually survive as the start of some other
+    valid pair, and the run counter would silently treat them as adjacent
+    minutes. 6.8% of band [Q_BAND_LO, Q_BAND_HI] samples had a zero-run
+    spanning such a discontinuity before this fix -- their "minutes since
+    the relay dropped" was fictional. Resetting to 0 on any gap is
+    conservative: a sample immediately after an unknown-duration gap is
+    treated as if the relay had just dropped (run=1), not as continuing
+    whatever run was accumulated before the gap.
+
+    Returns a list of run lengths parallel to `samples`.
+    """
+    run = 0
+    runs = []
+    prev_ts = None
+    for s in samples:
+        if prev_ts is None or (s['ts'] - prev_ts).total_seconds() != 60.0:
+            run = 0
+        run = run + 1 if s['duty'] == 0.0 else 0
+        runs.append(run)
+        prev_ts = s['ts']
+    return runs
+
+
+def quiet_mask(samples, need, runs=None):
     """True where duty has been 0 for at least `need` consecutive minutes
     (unbounded above). Used only for the settle-sweep diagnostic below --
-    the operational Q uses `quiet_band_mask` instead.
+    the operational Q uses `quiet_band_mask` instead. Pass a precomputed
+    `runs` (from `zero_run_lengths`) to avoid recomputing it per call.
 
     NOTE (known off-by-one): `run` reaches `need` on the `need`-th zero-duty
     minute, i.e. `need - 1` minutes after duty actually fell to zero -- one
     minute short of the intended "duty has been 0 for `need` minutes" spec.
     Left as-is (see FIX reports) rather than changed silently.
     """
-    run = 0
-    flags = []
-    for s in samples:
-        run = run + 1 if s['duty'] == 0.0 else 0
-        flags.append(run >= need)
-    return flags
+    if runs is None:
+        runs = zero_run_lengths(samples)
+    return [r >= need for r in runs]
 
 
-def quiet_band_mask(samples, lo, hi):
+def quiet_band_mask(samples, lo, hi, runs=None):
     """True where the relay has been off between lo and hi consecutive
-    minutes (inclusive). Bounding the upper end, unlike `quiet_mask`, is
-    what keeps this population from being dominated by arbitrarily long
-    quiet runs -- see Q_BAND_LO/Q_BAND_HI and the module docstring."""
-    run = 0
-    flags = []
-    for s in samples:
-        run = run + 1 if s['duty'] == 0.0 else 0
-        flags.append(lo <= run <= hi)
-    return flags
+    minutes (inclusive), using time-discontinuity-aware run lengths.
+    Bounding the upper end, unlike `quiet_mask`, is what keeps this
+    population from being dominated by arbitrarily long quiet runs -- see
+    Q_BAND_LO/Q_BAND_HI and the module docstring."""
+    if runs is None:
+        runs = zero_run_lengths(samples)
+    return [lo <= r <= hi for r in runs]
 
 
 def fit_q(samples):
@@ -506,16 +541,22 @@ def fit_f_over_q(samples):
     return mean_grad / mean_u if mean_u else float('nan')
 
 
-def effective_q_by_regime(samples):
+def effective_q_by_regime(samples, runs=None):
     """Empirical effective Q bucketed by minutes-since-the-relay-dropped.
     If a single first-order leak governed decay these would agree; they
     don't (see module docstring), which is the evidence behind restricting
     Q's operational fit to a bounded band rather than the full unbounded
-    quiet population."""
-    run = 0
+    quiet population.
+
+    CONFOUNDED WITH SEASON -- see `effective_q_by_regime_and_half` and the
+    "Q regime effect is confounded with season" report section. The pooled
+    decline shown here should not be read as a clean single-mechanism
+    regime effect without checking that split.
+    """
+    if runs is None:
+        runs = zero_run_lengths(samples)
     bucketed = {b: [] for b in EFFECTIVE_Q_BUCKETS}
-    for s in samples:
-        run = run + 1 if s['duty'] == 0.0 else 0
+    for s, run in zip(samples, runs):
         if run == 0:
             continue
         for lo, hi in EFFECTIVE_Q_BUCKETS:
@@ -530,35 +571,91 @@ def effective_q_by_regime(samples):
     return rows
 
 
-def q_settle_sweep(samples):
+def effective_q_by_regime_and_half(samples, runs=None):
+    """Same buckets as `effective_q_by_regime`, split by fit (Apr-Jun) vs
+    validate (Jul-Aug) half. Shows the pooled monotone decline is
+    substantially a COMPOSITION effect, not a clean regime effect: short
+    runs are overwhelmingly Apr-Jun, the deep-quiet tail is
+    disproportionately Jul-Aug, so the operational band selects a season
+    almost as much as a regime."""
+    if runs is None:
+        runs = zero_run_lengths(samples)
+    bucketed = {(b, half): [] for b in EFFECTIVE_Q_BUCKETS for half in ('fit', 'val')}
+    for s, run in zip(samples, runs):
+        if run == 0:
+            continue
+        half = 'fit' if s['ts'] < SPLIT else 'val'
+        for lo, hi in EFFECTIVE_Q_BUCKETS:
+            if lo <= run <= hi:
+                bucketed[((lo, hi), half)].append(s)
+                break
+    rows = []
+    for lo, hi in EFFECTIVE_Q_BUCKETS:
+        q_fit, n_fit = fit_q(bucketed[((lo, hi), 'fit')])
+        q_val, n_val = fit_q(bucketed[((lo, hi), 'val')])
+        label = f'{lo}-{hi}' if hi != float('inf') else f'>{lo - 1}'
+        rows.append({'band': label, 'q_fit': q_fit, 'n_fit': n_fit,
+                     'q_val': q_val, 'n_val': n_val})
+    return rows
+
+
+def q_settle_sweep(samples, runs=None):
     """Q's sensitivity to the quiet-settle threshold (unbounded above) --
     a single-mechanism first-order leak would plateau as the threshold
     grows; this doesn't. Diagnostic only -- not the Q used operationally."""
+    if runs is None:
+        runs = zero_run_lengths(samples)
     rows = []
     for need in QUIET_NEED_SWEEP:
-        flags = quiet_mask(samples, need)
+        flags = quiet_mask(samples, need, runs=runs)
         quiet = [s for s, f in zip(samples, flags) if f]
         q, n = fit_q(quiet)
         rows.append({'need_min': need, 'q_g_per_m3h': q, 'n_quiet': n})
     return rows
 
 
-def precompute_day_stats(samples):
+def q_band_sweep(samples, runs=None):
+    """How much the Q band choice itself sets F. Since F/Q = mean_grad/mean_u
+    is band-free, F is exactly proportional to Q, and the band is the ONLY
+    thing setting Q operationally -- so the band is a direct dial on F. Two
+    one-parameter sweeps around the operational choice [Q_BAND_LO,
+    Q_BAND_HI]: hold lo fixed and vary hi, then hold hi fixed and vary lo.
+    See "The band sets F" in the report."""
+    if runs is None:
+        runs = zero_run_lengths(samples)
+
+    def one(lo, hi):
+        quiet = [s for s, r in zip(samples, runs) if lo <= r <= hi]
+        q, n = fit_q(quiet)
+        f_reg, _ = fit_f_regression(samples, q)
+        return {'lo': lo, 'hi': hi, 'q_g_per_m3h': q,
+                'f_regression_g_per_h': f_reg, 'n_quiet': n}
+
+    hi_sweep = [one(Q_BAND_LO, hi) for hi in Q_HI_SWEEP]
+    lo_sweep = [one(lo, Q_BAND_HI) for lo in Q_LO_SWEEP]
+    return {'hi_sweep': hi_sweep, 'lo_sweep': lo_sweep}
+
+
+def precompute_day_stats(samples, runs=None):
     """Per UTC-day sufficient statistics for every regression used below.
 
     Every estimator here (Q, F regression, F moment, F/Q) is linear in a
     handful of running sums, so a day-block bootstrap can resample days and
     recombine these per-day sums instead of re-scanning all ~150k samples on
-    every replicate.
+    every replicate. This is a second implementation of the same math as
+    `fit_q`/`fit_f_regression`/`fit_f_moment`/`fit_f_over_q`, grouped by day
+    purely for bootstrap performance -- `fit_half` cross-checks the two
+    against each other on the non-resampled data and raises if they diverge,
+    so this duplication cannot silently drift from the documented estimator.
     """
+    if runs is None:
+        runs = zero_run_lengths(samples)
     days = defaultdict(lambda: {
         'quiet_xy': 0.0, 'quiet_xx': 0.0, 'quiet_n': 0,
         'act_u_dahdt': 0.0, 'act_u_grad': 0.0, 'act_uu': 0.0, 'act_n': 0,
         'full_grad': 0.0, 'full_dahdt': 0.0, 'full_u': 0.0, 'full_n': 0,
     })
-    run = 0
-    for s in samples:
-        run = run + 1 if s['duty'] == 0.0 else 0
+    for s, run in zip(samples, runs):
         d = days[s['ts'].date()]
         grad = s['ah_in'] - s['ah_out']
         if Q_BAND_LO <= run <= Q_BAND_HI:
@@ -661,10 +758,78 @@ def bootstrap_ci(day_stats, dates, n_boot=N_BOOT, seed=BOOT_SEED):
     return {k: ci(v) for k, v in boots.items()}
 
 
-def fit_half(samples, day_stats):
+def bootstrap_ratio_ci(
+        day_stats, fit_dates, val_dates, n_boot=N_BOOT_RATIO, seed=BOOT_SEED):
+    """Bootstrap CI for the validate/fit RATIO of each statistic -- this,
+    not two separately-eyeballed CIs, is the statistic that actually tests
+    season-independence. Each replicate independently resamples days within
+    each half, computes both halves' statistics, and records the ratio.
+    """
+    fit_dates, val_dates = list(fit_dates), list(val_dates)
+    rng = random.Random(seed)
+    boots = {'q': [], 'f_reg': [], 'f_mom': [], 'f_over_q': []}
+    for _ in range(n_boot):
+        fit_sample = [rng.choice(fit_dates) for _ in range(len(fit_dates))]
+        val_sample = [rng.choice(val_dates) for _ in range(len(val_dates))]
+        qf, frf, fmf, foqf = stats_from_agg(aggregate_days(day_stats, fit_sample))
+        qv, frv, fmv, foqv = stats_from_agg(aggregate_days(day_stats, val_sample))
+        for key, num, den in (('q', qv, qf), ('f_reg', frv, frf),
+                              ('f_mom', fmv, fmf), ('f_over_q', foqv, foqf)):
+            valid = den not in (0.0,) and den == den and num == num
+            boots[key].append(num / den if valid else float('nan'))
+
+    def ci(vals):
+        vals = sorted(v for v in vals if v == v)
+        if not vals:
+            return (float('nan'), float('nan'))
+        n = len(vals)
+        lo = vals[max(0, int(0.025 * n))]
+        hi = vals[min(n - 1, int(0.975 * n))]
+        return (lo, hi)
+
+    return {k: ci(v) for k, v in boots.items()}
+
+
+def assert_estimators_agree(direct, agg, label, tol=1e-6):
+    """The primary (documented) estimator functions and the day-block-
+    aggregated path (kept only for bootstrap performance) must produce
+    identical point estimates on the same, non-resampled sample set -- both
+    are sums over the same data, just grouped differently. Raising here is
+    what prevents the two implementations from silently drifting apart."""
+    names = ('q', 'f_reg', 'f_mom', 'f_over_q')
+    for name, a, b in zip(names, direct, agg):
+        if a != a and b != b:   # both nan
+            continue
+        scale = max(1.0, abs(a), abs(b))
+        if abs(a - b) > tol * scale:
+            raise AssertionError(
+                f'{label}: primary estimator and day-aggregated estimator '
+                f'disagree on {name} ({a!r} vs {b!r}) -- they should be '
+                'mathematically identical. Not proceeding.')
+
+
+def fit_half(samples, day_stats, runs=None):
+    if runs is None:
+        runs = zero_run_lengths(samples)
     dates = sorted({s['ts'].date() for s in samples})
+
+    # Point estimates via the primary (documented) estimator functions,
+    # operating directly on this set's samples -- not the day-aggregated
+    # path, which exists purely so the bootstrap below doesn't have to
+    # rescan every sample per replicate. See `assert_estimators_agree`.
+    band_flags = quiet_band_mask(samples, Q_BAND_LO, Q_BAND_HI, runs=runs)
+    quiet = [s for s, f in zip(samples, band_flags) if f]
+    q, nq = fit_q(quiet)
+    f_reg, nf = fit_f_regression(samples, q)
+    f_mom = fit_f_moment(samples, q)
+    f_over_q = fit_f_over_q(samples)
+
     agg = aggregate_days(day_stats, dates)
-    q, f_reg, f_mom, f_over_q = stats_from_agg(agg)
+    q_agg, f_reg_agg, f_mom_agg, f_over_q_agg = stats_from_agg(agg)
+    assert_estimators_agree(
+        (q, f_reg, f_mom, f_over_q),
+        (q_agg, f_reg_agg, f_mom_agg, f_over_q_agg), 'fit_half')
+
     ci = bootstrap_ci(day_stats, dates)
 
     # Aug-excluded view: only differs when the set actually spans August.
@@ -672,14 +837,15 @@ def fit_half(samples, day_stats):
     f_mom_excl_aug, f_over_q_excl_aug = moment_and_foq_for_dates(
         day_stats, non_aug_dates, q)
 
-    mean_grad = agg['full_grad'] / agg['full_n'] if agg['full_n'] else float('nan')
+    n_full = agg['full_n']
+    mean_grad = agg['full_grad'] / n_full if n_full else float('nan')
     implied_leak = q * mean_grad
     old_leak_pct_off = (abs(implied_leak - OLD_MODEL_LEAK_G_PER_H)
                         / OLD_MODEL_LEAK_G_PER_H * 100)
 
     return {
-        'q_g_per_m3h': q, 'n_quiet': int(agg['quiet_n']),
-        'f_regression_g_per_h': f_reg, 'n_active': int(agg['act_n']),
+        'q_g_per_m3h': q, 'n_quiet': nq,
+        'f_regression_g_per_h': f_reg, 'n_active': nf,
         'f_moment_g_per_h': f_mom, 'f_moment_excl_aug_g_per_h': f_mom_excl_aug,
         'f_over_q': f_over_q, 'f_over_q_excl_aug': f_over_q_excl_aug,
         'n_samples': len(samples),
@@ -726,21 +892,44 @@ def main() -> int:
     samples, stats = build_samples(grid_ts, temp_rh, duty, duty_app, ambient)
     samples = with_derivatives(samples)
 
-    fit_set = [s for s in samples if s['ts'] < SPLIT]
-    val_set = [s for s in samples if s['ts'] >= SPLIT]
+    # Run lengths computed ONCE over the full continuous timeline, then
+    # sliced -- NOT recomputed independently per half. A zero-duty run that
+    # starts in June and continues past midnight into July is a genuine
+    # continuation; recomputing on val_set alone would wrongly reset it to
+    # run=1 at the first July sample. fit_half's own primary-vs-day-agg
+    # cross-check caught exactly this class of bug during development.
+    runs = zero_run_lengths(samples)
+    fit_set, runs_fit = [], []
+    val_set, runs_val = [], []
+    for s, run in zip(samples, runs):
+        if s['ts'] < SPLIT:
+            fit_set.append(s)
+            runs_fit.append(run)
+        else:
+            val_set.append(s)
+            runs_val.append(run)
 
-    day_stats = precompute_day_stats(samples)
-    q_all_result = fit_half(samples, day_stats)
+    day_stats = precompute_day_stats(samples, runs=runs)
+    q_all_result = fit_half(samples, day_stats, runs=runs)
+    fit_result = fit_half(fit_set, day_stats, runs=runs_fit)
+    val_result = fit_half(val_set, day_stats, runs=runs_val)
+
+    fit_dates = sorted({s['ts'].date() for s in fit_set})
+    val_dates = sorted({s['ts'].date() for s in val_set})
+    ratio_ci = bootstrap_ratio_ci(day_stats, fit_dates, val_dates)
 
     results = {
         'all': q_all_result,
-        'fit_apr_jun': fit_half(fit_set, day_stats),
-        'validate_jul_aug': fit_half(val_set, day_stats),
+        'fit_apr_jun': fit_result,
+        'validate_jul_aug': val_result,
+        'ratio_ci': ratio_ci,
         'exclusions': stats,
         'n_capped_holds': n_capped,
         'duty_cross_check': duty_cross_check,
-        'q_settle_sweep': q_settle_sweep(samples),
-        'effective_q_by_regime': effective_q_by_regime(samples),
+        'q_settle_sweep': q_settle_sweep(samples, runs=runs),
+        'effective_q_by_regime': effective_q_by_regime(samples, runs=runs),
+        'effective_q_by_regime_and_half': effective_q_by_regime_and_half(samples, runs=runs),
+        'q_band_sweep': q_band_sweep(samples, runs=runs),
         'monthly_moment': monthly_moment_breakdown(day_stats, q_all_result['q_g_per_m3h']),
     }
     print(json.dumps(results, indent=2, default=str))
@@ -772,9 +961,16 @@ def render_report(r) -> str:
     sweep_rows = '\n'.join(
         f"| {s['need_min']} | {s['q_g_per_m3h']:.3f} | {s['n_quiet']} |"
         for s in r['q_settle_sweep'])
+    sweep_qs = [s['q_g_per_m3h'] for s in r['q_settle_sweep']]
+    sweep_ratio = max(sweep_qs) / min(sweep_qs)
     regime_rows = '\n'.join(
         f"| {b['band']} | {b['q_g_per_m3h']:.3f} | {b['n']} |"
         for b in r['effective_q_by_regime'])
+    regime_early_qs = [b['q_g_per_m3h'] for b in r['effective_q_by_regime'][:4]]
+    regime_tail_q = r['effective_q_by_regime'][-1]['q_g_per_m3h']
+    regime_tail_n = r['effective_q_by_regime'][-1]['n']
+    regime_total_n = sum(b['n'] for b in r['effective_q_by_regime'])
+    regime_tail_pct = regime_tail_n / regime_total_n * 100 if regime_total_n else float('nan')
     monthly_rows = '\n'.join(
         f"| {m['month']} | {m['f_moment_g_per_h']:.2f} | {m['f_over_q']:.2f} | {m['n_days']} |"
         for m in r['monthly_moment'])
@@ -790,28 +986,89 @@ def render_report(r) -> str:
     val_foq_excl_aug = val_['f_over_q_excl_aug']
     fit_foq, val_foq = fit_['f_over_q'], val_['f_over_q']
     foq_diff_pct_jul = abs(fit_foq - val_foq_excl_aug) / fit_foq * 100
-    val_fmom_lo, val_fmom_hi = val_['f_moment_ci']
     all_leak, all_off = all_['implied_leak_g_per_h'], all_['old_leak_pct_off']
     fit_leak, fit_off = fit_['implied_leak_g_per_h'], fit_['old_leak_pct_off']
     val_leak, val_off = val_['implied_leak_g_per_h'], val_['old_leak_pct_off']
     fit_freg, val_freg = fit_['f_regression_g_per_h'], val_['f_regression_g_per_h']
 
+    def hi_label(hi):
+        return 'inf' if hi == float('inf') else str(int(hi))
+
+    hi_sweep_rows = '\n'.join(
+        f"| [{Q_BAND_LO}, {hi_label(s['hi'])}] | {s['q_g_per_m3h']:.3f} | "
+        f"{s['f_regression_g_per_h']:.2f} | {s['n_quiet']} |"
+        for s in r['q_band_sweep']['hi_sweep'])
+    lo_sweep_rows = '\n'.join(
+        f"| [{s['lo']}, {Q_BAND_HI}] | {s['q_g_per_m3h']:.3f} | "
+        f"{s['f_regression_g_per_h']:.2f} | {s['n_quiet']} |"
+        for s in r['q_band_sweep']['lo_sweep'])
+    sweep_freg = [s['f_regression_g_per_h'] for s in
+                  r['q_band_sweep']['hi_sweep'] + r['q_band_sweep']['lo_sweep']]
+    f_range_lo, f_range_hi = min(sweep_freg), max(sweep_freg)
+    f_range_mid = (f_range_lo + f_range_hi) / 2
+    f_range_half = (f_range_hi - f_range_lo) / 2
+
+    regime_half = r['effective_q_by_regime_and_half']
+    regime_half_rows = '\n'.join(
+        f"| {b['band']} | {b['q_fit']:.3f} ({b['n_fit']}) | "
+        f"{b['q_val']:.3f} ({b['n_val']}) |"
+        for b in regime_half)
+    short_n_fit = sum(b['n_fit'] for b in regime_half[:4])
+    short_n_val = sum(b['n_val'] for b in regime_half[:4])
+    short_pct_fit = (short_n_fit / (short_n_fit + short_n_val) * 100
+                     if (short_n_fit + short_n_val) else float('nan'))
+    deep = regime_half[-1]
+    deep_pct_val = (deep['n_val'] / (deep['n_fit'] + deep['n_val']) * 100
+                    if (deep['n_fit'] + deep['n_val']) else float('nan'))
+    band_pct_fit = fit_['n_quiet'] / all_['n_quiet'] * 100 if all_['n_quiet'] else float('nan')
+
+    ratio = r['ratio_ci']
+    shoulder_q90 = r['q_band_sweep']['hi_sweep'][3]['q_g_per_m3h']
+    shoulder_q240 = r['q_band_sweep']['hi_sweep'][6]['q_g_per_m3h']
+
+    def contains(ci, x):
+        return ci[0] <= x <= ci[1]
+
+    ratio_names = {'q': 'Q', 'f_reg': 'F regression', 'f_mom': 'F moment',
+                   'f_over_q': 'F/Q'}
+    excludes_1p6 = [ratio_names[k] for k, ci in ratio.items() if not contains(ci, 1.6)]
+    contains_1p6 = [ratio_names[k] for k, ci in ratio.items() if contains(ci, 1.6)]
+    all_contain_1p0 = all(contains(ci, 1.0) for ci in ratio.values())
+    excludes_1p6_str = ', '.join(excludes_1p6) if excludes_1p6 else 'none'
+    contains_1p6_str = ', '.join(contains_1p6) if contains_1p6 else 'none'
+
     return f"""# 999.33-06 — Chamber model fit results (MUSHY-60)
 
 Generated by `scripts/fit-chamber-model.py`. Window 2026-04-11 to 2026-08-08,
 1-minute samples, ambient from the MUSHY-64 fixture. All CIs are 95% day-block
-bootstrap intervals ({N_BOOT} resamples, whole UTC days).
+bootstrap intervals ({N_BOOT} resamples, whole UTC days, unless noted).
+
+## Headline: F/Q is the identified quantity, F and Q are simulator priors
+
+**`F/Q` = {all_['f_over_q']:.2f} {ci_str(all_['f_over_q_ci'])} g/m3 per unit duty.** It equals
+`mean_grad/mean_u` exactly -- free of both `Q` and the lag entirely, band-
+independent, and exactly identified. Fit vs validate halves agree to
+{foq_diff_pct:.1f}% ({fit_foq:.2f} vs {val_foq:.2f}). It is what sets steady-state duty, which is
+what the controller actually needs. Treat this as the result.
+
+`F` and `Q` individually are NOT independently identified: `F` is exactly
+proportional to `Q` (since `F = (F/Q) * Q`), and `Q` depends on an arbitrary
+band choice with no principled stopping point (see "The band sets F"
+below). Absolute `F` should be read as a simulator prior with a stated
+systematic range, not a fitted parameter: **F ~ {f_range_mid:.1f} +/- {f_range_half:.1f} g/h**
+(systematic range {f_range_lo:.1f}-{f_range_hi:.1f} g/h from the band choice alone, stacked on
+top of the bootstrap CI at any single band).
 
 ## Fitted parameters
 
 `Q` is an effective moisture-loss coefficient, not air-exchange conductance
 (see "Q is regime-dependent" below), fitted on a bounded quiet-run band
 [{Q_BAND_LO}, {Q_BAND_HI}] minutes rather than the full unbounded quiet
-population -- see "Why a bounded Q band" below. `F` is reported three ways:
-a regression on lag-corrected applied duty (`u_app`), restricted to raw
-`duty > 0`; a moment-balance cross-check (proportional to Q, NOT estimator-
-independent -- see below); and `F/Q`, the one quantity here that is free of
-both Q and the lag.
+population -- see "Why a bounded Q band" and "The band sets F" below. `F` is
+reported three ways: a regression on lag-corrected applied duty (`u_app`),
+restricted to raw `duty > 0`; a moment-balance cross-check (proportional to
+Q, NOT estimator-independent -- see below); and `F/Q`, the one quantity
+here that is free of both Q and the lag.
 
 | set | Q (m3/h) | quiet n | F regression (g/h) | active n | F moment (g/h) | F/Q | total |
 |---|---|---|---|---|---|---|---|
@@ -819,9 +1076,42 @@ both Q and the lag.
 {row('fit (Apr-Jun)', fit_)}
 {row('validate (Jul-Aug)', val_)}
 
-Report uncertainty, not point estimates: defensible F values span roughly
-4.5-6.8 g/h across estimators and sets, and every value except `F/Q` scales
-with a `Q` known only to within a factor of ~4 (see the settle sweep below).
+The bootstrap CIs above are for a FIXED band choice ([{Q_BAND_LO}, {Q_BAND_HI}]) and
+understate the true uncertainty in `Q` and `F`: the operational Q's CI is
+about {all_['q_ci'][1] / all_['q_ci'][0]:.1f}x wide (statistical), but the band choice itself
+moves `Q` (and therefore `F`, exactly proportionally) across roughly a 4x
+range with no principled stopping point (systematic -- see "The band sets
+F" below). `F/Q` alone escapes both: report it, not the absolute values,
+as the finding.
+
+## The band sets F
+
+Because `F/Q = mean_grad/mean_u` is band-free, `F` is exactly proportional
+to `Q`, and the band is the ONLY thing that sets `Q` operationally -- so
+the band is a direct dial on `F`. Two one-parameter sweeps around the
+operational choice [{Q_BAND_LO}, {Q_BAND_HI}]:
+
+Upper bound (lo={Q_BAND_LO} fixed):
+
+| band | Q (m3/h) | F regression (g/h) | quiet n |
+|---|---|---|---|
+{hi_sweep_rows}
+
+Lower bound (hi={Q_BAND_HI} fixed):
+
+| band | Q (m3/h) | F regression (g/h) | quiet n |
+|---|---|---|---|
+{lo_sweep_rows}
+
+Resulting `F` range across both sweeps: **{f_range_lo:.1f}-{f_range_hi:.1f} g/h**, a
+SYSTEMATIC uncertainty stacked on top of the bootstrap CI at any one band.
+There is no plateau -- only a soft shoulder for hi in [90, 240] where `Q`
+moves {shoulder_q90:.2f} -> {shoulder_q240:.2f} -- and nothing in
+the model has a 120-minute timescale (`tau_s`={TAU_S:.0f}, `dead_time_s`={DEAD_TIME_S:.0f}), so the
+upper bound is a JUDGMENT CALL, not a derived quantity. This band was NOT
+tuned to match the old model's ~8.7 g/h fill: the widest plausible upper
+bound ([{Q_BAND_LO}, inf], equivalent to the unbounded settle sweep) gives the
+LOWEST F of any candidate in this sweep, not the closest to 8.7.
 
 ## Duty reconstruction cross-check
 
@@ -843,22 +1133,24 @@ Effective Q by minutes since the relay dropped:
 |---|---|---|
 {regime_rows}
 
-Q is not a single time constant: it runs roughly 1.3-1.8 in the first ~40
-minutes after a drop and falls toward ~0.2 beyond 2 hours. A single
-first-mechanism leak would not produce this. Sweeping the required zero-duty
-run length (unbounded above -- diagnostic only, not what's used operationally):
+Q is not a single time constant: it runs roughly
+{min(regime_early_qs):.1f}-{max(regime_early_qs):.1f} in the first ~40 minutes
+after a drop and falls toward ~{regime_tail_q:.1f} beyond 2
+hours. A single first-mechanism leak would not produce this. Sweeping the
+required zero-duty run length (unbounded above -- diagnostic only, not
+what's used operationally):
 
 | need (min) | Q (m3/h) | quiet samples |
 |---|---|---|
 {sweep_rows}
 
-Roughly a 4x monotone range with no plateau, because the decay carries a slow
+Roughly a {sweep_ratio:.1f}x monotone range with no plateau, because the decay carries a slow
 tail well past the 600 s mixing constant.
 
 ## Why a bounded Q band
 
-The unbounded quiet population used by the settle sweep is 79% dominated by
-the `>120 min` bucket, whose effective Q (~0.235) is close to that unbounded
+The unbounded quiet population used by the settle sweep is {regime_tail_pct:.0f}% dominated by
+the `>120 min` bucket, whose effective Q (~{regime_tail_q:.2f}) is close to that unbounded
 fit's own asymptote. Applying that number to the active regime (tens of
 minutes, not hours) under-predicts the true loss there by roughly 2x, and
 that under-prediction was the actual root cause of both April-June's
@@ -874,6 +1166,25 @@ is unchanged from the original dead-time argument (`{Q_BAND_LO}` = dead time
 + settle), and the upper bound excludes the dominating long tail. `Q` is
 reported and used as an effective moisture-loss coefficient, not a physical
 air-exchange rate, in either case.
+
+## Q regime effect is confounded with season
+
+The pooled decline shown above should NOT be read as a clean single-mechanism
+regime effect without this split by half:
+
+| band (min) | Apr-Jun Q (n) | Jul-Aug Q (n) |
+|---|---|---|
+{regime_half_rows}
+
+Split by half, the decline is not even monotone in the same direction in
+both halves. The pooled monotone decline is substantially a COMPOSITION
+effect: short runs (1-40 min) are {short_pct_fit:.0f}% Apr-Jun, and the `>120 min`
+bucket is {deep_pct_val:.0f}% Jul-Aug. The operational band [{Q_BAND_LO}, {Q_BAND_HI}]
+is {band_pct_fit:.0f}% Apr-Jun by sample count, and the validate half contributes only
+{val_['n_quiet']} of {all_['n_quiet']} quiet samples to it. The band selects a SEASON
+almost as much as a regime -- treat "Q is regime-dependent" above as a
+description of the pooled data, not as evidence for a physical mechanism
+independent of season.
 
 ## Relay hold cap
 
@@ -904,14 +1215,19 @@ policy layered on top of it.
 | outside ambient coverage | {ex['outside_ambient']} |
 | **kept** | **{ex['kept']}** |
 
-Most long relay-unchanged runs are NOT telemetry outages. During the three
-longest (4.94 d Jul, 3.87 d Aug, 2.04 d May), `fc.humidifier_duty` recorded
-continuous ~2 Hz samples (803,990 / 582,250 / 343,463 of them) with mean
-commanded duty ~0.0001, and `fc.temperature` was present throughout -- the
-controller was up and genuinely commanding near-zero duty, not silent. The
-original "controller settled" reading was substantially right for these. A
-real outage does exist elsewhere: 2026-04-23, 22.9 h, `fc.temperature` count
-0 during the gap.
+Most long relay-unchanged runs are NOT telemetry outages. Ranked by
+duration, the top 5 relay-unchanged spans are #1 4.94 d (Jul), #2 3.87 d
+(Aug), #3 69.0 h (Jul), #4 68.5 h (Jul), #5 2.04 d (May) -- NOT "the three
+longest are 4.94 d / 3.87 d / 2.04 d" as an earlier round claimed (that
+skips #3 and #4, both in July). All five checked: `fc.humidifier_duty`
+recorded continuous ~2 Hz coverage throughout (471,279-803,990 samples
+depending on span) with mean commanded duty ~0.0001-0.0002, and
+`fc.temperature` was present throughout -- the controller was up and
+genuinely commanding near-zero duty, not silent. The original "controller
+settled" reading was substantially right for these. A real outage does
+exist elsewhere: 2026-04-23 13:44 to 2026-04-24 12:40 UTC (22.9 h),
+`fc.temperature` count 0 during the gap, confirmed directly against the
+gap's exact start/end timestamps (not a coarser minute-grid approximation).
 
 ## F-moment and August
 
@@ -929,6 +1245,31 @@ row above includes August; `f_moment_excl_aug` = {val_fmom_excl_aug:.2f} g/h and
 silently substituted, since which one is "the" validate-half number is a
 judgment call this script should not make unilaterally.
 
+## Season-independence: the ratio bootstrap
+
+Two separate CIs eyeballed against each other is not a test of
+season-independence; the validate/fit RATIO is. {N_BOOT_RATIO} day-block
+replicates, resampling each half independently:
+
+| statistic | validate/fit ratio 95% CI |
+|---|---|
+| Q | {ratio['q'][0]:.2f} to {ratio['q'][1]:.2f} |
+| F regression | {ratio['f_reg'][0]:.2f} to {ratio['f_reg'][1]:.2f} |
+| F moment | {ratio['f_mom'][0]:.2f} to {ratio['f_mom'][1]:.2f} |
+| F/Q | {ratio['f_over_q'][0]:.2f} to {ratio['f_over_q'][1]:.2f} |
+
+All four CIs contain 1.0 ({all_contain_1p0}): season-independence is NOT
+REJECTED by any of them. But only **{excludes_1p6_str}**
+excludes 1.6 (a previous round's claimed regression split) -- {contains_1p6_str} still
+contain it. This is a materially different (and more honest) result than an
+earlier draft of this section claimed before the round-3 zero-run-length
+fix: that draft, based on numbers with the fix not yet applied, said "none
+contain 1.6." After the fix, only `F/Q` -- the one quantity free of both the
+band choice and the lag -- cleanly excludes it; the others carry enough of
+the band's systematic uncertainty that a 1.6x seasonal difference remains
+inside their CIs. Read `F/Q`'s ratio CI as the one genuine piece of
+evidence here, not the other three.
+
 ## Reading this honestly
 
 `Q*mean(gradient)` agreement with the old model's implied leak
@@ -945,25 +1286,25 @@ most resembles (see "Q is regime-dependent" above), so a closer match to
 that single old number would itself be suspicious. Treat the old model's
 implied leak as a rough sanity check on order of magnitude only, not a target.
 
-**Season-independence is UNPROVEN, but the evidence for it is now much
-stronger than in the previous round.** All three estimators agree far more
-closely between halves after restoring the `duty > 0` filter and moving to a
-regime-matched Q:
+**Season-independence is UNPROVEN.** `F/Q` remains the only quantity free
+of both Q and the lag, exactly identified, and it agrees closely between
+halves:
 
 - `F/Q`: {fit_foq:.2f} vs {val_foq:.2f} ({foq_diff_pct:.1f}% apart,
   {foq_diff_pct_jul:.1f}% July-only)
 - regression on `u_app`: {fit_freg:.2f} vs {val_freg:.2f} g/h ({freg_diff_pct:.1f}% apart)
 - moment balance: {fit_['f_moment_g_per_h']:.2f} vs {val_fmom_excl_aug:.2f} g/h (July-only)
 
-None of this proves season-independence: `F/Q` remains the only quantity
-free of both Q and the lag and is the strongest evidence; the moment
-balance's validate-half CI ({val_fmom_lo:.2f} to {val_fmom_hi:.2f}) is wide
-enough that it cannot itself distinguish season-independence from a real
-seasonal difference; and even the now-close regression agreement could in
-principle reflect two compensating errors rather than a true match. But
-there is no longer a divergent estimator to explain away -- the previous
-round's negative-F
-population and 1.6x regression split are both gone.
+The regression and moment-balance splits above are NOT as tight as `F/Q`'s,
+and should not be read as independently confirming season-independence --
+both inherit the operational band's systematic uncertainty (see "The band
+sets F"), and the ratio-bootstrap section above shows their validate/fit
+ratio CIs still contain a 1.6x difference, unlike `F/Q`'s. The honest
+reading is: `F/Q` says the halves likely agree; `Q`, the regression, and
+the moment balance are each too uncertain (for their own, different
+reasons -- band choice for `Q` and the regression, plus the August
+gradient collapse for the moment balance) to independently confirm or
+refute that on their own.
 
 `Q` is the coefficient in the UNSATURATED regime -- saturated samples are
 excluded per the farmer's 2026-08-09 ruling, and those are the wettest hours.
