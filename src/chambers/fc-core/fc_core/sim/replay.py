@@ -18,12 +18,28 @@ from typing import List, Optional
 
 from fc_core.control_kernel import BandSpec, duty_bias_factor, project_error_pct
 from fc_core.sim.chamber_model import ChamberModel, ChamberParams
+from fc_core.sim.psychrometrics import absolute_humidity_g_m3
 from fc_core.sim.pwm_window import PwmConfig, PwmSimulator
 from fc_core.vendor.simple_pid import PID
 
 # Live fc1 values, read from the running controller 2026-08-09.
 DEFAULT_BAND = BandSpec(band_low=0.885, band_high=0.915, defend_side='both')
 DEFAULT_TARGET = 0.90
+
+# Baseline synthetic conditions, chosen to match the 2026-08-08 fidelity trace
+# (999.33-04-DESIGN-absolute-moisture.md, design limitation 5):
+#   - chamber and ambient run at nearly the same temperature in August
+#     (monthly means 10.7 C in / 10.5-11.0 C out), so DEFAULT_TEMP_C is used
+#     for both sides of the gradient rather than modelling a separate ambient
+#     temperature.
+#   - the measured August chamber-minus-ambient gradient is ~0.30 g/m3 (the
+#     table's Aug row), which the design doc reads as roughly RH_in ~94% vs
+#     RH_out ~86% at that temperature. DEFAULT_AMBIENT_AH_G_M3 is the chamber's
+#     90%-RH absolute humidity at 10.7 C (8.84 g/m3) minus 0.30 g/m3, i.e.
+#     8.54 g/m3 -- equivalent to ~87% RH at 10.7 C, consistent with that
+#     reading.
+DEFAULT_TEMP_C = 10.7
+DEFAULT_AMBIENT_AH_G_M3 = absolute_humidity_g_m3(DEFAULT_TEMP_C, 90.0) - 0.30
 
 
 @dataclass
@@ -85,11 +101,13 @@ def run_closed_loop(hours: float,
                     target: float = DEFAULT_TARGET,
                     climb_seconds: float = 0.0,
                     duty_bias: float = 0.0,
-                    dt: float = 1.0) -> RunMetrics:
+                    dt: float = 1.0,
+                    ambient_ah_g_m3: float = DEFAULT_AMBIENT_AH_G_M3,
+                    temp_c: float = DEFAULT_TEMP_C) -> RunMetrics:
     params = params or ChamberParams()
     pwm_cfg = pwm_cfg or PwmConfig()
 
-    chamber = ChamberModel(params, rh0=rh0)
+    chamber = ChamberModel(params, rh0_pct=rh0, temp_c=temp_c)
     pwm = PwmSimulator(pwm_cfg)
     pid = PID(gains.kp, gains.ki, gains.kd, setpoint=0.0, output_limits=(0.0, 1.0))
     d_filtered = 0.0
@@ -156,7 +174,7 @@ def run_closed_loop(hours: float,
         last_duty = duty
 
         delivered = pwm.step(duty, dt_s=dt)
-        chamber.step(delivered_duty=delivered, dt_s=dt)
+        chamber.step(delivered_duty=delivered, dt_s=dt, ambient_ah_g_m3=ambient_ah_g_m3)
 
         rh_series.append(chamber.rh)
         duty_series.append(duty)

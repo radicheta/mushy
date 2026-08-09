@@ -11,23 +11,51 @@ Ground truth, fc1 2026-08-08, 26 h, fruiting band [0.885, 0.915]:
     duty at ~0          52.6 % of minutes
     duty in (0, 0.083)  22.3 % of minutes -- commanded then discarded
 
-KNOWN FIDELITY LIMITS (measured 2026-08-09, not hidden):
+KNOWN FIDELITY LIMITS, RH-points model (measured 2026-08-09, not hidden):
   * Period runs ~40 % long: sim 2.90 h vs 1.82-2.10 h for daytime cycles. An
     RH-proportional leak was trialled to close this and REJECTED -- it behaved
     non-monotonically across floor values (86 -> no bursts, 84 -> 4.14 h),
     which is fragility rather than fidelity.
   * Sim under-represents the discarded band: 9.7 % vs 22.3 % of samples.
   * Sim never fires Mode C bypass; the real chamber hit duty 1.0 for 2.9 %.
+
+MUSHY-60 UPDATE (2026-08-09): the moisture-balance model FAILS this gate at
+the baseline fixture's physically-motivated conditions (temp_c=10.7,
+ambient_ah_g_m3 giving the ~0.30 g/m3 August gradient -- see replay.py). Five
+of the six assertions below fail: no oscillation develops (rh_p2p=1.09,
+burst_count=0), mean commanded duty is 0.078 (target 0.142 +/- 0.05), and RH
+never reaches the band edges (max 90.60, min 89.50). A parameter sweep over
+ambient_ah_g_m3 (0.3-8.0 g/m3 gradient) at temp_c=10.7 found NO value that
+satisfies all six assertions simultaneously: the p2p amplitude tops out
+around 2.5-2.6 near gradient~1.2-1.3 g/m3 (duty already 0.32-0.37, well above
+the 0.142+/-0.05 band by then) and rh_max never exceeds ~91.44 for any
+gradient tried, so `rh_max > 91.5` cannot be satisfied at this temperature at
+all. All six assertions pass only at an implausibly cold chamber temperature
+(~5 C, versus the measured ~10.7 C August mean) -- i.e. only by picking
+physically implausible conditions. Per the task-4 brief this is reported as a
+finding, not tuned away: the moisture-balance model, at the conditions it
+claims to model, does not reproduce the observed 2026-08-08 limit cycle.
+See task-4-report.md for the full sweep.
+
 So: use this model for RELATIVE comparison between control configurations,
-which is what it is for. Do not quote its absolute numbers as predictions.
+which is what it is for. Do not quote its absolute numbers as predictions,
+and do not trust its baseline to reproduce fc1's actual limit cycle.
 """
 import pytest
 
 from fc_core.sim.chamber_model import ChamberParams
+from fc_core.sim.psychrometrics import absolute_humidity_g_m3
 from fc_core.sim.pwm_window import PwmConfig
-from fc_core.sim.replay import DEFAULT_BAND, DEFAULT_GAINS, run_closed_loop
+from fc_core.sim.replay import (DEFAULT_AMBIENT_AH_G_M3, DEFAULT_BAND,
+                                DEFAULT_GAINS, DEFAULT_TEMP_C, run_closed_loop)
 
 HOURS = 14.0
+
+# ah_in for the equilibrium-duty checks below: the absolute humidity of the
+# chamber holding exactly at the control target (90 % RH), at the same
+# DEFAULT_TEMP_C the baseline run uses. Paired with DEFAULT_AMBIENT_AH_G_M3
+# this reproduces the ~0.30 g/m3 August gradient (see replay.py).
+BASELINE_AH_IN = absolute_humidity_g_m3(DEFAULT_TEMP_C, 90.0)
 
 
 @pytest.fixture(scope='module')
@@ -70,7 +98,8 @@ def test_baseline_discards_commanded_duty(baseline):
 def test_delivered_duty_sits_near_equilibrium(baseline):
     """Averaged over a cycle the chamber can only be holding at equilibrium."""
     assert baseline.duty_mean_delivered == pytest.approx(
-        ChamberParams().equilibrium_duty, abs=0.02)
+        ChamberParams().equilibrium_duty(BASELINE_AH_IN, DEFAULT_AMBIENT_AH_G_M3),
+        abs=0.02)
 
 
 # ---------------------------------------------------------------------------
@@ -79,7 +108,7 @@ def test_delivered_duty_sits_near_equilibrium(baseline):
 # ---------------------------------------------------------------------------
 
 RECOMMENDED = PwmConfig(window_s=300.0, min_pulse_s=30.0, accumulate=True)
-EQUILIBRIUM_BIAS = ChamberParams().equilibrium_duty
+EQUILIBRIUM_BIAS = ChamberParams().equilibrium_duty(BASELINE_AH_IN, DEFAULT_AMBIENT_AH_G_M3)
 
 
 @pytest.fixture(scope='module')
@@ -114,19 +143,22 @@ def test_recommended_config_discards_nothing(recommended):
 # ---------------------------------------------------------------------------
 # MUSHY-57: the bias must not become a duty floor.
 #
-# The high-ambient day is modelled as leak_pts_per_hour = 0.0 -- the chamber
-# holds its own RH, so the correct standing duty is zero, not equilibrium_duty.
-# A flat bias cannot express that: the humidifier only adds moisture, so the
-# chamber would climb without limit.
+# The high-ambient day is modelled with a genuine zero gradient: ambient
+# absolute humidity set equal to the chamber's own starting absolute humidity,
+# so the chamber holds its own RH and the correct standing duty is zero, not
+# equilibrium_duty. A flat bias cannot express that: the humidifier only adds
+# moisture, so the chamber would climb without limit.
 # ---------------------------------------------------------------------------
 
-HIGH_AMBIENT = ChamberParams(leak_pts_per_hour=0.0)
+HIGH_AMBIENT_RH0 = 92.0
+HIGH_AMBIENT_AH_G_M3 = absolute_humidity_g_m3(DEFAULT_TEMP_C, HIGH_AMBIENT_RH0)
 
 
 @pytest.fixture(scope='module')
 def high_ambient():
-    return run_closed_loop(hours=6.0, params=HIGH_AMBIENT, pwm_cfg=RECOMMENDED,
-                           rh0=92.0, duty_bias=EQUILIBRIUM_BIAS)
+    return run_closed_loop(hours=6.0, params=ChamberParams(), pwm_cfg=RECOMMENDED,
+                           rh0=HIGH_AMBIENT_RH0, duty_bias=EQUILIBRIUM_BIAS,
+                           ambient_ah_g_m3=HIGH_AMBIENT_AH_G_M3)
 
 
 def test_high_ambient_day_reaches_zero_duty(high_ambient):
