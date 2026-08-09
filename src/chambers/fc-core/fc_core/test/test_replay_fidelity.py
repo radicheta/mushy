@@ -71,3 +71,59 @@ def test_delivered_duty_sits_near_equilibrium(baseline):
     """Averaged over a cycle the chamber can only be holding at equilibrium."""
     assert baseline.duty_mean_delivered == pytest.approx(
         ChamberParams().equilibrium_duty, abs=0.02)
+
+
+# ---------------------------------------------------------------------------
+# Fix evaluation. These assert the RELATIVE improvement the sweep found, which
+# is what this model is qualified to say. They are not absolute predictions.
+# ---------------------------------------------------------------------------
+
+RECOMMENDED = PwmConfig(window_s=300.0, min_pulse_s=30.0, accumulate=True)
+EQUILIBRIUM_BIAS = ChamberParams().equilibrium_duty
+
+
+@pytest.fixture(scope='module')
+def recommended():
+    return run_closed_loop(hours=20.0, pwm_cfg=RECOMMENDED, rh0=90.0,
+                           duty_bias=EQUILIBRIUM_BIAS)
+
+
+def test_recommended_config_removes_the_limit_cycle(recommended):
+    assert recommended.burst_count == 0, (
+        f'expected no bursts, got {recommended.burst_count}')
+
+
+def test_recommended_config_shrinks_the_swing(recommended, baseline):
+    assert recommended.rh_p2p < baseline.rh_p2p * 0.75
+
+
+def test_recommended_config_stays_nearer_the_setpoint(recommended):
+    assert recommended.rh_min > 89.0
+    assert recommended.rh_max < 92.2
+
+
+def test_recommended_config_does_not_blow_up_relay_wear(recommended, baseline):
+    """Farmer flagged relay wear as a real cost. Guard it explicitly."""
+    assert recommended.relay_cycles_per_hour < baseline.relay_cycles_per_hour * 1.5
+
+
+def test_recommended_config_discards_nothing(recommended):
+    assert recommended.discarded_s == 0.0
+
+
+def test_slew_limiter_cannot_bind_and_is_therefore_not_shipped():
+    """Documents a NEGATIVE result so nobody re-proposes it from intuition.
+
+    A slew limiter was requested twice. The commanded duty already rises at
+    most 0.00046/s -- 12x slower than a 180 s limiter's 0.00556/s ceiling --
+    so the limiter never engages. The apparent 'slam to 100%' on the charts is
+    the PWM relay toggling, not the duty command.
+    """
+    without = run_closed_loop(hours=14.0, rh0=90.0, climb_seconds=0.0)
+    with_slew = run_closed_loop(hours=14.0, rh0=90.0, climb_seconds=180.0)
+    assert with_slew.rh_p2p == pytest.approx(without.rh_p2p, abs=1e-9)
+    assert with_slew.duty_mean_commanded == pytest.approx(
+        without.duty_mean_commanded, abs=1e-9)
+    rises = [without.duty_series[i] - without.duty_series[i - 1]
+             for i in range(1, len(without.duty_series))]
+    assert max(rises) < 1.0 / 180.0

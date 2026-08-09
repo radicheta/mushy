@@ -99,6 +99,7 @@ class FruitingChamberController(Node):
                 ('pid_kd', 4.0),
                 ('pid_derivative_filter_tau', 10.0),
                 ('pid_integrator_decay_tau', 1200.0),
+                ('humidifier_duty_bias', 0.0),
                 ('pid_setpoint_ramp_seconds', 30.0),
                 ('bypass_threshold', 0.025),
             ]
@@ -1788,6 +1789,20 @@ class FruitingChamberController(Node):
                     self._d_filtered = alpha * d_raw + (1 - alpha) * self._d_filtered
                     raw_pid_output = max(0.0, min(1.0, p_term + i_term + self._d_filtered))
                 duty = raw_pid_output
+
+                # Feedforward bias (2026-08-09). The feather feeds error=0 at
+                # the band midpoint, so the PID commands 0 duty exactly where
+                # the chamber needs its standing ~10% just to hold station.
+                # The loop therefore cannot hold its own setpoint: RH drains
+                # until the error grows enough to clear the actuator's
+                # min-pulse floor, then overshoots. Offline sweep showed this
+                # bias removes the ~2h limit cycle entirely where neither a
+                # slew limiter nor integrator-decay changes did anything.
+                # Set to the chamber's measured equilibrium duty. Default 0.0
+                # (disabled) — an over-large bias raises the operating point.
+                bias = self.get_parameter('humidifier_duty_bias').value
+                if bias > 0.0:
+                    duty = max(0.0, min(1.0, duty + bias))
 
             self._publish_duty(duty)
 
