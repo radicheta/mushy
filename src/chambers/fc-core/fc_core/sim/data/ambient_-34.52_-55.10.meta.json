@@ -1,0 +1,8 @@
+{
+  "generated_utc": "2026-08-09T19:09:59.174407+00:00",
+  "url": "https://archive-api.open-meteo.com/v1/archive?latitude=-34.5165641&longitude=-55.0982273&start_date=2026-04-11&end_date=2026-08-08&hourly=temperature_2m%2Crelative_humidity_2m%2Cprecipitation&timezone=UTC",
+  "start": "2026-04-11",
+  "end": "2026-08-08",
+  "rows": 2880,
+  "sha256": "77bbc4a6812552fbc3116046eb43856a69b09bdd037e6062bbde4d9dbb3cf91e"
+}

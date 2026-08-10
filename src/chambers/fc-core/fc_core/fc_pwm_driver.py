@@ -38,6 +38,11 @@ class SlowPwmDriver(Node):
                 ('max_duty_5min_avg', 0.40),
                 ('actuator_simulation_mode', True),
                 ('duty_topic_timeout_seconds', 5.0),
+                # Sub-threshold pulse accumulation (2026-08-09). Default OFF:
+                # this changes actuator behaviour, so it stays opt-in until
+                # validated on the live chamber. See fc_core/sim/ and the
+                # sweep in .planning/notes/2026-08-09-pid-limit-cycle/.
+                ('accumulate_subthreshold', False),
             ]
         )
 
@@ -78,6 +83,7 @@ class SlowPwmDriver(Node):
 
         # Internal state
         self._latest_duty = 0.0
+        self._subthreshold_bank_s = 0.0   # banked demand for accumulate_subthreshold
         self._last_duty_msg_ts = None
         self._window_start_ts = self.get_clock().now()
         self._window_on_seconds = 0.0        # locked at window-start
@@ -134,7 +140,23 @@ class SlowPwmDriver(Node):
             # Min-pulse round-down (D-11): sub-threshold pulses → 0
             min_pulse = self.get_parameter('min_pulse_seconds').value
             if 0.0 < on_sec < min_pulse:
-                on_sec = 0.0
+                if self.get_parameter('accumulate_subthreshold').value:
+                    # Sub-threshold accumulation. min_pulse/window is a hard
+                    # floor on expressible duty (8.3% at 10s/120s, 16.7% at
+                    # 20s/120s) but FC-1's equilibrium demand is only ~10%, so
+                    # the controller's entire gentle-trim region was being
+                    # discarded — 22.3% of samples on 2026-08-08. Bank the
+                    # demand instead and spend it as one legal-length pulse
+                    # once a full pulse has accrued. Mean duty is preserved;
+                    # no pulse shorter than min_pulse is ever emitted.
+                    self._subthreshold_bank_s += on_sec
+                    if self._subthreshold_bank_s >= min_pulse:
+                        on_sec = min_pulse
+                        self._subthreshold_bank_s -= min_pulse
+                    else:
+                        on_sec = 0.0
+                else:
+                    on_sec = 0.0
 
             self._window_on_seconds = on_sec
             self._window_start_ts = now

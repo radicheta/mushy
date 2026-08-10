@@ -574,15 +574,17 @@ def test_pid_gains_live_reload(ros_context):
     node._grace_active = lambda: False
     node.current_temp = 23.0
 
-    # Phase 28: error_pct uses band-aware projection. Default test config has
-    # no `modes:` block, so D-04 fallback synthesizes ModeView from
-    # target_humidity=0.94 + humidity_tolerance=0.05 → band [0.89, 0.99].
-    # In-band rh produces error_pct=0 and Kp has no effect. Seed rh=0.88 — just
-    # below band_low (distance 0.01 < bypass 0.025 → linear PID, not Mode C) —
-    # so error_pct is non-zero and Kp directly affects output.
+    # Phase 28 + quadratic feather (2026-06-21): error_pct uses a band-aware
+    # quadratic low-side feather. Default test config has no `modes:` block, so
+    # the D-04 fallback synthesizes ModeView from target_humidity=0.94 +
+    # humidity_tolerance=0.05 → band [0.89, 0.99], midpoint 0.94, half-width w=5.0.
+    # Seed rh=0.91 — inside the band but below the midpoint, in the feather's
+    # responsive zone (s=3.0 < w=5.0 → error_pct=-(s^2)/(2w)=-0.9, non-saturated) —
+    # so error_pct is non-zero and Kp directly affects output without slamming the
+    # 1.0 rail (rh=0.88 now over-saturates under the feather's steeper near-floor map).
     with patch.object(node, 'get_clock', return_value=_mock_clock_at(0)):
         for _ in range(5):
-            _send_humidity(node, 0.88)
+            _send_humidity(node, 0.91)
 
     duty_low_kp = []
     node._duty_pub.publish = lambda msg: duty_low_kp.append(msg.data)

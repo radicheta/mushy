@@ -13,6 +13,7 @@ from typing import Optional
 from statistics import median
 from fc_core import scheduler
 from fc_core.vendor.simple_pid import PID
+from fc_core.control_kernel import BandSpec, duty_bias_factor, project_error_pct
 from fc_msgs.msg import Mode
 from fc_msgs.srv import SetMode, StartExperiment, CancelExperiment
 from rcl_interfaces.msg import SetParametersResult
@@ -98,6 +99,7 @@ class FruitingChamberController(Node):
                 ('pid_kd', 4.0),
                 ('pid_derivative_filter_tau', 10.0),
                 ('pid_integrator_decay_tau', 1200.0),
+                ('humidifier_duty_bias', 0.0),
                 ('pid_setpoint_ramp_seconds', 30.0),
                 ('bypass_threshold', 0.025),
             ]
@@ -1694,30 +1696,40 @@ class FruitingChamberController(Node):
             self._ramp_setpoint_to_band(dt, mode)
             rh = self.current_humidity
 
-            # Phase 28 D-09: band-aware error projection.
-            # error_pct < 0 when below the defended floor → drives duty up via PID.
-            if rh < mode.band_low:
-                error_pct = (rh - mode.band_low) * 100.0
-            elif rh > mode.band_high:
-                if mode.defend_side in ('high', 'both'):
-                    error_pct = (rh - mode.band_high) * 100.0
-                else:
-                    # defend_side=low: don't fight upward. Clamp duty + freeze
-                    # integrator. Bumpless re-engage on return into band uses
-                    # the same primitive as Mode C exit (next tick re-enters
-                    # the in-band branch which calls set_auto_mode(True, ...)).
-                    if self._pid.auto_mode:
-                        self._pid.set_auto_mode(False)
-                    self._publish_duty(0.0)
-                    ht_msg = Float32()
-                    ht_msg.data = float(self._effective_setpoint)
-                    self._humidity_target_pub.publish(ht_msg)
-                    po_msg = Float32()
-                    po_msg.data = 0.0
-                    self._pid_output_pub.publish(po_msg)
-                    return
-            else:
-                error_pct = 0.0
+            # Phase 28 D-09 + quadratic low-side feather (calibration 2026-06-21).
+            # error_pct < 0 drives duty up via PID. The feather is anchored on the
+            # band MIDPOINT (the defended-floor reference), NOT mode.target: pinning's
+            # cosmetic target (0.85) sits BELOW its band_low (0.90) by design, so
+            # anchoring on target would zero the error exactly where the floor must
+            # be defended. Below the midpoint, error ramps quadratically from 0 at
+            # the midpoint to -w/2 at band_low, then continues linearly below the
+            # floor. The join at s=w is C1 (value AND slope match), so the controller
+            # climbs gently instead of stepping at the floor — the step was the
+            # source of the derivative kick that slammed duty to 100%. w = band
+            # half-width in pct; for a symmetric band, midpoint == target and
+            # w == humidity_tolerance*100. With w<=0 the feather degenerates to the
+            # plain linear projection.
+            # The projection itself lives in fc_core.control_kernel so the
+            # offline simulator (fc_core.sim) exercises the SAME arithmetic
+            # this loop runs. Do not re-inline it here.
+            band = BandSpec(mode.band_low, mode.band_high, mode.defend_side)
+            projected = project_error_pct(rh, band)
+            if projected is None:
+                # defend_side=low: don't fight upward. Clamp duty + freeze
+                # integrator. Bumpless re-engage on return into band uses
+                # the same primitive as Mode C exit (next tick re-enters
+                # the in-band branch which calls set_auto_mode(True, ...)).
+                if self._pid.auto_mode:
+                    self._pid.set_auto_mode(False)
+                self._publish_duty(0.0)
+                ht_msg = Float32()
+                ht_msg.data = float(self._effective_setpoint)
+                self._humidity_target_pub.publish(ht_msg)
+                po_msg = Float32()
+                po_msg.data = 0.0
+                self._pid_output_pub.publish(po_msg)
+                return
+            error_pct = projected
 
             # Phase 28 D-11: Mode C bypass keys off NEAREST DEFENDED edge,
             # not target_humidity. Otherwise pinning's cosmetic target=0.85
@@ -1776,6 +1788,27 @@ class FruitingChamberController(Node):
                     self._d_filtered = alpha * d_raw + (1 - alpha) * self._d_filtered
                     raw_pid_output = max(0.0, min(1.0, p_term + i_term + self._d_filtered))
                 duty = raw_pid_output
+
+                # Feedforward bias (2026-08-09). The feather feeds error=0 at
+                # the band midpoint, so the PID commands 0 duty exactly where
+                # the chamber needs its standing ~10% just to hold station.
+                # The loop therefore cannot hold its own setpoint: RH drains
+                # until the error grows enough to clear the actuator's
+                # min-pulse floor, then overshoots. Offline sweep showed this
+                # bias removes the ~2h limit cycle entirely where neither a
+                # slew limiter nor integrator-decay changes did anything.
+                # Set to the chamber's measured equilibrium duty. Default 0.0
+                # (disabled) — an over-large bias raises the operating point.
+                #
+                # MUSHY-57: scaled by duty_bias_factor, which fades the bias
+                # from full at the band midpoint to 0 at band_high. Added after
+                # the PID's own (0,1) clamp, a FLAT bias would become the
+                # minimum commandable duty — on a high-ambient day the chamber
+                # could never idle, and the humidifier can only add moisture.
+                bias = self.get_parameter('humidifier_duty_bias').value
+                if bias > 0.0:
+                    duty = max(0.0, min(
+                        1.0, duty + bias * duty_bias_factor(rh, band)))
 
             self._publish_duty(duty)
 

@@ -20,7 +20,7 @@
     
     # Tolerances
     temp_tolerance: 1.0  # °C
-    humidity_tolerance: 0.015  # 1.5% — farmer-set 2026-04-28 (was 1% per 2026-04-11 calibration; widening is safe re: dwell clamps, see backlog 999.9)
+    humidity_tolerance: 0.005  # 0.5% — narrowed 1.5%→0.5% 2026-06-21 (calibration): defines the quadratic-feather band half-width. Tighter band + gentle feathered climb replaces the wide deadband + slam at the floor.
     
     # Control parameters
     min_fan_speed: 50  # Minimum fan speed percentage
@@ -40,7 +40,7 @@
     pid_derivative_filter_tau: 60.0  # 10→60 2026-05-12 to suppress PWM-period (120s) ripple in derivative term — duty was tracking its own PWM-induced RH wiggle
     pid_integrator_decay_tau: 300.0  # 999.49 — in-band I decay; 1200→300 2026-05-12 to break ~20min limit cycle (decay tau was resonating with chamber thermal response)
     pid_setpoint_ramp_seconds: 30.0  # D-07
-    bypass_threshold: 0.025           # D-10 — Mode C entry when |error| > 2.5% RH
+    bypass_threshold: 0.05            # D-10 — Mode C entry; 2.5%→5% 2026-06-21 (calibration): reserve full-ON open-loop for genuine crashes (RH < ~90.5%), let the feathered PID own normal dips
     # Slow-PWM (fc_pwm_driver — Phase 27)
     pwm_window_seconds: 120.0         # D-08 LOCKED
     min_pulse_seconds: 10.0           # D-11 LOCKED — empirical fog-visibility floor
@@ -78,9 +78,13 @@ fc_controller:
   ros__parameters:
     active_mode: fruiting
     # Fruiting v0 — D-05 — preserves Phase 27 HUMID-04 narrow-band PID behavior
-    modes.fruiting.target_humidity: 0.96
-    modes.fruiting.band_low: 0.945
-    modes.fruiting.band_high: 0.975
+    # Band centered on the target: the quadratic feather anchors error=0 at the
+    # midpoint, so the chamber settles ~midpoint (feather-up vs passive-drying-down).
+    # 2026-06-27: farmer lowered RH target 0.96→0.90; band [0.945,0.975]→[0.885,0.915]
+    # (width 0.03 preserved). Was live on fc1/prod runtime overlay first; forward-ported here.
+    modes.fruiting.target_humidity: 0.90
+    modes.fruiting.band_low: 0.885
+    modes.fruiting.band_high: 0.915
     modes.fruiting.defend_side: both
     modes.fruiting.t_target: .nan
     # Pinning v0 — D-06 — passive only; defends floor 0.90 only, ceiling 0.99 silent (D-07)

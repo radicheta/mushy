@@ -7,7 +7,9 @@ package_name = 'fc_core'
 setup(
     name=package_name,
     version='0.0.1',
-    packages=[package_name, package_name + '.vendor', package_name + '.vendor.simple_pid'],
+    packages=[package_name, package_name + '.sim', package_name + '.vendor', package_name + '.vendor.simple_pid'],
+    package_data={'fc_core.sim': ['data/*.csv']},
+    include_package_data=True,
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
