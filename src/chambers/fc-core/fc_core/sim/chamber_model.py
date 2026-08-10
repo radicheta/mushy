@@ -14,15 +14,55 @@ Fitted constants (Task 2, see 999.33-06-FIT-RESULTS.md):
 
 Task 2's identification found that the only WELL-IDENTIFIED quantity is the
 ratio F/Q = 7.0337 (computed independently as mean_gradient/mean_duty, so it
-does not depend on Q, on the lag model, or on the quiet-band choice). Absolute
-Q and F each carry a systematic uncertainty of roughly +/-20% from the band
-choice. F is therefore set as Q * (F/Q) = 0.9634 * 7.0337 = 6.776 -- NOT the
-fit's headline 7.11 -- so that the model's steady-state behaviour matches the
-identified ratio exactly. Using 7.11 instead would put steady-state duty 5%
-off the one number we actually trust. This is a deliberate decision.
+does not depend on Q, on the lag model, or on the quiet-band choice). The
+branch's own band sweep gives Q in [0.658, 1.242] -- -32% / +29% of the
+shipped 0.9634, a 1.9x span top-to-bottom -- and F in [5.8, 8.3] g/h, -14% /
++23% of the shipped 6.776. F is therefore set as Q * (F/Q) = 0.9634 * 7.0337
+= 6.776 -- NOT the fit's headline 7.11 -- so that the model's steady-state
+behaviour matches the identified ratio exactly. Using 7.11 instead would put
+steady-state duty 5% off the one number we actually trust. This is a
+deliberate decision.
+
+Why F/Q, and not some other combination: equilibrium_duty() below is
+Q * gradient / F = gradient / (F/Q) -- Q cancels out of it entirely. Verified
+numerically: the feedforward bias comes out to 0.0999 at Q = 0.658, 0.963,
+and 1.242 alike, unchanged across the whole swept band. The one number the
+live controller actually consumes therefore depends only on F/Q, the one
+quantity that is well identified, and is insensitive to the band choice that
+dominates every other uncertainty in this module. That is the real
+justification for this parameterisation.
+
+WHAT THIS MODEL CANNOT SUPPORT:
+
+* Season-independence is UNPROVEN. The fit window (2026-04-11 to 2026-08-08)
+  is austral autumn/winter. A ratio bootstrap fails to reject
+  season-independence but cannot exclude a ~+/-35% seasonal difference.
+  Solar gain on an uninsulated steel container is unmodelled, so this will
+  extrapolate poorly into summer for a PHYSICAL reason, not a curve-fitting
+  one.
+* Q, F and F/Q are unsaturated-regime values. 10,645 saturated minutes
+  (chamber RH >= 99.99, sensor membrane saturation) were excluded from the
+  fit per the farmer's 2026-08-09 ruling. Those are the WETTEST hours and
+  therefore the largest gradients, so excluding them biases mean_gradient --
+  and hence F/Q -- downward.
+* Ambient comes from a reanalysis grid cell ~4 km away (MUSHY-64 fixture),
+  not from the chamber envelope. This sets a floor on achievable fidelity.
+  MUSHY-67 is the eventual upgrade.
+* ``fc.humidity`` silently mixes two sensors (SHT30 with SCD41 fallback)
+  that disagree by ~4.6 RH points, and the provenance is dropped at the
+  storage boundary. This bounds how much of any residual is model error
+  versus sensor artifact. MUSHY-71.
+* There is no condensation ceiling. The model clamps only AH >= 0; it has
+  no saturation sink, and the real chamber condenses on cold steel walls. At
+  default parameters the closed loop stays 87-92% RH so nothing surfaces,
+  but a replay of recorded data containing saturated stretches could
+  integrate past RH 100 with no sink -- and the divergence would look like a
+  control-law finding rather than a missing physical term. Relevant to
+  MUSHY-59.
 """
 from collections import deque
 from dataclasses import dataclass
+from typing import Optional
 
 from fc_core.sim.psychrometrics import CHAMBER_VOLUME_M3, absolute_humidity_g_m3, relative_humidity_pct
 
@@ -31,26 +71,28 @@ from fc_core.sim.psychrometrics import CHAMBER_VOLUME_M3, absolute_humidity_g_m3
 class ChamberParams:
     """Moisture-balance coefficients for FC-1. Fitted, not derived.
 
-    ``air_exchange_m3_per_h`` is NOT a physical air-exchange rate, despite
-    the name being the least-bad available. It is an EFFECTIVE
-    MOISTURE-LOSS COEFFICIENT that lumps together infiltration, condensation
-    on cold steel walls, substrate exchange, AND an unrecorded ~15 min/hour
-    vent fan. Do not present it to anyone as a real air-exchange rate. It was
-    fitted at ~25% vent duty -- if the vent schedule changes, this value is
-    wrong and needs refitting.
+    ``moisture_loss_m3_per_h`` is NOT a physical air-exchange rate, despite
+    that being the least-bad available name for the coefficient's units. It
+    is an EFFECTIVE MOISTURE-LOSS COEFFICIENT that lumps together
+    infiltration, condensation on cold steel walls, substrate exchange, AND
+    an unrecorded ~15 min/hour vent fan. Do not present it to anyone as a
+    real air-exchange rate. It was fitted at ~25% vent duty -- if the vent
+    schedule changes, this value is wrong and needs refitting.
 
     ``fill_g_per_h`` is an aggregate ~50x below the misting head's ~360 g/h
     nameplate output, because most emitted water lands in the substrate
     rather than the air. See MUSHY-68.
 
     Together, steady-state behaviour is well identified (via the F/Q ratio,
-    see module docstring); the TRANSIENT response carries roughly a
-    factor-1.2 uncertainty from the band choice, because the response time
-    is set by V/Q. This simulator is for RELATIVE comparison between control
-    configurations, not absolute prediction.
+    see module docstring); the TRANSIENT response carries a much larger
+    uncertainty from the band choice than steady state does, because the
+    response time is set by V/Q and the branch's own sweep puts V/Q in
+    [4.64 h, 8.75 h] -- not a factor-1.2 band. This simulator is for
+    RELATIVE comparison between control configurations, not absolute
+    prediction.
     """
 
-    air_exchange_m3_per_h: float = 0.9634   # fitted (Task 2); see class docstring
+    moisture_loss_m3_per_h: float = 0.9634  # fitted (Task 2); see class docstring
     fill_g_per_h: float = 6.776             # fitted (Task 2); see class docstring
     dead_time_s: float = 360.0              # fitted: transport + mixing lag
     tau_s: float = 600.0                    # fitted: first-order mixing constant
@@ -61,7 +103,8 @@ class ChamberParams:
         if self.fill_g_per_h <= 0.0:
             return 0.0
         return max(0.0, min(1.0,
-            self.air_exchange_m3_per_h * (ah_in_g_m3 - ah_out_g_m3) / self.fill_g_per_h))
+                            self.moisture_loss_m3_per_h * (ah_in_g_m3 - ah_out_g_m3)
+                            / self.fill_g_per_h))
 
 
 class ChamberModel:
@@ -90,7 +133,7 @@ class ChamberModel:
         return self._ah
 
     def step(self, delivered_duty: float, dt_s: float, ambient_ah_g_m3: float,
-              temp_c: float = None) -> float:
+             temp_c: Optional[float] = None) -> float:
         if temp_c is not None:
             self.temp_c = float(temp_c)
         self._now_s += dt_s
@@ -105,7 +148,7 @@ class ChamberModel:
         self._applied += alpha * (self._emerged - self._applied)
 
         dah_dt = (self.p.fill_g_per_h * self._applied
-                  - self.p.air_exchange_m3_per_h * (self._ah - ambient_ah_g_m3)
+                  - self.p.moisture_loss_m3_per_h * (self._ah - ambient_ah_g_m3)
                   ) / CHAMBER_VOLUME_M3          # g/m3 per hour
         self._ah = max(0.0, self._ah + dah_dt * (dt_s / 3600.0))
         return self.rh

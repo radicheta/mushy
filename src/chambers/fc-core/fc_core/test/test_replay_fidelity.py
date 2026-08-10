@@ -25,10 +25,20 @@ actual day.
 KNOWN FIDELITY LIMITS, moisture-balance model at the corrected conditions
 (measured 2026-08-09/2026-08-10, not hidden; see task-4-report.md for the
 full derivation):
-  * Mean commanded duty: sim 0.1431 vs measured 0.142 -- 0.7 % error. This
-    parameter was NOT fitted to this trace (Task 2 fit 121 days of
-    independent telemetry that never saw 2026-08-08); landing this close is
-    real, out-of-sample validation.
+  * Mean commanded duty: sim 0.1431 vs measured 0.142. The honest tolerance
+    here is the test's own abs=0.05, not the 0.7 % gap between these two
+    particular numbers: the measured target is strongly non-stationary --
+    across 26 h windows in early August the mean duty runs 0.089 to 0.249,
+    a ~2x swing from a few hours of window shift -- so this agreement is
+    REASSURING, not precise. It is also a consistency check, not a held-out
+    test: the 2026-08-08 fidelity trace day is 1 of ~120 days in the Task 2
+    fit window (script WINDOW_END = '2026-08-09', loaders query inclusive
+    of 2026-08-09), carrying ~0.8 % of the fitted samples. The parameters
+    were not tuned to this specific trace -- Q and F came from a
+    whole-window identification, not a per-day fit -- but "out-of-sample"
+    is the wrong word for it, and an earlier version of this docstring used
+    it. A genuine held-out validation is MUSHY-59's job (driven replay
+    against recorded data).
   * Cycle period: sim ~3 h vs measured 1.82-2.10 h daytime (2.81 h mean
     including long night gaps). In range but on the slow side.
   * RH span (peak-to-peak): sim 2.77 vs measured 5.26 (87.33-92.59) --
@@ -42,6 +52,21 @@ full derivation):
     heavily low-pass-filtered than the real chamber's response, which would
     smooth out exactly the sharp peak-duty excursions the burst detector and
     the p2p floor are looking for.
+  * That hypothesis is only part of the story, though: a sweep of the
+    branch's own documented Q band, holding F/Q = 7.0337 fixed, shows the
+    three xfailed assertions below are as sensitive to WHICH band was
+    shipped as to any structural amplitude deficiency:
+        Q=0.658 [16,inf] F=4.63 -> p2p 2.005, peak duty 0.424, 0 bursts
+        Q=0.963 [16,120] F=6.78 -> p2p 2.758, peak duty 0.473, 0 bursts  <- SHIPPED
+        Q=1.080 [8,120]  F=7.60 -> p2p 2.988, peak duty 0.493, 0 bursts
+        Q=1.242 [1,120]  F=8.74 -> p2p 3.303, peak duty 0.524, 5 bursts, period 2.68 h
+    At Q = 1.242 -- a band the fit report itself tabulates -- all three
+    xfailed assertions below pass. The gate is therefore not discriminating
+    at the resolution of the parameter uncertainty: the shipped [16,120]
+    band was chosen on regime-matching grounds (it excludes the saturated
+    minutes per the farmer's ruling, see chamber_model.py), not to pass or
+    fail this gate, and a different defensible band choice would flip these
+    three results.
 
 So: use this model for RELATIVE comparison between control configurations,
 which is what it is for. Do not quote its absolute numbers as predictions --

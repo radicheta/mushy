@@ -19,7 +19,7 @@ HOUR_S = 3600.0
 
 
 def params(**kw):
-    base = dict(air_exchange_m3_per_h=FITTED_Q, fill_g_per_h=FITTED_F)
+    base = dict(moisture_loss_m3_per_h=FITTED_Q, fill_g_per_h=FITTED_F)
     base.update(kw)
     return ChamberParams(**base)
 
@@ -71,7 +71,7 @@ def test_equilibrium_duty_holds_rh_flat():
     ah_out = absolute_humidity_g_m3(TEMP_C, 70.0)
     u = p.equilibrium_duty(ah_in, ah_out)
     m = ChamberModel(p, rh0_pct=RH0, temp_c=TEMP_C)
-    settle_s = 3 * (CHAMBER_VOLUME_M3 / p.air_exchange_m3_per_h) * HOUR_S
+    settle_s = 3 * (CHAMBER_VOLUME_M3 / p.moisture_loss_m3_per_h) * HOUR_S
     run(m, u, ah_out, settle_s)
     settled = m.rh
     assert run(m, u, ah_out, HOUR_S) == pytest.approx(settled, abs=0.05)
@@ -83,7 +83,10 @@ def test_equilibrium_duty_holds_rh_flat():
 
 def test_equilibrium_duty_is_higher_when_ambient_is_drier():
     """The seasonal point: a larger gradient demands more standing duty.
-    This is what dissolves MUSHY-57's fixed-bias caveat."""
+    This ADDRESSES MUSHY-57's fixed-bias caveat in mechanism -- bias now
+    responds to conditions instead of being a constant measured once at
+    4.8 C -- but does not dissolve it: season-independence of Q, F and F/Q
+    themselves remains unproven (see chamber_model.py module docstring)."""
     p = params()
     ah_in = absolute_humidity_g_m3(TEMP_C, RH0)
     drier = p.equilibrium_duty(ah_in, absolute_humidity_g_m3(TEMP_C, 50.0))
@@ -125,7 +128,7 @@ def test_moisture_settling_time_is_v_over_q():
     fixed_point_ah = ambient_ah   # zero duty: dAH/dt = 0 only when ah == ambient
     initial_gap = start_ah - fixed_point_ah
 
-    tau_v_over_q_s = (CHAMBER_VOLUME_M3 / p.air_exchange_m3_per_h) * HOUR_S
+    tau_v_over_q_s = (CHAMBER_VOLUME_M3 / p.moisture_loss_m3_per_h) * HOUR_S
     for _ in range(int(tau_v_over_q_s / 60.0)):
         m.step(delivered_duty=0.0, dt_s=60.0, ambient_ah_g_m3=ambient_ah)
 
@@ -153,6 +156,20 @@ def test_step_is_dt_invariant():
     discrepancy (>2x headroom) while still being tight enough to catch a
     real integration bug (e.g. a dropped dt_s/3600 conversion, which would
     misagree by orders of magnitude, not fractions of a point).
+
+    This is NOT the moisture ODE being delicately Euler-limited. Measured
+    against a converged dt=0.01 reference, the shipping dt = 1 s error is
+    ~0.003 RH pts worst case (duty 1.0) -- three orders of magnitude below
+    the amplitude gap this module documents elsewhere. The moisture balance
+    has time constant V/Q = 5.98 h, so dt/tau at dt = 1 s is 4.6e-5: it is
+    the best-conditioned part of the model. The 1 s-vs-10 s divergence this
+    test actually measures above (~0.0077-0.03 pts) is dominated by the
+    600 s duty-lag discretization and dead-time quantization, not by the
+    ODE integration. The honest ceiling for dt is therefore set by the lag
+    model, not the moisture balance: ~dt = 10 s at moderate duty is where
+    that discretization error starts to matter. Do not raise dt further to
+    speed up long replays (a temptation for MUSHY-59) without re-measuring
+    against a converged reference.
     """
     p = params()
     ambient_ah = absolute_humidity_g_m3(TEMP_C, 70.0)
