@@ -13,7 +13,9 @@ Uses the VENDORED simple_pid, the same one the Pi runs. `dt` is always passed
 explicitly so the PID never reads a wall clock.
 """
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Callable, List, Optional, Union
+
+TimeVarying = Union[float, Callable[[float], float]]
 
 from fc_core.control_kernel import BandSpec
 from fc_core.sim.chamber_model import ChamberModel, ChamberParams
@@ -96,12 +98,16 @@ def run_closed_loop(hours: float,
                     climb_seconds: float = 0.0,
                     duty_bias: float = 0.0,
                     dt: float = 1.0,
-                    ambient_ah_g_m3: float = DEFAULT_AMBIENT_AH_G_M3,
-                    temp_c: float = DEFAULT_TEMP_C) -> RunMetrics:
+                    ambient_ah_g_m3: TimeVarying = DEFAULT_AMBIENT_AH_G_M3,
+                    temp_c: TimeVarying = DEFAULT_TEMP_C) -> RunMetrics:
+    """``ambient_ah_g_m3`` and ``temp_c`` may each be a constant float (held for
+    the whole run, the original behaviour) or a callable ``elapsed_s -> value``
+    for a driven replay against real recorded/ambient conditions."""
     params = params or ChamberParams()
     pwm_cfg = pwm_cfg or PwmConfig()
 
-    chamber = ChamberModel(params, rh0_pct=rh0, temp_c=temp_c)
+    temp_c0 = temp_c(0.0) if callable(temp_c) else temp_c
+    chamber = ChamberModel(params, rh0_pct=rh0, temp_c=temp_c0)
     pwm = PwmSimulator(pwm_cfg)
     control = ControlLoop(band, gains=gains, target=target, duty_bias=duty_bias)
     last_duty = 0.0
@@ -111,6 +117,7 @@ def run_closed_loop(hours: float,
     delivered_total = 0.0
 
     steps = int(hours * 3600.0 / dt)
+    elapsed = 0.0
     for _ in range(steps):
         rh_frac = chamber.rh / 100.0
 
@@ -120,11 +127,14 @@ def run_closed_loop(hours: float,
         last_duty = duty
 
         delivered = pwm.step(duty, dt_s=dt)
-        chamber.step(delivered_duty=delivered, dt_s=dt, ambient_ah_g_m3=ambient_ah_g_m3)
+        ambient_now = ambient_ah_g_m3(elapsed) if callable(ambient_ah_g_m3) else ambient_ah_g_m3
+        temp_now = temp_c(elapsed) if callable(temp_c) else temp_c
+        chamber.step(delivered_duty=delivered, dt_s=dt, ambient_ah_g_m3=ambient_now, temp_c=temp_now)
 
         rh_series.append(chamber.rh)
         duty_series.append(duty)
         delivered_total += delivered * dt
+        elapsed += dt
 
     return _metrics(rh_series, duty_series, pwm, hours, delivered_total, dt)
 
