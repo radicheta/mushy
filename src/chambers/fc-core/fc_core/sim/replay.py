@@ -13,14 +13,13 @@ Uses the VENDORED simple_pid, the same one the Pi runs. `dt` is always passed
 explicitly so the PID never reads a wall clock.
 """
 from dataclasses import dataclass, field
-from math import exp
 from typing import List, Optional
 
-from fc_core.control_kernel import BandSpec, duty_bias_factor, project_error_pct
+from fc_core.control_kernel import BandSpec
 from fc_core.sim.chamber_model import ChamberModel, ChamberParams
+from fc_core.sim.control_loop import ControlLoop, Gains
 from fc_core.sim.psychrometrics import absolute_humidity_g_m3
 from fc_core.sim.pwm_window import PwmConfig, PwmSimulator
-from fc_core.vendor.simple_pid import PID
 
 # Live fc1 values, read from the running controller 2026-08-09.
 DEFAULT_BAND = BandSpec(band_low=0.885, band_high=0.915, defend_side='both')
@@ -45,16 +44,8 @@ DEFAULT_TEMP_C = 6.0
 DEFAULT_AMBIENT_AH_G_M3 = absolute_humidity_g_m3(DEFAULT_TEMP_C, 90.0) - 0.703
 
 
-@dataclass
-class Gains:
-    kp: float = 0.36
-    ki: float = 0.001
-    kd: float = 4.0
-    derivative_filter_tau: float = 60.0
-    integrator_decay_tau: float = 1800.0
-    bypass_threshold: float = 0.05
-
-
+# Gains lives in fc_core.sim.control_loop now (MUSHY-59); re-exported here
+# for backward compatibility with existing imports of DEFAULT_GAINS.
 DEFAULT_GAINS = Gains()
 
 
@@ -112,8 +103,7 @@ def run_closed_loop(hours: float,
 
     chamber = ChamberModel(params, rh0_pct=rh0, temp_c=temp_c)
     pwm = PwmSimulator(pwm_cfg)
-    pid = PID(gains.kp, gains.ki, gains.kd, setpoint=0.0, output_limits=(0.0, 1.0))
-    d_filtered = 0.0
+    control = ControlLoop(band, gains=gains, target=target, duty_bias=duty_bias)
     last_duty = 0.0
 
     rh_series: List[float] = []
@@ -124,54 +114,7 @@ def run_closed_loop(hours: float,
     for _ in range(steps):
         rh_frac = chamber.rh / 100.0
 
-        projected = project_error_pct(rh_frac, band)
-        if projected is None:
-            if pid.auto_mode:
-                pid.set_auto_mode(False)
-            duty = 0.0
-        else:
-            error_pct = projected
-
-            # Mode C bypass: nearest defended edge (fc_controller ~line 1739).
-            if band.defend_side == 'low':
-                nearest = band.band_low
-            elif band.defend_side == 'high':
-                nearest = band.band_high
-            else:
-                nearest = band.band_low if rh_frac <= target else band.band_high
-            edge_pct = abs(rh_frac - nearest) * 100.0
-            bypass_pct = gains.bypass_threshold * 100.0
-
-            if edge_pct > bypass_pct and rh_frac < nearest:
-                if pid.auto_mode:
-                    pid.set_auto_mode(False)
-                duty = 1.0
-            else:
-                if not pid.auto_mode:
-                    pid.set_auto_mode(True, last_output=1.0)
-                    d_filtered = 0.0
-
-                # 999.49 in-band integrator decay, applied BEFORE the PID call.
-                if gains.integrator_decay_tau > 0 and dt > 0 and error_pct == 0.0:
-                    pid._integral *= exp(-dt / gains.integrator_decay_tau)
-
-                raw = pid(error_pct, dt=dt)
-
-                # 999.32 external derivative low-pass.
-                if gains.derivative_filter_tau > 0 and dt > 0:
-                    p_term, i_term, d_raw = pid.components
-                    alpha = dt / (gains.derivative_filter_tau + dt)
-                    d_filtered = alpha * d_raw + (1 - alpha) * d_filtered
-                    raw = max(0.0, min(1.0, p_term + i_term + d_filtered))
-                duty = raw
-
-                # Feedforward bias -- PID branch only, mirroring
-                # fc_controller. The freeze and Mode C paths must not get it.
-                # MUSHY-57: faded across the upper band so it can never floor
-                # the output; a genuine zero-demand day still reaches duty 0.
-                if duty_bias > 0.0:
-                    duty = max(0.0, min(
-                        1.0, duty + duty_bias * duty_bias_factor(rh_frac, band)))
+        duty, _raw_pid_output = control.step(rh_frac, dt)
 
         duty = apply_slew(duty, last_duty, dt, climb_seconds)
         last_duty = duty
