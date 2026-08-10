@@ -145,7 +145,15 @@ RESTART_GROUP_GAP_S = 300    # group restart-flagged seconds into events
 WARMUP_S = 6 * 3600          # base warm-up for non-restart-anchored segments
 WARMUP_SWEEP_S = [1 * 3600, 3 * 3600, 6 * 3600, 12 * 3600]
 DOWNSAMPLE_BUCKET_S = 60     # 1-minute buckets, min+max error preserved
-REPRESENTATIVE_48H_START = '2026-07-20 00:00:00+00'  # mid-window, restart-free stretch
+ZERO_TOL = 1e-9              # both series ~0 -> trivial agreement, not earned
+# Chosen as the 48h window with the highest fraction of nonzero PID output
+# (2026-07-08 is ~94% active), so the overlay exercises the law rather than
+# showing two flat zero lines: an earlier pick (2026-07-20) sat entirely
+# above band_high with the controller correctly idle the whole 48h -- 0 of
+# 149,143 rows nonzero in either series, the least informative window in
+# the dataset. Selection made from the downsampled CSV's per-day nonzero
+# sample counts; 07-08 was the daily maximum (2486/2634 nonzero rows).
+REPRESENTATIVE_48H_START = '2026-07-08 00:00:00+00'
 
 
 def psql_copy(sql: str, out_path: Path) -> None:
@@ -388,6 +396,15 @@ def metrics_table(df: pd.DataFrame) -> dict:
     )
 
 
+def nonzero_only(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop rows where BOTH series are ~0 -- trivial agreement (e.g. the 72%
+    of the window in above_band_high with the PID correctly pinned at 0)
+    that inflates a pooled match rate without the law having done any work.
+    """
+    both_zero = (df['pid_recorded'].abs() <= ZERO_TOL) & (df['pid_predicted'].abs() <= ZERO_TOL)
+    return df[~both_zero]
+
+
 def downsample_min_max(df: pd.DataFrame, bucket_s: int) -> pd.DataFrame:
     """Keep both the min-error and max-error row in every bucket_s window."""
     b = (df['t'] // bucket_s).astype(np.int64)
@@ -445,6 +462,19 @@ def main():
     by_anchor = {a: metrics_table(g) for a, g in df.groupby('restart_anchored')}
     daily = per_day(df)
 
+    # Zero-suppressed: drop seconds where BOTH series are ~0 (trivial
+    # agreement -- the PID correctly pinned at 0, nothing for the law to get
+    # right or wrong) so the pooled figure isn't inflated by guaranteed
+    # matches. Reported alongside, never in place of, the full-pool numbers.
+    df_nz = nonzero_only(df)
+    n_both_zero = len(df) - len(df_nz)
+    frac_both_zero = n_both_zero / len(df) if len(df) else float('nan')
+    overall_nz = metrics_table(df_nz)
+    by_regime_nz = {r: metrics_table(g) for r, g in df_nz.groupby('regime')}
+    print(f'zero-suppressed: {n_both_zero}/{len(df)} ({frac_both_zero:.1%}) both-zero seconds '
+          f'excluded -> RMSE={overall_nz["rmse"]:.5f} MAE={overall_nz["mae"]:.5f} '
+          f'max={overall_nz["max_abs"]:.4f} within_0.01={overall_nz["frac_01"]:.4%}', file=sys.stderr)
+
     warmup_sweep_results = None
     if args.warmup_sweep:
         warmup_sweep_results = {}
@@ -465,8 +495,14 @@ def main():
     rep_start = int(pd.Timestamp(REPRESENTATIVE_48H_START).timestamp())
     rep_end = rep_start + 48 * 3600
     rep_df = df[(df['t'] >= rep_start) & (df['t'] < rep_end)]
+    n_nonzero48 = int(((rep_df['pid_recorded'].abs() > ZERO_TOL) |
+                        (rep_df['pid_predicted'].abs() > ZERO_TOL)).sum())
     header48 = (f'# MUSHY-59 control-law replay, FULL 1Hz resolution, representative window '
-                f'{REPRESENTATIVE_48H_START} + 48h ({len(rep_df)} rows).\n')
+                f'{REPRESENTATIVE_48H_START} + 48h ({len(rep_df)} rows, {n_nonzero48} with '
+                f'nonzero pid_recorded or pid_predicted). Window CHOSEN as the 48h stretch '
+                f'with the highest fraction of nonzero PID output, so the overlay exercises '
+                f'the law rather than showing two flat zero lines -- see REPRESENTATIVE_48H_START '
+                f'comment in this script for the selection method.\n')
     write_csv(rep_df, OUT_CSV_48H, header48)
 
     print(f'wrote {OUT_CSV} ({len(down)} rows) and {OUT_CSV_48H} ({len(rep_df)} rows)', file=sys.stderr)
@@ -479,7 +515,9 @@ def main():
                           n_drive_valid=int(grid['drive_valid'].sum()),
                           n_metrics_valid=int(grid['metrics_valid'].sum()),
                           n_restarts=len(restart_starts), restart_starts=restart_starts,
-                          restart_ends=restart_ends, args=vars(args)), f)
+                          restart_ends=restart_ends, args=vars(args),
+                          n_both_zero=n_both_zero, frac_both_zero=frac_both_zero,
+                          overall_nz=overall_nz, by_regime_nz=by_regime_nz), f)
     print(f'wrote {cache_dir / "results.pkl"}', file=sys.stderr)
 
 
