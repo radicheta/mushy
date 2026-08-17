@@ -1,11 +1,13 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.12
-milestone_name: Farm-Agent Python Port
+milestone: 999.33
+milestone_name: Digital Twin / FC-1 Steady Humidity Hold
 status: executing
-last_updated: "2026-07-25T00:00:00.000Z"
-last_activity: 2026-07-25 -- Phase 63 executed autonomously, 8/8 plans; awaiting verify + code review
-progress:
+last_updated: "2026-08-17T03:00:00.000Z"
+last_activity: 2026-08-17 -- triage; MUSHY-34 overlay serializer fixed; MUSHY-37 found already resolved
+paused_milestone: v1.12
+paused_milestone_name: Farm-Agent Python Port
+paused_progress:
   total_phases: 10
   completed_phases: 7
   total_plans: 61
@@ -15,7 +17,61 @@ progress:
 
 # Project State
 
-## Phase 63 Execution (2026-07-25) — 8/8 PLANS SHIPPED, NOT YET VERIFIED
+> **Tracking note.** Work moved to Plane (MUSHY-*) as the primary tracker on
+> 2026-06-28. This file is the narrative record; the ticket thread is
+> authoritative for status. The audit's finding that the status-summary layer
+> (this file, ROADMAP tables, MILESTONES.md, HANDOVER.md) is untrustworthy while
+> the phase-level paper trail is fine still applies to everything below the
+> current-state section.
+
+## Current State (2026-08-17)
+
+**Active line: the FC-1 control arc, not the Python port.** Since 2026-07-27 all
+committed work has been the digital twin (MUSHY-52) and the steady-hold
+investigation (MUSHY-56). v1.12 is PAUSED mid-Phase-63, exactly where the section
+below leaves it.
+
+**Landed on main (merge `c7fd8d4`, 2026-08-09):**
+
+- **MUSHY-60 — chamber model as an absolute-moisture balance.** Q and F
+  identified from recorded telemetry; psychrometrics carry bridge parity.
+- **MUSHY-59 — control law validated against recorded `fc.pid_output`** at
+  RMSE 0.0029. This is what makes the plant-model numbers interpretable: the
+  controller is pinned to reality, so residual error is plant error.
+- **MUSHY-57 — duty bias can never prevent the humidifier turning off**
+  (`duty_bias_factor` fades the feedforward to 0 at `band_high`).
+- **MUSHY-64 — ambient weather fixture** as offline ground truth.
+- The quadratic feather moved out of the controller tick loop into
+  `fc_core.control_kernel.project_error_pct`, so the simulator and the live
+  controller run the SAME arithmetic. Do not re-inline it.
+
+**Where the twin actually stands** (999.33-08, free-running 24h driven replay of
+2026-08-08): RMSE 4.58 RH points, mean level within +0.49 pp, total water
+delivered within 1.16x — but amplitude over-swings by ~4x (predicted span 22.6 pp
+vs recorded 5.35 pp). The control law is exact; the plant model is roughly right
+on the mass balance and wrong on the dynamics. Open plant-model gaps are
+ticketed: MUSHY-72 (ventilation, currently lumped into the leak coefficient),
+MUSHY-68 (substrate as a moisture reservoir), MUSHY-69 (summer solar gain),
+MUSHY-61 (held-out rainy/clear day validation).
+
+**FC-1 is OFFLINE** as of 2026-08-16 07:45 UTC — unreachable on both LAN and wg0,
+all telemetry topics dark, last RH 95.3%. The alerter is behaving correctly and
+has been sending hourly CRITICAL "chamber uncontrolled" alerts to the farmer
+since 18:53 that day. Physical/farm-side; nothing to fix in software.
+
+**`fc1/prod` is 113 commits BEHIND main.** The drift that MUSHY-37 described has
+reversed: the prod calibration is now fully on main (verified by `git cherry` and
+an empty config diff), so a deploy no longer reverts the feather. But a
+catch-up deploy would now carry the whole MUSHY-56/60 stack onto the live
+chamber, including `humidifier_duty_bias` (default 0.0, inert until set). That
+deploy is MUSHY-65's supervised live trial, not a routine sync.
+
+**Fixed 2026-08-17 (merge `5859911`):** MUSHY-34, the runtime-overlay int/double
+reboot landmine. `renderOverlay` now forces a decimal on integral doubles.
+**Committed but NOT deployed** — the running bridge container still has the old
+serializer until `docker compose up -d --build bridge`.
+
+## Phase 63 Execution (2026-07-25) — 8/8 PLANS SHIPPED, NOT YET VERIFIED — PAUSED
 
 Branch `feat/phase-63-chamber-alerter`, 27 commits since the plan-rewrite pointer
 `1246faf`, tree clean. Full suite

@@ -18,6 +18,7 @@
 - 📋 **v1.10.1 Session-Entity Adoption (asset--group)** — Phase 52 (planned 2026-05-24; reverses Phase 48 "no session entity" interim now that farmos team enabled `farm_group` on dev+prod, commit `1857037`; session = `asset--group`, membership = `activity` log with `is_group_assignment=true`).
 - ✅ **v1.11 2025-Notebook Backfill** — Phases 53–55B (shipped 2026-06-14; runs the mushdatadump 2025 paper-log corpus through the now-unblocked extraction+upsert pipeline; gated on Phase 38 batch-mode fix + year-context shim).
 - 📋 **v1.12 Farm-Agent Python Port** — Phases 56–65 (planned 2026-06-15; big-bang Python rewrite of the live Node alerter stack — Signal I/O, multimodal extractor, draft state machine, farmOS commit path; cutover gated on ≥95% parity against live corpus).
+- 🚧 **999.33 Digital Twin + FC-1 Steady Humidity Hold** — tracked in Plane, not as numbered phases (MUSHY-52 twin, MUSHY-56 steady hold). ACTIVE LINE since 2026-07-27; v1.12 paused mid-Phase-63. Absolute-moisture chamber model + control-law validation landed on main 2026-08-09 (`c7fd8d4`). See `.planning/STATE.md` "Current State" and `.planning/phases/999.33-digital-twin-chamber-sim/`.
 - 📋 **v1.13 Auto-Commit Narrowing** — Phases TBD (planned 2026-05-24; carves per-shape auto-commit lanes gated on ≥99% historical YES rate + n≥50, with UNDO + auto-demotion; structurally depends on v1.11 generating the confirm corpus).
 
 ## Phases
