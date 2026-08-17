@@ -23,7 +23,7 @@
 - **All farmer-facing numbers via `fmt_num`** (1 decimal, rounded).
 - **`origin='python'`** on every `insert_draft`. Non-negotiable: the default `'node'` would hand the draft to the live Node commit watchdog, which writes to production farmOS.
 - **Import-linter:** nothing under `farm_agent/extraction/` or `farm_agent/confirm/` may import `farm_agent.chamber`. Contract in `src/farm-agent/.lint-imports`; no config change needed.
-- **Line length 100** (ruff), `from __future__ import annotations` at the top of every new module.
+- **Line length 100** (`pyproject.toml:35`), `from __future__ import annotations` at the top of every new module. Note `ruff check` does NOT enforce the limit — `E501` is not in ruff's default rule selection, and the repo has 187 pre-existing violations in `farm_agent/` and 112 in `tests/`. Treat 100 as the target for new code, not as a gate: an over-long line in new code is a Minor worth wrapping, never a blocking finding, and enabling `E501` is out of scope for this phase.
 - **All paths below are relative to `src/farm-agent/`** unless stated otherwise.
 - **Run tests with:** `cd src/farm-agent && uv run pytest <path> -v`
 
@@ -2026,9 +2026,132 @@ ported Node strings so the farmer reads the same text after cutover."
 
 ---
 
+### Task 8c: Wire the confirm-reply routing (the second dead seam)
+
+**Execute this BEFORE Task 8b.** Task 8b adds an intercept inside `route_confirm_reply`; until this task lands, that function has no caller and 8b would be wiring into dead code.
+
+**Why this task exists.** `route_confirm_reply`, `find_awaiting_for_sender`, and `record_reply_capture` are all built, tested, and called from nowhere in `farm_agent/`. `receive_loop.py:12` states it outright: the loop "does NOT implement capture/confirm." `boot.py:134` starts the confirm *watchdog* (nudge/expire) but nothing routes an inbound reply. So without this task, the Python agent creates a draft, prompts the farmer, ignores their YES, nudges them, and expires the draft. Every draft expires unacked. That is the same dead-seam class as MUSHY-76 one step further down the pipeline, and it breaks the no-silent-failure-after-farmer-confirm rule as hard as it can be broken.
+
+Scope approved by the project owner on 2026-08-17 after the gap was found mid-phase.
+
+**Files:**
+- Create: `farm_agent/confirm/reply_router.py`
+- Modify: `farm_agent/confirm/confirm_repo.py` (two new finders)
+- Modify: `farm_agent/boot.py` (compose the router ahead of capture)
+- Test: `tests/confirm/test_reply_router.py`, plus additions to `tests/test_boot.py`
+
+**Interfaces:**
+- Consumes: `confirm_repo` (existing + the two new finders), `confirm/dispatch.route_confirm_reply`, `capture_pipeline["record_reply_capture"]`, the extraction `outbound_dispatcher`.
+- Produces:
+```python
+# confirm_repo.py -- ports confirm-db.js findDraftByQuotedMsgTs / findActiveDraftsForSender
+async def find_draft_by_quoted_msg_ts(pool, quote_msg_ts: int) -> dict | None
+async def find_active_drafts_for_sender(pool, sender_e164: str) -> list[dict]
+
+# confirm/reply_router.py
+def create_confirm_reply_router(
+    *, pool, signal_client, config, capture_pipeline,
+    confirm_repo=None, extraction_db=None, extractor=None,
+    outbound_dispatcher=None, log=None,
+) -> dict   # {"try_route": async (envelope: dict) -> bool}
+```
+
+`try_route` returns `True` when it consumed the message (the caller must NOT then hand it to capture) and `False` on fall-through.
+
+**Port target:** `src/agents/alerter/src/receive-loop.js` lines 226-414. Port the routing layer only — the YES/NO/EDIT handling and the strain intercept are already ported inside `confirm/dispatch.py` and must be reused, not reimplemented.
+
+The ordered behavior, with Node line ranges:
+
+1. **Guard** (js:228): only attempt routing when there is message text. No text, no reply to route.
+2. **`record_reply` helper** (js:229-239). Every consumed path persists the raw inbound via `capture_pipeline["record_reply_capture"]` BEFORE returning `True`. This is a 2026-05-24 Node fix: each confirm path ends in `continue`, skipping the capture write, so follow-up replies were never persisted to `signal_capture` and vanished from the farmer's paper trail. Best-effort and never-throw.
+3. **Quote-first routing** (js:240-276). Read the quote's `id`, falling back to `timestamp`, coerce to int. Resolve via `find_draft_by_quoted_msg_ts`. Then:
+   - **Sender-equality spoof guard** (js:263-264): if the quoted draft belongs to a different farmer, log and do NOT route. This is a security control, not a nicety.
+   - Statuses `awaiting_farmer` / `commit_failed` → route to this draft, mark quote-resolved.
+   - Terminal statuses (`committed`, `discarded`, `expired`, `needs_review`, `confirmed`) → dispatch `send_quote_closed`, record the reply, return `True`.
+4. **Fallback to active-draft lookup** (js:278-312) via `find_active_drafts_for_sender`. If more than one active draft and the quote did not pin one, dispatch the numbered `send_ask_back` disambiguation, record, return `True`. Otherwise take the first.
+5. **Delegate** to `route_confirm_reply` for the strain intercept and the YES/NO/EDIT handling. Do not duplicate that logic.
+6. **NOOP falls through** (js:412): return `False` so the caller runs the normal capture pipeline. Exactly one of confirm-routing or capture handles a given message — never both.
+
+**Boot wiring.** `make_composite_dispatch` lives in `farm_agent/chamber/`, and the Foray seam forbids `farm_agent.confirm` importing from `farm_agent.chamber`. Do NOT invert that. Instead, `boot.py` builds the router and passes a composed handle as `make_composite_dispatch`'s existing `pipeline_handle` argument:
+
+```python
+confirm_router = create_confirm_reply_router(...)
+
+async def _handle_with_confirm(env, ctx=None):
+    if await confirm_router["try_route"](env):
+        return None
+    return await pipeline["handle"](env)
+```
+
+Chamber is untouched, the seam holds, and the ordering matches Node: snooze, then confirm, then capture. **Still exactly one `ReceiveLoop`** — the dual-poller guard (T-58-03-05) is absolute; a second poller on the same Signal number silently eats inbound messages.
+
+- [ ] **Step 1: Write the failing tests**
+
+Cover, at minimum, one test each:
+
+```python
+async def test_yes_routes_to_confirm_and_does_not_reach_capture():
+    """The whole point: a farmer's YES must be consumed by the confirm loop."""
+
+async def test_quote_resolves_the_draft_in_preference_to_the_active_heuristic():
+
+async def test_quote_from_a_different_sender_is_not_routed():
+    """Spoof guard (js:263-264). Farmer B quoting Farmer A's draft must not confirm it."""
+
+async def test_quote_to_a_terminal_draft_acks_closed_and_consumes():
+
+async def test_two_active_drafts_without_a_quote_sends_the_numbered_ask_back():
+
+async def test_noop_text_falls_through_to_capture():
+    """A message that is not a reply must reach the capture pipeline unchanged."""
+
+async def test_every_consumed_path_records_the_reply_capture():
+    """2026-05-24: without this the farmer's follow-ups vanish from signal_capture."""
+
+async def test_no_text_falls_through():
+```
+
+Assert on what was consumed versus what reached capture — a test that only checks `try_route` returned a boolean proves nothing. Use a capture double that records calls, and assert it was NOT called on consumed paths and WAS called on fall-through.
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `cd src/farm-agent && uv run pytest tests/confirm/test_reply_router.py -v`
+Expected: FAIL — `ModuleNotFoundError`
+
+- [ ] **Step 3: Write the implementation**
+
+Port the two finders from `src/agents/alerter/src/confirm/confirm-db.js` (`findDraftByQuotedMsgTs`, `findActiveDraftsForSender`) following the never-throw DAO convention already in `confirm_repo.py`. Note `findActiveDraftsForSender` carries a 2026-05-23 staleness filter that ages out `commit_failed` drafts older than 6 hours — port it, or ten-day-old ack-debt drafts trap fresh captures.
+
+Then the router, then the boot composition.
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `cd src/farm-agent && uv run pytest tests/confirm/ tests/test_boot.py -v` then `uv run pytest -q`
+
+- [ ] **Step 5: Prove the seam is live**
+
+The failure this task fixes is a seam that exists but is never called, so a passing unit test is not sufficient evidence. Assert in `tests/test_boot.py` that the dispatch handle boot actually builds routes a YES to the confirm path — not merely that `create_confirm_reply_router` was constructed. State in your report how you proved the wiring, not just the function.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/farm-agent/farm_agent/confirm/ src/farm-agent/farm_agent/boot.py src/farm-agent/tests/
+git commit -m "feat(port): route inbound confirm replies [MUSHY-76]
+
+route_confirm_reply had no caller anywhere in farm_agent, so the agent
+would create a draft, prompt the farmer, ignore their YES, and expire it.
+Ports the receive-loop confirm branch: quote-first routing with the sender
+spoof guard, the multi-active numbered ask-back, and the reply-capture
+paper trail, falling through to capture on NOOP."
+```
+
+---
+
 ### Task 8b: Route the farmer's SEQ reply (divergence D-3)
 
 Task 7 ports `handle_starting_seq_reply`. Nothing calls it — in Node either. This task gives it a caller, so the farmer's answer to the SEQ ask-back actually lands.
+
+**Depends on Task 8c**, which makes `route_confirm_reply` reachable in the first place. Run 8c first; otherwise this intercept sits inside a function nothing calls.
 
 **This is the least cheap of the three divergences.** If it turns out not to be containable in the confirm dispatch — if it needs changes to quote-routing or the receive loop — stop, report `DONE_WITH_CONCERNS` describing what it would take, and leave the routing unwired. Do not grow this task into a receive-loop refactor.
 
