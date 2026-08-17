@@ -136,7 +136,10 @@ async def get_in_flight_for_sender(pool: AsyncConnectionPool, sender_e164: str) 
         async with pool.connection() as conn:
             cur = await conn.execute(_SELECT_IN_FLIGHT_SQL, (sender_e164,))
             row = await cur.fetchone()
-        return row
+            if row is None:
+                return None
+            col_names = [desc[0] for desc in cur.description] if cur.description else []
+            return dict(zip(col_names, row))
     except Exception as e:  # noqa: BLE001
         logger.warning("[extraction_db] get_in_flight_for_sender failed: %s", e)
         return None
@@ -178,7 +181,10 @@ async def advance_askback_turn(pool: AsyncConnectionPool, draft_id: str) -> dict
         async with pool.connection() as conn:
             cur = await conn.execute(_ADVANCE_ASKBACK_SQL, (draft_id,))
             row = await cur.fetchone()
-        turns = row["askback_turns"] if row else None
+            if row is None:
+                return {"ok": True, "askback_turns": None}
+            col_names = [desc[0] for desc in cur.description] if cur.description else []
+            turns = dict(zip(col_names, row)).get("askback_turns")
         return {"ok": True, "askback_turns": turns}
     except Exception as e:  # noqa: BLE001
         logger.warning("[extraction_db] advance_askback_turn failed: %s", e)
@@ -208,7 +214,8 @@ async def get_drafts_for_capture(pool: AsyncConnectionPool, capture_id: str) -> 
         async with pool.connection() as conn:
             cur = await conn.execute(_SELECT_FOR_CAPTURE_SQL, (capture_id,))
             rows = await cur.fetchall()
-        return rows or []
+            col_names = [desc[0] for desc in cur.description] if cur.description else []
+            return [dict(zip(col_names, row)) for row in rows]
     except Exception as e:  # noqa: BLE001
         logger.warning("[extraction_db] get_drafts_for_capture failed: %s", e)
         return []
@@ -220,7 +227,10 @@ async def get_draft_by_id(pool: AsyncConnectionPool, draft_id: str) -> dict | No
         async with pool.connection() as conn:
             cur = await conn.execute(_SELECT_BY_ID_SQL, (draft_id,))
             row = await cur.fetchone()
-        return row
+            if row is None:
+                return None
+            col_names = [desc[0] for desc in cur.description] if cur.description else []
+            return dict(zip(col_names, row))
     except Exception as e:  # noqa: BLE001
         logger.warning("[extraction_db] get_draft_by_id failed: %s", e)
         return None

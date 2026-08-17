@@ -26,12 +26,21 @@ def test_compute_draft_id_does_not_mutate_input():
 
 
 class FakePool:
-    """Minimal async pool double: records executed SQL, optionally raises."""
+    """Minimal async pool double: records executed SQL, optionally raises.
 
-    def __init__(self, raises=None, rowcount=1, rows=None):
+    Emulates psycopg3's real tuple_row shape (the pool has no row_factory --
+    see farm_agent/persistence/pool.py -- so rows come back as plain tuples,
+    with column names available only via cursor.description). `rows` must be
+    a list of tuples; `description` a sequence whose first element per column
+    is the column name, e.g. [("id",), ("status",)] -- matches what real
+    psycopg3 Column objects expose at desc[0].
+    """
+
+    def __init__(self, raises=None, rowcount=1, rows=None, description=None):
         self.raises = raises
         self.rowcount = rowcount
         self.rows = rows if rows is not None else []
+        self.description = description if description is not None else []
         self.calls = []
 
     def connection(self):
@@ -64,6 +73,7 @@ class _FakeCursor:
     def __init__(self, pool):
         self.rowcount = pool.rowcount
         self._rows = pool.rows
+        self.description = pool.description
 
     async def fetchone(self):
         return self._rows[0] if self._rows else None
@@ -121,10 +131,12 @@ async def test_update_draft_status_ignores_unwhitelisted_keys():
 
 
 async def test_get_in_flight_for_sender_returns_row():
-    row = {"id": "d1", "status": "pending"}
-    pool = FakePool(rows=[row])
+    pool = FakePool(
+        rows=[("d1", "pending")],
+        description=[("id",), ("status",)],
+    )
     res = await db.get_in_flight_for_sender(pool, "+100")
-    assert res == row
+    assert res == {"id": "d1", "status": "pending"}
 
 
 async def test_get_in_flight_for_sender_returns_none_when_absent():
@@ -140,7 +152,7 @@ async def test_get_in_flight_for_sender_returns_none_on_error():
 
 
 async def test_advance_askback_turn_returns_new_value():
-    pool = FakePool(rows=[{"askback_turns": 3}])
+    pool = FakePool(rows=[(3,)], description=[("askback_turns",)])
     res = await db.advance_askback_turn(pool, "d1")
     assert res == {"ok": True, "askback_turns": 3}
 
@@ -164,10 +176,9 @@ async def test_expire_idle_error_returns_reason():
 
 
 async def test_get_drafts_for_capture_returns_rows():
-    rows = [{"id": "d1"}, {"id": "d2"}]
-    pool = FakePool(rows=rows)
+    pool = FakePool(rows=[("d1",), ("d2",)], description=[("id",)])
     res = await db.get_drafts_for_capture(pool, "c1")
-    assert res == rows
+    assert res == [{"id": "d1"}, {"id": "d2"}]
 
 
 async def test_get_drafts_for_capture_returns_empty_on_error():
@@ -177,10 +188,9 @@ async def test_get_drafts_for_capture_returns_empty_on_error():
 
 
 async def test_get_draft_by_id_returns_row():
-    row = {"id": "d1"}
-    pool = FakePool(rows=[row])
+    pool = FakePool(rows=[("d1",)], description=[("id",)])
     res = await db.get_draft_by_id(pool, "d1")
-    assert res == row
+    assert res == {"id": "d1"}
 
 
 async def test_get_draft_by_id_returns_none_on_error():
