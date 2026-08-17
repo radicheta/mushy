@@ -115,6 +115,35 @@ async def test_confirm_prompt_is_sent_to_the_farmer():
     assert kw["related_draft_id"] == "abc123"
 
 
+async def test_starting_seq_askback_is_sent_to_the_farmer():
+    """MUSHY-76 Task 7: the SEQ ask-back must reach the farmer, DM route."""
+    c = FakeSignalClient()
+    await _dispatcher(c)("send_starting_seq_askback", {
+        "id": "abc123", "sender_e164": "+59891111111",
+        "farmer_facing_preview": "May 22 inoc, 5 blocks. What block number should I start at?",
+        "reply_target_kind": "dm", "source_capture_ids": ["cap1"],
+    })
+    body, kw = c.sent[0]
+    assert body == "May 22 inoc, 5 blocks. What block number should I start at?"
+    assert kw["to"] == "+59891111111"
+    assert kw["related_draft_id"] == "abc123"
+    assert kw["related_capture_id"] == "cap1"
+
+
+async def test_seeding_session_filled_preview_is_sent_to_the_farmer():
+    """MUSHY-76 Task 7: the group-by-parent table after SEQ is resolved."""
+    c = FakeSignalClient()
+    await _dispatcher(c)("send_seeding_session_filled_preview", {
+        "id": "abc123", "sender_e164": "+59891111111",
+        "farmer_facing_preview": "260522_KOY_4, 260522_KOY_5\n\nReply YES to commit.",
+        "reply_target_kind": "dm", "source_capture_ids": ["cap1"],
+    })
+    body, kw = c.sent[0]
+    assert "260522_KOY_4" in body
+    assert kw["to"] == "+59891111111"
+    assert kw["related_draft_id"] == "abc123"
+
+
 async def test_handoff_to_phase_39_is_now_unknown():
     c = FakeSignalClient()
     res = await _dispatcher(c)("handoff_to_phase_39", {})

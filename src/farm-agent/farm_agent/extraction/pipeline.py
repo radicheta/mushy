@@ -25,11 +25,13 @@ Sequence (mirrors pipeline.js:289-791):
      needs-review-ping / confirm-prompt -- see D-1 below)
   7. dispatch each side_effect via outbound_dispatcher.dispatch
 
-One branch is intentionally NOT ported here and is stubbed to raise
-NotImplementedError, caught by the outer try/except like any other failure:
-  - seeding_session starting_seq short-circuit  -- Task 7
-handle_starting_seq_reply (pipeline.js:792+) is out of this port's line range
-entirely and is stubbed the same way.
+The seeding_session starting_seq short-circuit (pipeline.js:582-672) is
+ported in farm_agent.extraction.starting_seq (Task 7) and wired in at step
+5b below. handle_starting_seq_reply (pipeline.js:792+) is ported in the same
+module but is NOT routed from anywhere in this file -- Node's
+receive-loop.js never calls it either; wiring a farmer reply to it is a
+separate, later port task (deliberately not this one -- it's the least
+contained fix in this phase).
 
 Multi-draft routing (drafts.length > 1, pipeline.js:393-407) dispatches to
 farm_agent.extraction.batch_mode.run_batch_mode or .run_multi_confirm (Task
@@ -66,6 +68,8 @@ from farm_agent.extraction import multimodal
 from farm_agent.extraction import preview_builder as _preview_builder_module
 from farm_agent.extraction import state_machine as _state_machine_module
 from farm_agent.extraction.batch_mode import run_batch_mode, run_multi_confirm
+from farm_agent.extraction.starting_seq import handle_starting_seq_ask_back as _do_starting_seq_ask_back
+from farm_agent.extraction.starting_seq import handle_starting_seq_reply as _do_starting_seq_reply
 from farm_agent.tenancy.tenant import mask_number
 
 logger = logging.getLogger(__name__)
@@ -265,11 +269,26 @@ def create_extraction_pipeline(
 
     async def _handle_starting_seq_askback(**kwargs):
         # Task 7: seeding_session starting_seq short-circuit (pipeline.js:582-672).
-        raise NotImplementedError("starting_seq short-circuit is ported in Task 7")
+        return await _do_starting_seq_ask_back(
+            pool=pool,
+            extraction_db=db,
+            outbound_dispatcher={"dispatch": _dispatch},
+            log=_log,
+            **kwargs,
+        )
 
-    async def handle_starting_seq_reply(**kwargs):
-        # pipeline.js:792+ -- out of this task's ported line range entirely.
-        raise NotImplementedError("handle_starting_seq_reply is not ported by Task 5")
+    async def handle_starting_seq_reply(*, draft_id, reply_text, capture_ctx=None):
+        # pipeline.js:792-916. Not routed from anywhere in this file -- see
+        # module docstring (parity delta, deliberate).
+        return await _do_starting_seq_reply(
+            draft_id=draft_id,
+            reply_text=reply_text,
+            capture_ctx=capture_ctx,
+            pool=pool,
+            extraction_db=db,
+            outbound_dispatcher={"dispatch": _dispatch},
+            log=_log,
+        )
 
     async def _dispatch_effect(effect: str, row: dict) -> None:
         try:
@@ -448,17 +467,19 @@ def create_extraction_pipeline(
                     _log.warning("[extraction] insert_draft failed: %s", ins.get("reason"))
                     return {"ok": False, "reason": ins.get("reason")}
 
-            # 5b. seeding_session starting_seq short-circuit -- Task 7 stub.
+            # 5b. seeding_session starting_seq short-circuit (pipeline.js:582-672).
             if draft and draft.get("type") == "seeding_session" and draft.get("needs_input") == "starting_seq":
-                return await _handle_starting_seq_askback(
+                askback_result = await _handle_starting_seq_askback(
                     draft=draft,
                     draft_id=draft_id,
                     sender=sender,
                     capture_ctx=capture_ctx,
                     source_capture_ids=source_capture_ids,
                     prior_askback_turns=prior_askback_turns,
-                    continuity=continuity,
                 )
+                if askback_result.get("ok"):
+                    askback_result["continuity"] = continuity
+                return askback_result
 
             # 6. state-machine transition
             transition = sm.transition(

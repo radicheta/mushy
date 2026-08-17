@@ -19,6 +19,12 @@ draft_row["farmer_facing_preview"], which build_confirm_prompt populates
 upstream. handoff_to_phase_39 no longer exists; it falls through to the
 unknown-tag branch.
 
+Task 7 (MUSHY-76) adds two more tags for the seeding_session starting_seq
+ask-back flow (farm_agent.extraction.starting_seq): send_starting_seq_askback
+and send_seeding_session_filled_preview. Both route exactly like
+send_ask_back / send_confirm_prompt -- same target resolution, same
+draft_row["farmer_facing_preview"] payload.
+
 All farmer/operator-facing text passes through sanitize_farmer_text (defense in
 depth -- preview_builder already sanitizes its output). dispatch() never
 raises: signal-cli outages return {"ok": False, "reason": ...} so the pipeline
@@ -114,6 +120,12 @@ def create_outbound_dispatcher(
     async def _send_confirm_prompt(draft_row: dict) -> dict:
         return await _send_farmer_preview(draft_row, "confirm_prompt")
 
+    async def _send_starting_seq_askback(draft_row: dict) -> dict:
+        return await _send_farmer_preview(draft_row, "starting_seq_askback")
+
+    async def _send_seeding_session_filled_preview(draft_row: dict) -> dict:
+        return await _send_farmer_preview(draft_row, "seeding_session_filled_preview")
+
     async def _send_batch_review_summary(batch: dict) -> dict:
         # batch = {sender_e164, draftIds: [{id, type, status}, ...], reply_target_kind,
         #          group_id, source_capture_ids}
@@ -188,6 +200,10 @@ def create_outbound_dispatcher(
                     return await _send_ask_back(row)
                 case "send_confirm_prompt":
                     return await _send_confirm_prompt(row)
+                case "send_starting_seq_askback":
+                    return await _send_starting_seq_askback(row)
+                case "send_seeding_session_filled_preview":
+                    return await _send_seeding_session_filled_preview(row)
                 case "send_needs_review_ping":
                     return await _send_needs_review_ping(row)
                 case "send_batch_review_summary":
