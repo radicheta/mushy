@@ -96,3 +96,43 @@ def build_expired_note() -> str:
     return sanitize_farmer_text(
         "Draft expired. Nothing was written. Send a fresh message if you still want to log this."
     )
+
+
+_STATUS_WORD = {
+    "committed": "saved",
+    "discarded": "discarded",
+    "expired": "expired",
+    "needs_review": "pending review",
+    "confirmed": "saved",
+}
+
+
+def build_quote_closed(draft_row: dict | None) -> str:
+    """Polite ack for a quote-reply targeting an already-terminal draft.
+
+    Port of receive-loop.js:269-270 / outbound-confirm.js renderQuoteClosed
+    (simplified: no per-log-type disambiguator, which lives in the unported
+    farmos/commit-outcome-preview.js and is out of scope for this task).
+    """
+    row = draft_row or {}
+    status_word = _STATUS_WORD.get(row.get("status"), "closed")
+    return sanitize_farmer_text(f"That entry is already {status_word}.")
+
+
+def build_numbered_ask_back(active_drafts: list[dict]) -> str:
+    """Disambiguation prompt when >1 active draft exists and no quote pinned one.
+
+    Port of receive-loop.js:299-310 / outbound-confirm.js renderNumberedAskBack
+    (simplified: labels use the farmer_facing_preview first line rather than the
+    unported log-type disambiguator). Capped at 5 entries.
+    """
+    rows = (active_drafts or [])[:5]
+    lines = []
+    for i, d in enumerate(rows, start=1):
+        preview = ((d or {}).get("farmer_facing_preview") or "").strip()
+        label = preview.splitlines()[0][:60] if preview else f"draft {_truncate_id((d or {}).get('id'))}"
+        lines.append(f"{i}. {label}")
+    body = "\n".join(
+        ["Which one are you replying about?", *lines, "Reply with the number, or quote the original message."]
+    )
+    return sanitize_farmer_text(body)

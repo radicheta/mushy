@@ -127,6 +127,32 @@ SELECT id, sender_e164, reply_target_kind, group_id,
    AND updated_at < NOW() - (%s || ' minutes')::interval
 """
 
+_ACTIVE_DRAFTS_FOR_SENDER_SQL = """
+SELECT *
+  FROM signal_draft
+ WHERE sender_e164=%s
+   AND (
+     status = 'awaiting_farmer'
+     OR (status = 'commit_failed' AND updated_at > NOW() - interval '6 hours')
+   )
+ ORDER BY CASE status WHEN 'awaiting_farmer' THEN 0 ELSE 1 END ASC,
+          updated_at DESC
+"""
+# Hotfix 2026-05-23 (port of confirm-db.js findActiveDraftsForSender): stale
+# commit_failed drafts (>6h old) are excluded from the ambiguity calculation.
+# awaiting_farmer is never aged out (the farmer hasn't replied yet). Without
+# this filter, ten-day-old ack-debt drafts trap every fresh capture in the
+# numbered ask-back.
+
+_DRAFT_BY_QUOTED_MSG_TS_SQL = """
+SELECT d.*
+  FROM signal_outbound o
+  JOIN signal_draft d ON d.id = o.related_draft_id
+ WHERE o.signal_msg_ts = %s
+ ORDER BY o.sent_at DESC
+ LIMIT 1
+"""
+
 _APPEND_EVENT_SQL = """
 INSERT INTO signal_draft_event (draft_id, seq, event, payload, created_at)
 VALUES (
@@ -346,6 +372,61 @@ async def find_awaiting_for_sender(pool: AsyncConnectionPool, sender_e164: str) 
         logger.warning(
             "[confirm_repo] find_awaiting_for_sender failed sender=%s: %s",
             mask_number(sender_e164),
+            e,
+        )
+        return None
+
+
+async def find_active_drafts_for_sender(pool: AsyncConnectionPool, sender_e164: str) -> list[dict]:
+    """Return all active drafts for sender_e164, ordered awaiting_farmer-first then recency.
+
+    "Active" = status='awaiting_farmer', OR status='commit_failed' with updated_at
+    within the last 6 hours (2026-05-23 staleness filter -- port of Node
+    confirm-db.js findActiveDraftsForSender). Used by the confirm-reply router's
+    fallback lookup to detect the >1-active-draft ambiguity (CONTEXT D-06).
+
+    Returns [] on error (NEVER raises, T-61-05).
+    """
+    try:
+        async with pool.connection() as conn:
+            cursor = await conn.execute(_ACTIVE_DRAFTS_FOR_SENDER_SQL, (sender_e164,))
+            rows = await cursor.fetchall()
+            col_names = [desc[0] for desc in cursor.description] if cursor.description else []
+            return [dict(zip(col_names, row, strict=False)) for row in rows]
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            "[confirm_repo] find_active_drafts_for_sender failed sender=%s: %s",
+            mask_number(sender_e164),
+            e,
+        )
+        return []
+
+
+async def find_draft_by_quoted_msg_ts(pool: AsyncConnectionPool, quote_msg_ts: int) -> dict | None:
+    """Resolve the signal_draft joined to the signal_outbound row at quote_msg_ts.
+
+    Port of Node confirm-db.js findDraftByQuotedMsgTs: joins signal_outbound
+    (matched on signal_msg_ts) to signal_draft via related_draft_id. Picks the
+    most recent outbound row (ORDER BY sent_at DESC LIMIT 1) in the rare case
+    two outbound rows collide on the same Signal ms-ts.
+
+    Returns None when quote_msg_ts is None, no outbound row matches, the matched
+    outbound has no related_draft_id, or on any DB error (NEVER raises, T-61-05).
+    """
+    if quote_msg_ts is None:
+        return None
+    try:
+        async with pool.connection() as conn:
+            cursor = await conn.execute(_DRAFT_BY_QUOTED_MSG_TS_SQL, (quote_msg_ts,))
+            row = await cursor.fetchone()
+            if row is None:
+                return None
+            col_names = [desc[0] for desc in cursor.description] if cursor.description else []
+            return dict(zip(col_names, row, strict=False))
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            "[confirm_repo] find_draft_by_quoted_msg_ts failed quote_msg_ts=%s: %s",
+            quote_msg_ts,
             e,
         )
         return None

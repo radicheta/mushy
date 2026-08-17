@@ -41,6 +41,7 @@ from farm_agent.capture.transcribe_client import create_transcribe_client
 from farm_agent.capture.pipeline import create_capture_pipeline
 from farm_agent.capture.retention import retention_loop
 from farm_agent.confirm.watchdog import confirm_watchdog_loop
+from farm_agent.confirm.reply_router import create_confirm_reply_router
 from farm_agent.farmos.client import create_farmos_client
 from farm_agent.farmos.commit_watchdog import commit_watchdog_loop
 from farm_agent.gate import create_event_gate
@@ -107,6 +108,25 @@ async def main() -> None:
 
     pipeline = create_capture_pipeline(pool, signal_client, transcribe_client, config, gate=gate, extractor=extractor)
 
+    # MUSHY-76 (task 8c): route_confirm_reply had no caller anywhere in
+    # farm_agent, so the daemon created drafts, prompted the farmer, and then
+    # ignored every YES/NO/EDIT -- every draft expired unacked. This router is
+    # the missing routing layer between snooze and capture (matches Node
+    # receive-loop.js ordering: snooze, then confirm, then capture).
+    confirm_router = create_confirm_reply_router(
+        pool=pool,
+        signal_client=signal_client,
+        config=config,
+        capture_pipeline=pipeline,
+        extractor=extractor,
+        log=log,
+    )
+
+    async def _handle_with_confirm(env, ctx=None):
+        if await confirm_router["try_route"](env):
+            return None
+        return await pipeline["handle"](env)
+
     # Phase 63 / D-05: chamber reuses the ONE SignalClient and the ONE ReceiveLoop.
     # A second poller on the same Signal number would silently eat inbound messages.
     chamber_service = ChamberService(
@@ -114,7 +134,7 @@ async def main() -> None:
     )
     chamber_dispatch = make_composite_dispatch(
         chamber_service=chamber_service,
-        pipeline_handle=pipeline["handle"],
+        pipeline_handle=_handle_with_confirm,
         signal_client=signal_client,
         config=chamber_config,
     )

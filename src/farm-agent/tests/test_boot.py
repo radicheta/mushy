@@ -241,3 +241,127 @@ async def test_boot_commit_watchdog_not_created_when_farmos_integration_false(mo
     assert any("boot complete" in m for m in messages), (
         f"boot complete not logged -- boot may have hung"
     )
+
+
+# ---------------------------------------------------------------------------
+# Task 8c (MUSHY-76): boot wires the confirm-reply router into the live dispatch
+# handle, and a farmer's YES actually reaches confirm_draft -- not merely that
+# create_confirm_reply_router was constructed.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_boot_dispatch_handle_routes_yes_to_confirm_path(monkeypatch, caplog, pool):
+    """Prove the seam is live end-to-end through boot.py's real composition.
+
+    Before task 8c, route_confirm_reply had no caller anywhere in farm_agent --
+    boot.py started the confirm watchdog (nudge/expire) but nothing routed an
+    inbound reply, so every draft expired unacked. A passing unit test on the
+    router alone does not prove the wiring (the same class of bug that shipped
+    the seam in the first place would still pass one). This test:
+
+      1. Boots the REAL daemon (farm_agent.boot.main), intercepting only the
+         ReceiveLoop construction (to avoid needing a live signal-cli poller)
+         -- everything else (pool, capture pipeline, confirm router, chamber
+         composite dispatch) is real, wired exactly as production wires it.
+      2. Inserts a real awaiting_farmer draft directly into the same test DB
+         boot.py connects to.
+      3. Feeds a raw envelope carrying "YES" straight into the dispatch handle
+         boot.py actually constructed and would have handed to ReceiveLoop.
+      4. Asserts the draft's status flipped to 'confirmed' in the DB -- proof
+         the handle really is confirm_router -> route_confirm_reply ->
+         confirm_repo.confirm_draft, not a mock returning a canned answer.
+    """
+    if not _db_reachable():
+        pytest.skip("no test DB reachable -- start postgres:14 on port 5434")
+
+    import json  # noqa: PLC0415
+    import uuid  # noqa: PLC0415
+
+    from tests.conftest import TEST_ENV  # noqa: PLC0415
+    for k, v in TEST_ENV.items():
+        monkeypatch.setenv(k, v)
+
+    import farm_agent.boot as boot_mod  # noqa: PLC0415
+
+    captured: dict = {}
+
+    class CapturingReceiveLoop:
+        """Stand-in for ReceiveLoop that captures the composed dispatch handle
+        instead of polling a live signal-cli. Everything upstream of this
+        (confirm_router, chamber_dispatch, capture pipeline) is the real thing.
+        """
+
+        def __init__(self, signal_client, dispatch, config) -> None:
+            captured["dispatch"] = dispatch
+
+        async def start(self) -> None:
+            return None
+
+        async def stop(self) -> None:
+            return None
+
+    monkeypatch.setattr(boot_mod, "ReceiveLoop", CapturingReceiveLoop)
+
+    # Insert a real awaiting_farmer draft in the same test DB boot.py will use.
+    sender = f"+1999{uuid.uuid4().hex[:8]}"
+    draft_id = uuid.uuid4().hex
+    async with pool.connection() as conn:
+        await conn.execute(
+            """
+            INSERT INTO signal_draft
+              (id, status, sender_e164, edit_turn_count, nudge_sent_at,
+               draft_json, per_field_confidence, farmer_facing_preview,
+               reply_target_kind, created_at, updated_at)
+            VALUES (%s, 'awaiting_farmer', %s, 0, NULL, %s::jsonb, %s::jsonb, %s, 'dm', NOW(), NOW())
+            """,
+            (
+                draft_id,
+                sender,
+                json.dumps({"species_code": "SHI"}),
+                json.dumps({"species_code": 0.95}),
+                "SHI on straw -- confirm?",
+            ),
+        )
+
+    from farm_agent.boot import main  # noqa: PLC0415
+
+    task = asyncio.create_task(main())
+    try:
+        await asyncio.wait_for(asyncio.shield(task), timeout=5.0)
+    except asyncio.TimeoutError:
+        pass  # expected -- main() idles on stop.wait() after boot completes
+    except Exception:  # noqa: BLE001 -- surfaced via the assertion below if boot never wired
+        pass
+
+    assert "dispatch" in captured, (
+        "boot.py never constructed a ReceiveLoop -- boot did not complete wiring"
+    )
+
+    # Feed the raw envelope through the EXACT dispatch handle boot.py built and
+    # would have handed to ReceiveLoop (chamber snooze -> confirm -> capture).
+    envelope = {
+        "envelope": {
+            "source": sender,
+            "dataMessage": {"message": "YES", "timestamp": 1_700_000_000_000},
+        }
+    }
+    with caplog.at_level(logging.INFO, logger="farm_agent"):
+        await captured["dispatch"](envelope)
+
+    async with pool.connection() as conn:
+        result = await conn.execute("SELECT status FROM signal_draft WHERE id=%s", (draft_id,))
+        row = await result.fetchone()
+
+    task.cancel()
+    try:
+        await task
+    except (asyncio.CancelledError, Exception):
+        pass
+
+    assert row is not None, "draft row disappeared"
+    assert row[0] == "confirmed", (
+        f"boot's composed dispatch handle did not route the farmer's YES to "
+        f"confirm_draft -- draft status={row[0]!r} (expected 'confirmed'). "
+        "This is the exact seam MUSHY-76 task 8c closes: route_confirm_reply "
+        "reachable from the real receive path, not just unit-testable in isolation."
+    )
