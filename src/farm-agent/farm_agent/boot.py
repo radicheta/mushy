@@ -28,7 +28,6 @@ import logging
 import os
 import signal
 import time
-from types import SimpleNamespace
 
 import anthropic
 import httpx
@@ -122,16 +121,11 @@ async def main() -> None:
         operator_recipient=config.signal_recipient,
         log=log,
     )
-    extraction_pipeline_dict = create_extraction_pipeline(
+    extraction_pipeline = create_extraction_pipeline(
         pool=pool, extractor=extractor, config=config,
         outbound_dispatcher=extraction_outbound,
         log=log,
     )
-    # create_capture_pipeline's extraction_pipeline seam calls .enqueue(ctx) on the
-    # object it's given (attribute access, matching the test double it was designed
-    # against); create_extraction_pipeline returns a plain {"enqueue": fn} dict, so
-    # adapt with a thin namespace rather than changing the seam's calling convention.
-    extraction_pipeline = SimpleNamespace(enqueue=extraction_pipeline_dict["enqueue"])
 
     pipeline = create_capture_pipeline(
         pool, signal_client, transcribe_client, config,

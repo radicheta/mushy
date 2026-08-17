@@ -158,7 +158,8 @@ def create_capture_pipeline(
                           Default None = gate disabled (backward-compatible). When set,
                           the gate is called fail-open after transcription -- a gate error
                           never blocks capture from being persisted (T-59-03-02).
-        extraction_pipeline: Optional MUSHY-76 seam -- object with async enqueue(ctx).
+        extraction_pipeline: Optional MUSHY-76 seam -- {"enqueue": async(ctx)} dict,
+                          the shape create_extraction_pipeline() returns.
                           Default None = extraction disabled. When set and the gate
                           allows extraction and the sender resolves to a known farmer,
                           enqueue() is fired after insert_capture (fire-and-forget;
@@ -354,7 +355,7 @@ def create_capture_pipeline(
                 and farmos_person != "(unassigned)"
             ):
                 try:
-                    await extraction_pipeline.enqueue({
+                    await extraction_pipeline["enqueue"]({
                         "capture_id": capture_id,
                         "sender": source,
                         "farmos_person": farmos_person,
