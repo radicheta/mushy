@@ -54,6 +54,18 @@ TEST_ENV = {
 }
 
 
+@pytest.fixture
+def tenant_config():
+    """TenantConfig built from TEST_ENV (throwaway :5434 postgres, placeholder secrets).
+
+    Used by live-fire tests that need a real TenantConfig object (signal_recipient,
+    draft_idle_gap_min, etc.) rather than the raw TEST_ENV dict.
+    """
+    from farm_agent.tenancy.tenant import load as load_config  # noqa: PLC0415
+
+    return load_config(TEST_ENV)
+
+
 @pytest_asyncio.fixture(scope="session")
 async def pool():
     """
