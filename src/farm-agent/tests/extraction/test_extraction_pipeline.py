@@ -53,6 +53,44 @@ class FakeDispatcher:
         return {"ok": True}
 
 
+class FakePool:
+    """Minimal async pool double: records executed raw SQL, never touches a DB.
+
+    Adapted from tests/extraction/test_extraction_db.py's FakePool (Task 1) --
+    same convention, reused rather than reinvented. The pipeline's two raw-SQL
+    blocks (source_capture_ids extension, token-usage stamp) go through
+    pool.connection() directly rather than the DAO, so a test that always
+    passes pool=None never executes them -- AttributeError is swallowed by the
+    surrounding fail-soft except, and a wrong column name or param order would
+    pass the whole suite silently.
+    """
+
+    def __init__(self):
+        self.calls = []
+
+    def connection(self):
+        return _FakeConnCtx(self)
+
+
+class _FakeConnCtx:
+    def __init__(self, pool):
+        self.pool = pool
+
+    async def __aenter__(self):
+        return _FakeConn(self.pool)
+
+    async def __aexit__(self, *a):
+        return False
+
+
+class _FakeConn:
+    def __init__(self, pool):
+        self.pool = pool
+
+    async def execute(self, sql, params=None):
+        self.pool.calls.append((sql, params))
+
+
 CLEAN = {"type": "harvest", "harvest_batch_id": "H1", "qty_g": 500,
          "source_block_refs": ["b1"], "event_timestamp": "2026-05-22T10:00:00Z"}
 
@@ -75,13 +113,13 @@ def _config(**over):
     return c
 
 
-def _pipeline(db, extractor, dispatcher=None, config=None):
+def _pipeline(db, extractor, dispatcher=None, config=None, pool=None):
     # create_outbound_dispatcher (Task 4) returns {"dispatch": async fn} -- the
     # one shape the pipeline accepts. Wrap the fake the same way so this double
     # matches what production actually hands in.
     d = dispatcher or FakeDispatcher()
     return create_extraction_pipeline(
-        pool=None, extractor=extractor, config=config or _config(),
+        pool=pool, extractor=extractor, config=config or _config(),
         extraction_db=db, outbound_dispatcher={"dispatch": d.dispatch},
         clock=lambda: 1_000_000,
     )
@@ -129,13 +167,23 @@ async def test_extractor_failure_returns_reason_and_writes_nothing():
 async def test_extractor_raising_is_caught():
     db = FakeDb()
 
-    async def boom(**kw):
+    async def boom(captures, **kw):
         raise RuntimeError("anthropic down")
 
     p = _pipeline(db, {"extract": boom})
     res = await p["enqueue"](CTX)
-    assert res["ok"] is False
+    assert res == {"ok": False, "reason": "anthropic down"}
     assert db.inserted == []
+
+
+async def test_in_flight_lookup_exception_returns_reason():
+    class BoomDb(FakeDb):
+        async def get_in_flight_for_sender(self, pool, sender):
+            raise RuntimeError("db down")
+
+    p = _pipeline(BoomDb(), _extractor({"ok": True}))
+    res = await p["enqueue"](CTX)
+    assert res == {"ok": False, "reason": "db down"}
 
 
 async def test_append_continuity_updates_existing_draft():
@@ -150,6 +198,108 @@ async def test_append_continuity_updates_existing_draft():
     assert res["draft_id"] == "existing"
     assert res["continuity"] == "append"
     assert db.inserted == []
+    # The append path must actually persist the new draft body via
+    # update_draft_status, not just resolve continuity and stop.
+    persist_updates = [u for u in db.updates if u[0] == "existing"]
+    assert len(persist_updates) >= 1
+    _, status, extras = persist_updates[0]
+    assert status == "pending"
+    assert extras["draft_json"] == CLEAN
+    assert extras["per_field_confidence"] == {}
+    assert extras["log_type"] == "harvest"
+
+
+async def test_append_persists_source_capture_ids_via_raw_sql():
+    # The append-path extras whitelist excludes arrays (extraction_db.py), so
+    # source_capture_ids is extended via a separate raw pool.execute() call --
+    # not through the DAO. Prove it actually fires with the right SQL/params,
+    # using a pool double that records every execute() (test_extraction_db.py's
+    # FakePool convention), not pool=None (which would swallow it silently).
+    pool = FakePool()
+    db = FakeDb(in_flight={"id": "existing", "source_capture_ids": ["cap0"],
+                           "askback_turns": 1, "updated_at": None})
+    p = _pipeline(db, _extractor({
+        "ok": True, "drafts": [{"draft": CLEAN, "per_field_confidence": {}}],
+        "draft": CLEAN, "per_field_confidence": {}, "continuity_decision": "append",
+        "usage": None,
+    }), pool=pool)
+    res = await p["enqueue"](CTX)
+    assert res["ok"] is True
+    assert len(pool.calls) == 1
+    sql, params = pool.calls[0]
+    assert "UPDATE signal_draft" in sql
+    assert "source_capture_ids" in sql
+    assert params == (["cap0", "cap1"], "existing")
+
+
+async def test_usage_stamp_persists_token_counts_via_raw_sql():
+    pool = FakePool()
+    db = FakeDb()
+    p = _pipeline(db, _extractor({
+        "ok": True, "drafts": [{"draft": CLEAN, "per_field_confidence": {}}],
+        "draft": CLEAN, "per_field_confidence": {}, "continuity_decision": "start_new",
+        "usage": {
+            "input_tokens": 111, "output_tokens": 22,
+            "cache_creation_input_tokens": 3, "cache_read_input_tokens": 4,
+        },
+    }), pool=pool)
+    res = await p["enqueue"](CTX)
+    assert res["ok"] is True
+    assert len(pool.calls) == 1
+    sql, params = pool.calls[0]
+    assert "UPDATE signal_capture" in sql
+    # Precise column-name checks -- "input_tokens" alone is a substring of
+    # "cache_creation_input_tokens" / "cache_read_input_tokens" and would
+    # still match even if the primary input_tokens column got renamed, so
+    # anchor on "SET <col> =" / ", <col> =" to actually pin the column name.
+    assert "SET input_tokens = %s" in sql
+    assert "output_tokens = %s" in sql
+    assert "cache_creation_input_tokens = %s" in sql
+    assert "cache_read_input_tokens = %s" in sql
+    assert "model = %s" in sql
+    assert params == (111, 22, 3, 4, "claude-sonnet-4-6", "cap1")
+
+
+async def test_usage_stamp_skipped_when_usage_falsy():
+    pool = FakePool()
+    db = FakeDb()
+    p = _pipeline(db, _extractor({
+        "ok": True, "drafts": [{"draft": CLEAN, "per_field_confidence": {}}],
+        "draft": CLEAN, "per_field_confidence": {}, "continuity_decision": "start_new",
+        "usage": None,
+    }), pool=pool)
+    res = await p["enqueue"](CTX)
+    assert res["ok"] is True
+    assert pool.calls == []
+
+
+async def test_extractor_receives_loaded_image_blocks(tmp_path):
+    # 2026-05-12 Node bug fix: attachment_paths are filesystem paths; the
+    # extractor must receive decoded base64 {data, media_type} blocks, not
+    # the raw path strings, or every image is silently dropped pre-fix.
+    img_path = tmp_path / "block.jpg"
+    img_path.write_bytes(b"not-a-real-jpeg-but-multimodal-fails-open-on-decode")
+
+    received = {}
+
+    async def extract(captures, in_flight_draft=None, corpus_context=None,
+                      farmer_correction=None):
+        received["captures"] = captures
+        return {
+            "ok": True, "drafts": [{"draft": CLEAN, "per_field_confidence": {}}],
+            "draft": CLEAN, "per_field_confidence": {}, "continuity_decision": "start_new",
+            "usage": None,
+        }
+
+    db = FakeDb()
+    ctx = dict(CTX, attachment_paths=[str(img_path)])
+    p = _pipeline(db, {"extract": extract})
+    res = await p["enqueue"](ctx)
+    assert res["ok"] is True
+    images = received["captures"][0]["images"]
+    assert len(images) == 1
+    assert images[0]["media_type"] == "image/jpeg"
+    assert images[0]["data"]
 
 
 async def test_idle_gap_forces_start_new_over_llm_append():
