@@ -118,7 +118,12 @@ def create_outbound_dispatcher(
         # batch = {sender_e164, draftIds: [{id, type, status}, ...], reply_target_kind,
         #          group_id, source_capture_ids}
         # One Signal message to Don Santiago summarising the page instead of N per-draft pings.
-        if not operator_recipient or not isinstance(operator_recipient, str) or len(operator_recipient) == 0:
+        no_operator = (
+            not operator_recipient
+            or not isinstance(operator_recipient, str)
+            or len(operator_recipient) == 0
+        )
+        if no_operator:
             logger.warning("[outbound] batch_review_summary: no_target (operator_recipient unset)")
             return {"ok": False, "reason": "no_target"}
         drafts = batch.get("draftIds") if batch and isinstance(batch.get("draftIds"), list) else []
@@ -148,7 +153,12 @@ def create_outbound_dispatcher(
         return res
 
     async def _send_needs_review_ping(draft_row: dict) -> dict:
-        if not operator_recipient or not isinstance(operator_recipient, str) or len(operator_recipient) == 0:
+        no_operator = (
+            not operator_recipient
+            or not isinstance(operator_recipient, str)
+            or len(operator_recipient) == 0
+        )
+        if no_operator:
             logger.warning("[outbound] needs_review_ping: no_target (operator_recipient unset)")
             return {"ok": False, "reason": "no_target"}
         id_ = _trunc_id(draft_row.get("id") if draft_row else None)
