@@ -255,6 +255,7 @@ rollback (CR-01), no 55B-SECURITY.md.
 - [x] **Phase 61: Confirm Loop** - YES/NO/EDIT FSM parity, strain-confirm, race-safe watchdog (completed 2026-06-28)
 - [x] **Phase 62: farmOS Write Path** - httpx client, field-scoped image route, stable-identity upsert, strain/fidelity guard, origin guard (FIRST in this phase) (completed 2026-06-29)
 - [ ] **Phase 63: Chamber Alerter** - ROS-bridge WS alerts, TZ Montevideo fix (mushy-private chamber/ package)
+- [ ] **Phase 64.1: Extraction Write Path** - the missing seam between the extractor and the confirm loop; the Python agent could not create a `signal_draft` at all (MUSHY-76). Ports Node's extraction-db / FSM / preview-builder / outbound / pipeline / batch-mode / starting-seq layer, plus `confirm/preview` and a real edit handler, and wires the capture and confirm-reply seams into boot. Inserted out of sequence because Phase 64's parity gate cannot replay a corpus through a write path that does not exist.
 - [ ] **Phase 64: Parity Gate** - golden-corpus >=95% field match on isolated :5434, intentional-delta enumeration, FSM+payload parity
 - [ ] **Phase 65: Cutover** - stop-start runbook, <2min rollback drill, post-cutover observation window
 
