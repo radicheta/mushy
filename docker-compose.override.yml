@@ -278,6 +278,11 @@ services:
       # is a second reading, not ground truth -- the gate's job is to FLAG
       # disagreement, not to overwrite the draft.
       - FIDELITY_CSV_PATH=${FIDELITY_CSV_PATH:-}
+      # MUSHY-76 (task 9): extraction-pipeline knobs. One .env value moves both
+      # agents, same pattern as the confirm-loop settings above.
+      - EXTRACTION_CONFIDENCE_THRESHOLD=${EXTRACTION_CONFIDENCE_THRESHOLD:-0.7}
+      - DRAFT_IDLE_GAP_MIN=${DRAFT_IDLE_GAP_MIN:-30}
+      - MAX_ASKBACK_TURNS=${MAX_ASKBACK_TURNS:-3}
       - TZ=${TZ:-America/Montevideo}
       - LOG_LEVEL=${LOG_LEVEL:-info}
     # MUSHY-41: without these, attachments were written to container-local disk

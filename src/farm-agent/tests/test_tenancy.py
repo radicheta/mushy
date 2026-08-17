@@ -300,6 +300,54 @@ def test_int_default_used_when_absent(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# 6b. Extraction config (Phase 64 / MUSHY-76)
+# ---------------------------------------------------------------------------
+
+
+def test_extraction_defaults(tmp_path, monkeypatch):
+    """Extraction knobs default to Node's config.js values when unset."""
+    monkeypatch.setattr(_tenant_mod, "TENANTS_BASE", tmp_path)
+    tenant_dir = tmp_path / "t1"
+    tenant_dir.mkdir()
+    (tenant_dir / "config.yaml").write_text("{}\n")
+    cfg = _tenant_mod.load(_env(TENANT_ID="t1"))
+    assert cfg.extraction_confidence_threshold == 0.7
+    assert cfg.draft_idle_gap_min == 30
+    assert cfg.max_askback_turns == 3
+
+
+def test_extraction_confidence_threshold_from_env(tmp_path, monkeypatch):
+    monkeypatch.setattr(_tenant_mod, "TENANTS_BASE", tmp_path)
+    tenant_dir = tmp_path / "t1"
+    tenant_dir.mkdir()
+    (tenant_dir / "config.yaml").write_text("{}\n")
+    cfg = _tenant_mod.load(_env(TENANT_ID="t1", EXTRACTION_CONFIDENCE_THRESHOLD="0.55"))
+    assert cfg.extraction_confidence_threshold == 0.55
+
+
+def test_extraction_confidence_threshold_out_of_range_falls_back_to_default(tmp_path, monkeypatch):
+    """Mirrors config.js clampThreshold(): out-of-range override falls back to 0.7."""
+    monkeypatch.setattr(_tenant_mod, "TENANTS_BASE", tmp_path)
+    tenant_dir = tmp_path / "t1"
+    tenant_dir.mkdir()
+    (tenant_dir / "config.yaml").write_text("{}\n")
+    cfg = _tenant_mod.load(_env(TENANT_ID="t1", EXTRACTION_CONFIDENCE_THRESHOLD="4.2"))
+    assert cfg.extraction_confidence_threshold == 0.7
+    cfg_neg = _tenant_mod.load(_env(TENANT_ID="t1", EXTRACTION_CONFIDENCE_THRESHOLD="-0.1"))
+    assert cfg_neg.extraction_confidence_threshold == 0.7
+
+
+def test_draft_idle_gap_min_and_max_askback_turns_from_env(tmp_path, monkeypatch):
+    monkeypatch.setattr(_tenant_mod, "TENANTS_BASE", tmp_path)
+    tenant_dir = tmp_path / "t1"
+    tenant_dir.mkdir()
+    (tenant_dir / "config.yaml").write_text("{}\n")
+    cfg = _tenant_mod.load(_env(TENANT_ID="t1", DRAFT_IDLE_GAP_MIN="45", MAX_ASKBACK_TURNS="5"))
+    assert cfg.draft_idle_gap_min == 45
+    assert cfg.max_askback_turns == 5
+
+
+# ---------------------------------------------------------------------------
 # 7. SIGNAL_GROUP_ID normalisation
 # ---------------------------------------------------------------------------
 

@@ -28,6 +28,7 @@ import logging
 import os
 import signal
 import time
+from types import SimpleNamespace
 
 import anthropic
 import httpx
@@ -47,6 +48,9 @@ from farm_agent.farmos.commit_watchdog import commit_watchdog_loop
 from farm_agent.gate import create_event_gate
 from farm_agent.gate.classifier import create_haiku_classifier
 from farm_agent.extraction.extractor import create_extractor
+from farm_agent.extraction.outbound import create_outbound_dispatcher
+from farm_agent.extraction.pipeline import create_extraction_pipeline
+from farm_agent.extraction import preview_builder as extraction_preview_builder
 from farm_agent.chamber.config import load as load_chamber_config
 from farm_agent.chamber.service import ChamberService, make_composite_dispatch
 
@@ -106,7 +110,33 @@ async def main() -> None:
     # T-56-06-01: api_key stays in the one constructor above; never referenced here.
     extractor = create_extractor(client=anthropic_client)
 
-    pipeline = create_capture_pipeline(pool, signal_client, transcribe_client, config, gate=gate, extractor=extractor)
+    # MUSHY-76 (task 9): the extraction outbound dispatcher and pipeline were never
+    # constructed here -- create_capture_pipeline's extractor kwarg was accepted and
+    # dropped, so no draft was ever created and no confirm prompt was ever sent. This
+    # wires the real pipeline (and the outbound dispatcher it shares with the confirm
+    # reply router's starting-SEQ ask-back) into both call sites.
+    extraction_outbound = create_outbound_dispatcher(
+        signal_client=signal_client,
+        config=config,
+        preview_builder=extraction_preview_builder,
+        operator_recipient=config.signal_recipient,
+        log=log,
+    )
+    extraction_pipeline_dict = create_extraction_pipeline(
+        pool=pool, extractor=extractor, config=config,
+        outbound_dispatcher=extraction_outbound,
+        log=log,
+    )
+    # create_capture_pipeline's extraction_pipeline seam calls .enqueue(ctx) on the
+    # object it's given (attribute access, matching the test double it was designed
+    # against); create_extraction_pipeline returns a plain {"enqueue": fn} dict, so
+    # adapt with a thin namespace rather than changing the seam's calling convention.
+    extraction_pipeline = SimpleNamespace(enqueue=extraction_pipeline_dict["enqueue"])
+
+    pipeline = create_capture_pipeline(
+        pool, signal_client, transcribe_client, config,
+        gate=gate, extraction_pipeline=extraction_pipeline,
+    )
 
     # MUSHY-76 (task 8c): route_confirm_reply had no caller anywhere in
     # farm_agent, so the daemon created drafts, prompted the farmer, and then
@@ -119,6 +149,7 @@ async def main() -> None:
         config=config,
         capture_pipeline=pipeline,
         extractor=extractor,
+        outbound_dispatcher=extraction_outbound,
         log=log,
     )
 
@@ -174,6 +205,7 @@ async def main() -> None:
     log.info("boot complete in %.2fs", elapsed)
     # T-56-06-01: no config fields logged here (whisper_url etc. excluded).
     log.info("capture pipeline live")
+    log.info("extraction pipeline live")
     # T-56-06-01: lifecycle-only -- no chamber config fields logged.
     log.info("chamber alerter live")
 
