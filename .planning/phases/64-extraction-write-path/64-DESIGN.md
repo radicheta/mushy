@@ -1,0 +1,211 @@
+# Phase 64: Extraction Write Path — Design
+
+**Ticket:** MUSHY-76
+**Written:** 2026-08-17
+**Status:** awaiting review
+**Milestone:** v1.12 Farm-Agent Python Port (resumed for this phase)
+
+## Problem
+
+The Python farm-agent cannot create a draft. `farm_agent/` has exactly three
+INSERTs — `signal_capture`, `signal_outbound`, `signal_draft_event`. There is no
+`INSERT INTO signal_draft` anywhere. `create_capture_pipeline` accepts an
+`extractor` parameter and never uses it; `boot.py` builds one and hands it in,
+the pipeline drops it.
+
+The live Python path is therefore: receive -> capture -> gate -> persist ->
+dead end. Swapped into production, intake dies silently: messages are still
+captured and gated, so the database looks busy and the agent looks alive, but no
+draft, no confirm prompt, and no farmOS write ever happens.
+
+The gap is structural, not an oversight. Phase 60's context deferred
+"confirm-prompt wiring" to Phase 61; Phase 61 scoped itself to the FSM, the
+watchdog, and a DAO for drafts that already exist. Neither phase owned the write
+side. The downstream half (confirm FSM, commit watchdog, fidelity gate) looks
+healthy precisely because nothing upstream can feed it.
+
+## Scope
+
+Port the Node extraction write path — the layer between the extractor and the
+confirm loop — plus the two confirm-side modules that depend on it. Node source
+under `src/agents/alerter/src/extraction/` and `src/agents/alerter/src/confirm/`
+on `main` is the source of truth. Full faithful port, batch mode included.
+
+### Module inventory
+
+| New Python module | Ports | Node LOC |
+|---|---|---|
+| `extraction/extraction_db.py` | `extraction-db.js` minus `initDb` | ~230 |
+| `extraction/state_machine.py` | `extraction/state-machine.js` (pure; distinct from `confirm/state_machine.py`) | 222 |
+| `extraction/preview_builder.py` | `preview-builder.js` | 374 |
+| `extraction/outbound.py` | `outbound.js` | 188 |
+| `extraction/pipeline.py` | `pipeline.js` — `enqueue` + module-level helpers | ~650 |
+| `extraction/batch_mode.py` | `pipeline.js` `runBatchMode` | ~110 |
+| `extraction/starting_seq.py` | `pipeline.js` `handleStartingSeqReply` + its two text helpers | ~160 |
+| `confirm/preview.py` | `confirm/preview.js` | 68 |
+| `confirm/edit_handler.py` | `confirm/edit-handler.js` | 165 |
+
+`validator.js` needs no port: Python's `extractor.py` already does
+schema-validation-and-retry inline via Pydantic.
+
+`initDb` needs no port: `persistence/migrations.py:157` already creates
+`signal_draft` including the D-02c partial unique index
+`idx_signal_draft_in_flight_per_sender ON signal_draft (sender_e164) WHERE
+status IN ('pending','awaiting_farmer')`. The schema layer is done; only the
+code layer is missing.
+
+### Module boundaries
+
+Node's `pipeline.js` is 925 lines, of which `enqueue` alone is 500. It is split
+into three Python modules at boundaries Node already has as named functions, so
+parity review stays function-for-function and only the file boundary moves.
+Precedent: the Phase 61 `confirm/` port already consolidated 9 Node files
+into 5.
+
+### Non-goals
+
+- The cutover itself (stopping Node, starting Python). Separate ticket.
+- Draining or re-origining the 12 existing `commit_failed` drafts, all
+  `origin='node'`, which after a swap would be picked up by neither agent.
+  Separate ticket, a cutover prerequisite.
+- Any change to the extractor, the gate, the confirm FSM, the commit watchdog,
+  or the fidelity gate. Those are ported and tested; this phase feeds them.
+
+## Data flow
+
+`capture.js:207` dictates the seam exactly:
+
+```
+insert_capture
+  -> gate.classify(env_ctx, last_bot_outbound, now_ms)
+  -> UPDATE signal_capture SET extraction_gate
+  -> if allow_extract and farmos_person not in (None, '(unassigned)'):
+         extraction_pipeline.enqueue({...})   # fire-and-forget; .catch -> warn
+```
+
+`enqueue` then runs, in order:
+
+1. In-flight lookup for the sender (`get_in_flight_for_sender`).
+2. Idle-gap hard guard — `force_start_new_if_idle` over `draft_idle_gap_min`.
+3. Extract. Image paths are loaded into base64 blocks *before* the extractor
+   call (Node's 2026-05-12 bug fix: passing raw paths makes Claude see an empty
+   prompt and every image is silently skipped).
+4. Token-usage stamp back onto the originating `signal_capture` row
+   (backlog 999.53), best-effort.
+5. Route by draft count:
+   - `> 1` and (`should_batch_review` or a `seeding_session` in the mix) ->
+     batch mode: expire prior in-flight, insert N drafts, force every one to
+     `needs_review` (clean and flagged distinguished by `needs_review_reason`),
+     one operator summary.
+   - `> 1` otherwise -> small-N high-confidence fan-out: N independent confirm
+     prompts.
+   - `== 1` -> the conversational path.
+6. Resolve continuity (`start_new` / `append` / `replace`), expire the prior
+   in-flight when starting new, insert or update accordingly.
+7. `seeding_session` + `needs_input='starting_seq'` short-circuits the generic
+   ask-back: build the dedicated SEQ prompt with the last-today hint, persist
+   `awaiting_farmer`, dispatch, return early.
+8. Otherwise run the extraction FSM, build the preview when the transition calls
+   for one, update status, bump `askback_turns` when ask-back fired, dispatch
+   each side effect independently.
+
+Every step is fail-soft and `enqueue` never raises — it returns
+`{ok: False, reason}`.
+
+## Deliberate deviations from Node
+
+1. **`insert_draft` stamps `origin='python'`.** Node does not set the column;
+   the `DEFAULT 'node'` is what keeps the two commit watchdogs mutually
+   exclusive (`commit_db.py:43` selects `origin='python'`, the Node watchdog
+   selects `origin != 'python'`). A Python-created draft left at the default
+   would be committed to production farmOS by the Node watchdog.
+2. **Three new `TenantConfig` fields.** Node's extraction layer reads exactly
+   three config keys; Python's `TenantConfig` has none of them:
+   - `extraction_confidence_threshold` — `EXTRACTION_CONFIDENCE_THRESHOLD`,
+     default 0.7, clamped to [0,1] with a warn on out-of-range.
+   - `draft_idle_gap_min` — `DRAFT_IDLE_GAP_MIN`, default 30.
+   - `max_askback_turns` — `MAX_ASKBACK_TURNS`, default 3.
+
+   Compose passthrough goes in the `alerter-py` block using the same
+   `${VAR:-default}` form as the Node block, so a value set in `.env` moves both
+   agents together and they cannot drift apart.
+3. **`create_capture_pipeline`'s `extractor` parameter is replaced by
+   `extraction_pipeline`.** `boot.py` builds the extraction pipeline (which
+   holds the extractor in its closure) and passes that down, mirroring
+   `index.js:161-192`.
+4. **`confirm/dispatch.py:401` `_run_edit_reextraction_stub` is replaced** by a
+   real `confirm/edit_handler.py`. Today a farmer's EDIT logs a line and the
+   correction vanishes — the same silent-failure class this phase exists to
+   close.
+
+## Parity deltas carried forward
+
+- **`handle_starting_seq_reply` is ported but left unrouted.** Node never wired
+  it either: `grep` for the symbol across `src/agents/alerter/src/` finds the
+  definition, the error log, and the factory return — no caller in
+  `receive-loop.js`. Matching the gap is the faithful choice; fixing it is a
+  separate ticket against both agents.
+- **`TODO(Phase 60)` at `capture/pipeline.py:280` closes here.** Node fetches
+  `last_bot_outbound` via `select_recent_outbound_by_recipient` once and feeds
+  it to the gate so `rule_negative` can fast-reject short acks inside the 30-min
+  attestation window. Same seam, same call, so it lands in this phase.
+
+## Verification
+
+Ship-gate is hermetic parity plus one real-session live-fire.
+
+**Hermetic (CI, every run):**
+- Table-driven parity for the extraction FSM: every valid and invalid
+  transition, Node table vs Python table.
+- Table-driven parity for `preview_builder`: rendered farmer text compared
+  against Node output for each draft type, including the seeding-session
+  group-by-parent table and column padding.
+- DAO tests against a fake pool, including the `23505 -> in_flight_conflict`
+  path. This is the crux: `runBatchMode`'s 2026-05-25 finding is that a clean
+  batch draft routed to `awaiting_farmer` takes the per-sender in-flight slot
+  and every sibling insert on the same page then fails with
+  `in_flight_conflict`, silently dropping all but the first entry of a
+  multi-entry page.
+- Continuity matrix: `start_new` / `append` / `replace` x in-flight present or
+  absent x idle-gap exceeded or not.
+
+**Live-fire (env-gated, operator-run, never CI):**
+Mirrors the `test_gate_live_fire.py` pattern — marker plus `skipif` on
+`ANTHROPIC_API_KEY` and an explicit env flag. Runs the real Sonnet model over
+the real 2026-05-22 session (audio transcript + downscaled photo + text
+follow-up) end-to-end into a **throwaway postgres on :5433**, and asserts a real
+`signal_draft` row lands in `awaiting_farmer` with the correct preview,
+`log_type='seeding_session'`, and `origin='python'`.
+
+The throwaway database is not optional. Against the shared TimescaleDB, any
+draft that reaches `confirmed` is picked up by the live Node commit watchdog and
+written to production farmOS.
+
+Unit tests alone are explicitly not sufficient here: the extractor was
+unit-tested and fully green while the seam that consumes its output did not
+exist. That is the failure this gate is designed to catch.
+
+## Risks
+
+| Risk | Mitigation |
+|---|---|
+| Python drafts committed to prod farmOS by the Node watchdog | `origin='python'` stamped in `insert_draft`; asserted in the live-fire |
+| Live-fire leaking confirmed drafts to prod | Throwaway pg on :5433, never the shared instance |
+| Batch mode silently dropping all but the first entry of a page | Explicit `in_flight_conflict` test; clean batch drafts routed to `needs_review`, not `awaiting_farmer` |
+| Config drift between the two agents after the swap | Shared `${VAR:-default}` compose form for all three new keys |
+| Preview text divergence changing the farmer's experience at cutover | Table-driven preview parity against Node output |
+
+## Waves
+
+Rough shape; `writing-plans` will detail. Ordered so each wave is independently
+testable and the DB layer lands before anything depends on it.
+
+1. `extraction_db.py` + DAO tests (including `in_flight_conflict`).
+2. `extraction/state_machine.py` + full transition-table parity tests.
+3. `preview_builder.py` + rendering parity tests.
+4. `outbound.py` dispatcher.
+5. `pipeline.py` — `enqueue`, continuity, in-flight, usage stamp.
+6. `batch_mode.py` + `starting_seq.py`.
+7. `confirm/preview.py` + `confirm/edit_handler.py`, replacing the stub.
+8. Config knobs + `boot.py` wiring + the capture seam (including the
+   `last_bot_outbound` TODO), then the live-fire harness.
