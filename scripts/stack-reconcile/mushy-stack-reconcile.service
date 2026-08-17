@@ -1,0 +1,22 @@
+[Unit]
+Description=Repair docker containers that came up detached from their networks (cold-start race)
+# docker.service must be up before this is useful. The script ALSO waits for
+# dockerd to answer, because "service started" and "daemon accepting API calls"
+# are not the same instant -- that gap is the whole bug this fixes.
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# Root: needs the docker socket and runs `docker compose` for projects owned by
+# other users (farmos, noodle).
+ExecStart=/usr/local/bin/stack-reconcile.sh
+# At boot, give containers longer to settle before judging them broken --
+# several projects start at once and a container mid-wiring is not a fault.
+Environment=RECONCILE_MIN_UPTIME_SEC=120
+Environment=RECONCILE_DOCKER_WAIT_SEC=300
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

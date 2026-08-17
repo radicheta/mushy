@@ -1,0 +1,17 @@
+[Unit]
+Description=Periodically re-check for detached containers (self-heal between boots)
+
+[Timer]
+# 3 min after boot: late enough that the boot-time oneshot and every compose
+# project have settled, early enough that a bad boot is repaired before anyone
+# notices. The service's own 120s min-uptime guard is the real safety net.
+OnBootSec=3min
+# Then every 10 min. The 08-13 breakage went unnoticed for 3 days because four
+# of the five broken containers reported "healthy" -- their healthchecks probe
+# localhost inside the container and never touch the network. This timer is the
+# check that would have caught it.
+OnUnitActiveSec=10min
+Unit=mushy-stack-reconcile.service
+
+[Install]
+WantedBy=timers.target
