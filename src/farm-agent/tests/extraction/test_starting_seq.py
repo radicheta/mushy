@@ -23,24 +23,43 @@ def test_parse_reply(text, expected):
 
 
 def test_ask_back_text_has_no_em_dash():
+    # event_date is always "YYYY-MM-DD" in production (schemas/seeding_session.py:76;
+    # yyyymmdd_to_yymmdd raises on the undashed form). Pin the actual humanized
+    # question -- this subsumes the em-dash check.
     out = build_starting_seq_ask_back_text(
-        total_children=11, event_date="20260522", last_seq=3,
+        total_children=11, event_date="2026-05-22", last_seq=3,
         last_block_name="260522_KOY_3", sender_name="Santi")
+    assert out == (
+        "Hi Santi,\n"
+        "May 22 inoc, 11 blocks. What block number should I start at?\n"
+        "Last block number today was 260522_KOY_3, so default is 4.\n"
+        "Reply with a number or just YES for the default."
+    )
     assert "—" not in out
 
 
 def test_ask_back_text_includes_the_hint_when_last_seq_known():
     out = build_starting_seq_ask_back_text(
-        total_children=11, event_date="20260522", last_seq=3,
+        total_children=11, event_date="2026-05-22", last_seq=3,
         last_block_name="260522_KOY_3", sender_name=None)
-    assert "260522_KOY_3" in out
+    assert out == (
+        "May 22 inoc, 11 blocks. What block number should I start at?\n"
+        "Last block number today was 260522_KOY_3, so default is 4.\n"
+        "Reply with a number or just YES for the default."
+    )
 
 
 def test_ask_back_text_survives_unknown_last_seq():
+    # This is the question the farmer reads when the bot cannot find the
+    # day's last SEQ -- pin it verbatim, not just "some non-empty string".
     out = build_starting_seq_ask_back_text(
-        total_children=11, event_date="20260522", last_seq=None,
+        total_children=11, event_date="2026-05-22", last_seq=None,
         last_block_name=None, sender_name=None)
-    assert isinstance(out, str) and out.strip() != ""
+    assert out == (
+        "May 22 inoc, 11 blocks. What block number should I start at?\n"
+        "No prior session today, so default is 1.\n"
+        "Reply with a number or just YES for the default."
+    )
 
 
 class FakeDb:
@@ -58,21 +77,18 @@ class FakeDb:
 
 
 class FakeDispatcher:
+    """Call recorder only. Passed to starting_seq.py as {"dispatch": d.dispatch}
+    -- the same dict shape create_outbound_dispatcher returns and the one
+    locked convention pipeline.py/batch_mode.py use. This class is never
+    passed directly as outbound_dispatcher; there is one dispatcher shape.
+    """
+
     def __init__(self):
         self.calls = []
 
     async def dispatch(self, effect, row):
         self.calls.append((effect, row))
         return {"ok": True}
-
-    def __getitem__(self, key):
-        # starting_seq.py calls outbound_dispatcher["dispatch"](...) -- dict
-        # subscript is the locked convention across pipeline.py/batch_mode.py.
-        # This is additive (not a shape the fake didn't already support) so
-        # the dict-subscript call site is exercised, not attribute access.
-        if key == "dispatch":
-            return self.dispatch
-        raise KeyError(key)
 
 
 def _session_row():
@@ -101,7 +117,7 @@ async def test_numeric_reply_mints_seq_across_groups():
     db, d = FakeDb(_session_row()), FakeDispatcher()
     res = await handle_starting_seq_reply(
         draft_id="d1", reply_text="4", capture_ctx={},
-        pool=None, extraction_db=db, outbound_dispatcher=d, log=None)
+        pool=None, extraction_db=db, outbound_dispatcher={"dispatch": d.dispatch}, log=None)
     assert res["ok"] is True
     groups = db.row["draft_json"]["groups"]
     assert [n[-1] for n in groups[0]["child_block_names"]["value"]] == ["4", "5"]
@@ -110,8 +126,9 @@ async def test_numeric_reply_mints_seq_across_groups():
 
 async def test_reply_clears_needs_input():
     db, d = FakeDb(_session_row()), FakeDispatcher()
-    await handle_starting_seq_reply(draft_id="d1", reply_text="4", capture_ctx={},
-                                    pool=None, extraction_db=db, outbound_dispatcher=d, log=None)
+    await handle_starting_seq_reply(
+        draft_id="d1", reply_text="4", capture_ctx={},
+        pool=None, extraction_db=db, outbound_dispatcher={"dispatch": d.dispatch}, log=None)
     assert not db.row["draft_json"].get("needs_input")
 
 
@@ -119,22 +136,25 @@ async def test_second_reply_is_idempotent_noop():
     row = _session_row()
     row["draft_json"].pop("needs_input")
     db, d = FakeDb(row), FakeDispatcher()
-    res = await handle_starting_seq_reply(draft_id="d1", reply_text="YES", capture_ctx={},
-                                          pool=None, extraction_db=db, outbound_dispatcher=d, log=None)
+    res = await handle_starting_seq_reply(
+        draft_id="d1", reply_text="YES", capture_ctx={},
+        pool=None, extraction_db=db, outbound_dispatcher={"dispatch": d.dispatch}, log=None)
     assert res == {"ok": True, "noop": True}
     assert db.updates == []
 
 
 async def test_unclear_reply_redispatches_askback_without_minting():
     db, d = FakeDb(_session_row()), FakeDispatcher()
-    res = await handle_starting_seq_reply(draft_id="d1", reply_text="dunno", capture_ctx={},
-                                          pool=None, extraction_db=db, outbound_dispatcher=d, log=None)
+    res = await handle_starting_seq_reply(
+        draft_id="d1", reply_text="dunno", capture_ctx={},
+        pool=None, extraction_db=db, outbound_dispatcher={"dispatch": d.dispatch}, log=None)
     assert db.row["draft_json"]["groups"][0]["child_block_names"]["value"] == []
     assert any("askback" in effect for effect, _ in d.calls)
 
 
 async def test_missing_draft_returns_reason():
     db, d = FakeDb(None), FakeDispatcher()
-    res = await handle_starting_seq_reply(draft_id="nope", reply_text="4", capture_ctx={},
-                                          pool=None, extraction_db=db, outbound_dispatcher=d, log=None)
+    res = await handle_starting_seq_reply(
+        draft_id="nope", reply_text="4", capture_ctx={},
+        pool=None, extraction_db=db, outbound_dispatcher={"dispatch": d.dispatch}, log=None)
     assert res["ok"] is False
