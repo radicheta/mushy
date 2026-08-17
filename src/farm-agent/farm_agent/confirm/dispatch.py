@@ -185,9 +185,11 @@ async def _handle_strain_intercept(
             await repo.update_draft_after_edit(pool, draft_id, {"draft_json": draft_json})
             res = await repo.confirm_draft(pool, draft_id)
             if res.get("rowcount") == 1:
+                # Node dispatches send_confirm_ack for this path too
+                # (receive-loop.js:354, same as confirm_new at :329) -> buildConfirmAck.
                 await _ack_send(
                     signal_client,
-                    f"Got it! Recorded as {resolved['code']}.",
+                    build_confirm_ack(draft_id),
                     to=to,
                     related_draft_id=draft_id,
                     intent="confirm_ack",

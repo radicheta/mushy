@@ -7,10 +7,15 @@ class FakeConfirmRepo:
     def __init__(self, bump_ok=True):
         self.bumped = []
         self.bump_ok = bump_ok
+        self.events = []  # (draft_id, event, payload)
 
     async def bump_edit_turn(self, pool, draft_id):
         self.bumped.append(draft_id)
         return {"ok": self.bump_ok, "edit_turn_count": 1}
+
+    async def append_event_via_pool(self, pool, draft_id, event, payload):
+        self.events.append((draft_id, event, payload))
+        return {"ok": True, "seq": 1}
 
 
 class FakeExtractionDb:
@@ -98,6 +103,61 @@ async def test_edit_extractor_failure_returns_reason_not_silence():
     res = await h["handle_edit"](ROW, "750 grams")
     assert res["ok"] is False
     assert res["reason"] == "schema_invalid"
+
+
+async def test_edit_success_writes_audit_trail_event():
+    """Fix round 2: edit-handler.js:141-145 -- a DB audit row (signal_draft_event),
+    not log output, must record the edit-turn history."""
+    ex, _ = _extractor({"ok": True, "draft": CORRECTED, "per_field_confidence": {},
+                        "drafts": [{"draft": CORRECTED, "per_field_confidence": {}}]})
+    repo = FakeConfirmRepo()
+    h = create_edit_handler(pool=None, extractor=ex, confirm_repo=repo,
+                            extraction_db=FakeExtractionDb(), config=_config())
+    res = await h["handle_edit"](ROW, "750 grams")
+    assert res["ok"] is True
+    assert len(repo.events) == 1
+    draft_id, event, payload = repo.events[0]
+    assert draft_id == "d1"
+    assert event == "edit"
+    assert payload["ok"] is True
+    assert payload["edit_text"] == "750 grams"
+
+
+async def test_edit_extractor_failure_writes_audit_trail_event():
+    """Fix round 2: edit-handler.js:112-116 -- the failure path must also be
+    recorded, not just logged."""
+    ex, _ = _extractor({"ok": False, "reason": "schema_invalid"})
+    repo = FakeConfirmRepo()
+    h = create_edit_handler(pool=None, extractor=ex, confirm_repo=repo,
+                            extraction_db=FakeExtractionDb(), config=_config())
+    res = await h["handle_edit"](ROW, "750 grams")
+    assert res["ok"] is False
+    assert len(repo.events) == 1
+    draft_id, event, payload = repo.events[0]
+    assert draft_id == "d1"
+    assert event == "edit"
+    assert payload["ok"] is False
+    assert payload["reason"] == "schema_invalid"
+    assert payload["edit_text"] == "750 grams"
+
+
+async def test_edit_extractor_exception_writes_audit_trail_event():
+    """Fix round 2: edit-handler.js:100-104 -- an extractor exception must also
+    land an audit row, not just a log line."""
+    async def boom(*a, **kw):
+        raise RuntimeError("down")
+
+    repo = FakeConfirmRepo()
+    h = create_edit_handler(pool=None, extractor={"extract": boom}, confirm_repo=repo,
+                            extraction_db=FakeExtractionDb(), config=_config())
+    res = await h["handle_edit"](ROW, "750 grams")
+    assert res["ok"] is False
+    assert len(repo.events) == 1
+    draft_id, event, payload = repo.events[0]
+    assert draft_id == "d1"
+    assert event == "edit"
+    assert payload["ok"] is False
+    assert payload["reason"] == "down"
 
 
 async def test_edit_no_draft_row():

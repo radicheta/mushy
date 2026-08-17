@@ -93,6 +93,7 @@ def create_edit_handler(*, pool, extractor, confirm_repo, extraction_db, config,
                     "text": None,
                     "transcript": None,
                     "images": [],
+                    "farmer_correction": edit_str,
                 }
             ]
 
@@ -107,11 +108,23 @@ def create_edit_handler(*, pool, extractor, confirm_repo, extraction_db, config,
                     "[edit_handler] extractor threw sender=%s: %s",
                     mask_number(draft_row.get("sender_e164", "")), e,
                 )
+                # Audit-trail row (edit-handler.js:100-104): a database record
+                # of the edit attempt, distinct from log output -- same
+                # category as signal_capture.raw_text, kept deliberately.
+                await confirm_repo.append_event_via_pool(
+                    pool, draft_id, "edit",
+                    {"ok": False, "reason": str(e), "edit_text": edit_str[:200]},
+                )
                 return {"ok": False, "reason": str(e)}
 
             if not result or not result.get("ok"):
                 reason = (result or {}).get("reason") or "extractor_failed"
                 logger.warning("[edit_handler] re-extract failed draft_id=%s reason=%s", draft_id, reason)
+                # Audit-trail row (edit-handler.js:112-116).
+                await confirm_repo.append_event_via_pool(
+                    pool, draft_id, "edit",
+                    {"ok": False, "reason": reason, "edit_text": edit_str[:200]},
+                )
                 return {"ok": False, "reason": reason}
 
             draft = result.get("draft")
@@ -145,6 +158,12 @@ def create_edit_handler(*, pool, extractor, confirm_repo, extraction_db, config,
                     "[edit_handler] draft no longer active when update landed draft_id=%s", draft_id,
                 )
                 return {"ok": True, "side_effect": "noop", "reason": "draft_no_longer_active"}
+
+            # Audit-trail row (edit-handler.js:141-145).
+            await confirm_repo.append_event_via_pool(
+                pool, draft_id, "edit",
+                {"ok": True, "edit_turn": bump.get("edit_turn_count"), "edit_text": edit_str[:200]},
+            )
 
             return {
                 "ok": True,

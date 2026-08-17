@@ -399,6 +399,29 @@ async def test_sc4_known_curated_code_confirm_path():
 
 
 @pytest.mark.asyncio
+async def test_sc4_known_curated_code_confirm_sends_build_confirm_ack():
+    """Fix round 2: the correction-confirmed branch must send Node's buildConfirmAck,
+    not the invented 'Got it! Recorded as {code}.' string. Node dispatches
+    send_confirm_ack for this path too (receive-loop.js:354, same as :329).
+    """
+    from farm_agent.confirm.dispatch import route_confirm_reply  # noqa: PLC0415
+    from farm_agent.confirm.preview import build_confirm_ack  # noqa: PLC0415
+
+    fake_repo = FakeConfirmRepoForDispatch()
+    fake_signal = FakeSignalClient()
+    config = _make_config()
+    pool = object()
+
+    draft = _make_draft_row(draft_id="draft-abc", species_code="POY")
+
+    result = await route_confirm_reply(pool, fake_signal, config, draft, "koy", repo=fake_repo)
+
+    assert result.get("action") == "correction_confirmed"
+    assert fake_signal.sends
+    assert fake_signal.sends[-1]["body"] == build_confirm_ack("draft-abc")
+
+
+@pytest.mark.asyncio
 async def test_sc4_unknown_code_sends_ask_back():
     """SC-4: an unknown code on a strain_unknown draft sends ask-back and holds the draft."""
     from farm_agent.confirm.dispatch import route_confirm_reply  # noqa: PLC0415
