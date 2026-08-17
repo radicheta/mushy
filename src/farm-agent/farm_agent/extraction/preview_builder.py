@@ -142,7 +142,9 @@ def render_scalar(v) -> str:
     if v is None:
         return "[?]"
     if isinstance(v, bool):
-        return str(v)
+        # Node's renderScalar has no boolean branch; it falls through to
+        # String(v), which is lowercase "true"/"false" -- not Python's str(bool).
+        return "true" if v else "false"
     if isinstance(v, (int, float)):
         return fmt_num(v)
     if isinstance(v, str):

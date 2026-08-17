@@ -6,7 +6,9 @@ from farm_agent.extraction.preview_builder import (
     build_preview,
     build_top_question,
     classify_field,
+    render_scalar,
     render_seeding_session,
+    render_starting_seq_ask_back,
     render_value,
     sanitize_farmer_text,
 )
@@ -62,6 +64,12 @@ def test_top_question_prefers_missing_over_low_conf():
 
 
 def test_seeding_session_table_columns_align():
+    # The prior version of this test filtered rows on `"|" in ln`, but the
+    # table itself is padded with a two-space gutter (_pad_row) and never
+    # contains "|" -- only the constant footer line does. That made the
+    # filtered list a single element and the assertion vacuous regardless of
+    # whether padding worked. This version locates the real header + data
+    # rows by position and checks their alignment directly.
     draft = {
         "type": "seeding_session",
         "event_date": "20260522",
@@ -73,9 +81,26 @@ def test_seeding_session_table_columns_align():
         ],
     }
     out = render_seeding_session(draft)
-    lines = [ln for ln in out.splitlines() if "|" in ln]
-    widths = {len(ln) for ln in lines}
-    assert len(widths) == 1, f"table rows are ragged: {widths}"
+    lines = out.splitlines()
+    # Layout: [header, summary, "", col_header, row1, row2, "", footer].
+    # The column header + one data row per group start right after the blank
+    # line following the summary line.
+    table_start = 3
+    table_lines = lines[table_start : table_start + 1 + len(draft["groups"])]
+    assert len(table_lines) == 3
+
+    # CHILDREN is the last column and is deliberately left unpadded (see
+    # _pad_row's comment: "Last column needs no trailing pad"), so only the
+    # KEY/PARENT/SPECIES/QTY *prefix* is guaranteed to line up across rows --
+    # not the full line length, which varies with CHILDREN's content. The
+    # fixture's CHILDREN text is known ahead of time (no range-collapse: "a",
+    # "b", "c" have no trailing "_SEQ", and group 2 has none), so stripping
+    # it off each line isolates the padded prefix for comparison.
+    last_col_text = ["CHILDREN", "a, b, c", ""]
+    prefix_lengths = {
+        len(ln) - len(tail) for ln, tail in zip(table_lines, last_col_text, strict=True)
+    }
+    assert len(prefix_lengths) == 1, f"table columns are ragged: {table_lines!r}"
 
 
 def test_render_value_none_is_marker():
@@ -121,6 +146,49 @@ def test_build_confirm_prompt_never_contains_em_dash():
     out = build_confirm_prompt(draft=draft, per_field_confidence={},
                                threshold=0.7, required_fields=[])
     assert "—" not in out
+
+
+def test_render_scalar_bool_lowercase_matches_node():
+    # Node's renderScalar has no boolean branch; it falls through to
+    # String(v), which is lowercase "true"/"false". Python's str(bool) would
+    # give "True"/"False" -- pin the Node-matching lowercase form.
+    assert render_scalar(True) == "true"
+    assert render_scalar(False) == "false"
+
+
+def test_render_starting_seq_ask_back_matches_node():
+    draft = {"event_date": "20260522", "groups": [{"qty": {"value": 3}}, {"qty": {"value": 2}}]}
+    out = render_starting_seq_ask_back(draft)
+    assert out == (
+        "Inoc session: 20260522\n"
+        "5 blocks across 2 parents (awaiting starting block-number)\n\n"
+        "Reply with the starting SEQ (e.g. 4)."
+    )
+
+
+def test_render_starting_seq_ask_back_missing_date_fallback():
+    draft = {"groups": [{"qty": {"value": 3}}]}
+    out = render_starting_seq_ask_back(draft)
+    assert out.startswith("Inoc session: [?]\n")
+
+
+def test_render_seeding_session_missing_date_fallback():
+    draft = {"type": "seeding_session", "groups": [{"qty": {"value": 1}}]}
+    out = render_seeding_session(draft)
+    assert out.startswith("Inoc session: [?]\n")
+
+
+def test_seeding_session_overflow_more_groups():
+    groups = [
+        {"parent": {"value": f"P{i}"}, "species": {"value": "SHI"}, "qty": {"value": 1}}
+        for i in range(7)
+    ]
+    draft = {"type": "seeding_session", "event_date": "20260101", "groups": groups}
+    out = render_seeding_session(draft)
+    lines = out.splitlines()
+    assert "... (2 more groups)" in lines
+    # Only the first 5 groups render as table rows (KEY 1..5); group 6/7 do not.
+    assert "6" not in [ln.split()[0] for ln in lines if ln[:1].isdigit()]
 
 
 def test_fmt_num_matches_the_chamber_implementation():
