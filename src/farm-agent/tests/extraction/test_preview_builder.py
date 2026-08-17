@@ -121,3 +121,16 @@ def test_build_confirm_prompt_never_contains_em_dash():
     out = build_confirm_prompt(draft=draft, per_field_confidence={},
                                threshold=0.7, required_fields=[])
     assert "—" not in out
+
+
+def test_fmt_num_matches_the_chamber_implementation():
+    """The Foray seam forbids extraction importing chamber, so fmt_num is
+    duplicated. Tests are not bound by the seam, so pin the two together:
+    if either copy changes behaviour, this fails."""
+    from farm_agent.chamber.message import fmt_num as chamber_fmt_num
+    from farm_agent.extraction.preview_builder import fmt_num as extraction_fmt_num
+
+    cases = [None, float("nan"), 0, -0.04, -0.06, 90, 94.39994, 1.5000000000000013,
+             2.5, 0.05, 1234.567, "not a number", "12.34"]
+    for c in cases:
+        assert extraction_fmt_num(c) == chamber_fmt_num(c), f"drift on {c!r}"
