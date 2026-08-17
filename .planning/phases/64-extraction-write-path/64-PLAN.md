@@ -83,7 +83,7 @@ Tasks 1-4 are leaves with no dependencies on each other and can be executed in p
 
 ### Task 1: `extraction_db.py` — the signal_draft DAO
 
-Ports `src/agents/alerter/src/extraction/extraction-db.js` lines 18-24 and 76-250. `initDb` (lines 26-74) is NOT ported: `farm_agent/persistence/migrations.py:157` already creates the table and the D-02c partial unique index.
+Ports `src/agents/alerter/src/extraction/extraction-db.js` lines 18-24 and 76-250. `initDb` (lines 26-74) is NOT ported: `farm_agent/persistence/migrations.py:157` already creates the table and the D-02c partial unique index (the `origin` column is added separately at `migrations.py:358`, default `'node'`).
 
 **Files:**
 - Create: `farm_agent/extraction/extraction_db.py`
@@ -777,7 +777,9 @@ def test_preview_on_none_draft_does_not_raise():
 def test_top_question_prefers_missing_over_low_conf():
     q = build_top_question(missing_fields=["qty_g"], low_conf_fields=["notes"],
                            draft_type="harvest")
-    assert "qty" in q.lower()
+    # Node's TOP_Q_TEMPLATES renders harvest.qty_g as "How many grams were
+    # harvested?" -- assert against the verbatim template, not the field name.
+    assert q == "How many grams were harvested?"
 
 
 def test_seeding_session_table_columns_align():
