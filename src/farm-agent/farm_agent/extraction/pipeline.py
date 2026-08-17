@@ -203,18 +203,6 @@ def _normalize_updated_at_ms(updated_at) -> int | None:
     return None
 
 
-def _resolve_dispatch_fn(outbound_dispatcher):
-    """Accept either an object exposing `.dispatch` or a {"dispatch": fn} dict."""
-    if outbound_dispatcher is None:
-        return None
-    fn = getattr(outbound_dispatcher, "dispatch", None)
-    if fn is not None:
-        return fn
-    if isinstance(outbound_dispatcher, dict):
-        return outbound_dispatcher.get("dispatch")
-    return None
-
-
 async def _noop_dispatch(effect, row):  # pragma: no cover -- only used absent a real dispatcher
     return {"ok": True, "noop": True}
 
@@ -241,7 +229,9 @@ def create_extraction_pipeline(
     pb = preview_builder if preview_builder is not None else _preview_builder_module
     _log = log or logger
     _clock = clock or (lambda: int(datetime.now(timezone.utc).timestamp() * 1000))
-    _dispatch = _resolve_dispatch_fn(outbound_dispatcher) or _noop_dispatch
+    _dispatch = (
+        outbound_dispatcher["dispatch"] if outbound_dispatcher is not None else _noop_dispatch
+    )
 
     async def _route_multi(**kwargs):
         # Task 6: small-N fan-out / runBatchMode (pipeline.js:382-514).

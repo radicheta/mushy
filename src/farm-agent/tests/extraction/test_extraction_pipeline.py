@@ -76,9 +76,13 @@ def _config(**over):
 
 
 def _pipeline(db, extractor, dispatcher=None, config=None):
+    # create_outbound_dispatcher (Task 4) returns {"dispatch": async fn} -- the
+    # one shape the pipeline accepts. Wrap the fake the same way so this double
+    # matches what production actually hands in.
+    d = dispatcher or FakeDispatcher()
     return create_extraction_pipeline(
         pool=None, extractor=extractor, config=config or _config(),
-        extraction_db=db, outbound_dispatcher=dispatcher or FakeDispatcher(),
+        extraction_db=db, outbound_dispatcher={"dispatch": d.dispatch},
         clock=lambda: 1_000_000,
     )
 
