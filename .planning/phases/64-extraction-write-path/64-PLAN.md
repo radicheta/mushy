@@ -14,7 +14,7 @@
 
 ## Global Constraints
 
-- **Node is the source of truth.** Where this plan and the Node source disagree, the Node source wins — flag the discrepancy in the task's commit message rather than silently choosing.
+- **Node is the source of truth, with three named exceptions.** Where this plan and the Node source disagree, the Node source wins — flag the discrepancy in the task's commit message rather than silently choosing. The exceptions are the three Node bugs listed under "Intentional divergences" below: those are FIXED here, not reproduced. Do not "restore parity" on them.
 - **Never-throw DAOs.** Every DB function returns `{"ok": True, ...}` or `{"ok": False, "reason": str}` and never raises. Mirror `farm_agent/capture/capture_repo.py` exactly for structure and psycopg3 usage.
 - **`enqueue` never raises.** Outer `try/except` returns `{"ok": False, "reason": str(e)}`.
 - **PII:** `mask_number(sender)` on every log line that references an e164. Never log farmer text, transcripts, or draft contents.
@@ -26,6 +26,42 @@
 - **Line length 100** (ruff), `from __future__ import annotations` at the top of every new module.
 - **All paths below are relative to `src/farm-agent/`** unless stated otherwise.
 - **Run tests with:** `cd src/farm-agent && uv run pytest <path> -v`
+
+## Intentional divergences from Node
+
+Three Node bugs are fixed here rather than ported. Each is farmer-visible, so
+each changes behaviour at cutover relative to prod Node — deliberately, by the
+project owner's decision on 2026-08-17. Each fix must be called out in its
+task's commit message.
+
+**D-1 — A cleanly-extracted draft is never announced to the farmer.**
+Node's extraction FSM emits `handoff_to_phase_39` on the clean path, and the
+outbound dispatcher treats that tag as a no-send. Separately,
+`pipeline.js:466` tests for a `send_confirm_prompt` tag the FSM never emits, so
+no preview is built either. Net effect in prod today: a draft that extracts
+perfectly is silently parked in `awaiting_farmer`, and the farmer's first and
+only contact is the watchdog nudge. Fix: the FSM emits `send_confirm_prompt`,
+the pipeline builds a preview for it, and the dispatcher sends it. Tasks 2, 3,
+4, 5.
+
+**D-2 — The nudge does not say what it is nudging about.**
+`watchdog.js:31` dispatches `send_nudge` with only `minutesRemaining`, never
+`previewSummary`, so the farmer reads "Still want to lock in this draft?" with
+no indication of which draft. Note the Python port's current inline nudge DOES
+include a preview, so porting Node verbatim here would be a regression on top of
+a bug. Fix: pass the draft's `farmer_facing_preview` as `preview_summary`.
+Task 8.
+
+**D-3 — A farmer's answer to the SEQ ask-back goes nowhere.**
+`handleStartingSeqReply` has no caller in either agent; `receive-loop.js` never
+routes to it. The bot asks the farmer for a starting SEQ, the farmer answers,
+and nothing happens. This violates the project's no-silent-failure-after-farmer-
+reply rule, which is why it is in scope despite being the least cheap of the
+three. Fix: intercept the reply in the confirm dispatch, mirroring the existing
+`_handle_strain_intercept` precedent. Task 11.
+
+Still NOT fixed here, and ticketed instead: the cutover work (draining or
+re-origining the 12 existing `commit_failed` drafts, and the swap runbook).
 
 ## File Structure
 
@@ -401,7 +437,9 @@ REQUIRED_FIELDS = {
 }
 ```
 
-Side-effect tags emitted: `handoff_to_phase_39`, `send_ask_back`, `send_needs_review_ping`, `mark_expired`, `noop`.
+Side-effect tags emitted: `send_confirm_prompt`, `send_ask_back`, `send_needs_review_ping`, `mark_expired`, `noop`.
+
+**Divergence D-1 applies here.** Node emits `handoff_to_phase_39` on the clean path (state-machine.js:144). Emit `send_confirm_prompt` instead. Everything else about that branch — `next_status`, `next_askback_turns`, `reason='ready_for_confirm'`, `ask_back_info` — is unchanged. Do not emit `handoff_to_phase_39` at all; it was a Phase-39 handoff marker that no longer means anything.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -519,12 +557,19 @@ def _extraction_event(draft, conf=None, threshold=0.7, cap=3, now_ms=0):
     }
 
 
-def test_clean_extraction_goes_awaiting_farmer_with_handoff():
+def test_clean_extraction_asks_the_farmer_to_confirm():
+    """D-1: Node emits handoff_to_phase_39 here, which no-sends, so the farmer is
+    never told a clean draft is waiting. We emit send_confirm_prompt instead."""
     t = transition({"status": "pending", "askback_turns": 0}, _extraction_event(CLEAN_HARVEST))
     assert t.next_status == DraftStatus.AWAITING_FARMER
-    assert t.side_effects == ["handoff_to_phase_39"]
+    assert t.side_effects == ["send_confirm_prompt"]
     assert t.reason == "ready_for_confirm"
     assert t.next_askback_turns == 0
+
+
+def test_handoff_to_phase_39_is_never_emitted():
+    t = transition({"status": "pending", "askback_turns": 0}, _extraction_event(CLEAN_HARVEST))
+    assert "handoff_to_phase_39" not in t.side_effects
 
 
 def test_dirty_extraction_asks_back_and_increments():
@@ -660,7 +705,13 @@ def build_preview(draft: dict | None, per_field_confidence: dict | None,
                   threshold: float, required_fields: list[str]) -> str
 def render_seeding_session(draft: dict) -> str
 def render_starting_seq_ask_back(draft: dict) -> str
+
+REPLY_SUFFIX: str = "\n\nReply YES to commit, NO to discard, EDIT <text> to amend."
+def build_confirm_prompt(*, draft, per_field_confidence, required_fields,
+                         threshold) -> str
 ```
+
+**Divergence D-1 applies here.** `build_confirm_prompt` is new — it is what the dispatcher sends when a clean draft lands. It calls `build_preview`, strips `[?]` markers with `re.sub(r"\s*\[\?\]", "", body)`, appends `REPLY_SUFFIX`, and sanitizes. This is exactly the body of Node's `confirm/preview.js:buildPreviewWithSuffix`, moved down into the extraction package so `extraction/outbound.py` does not have to import from `farm_agent.confirm`. Task 8's `confirm/preview.build_preview_with_suffix` becomes a thin delegation to it, which matches Node's own import direction (confirm/preview.js imports from extraction/preview-builder.js).
 
 `build_preview` takes keyword arguments in Node (`{draft, perFieldConfidence, threshold, requiredFields}`); in Python it takes those four as keyword-only parameters so call sites stay readable.
 
@@ -804,7 +855,9 @@ def create_outbound_dispatcher(
 ) -> dict   # {"dispatch": async (side_effect: str, draft_row: dict | None) -> dict}
 ```
 
-Handled tags: `send_ask_back`, `send_needs_review_ping`, `send_batch_review_summary`. No-send tags returning `{"ok": True, "noop": True}`: `mark_expired`, `handoff_to_phase_39`, `noop`. Anything else returns `{"ok": False, "reason": "unknown_side_effect"}` with a warning.
+Handled tags: `send_confirm_prompt`, `send_ask_back`, `send_needs_review_ping`, `send_batch_review_summary`. No-send tags returning `{"ok": True, "noop": True}`: `mark_expired`, `noop`. Anything else returns `{"ok": False, "reason": "unknown_side_effect"}` with a warning.
+
+**Divergence D-1 applies here.** `send_confirm_prompt` is a new case with no Node counterpart. It routes exactly like `send_ask_back` (same `_resolve_ask_back_target`, same `related_draft_id` / `related_capture_id` threading) but sends `draft_row["farmer_facing_preview"]`, which the pipeline will have populated via `build_confirm_prompt`. Do NOT add a `handoff_to_phase_39` case — the tag no longer exists.
 
 Before writing this task, check the actual keyword names on `farm_agent/signal_io/client.py`'s `send` — the Python client may name them differently from Node's options object. Match the Python client.
 
@@ -904,12 +957,33 @@ async def test_batch_summary_counts_clean_and_needs_review():
     assert "Don Santiago" in body
 
 
-@pytest.mark.parametrize("tag", ["mark_expired", "handoff_to_phase_39", "noop"])
+@pytest.mark.parametrize("tag", ["mark_expired", "noop"])
 async def test_no_send_tags(tag):
     c = FakeSignalClient()
     res = await _dispatcher(c)(tag, {})
     assert res == {"ok": True, "noop": True}
     assert c.sent == []
+
+
+async def test_confirm_prompt_is_sent_to_the_farmer():
+    """D-1: the whole point. A clean draft must reach the farmer."""
+    c = FakeSignalClient()
+    await _dispatcher(c)("send_confirm_prompt", {
+        "id": "abc123", "sender_e164": "+59891111111",
+        "farmer_facing_preview": "harvest 500 g\n\nReply YES to commit, NO to discard, "
+                                 "EDIT <text> to amend.",
+        "reply_target_kind": "dm", "source_capture_ids": ["cap1"],
+    })
+    body, kw = c.sent[0]
+    assert "Reply YES to commit" in body
+    assert kw["to"] == "+59891111111"
+    assert kw["related_draft_id"] == "abc123"
+
+
+async def test_handoff_to_phase_39_is_now_unknown():
+    c = FakeSignalClient()
+    res = await _dispatcher(c)("handoff_to_phase_39", {})
+    assert res == {"ok": False, "reason": "unknown_side_effect"}
 
 
 async def test_unknown_tag():
@@ -1086,7 +1160,10 @@ async def test_clean_draft_inserts_and_lands_awaiting_farmer():
     assert res["continuity"] == "start_new"
     assert db.inserted[0]["status"] == "pending"
     assert db.inserted[0]["source_capture_ids"] == ["cap1"]
-    assert ("handoff_to_phase_39", pytest.approx) or d.calls[0][0] == "handoff_to_phase_39"
+    # D-1: the farmer is actually asked to confirm, with a preview to confirm against.
+    assert d.calls[0][0] == "send_confirm_prompt"
+    _, _, extras = db.updates[-1]
+    assert "Reply YES to commit" in extras["farmer_facing_preview"]
 
 
 async def test_extractor_failure_returns_reason_and_writes_nothing():
@@ -1211,7 +1288,9 @@ Follow pipeline.js:289-791 step by step. The ordered sequence, with the Node lin
 11. Persist: update on `append`/`replace` (530-560, including the separate `source_capture_ids` UPDATE — the extras whitelist excludes arrays), insert on `start_new` (562-580).
 12. Starting-seq short-circuit (582-672) — **stub in this task**, filled by Task 7.
 13. FSM transition (674-690).
-14. Status update with extras; build the preview when the transition includes `send_ask_back` or `send_needs_review_ping`; set `needs_review_reason='askback_cap_exceeded'` when `reason == 'askback_cap'` (692-725).
+14. Status update with extras; build the preview when the transition includes `send_ask_back`, `send_needs_review_ping`, **or `send_confirm_prompt`**; set `needs_review_reason='askback_cap_exceeded'` when `reason == 'askback_cap'` (692-725).
+
+    **Divergence D-1 applies here.** Node's check (pipeline.js:698-699) covers only the first two tags, so no preview is ever built for a clean draft. Use `build_confirm_prompt` for the `send_confirm_prompt` case (it appends the YES/NO/EDIT suffix) and `build_preview` for the other two (an ask-back is a question, not a confirm request, and must not carry the suffix).
 15. Bump `askback_turns` when `send_ask_back` fired (727-733).
 16. Build `draft_row` and dispatch each side effect in its own try/except (735-760).
 
@@ -1392,7 +1471,11 @@ async def test_multi_confirm_sends_one_prompt_per_draft():
     assert res["count"] == 2
 ```
 
-Note: `test_multi_confirm_sends_one_prompt_per_draft` will expose the Node quirk described below. Run it and see what it does before asserting on dispatch calls; assert on `count` and persisted rows, and record the observed behaviour in the commit message.
+Extend `test_multi_confirm_sends_one_prompt_per_draft` to assert D-1 holds on this path too:
+
+```python
+    assert [e for e, _ in d.calls].count("send_confirm_prompt") == 2
+```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -1422,7 +1505,7 @@ Then one `send_batch_review_summary` dispatch for the whole page.
 
 `run_multi_confirm` ports pipeline.js:393-493: expire prior in-flight once, then per draft insert as `pending`, run the FSM with the real `max_askback_turns`, build a preview when needed, update status, dispatch each side effect.
 
-**Known Node quirk — port it, do not fix it.** The `needs_preview` test at pipeline.js:466-468 checks for `send_confirm_prompt`, but the FSM never emits that tag; the clean path emits `handoff_to_phase_39`. So a clean draft in the small-N path gets no preview built and no message sent. Reproduce this faithfully and note it in the commit message; it is part of the wider gap recorded in Task 10's follow-up.
+**Divergence D-1 makes Node's dead check live.** The `needs_preview` test at pipeline.js:466-468 already looks for `send_confirm_prompt`; in Node that tag is never emitted, so a clean draft in the small-N path gets no preview and no message. Because Task 2's FSM now emits it, port the check as written and it starts working. Use `build_confirm_prompt` for that tag and `build_preview` for the other two, exactly as in Task 5. Assert it: a clean small-N draft must produce a `send_confirm_prompt` dispatch per draft.
 
 Finally, in `pipeline.py`, replace the `_route_multi` stub with the real routing rule.
 
@@ -1892,7 +1975,18 @@ Expected: FAIL — `ModuleNotFoundError`
 
 - [ ] **Step 3: Write the implementation**
 
-`confirm/preview.py` ports preview.js:10-58. `build_preview_with_suffix` calls the extraction `build_preview`, strips `[?]` markers with `re.sub(r"\s*\[\?\]", "", body)` (by `awaiting_farmer` time every field has cleared the threshold), appends `REPLY_SUFFIX`, and sanitizes.
+`confirm/preview.py` ports preview.js:10-58. `build_preview_with_suffix` is a thin delegation to `extraction.preview_builder.build_confirm_prompt` (Task 3), which already does the `[?]`-stripping, suffix, and sanitize. Do not duplicate that logic here — Task 3 owns it so `extraction/outbound.py` can reach it without importing from `farm_agent.confirm`.
+
+**Divergence D-2 applies here.** When replacing the inline nudge body in `watchdog.py`, pass the draft's preview through:
+
+```python
+msg = build_nudge(
+    minutes_remaining=mins_left,
+    preview_summary=row.get("farmer_facing_preview"),
+)
+```
+
+Node passes only `minutesRemaining` (watchdog.js:31), so its nudge reads "Still want to lock in this draft?" with no indication of which draft. The Python port's current inline body already includes a preview; dropping it to match Node would be a regression. Add a test asserting the nudge body contains the preview text.
 
 `confirm/edit_handler.py` ports edit-handler.js:12-165: bump `edit_turn_count`, re-extract with the farmer's correction as `farmer_correction`, update the draft in place (same id, same `source_capture_ids`), re-render the preview via `build_preview_with_suffix`, return `{"ok": True, "side_effect": "send_preview_resend", "new_preview": ...}`. Note edit-handler.js:55-67 accepts a `commit_failed` draft and transitions it back to `awaiting_farmer` — port that branch, including the lost-race log at line 66.
 
@@ -1912,6 +2006,136 @@ git commit -m "feat(port): confirm preview copy and real EDIT re-extraction [MUS
 Replaces the Phase 61 edit-reextraction stub, which logged a line and
 dropped the farmer's correction. Also replaces invented ack copy with the
 ported Node strings so the farmer reads the same text after cutover."
+```
+
+---
+
+### Task 8b: Route the farmer's SEQ reply (divergence D-3)
+
+Task 7 ports `handle_starting_seq_reply`. Nothing calls it — in Node either. This task gives it a caller, so the farmer's answer to the SEQ ask-back actually lands.
+
+**This is the least cheap of the three divergences.** If it turns out not to be containable in the confirm dispatch — if it needs changes to quote-routing or the receive loop — stop, report `DONE_WITH_CONCERNS` describing what it would take, and leave the routing unwired. Do not grow this task into a receive-loop refactor.
+
+**Files:**
+- Modify: `farm_agent/confirm/dispatch.py` (new intercept in `route_confirm_reply`)
+- Test: `tests/confirm/test_starting_seq_routing.py`
+
+**Interfaces:**
+- Consumes: `extraction.starting_seq.handle_starting_seq_reply` (Task 7); `extraction_db.get_draft_by_id` (Task 1).
+- Produces: no new public surface — an added branch in `route_confirm_reply`.
+
+**The precedent to mirror:** `_handle_strain_intercept` at `dispatch.py:108`. It already demonstrates the shape — inspect the in-flight draft, decide this reply is not a plain YES/NO/EDIT, handle it, and return without falling through to `_parse_yes_no_edit`. Read it before writing anything.
+
+**Ordering rule:** the SEQ intercept runs BEFORE the strain intercept and before `_parse_yes_no_edit`. A draft awaiting a starting SEQ is not awaiting a confirmation, and "4" must not be parsed as anything else. A draft can be in only one of these states, so the branches are mutually exclusive — but the order still needs to be deterministic and tested.
+
+- [ ] **Step 1: Write the failing tests**
+
+```python
+"""D-3: a farmer's answer to the SEQ ask-back must reach handle_starting_seq_reply."""
+
+import pytest
+
+from farm_agent.confirm.dispatch import route_confirm_reply
+
+
+def _seq_draft():
+    return {
+        "id": "d1", "sender_e164": "+59891111111", "status": "awaiting_farmer",
+        "reply_target_kind": "dm", "group_id": None, "source_capture_ids": ["cap1"],
+        "draft_json": {
+            "type": "seeding_session", "event_date": "20260522",
+            "needs_input": "starting_seq",
+            "groups": [{"parent": {"value": "P1"}, "species": {"value": "KOY"},
+                        "qty": {"value": 2}, "child_block_names": {"value": []}}],
+        },
+    }
+
+
+def _plain_draft():
+    return {
+        "id": "d2", "sender_e164": "+59891111111", "status": "awaiting_farmer",
+        "reply_target_kind": "dm", "group_id": None, "source_capture_ids": ["cap1"],
+        "draft_json": {"type": "harvest", "qty_g": 500},
+    }
+
+
+async def test_numeric_reply_on_seq_draft_routes_to_seq_handler(monkeypatch):
+    called = {}
+
+    async def fake_handler(**kwargs):
+        called.update(kwargs)
+        return {"ok": True}
+
+    monkeypatch.setattr(
+        "farm_agent.confirm.dispatch.handle_starting_seq_reply", fake_handler
+    )
+    # Wire whatever repo/pool doubles route_confirm_reply needs; assert the
+    # handler was reached with the reply text intact.
+    ...
+    assert called["reply_text"] == "4"
+
+
+async def test_yes_on_seq_draft_routes_to_seq_handler_not_confirm(monkeypatch):
+    """YES here means 'use the default SEQ', not 'commit this draft'."""
+    ...
+
+
+async def test_yes_on_a_plain_draft_still_confirms():
+    """Regression guard: the intercept must not swallow ordinary confirmations."""
+    ...
+
+
+async def test_seq_draft_whose_needs_input_is_cleared_falls_through_to_confirm():
+    """After the SEQ is filled, the draft is an ordinary awaiting_farmer draft."""
+    ...
+```
+
+The `...` bodies need the doubles that `tests/confirm/test_confirm_repo.py` and the existing dispatch tests already use — read those first and follow their fixture style rather than inventing new doubles.
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `cd src/farm-agent && uv run pytest tests/confirm/test_starting_seq_routing.py -v`
+Expected: FAIL
+
+- [ ] **Step 3: Write the implementation**
+
+In `route_confirm_reply`, before the strain intercept:
+
+```python
+draft_json = draft_row.get("draft_json") or {}
+if (
+    draft_json.get("type") == "seeding_session"
+    and draft_json.get("needs_input") == "starting_seq"
+):
+    # D-3: the bot asked for a starting SEQ. This reply answers that question,
+    # not a YES/NO/EDIT confirmation. Node never routed this, so the farmer's
+    # answer was silently dropped.
+    return await handle_starting_seq_reply(
+        draft_id=draft_row["id"],
+        reply_text=text,
+        capture_ctx=ctx,
+        pool=pool,
+        extraction_db=extraction_db,
+        outbound_dispatcher=outbound_dispatcher,
+        log=log,
+    )
+```
+
+`route_confirm_reply` will need `extraction_db` and `outbound_dispatcher` available — check how it currently receives its collaborators and follow that pattern rather than reaching for module-level imports.
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `cd src/farm-agent && uv run pytest tests/confirm/ -v`
+Expected: PASS, with no regressions in the existing dispatch tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/farm-agent/farm_agent/confirm/dispatch.py src/farm-agent/tests/confirm/test_starting_seq_routing.py
+git commit -m "fix(port): route the farmer's SEQ reply to its handler [MUSHY-76]
+
+Divergence D-3. handle_starting_seq_reply had no caller in either agent,
+so the bot asked for a starting SEQ and dropped the answer."
 ```
 
 ---
@@ -2281,8 +2505,16 @@ async def test_may22_session_lands_a_real_draft(pool, tenant_config):
         assert row[3] == "python", "origin must be 'python' or the Node watchdog commits it"
         assert row[2] == "seeding_session"
         assert row[1] in ("awaiting_farmer", "pending", "needs_review")
+
+        # D-1 end to end: if the draft is awaiting the farmer, the farmer was
+        # actually told about it. This is the behaviour prod Node does not have.
+        if row[1] == "awaiting_farmer":
+            assert signal_client.sent, "draft awaits the farmer but nothing was sent"
+
         print(f"\nstatus={row[1]} log_type={row[2]} origin={row[3]}")
         print(f"preview:\n{row[4]}")
+        for body, _ in signal_client.sent:
+            print(f"--- sent ---\n{body}")
     finally:
         await client.close()
 ```
@@ -2330,11 +2562,10 @@ git commit -m "test(port): real-session live-fire ship-gate for the write path [
 
 - [ ] **Step 9: File the follow-up tickets**
 
-Three things this phase deliberately did not fix. File each in Plane against the MUSHY project, referencing MUSHY-76:
+File in Plane against the MUSHY project, referencing MUSHY-76:
 
-1. **A cleanly-extracted draft is never announced to the farmer.** The FSM emits `handoff_to_phase_39` for a clean draft and the dispatcher treats it as a no-send, so the farmer's first and only contact is the confirm watchdog's nudge: "Still want to lock in this draft? Reply YES / NO / EDIT or it auto-expires in N min." — with no preview of what "this draft" is, because `watchdog.js:31` passes only `minutesRemaining` and never `previewSummary`. This affects prod Node today, not just the port. Likely a contributing cause of the draft-expiry rate that has been attributed to Signal breakage.
-2. **`handle_starting_seq_reply` has no caller** in either agent. Node's `receive-loop.js` never routes to it, so a farmer's answer to the SEQ ask-back goes nowhere.
-3. **Cutover prerequisites:** the 12 existing `commit_failed` drafts are all `origin='node'` and after a swap would be picked up by neither watchdog. They need draining or re-origining, and the swap itself needs a runbook.
+1. **Cutover prerequisites:** the 12 existing `commit_failed` drafts are all `origin='node'` and after a swap would be picked up by neither watchdog. They need draining or re-origining, and the swap itself needs a runbook.
+2. **Three Node bugs are now fixed in Python but still live in prod Node** (D-1, D-2, D-3 in this plan's Intentional Divergences). Until cutover, the farmer keeps experiencing them on the Node agent: clean drafts unannounced, contextless nudges, and SEQ answers dropped. Either backport the three fixes to Node or let cutover carry them; that is a scheduling decision, not a code one. Include the diff refs from this branch.
 
 ---
 
@@ -2348,4 +2579,6 @@ Three things this phase deliberately did not fix. File each in Plane against the
 
 **Placeholder scan.** No TBDs. Three places instruct the implementer to read the codebase before writing rather than trusting this document — the `send` keyword names in Task 4, `select_recent_outbound_by_recipient`'s signature in Task 9, and the May-22 fixture path in Task 10. These are deliberate: this plan was written from the Node source, and those three are Python-side details where guessing would produce a confidently wrong call site.
 
-**Type consistency.** `compute_draft_id(capture_ids, draft_index)` is used with that name and argument order in Tasks 1, 5, and 6. `update_draft_status(pool, draft_id, new_status, extras)` likewise in 1, 5, 6, 7, 8. The dispatcher is `{"dispatch": async (side_effect, draft_row)}` in Tasks 4, 5, 6, 7. `ExtractionTransition` fields (`next_status`, `next_askback_turns`, `side_effects`, `reason`, `ask_back_info`) are used consistently in Tasks 2, 5, 6. Side-effect tags are one closed set across Tasks 2, 4, 6, 7: `handoff_to_phase_39`, `send_ask_back`, `send_needs_review_ping`, `send_batch_review_summary`, `send_starting_seq_askback`, `send_seeding_session_filled_preview`, `mark_expired`, `noop`.
+**Type consistency.** `compute_draft_id(capture_ids, draft_index)` is used with that name and argument order in Tasks 1, 5, and 6. `update_draft_status(pool, draft_id, new_status, extras)` likewise in 1, 5, 6, 7, 8. The dispatcher is `{"dispatch": async (side_effect, draft_row)}` in Tasks 4, 5, 6, 7. `ExtractionTransition` fields (`next_status`, `next_askback_turns`, `side_effects`, `reason`, `ask_back_info`) are used consistently in Tasks 2, 5, 6. Side-effect tags are one closed set across Tasks 2, 4, 6, 7: `send_confirm_prompt`, `send_ask_back`, `send_needs_review_ping`, `send_batch_review_summary`, `send_starting_seq_askback`, `send_seeding_session_filled_preview`, `mark_expired`, `noop`. `handoff_to_phase_39` is deliberately absent (divergence D-1) and Task 4 asserts it is rejected as unknown.
+
+**Divergence coverage.** D-1 spans Tasks 2 (FSM emits the tag), 3 (`build_confirm_prompt`), 4 (dispatcher sends it), 5 and 6 (pipeline builds the preview), and 10 (asserted end to end). D-2 is Task 8. D-3 is Task 8b, with an explicit escape hatch if it proves not to be containable.
