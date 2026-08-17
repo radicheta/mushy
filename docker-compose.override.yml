@@ -220,6 +220,39 @@ services:
       - ALERT_HEARTBEAT_HOUR=${ALERT_HEARTBEAT_HOUR:-8}
       - ALERT_RECEIVE_POLL_SEC=${ALERT_RECEIVE_POLL_SEC:-30}
       - ALERT_MAX_SENDS_PER_HOUR=${ALERT_MAX_SENDS_PER_HOUR:-20}
+      # Cutover parity (2026-08-17): these were absent here, so on a Node->Python
+      # swap the port would fall back to its own code defaults. All but one
+      # happened to match the live Node values; the exception is real and
+      # farmer-tuned:
+      #   ALERT_OOB_WINDOW_MIN  live Node = 8, Python code default = 3
+      # 8 is deliberate -- f1 does not care about sub-4-minute RH drifts. Falling
+      # back to 3 would have quietly increased the farmer's RH alert rate the
+      # moment the swap happened, with nothing in the logs to explain it.
+      # Every entry uses the SAME ${VAR:-default} form as the `alerter:` block
+      # above, so a value set once in .env moves both agents together and the two
+      # cannot drift apart again.
+      - ALERT_OOB_N=${ALERT_OOB_N:-5}
+      - ALERT_OOB_WINDOW_MIN=${ALERT_OOB_WINDOW_MIN:-3}
+      - ALERT_COOLDOWN_MIN=${ALERT_COOLDOWN_MIN:-30}
+      - ALERT_CRITICAL_COOLDOWN_MIN=${ALERT_CRITICAL_COOLDOWN_MIN:-60}
+      - ALERT_HUMIDIFIER_STUCK_MIN=${ALERT_HUMIDIFIER_STUCK_MIN:-30}
+      # 2026-05-12: flap floor, suppresses sub-N-second freshness flips (6s I2C
+      # glitches that fired "CO2 Sensor offline 0m 06s").
+      - ALERT_SENSOR_FLAP_MIN_SEC=${ALERT_SENSOR_FLAP_MIN_SEC:-60}
+      # 999.42 per-sensor enable flags. Omitting these caused hourly false-alarm
+      # spam to the farmer group on 2026-05-12; only the literal "false" disables.
+      - ALERT_SHT30_ENABLED=${ALERT_SHT30_ENABLED:-true}
+      - ALERT_SCD41_ENABLED=${ALERT_SCD41_ENABLED:-true}
+      # Internal compose network name -- signal-cli is deliberately NOT published
+      # to the host (D-13), so this must resolve via signal-net.
+      - SIGNAL_API_URL=${SIGNAL_API_URL:-http://signal-cli:8080}
+      # Phase 63 chamber alerter. The code default is the same, but relying on a
+      # code default for the farmer's alert transport is how the extra_hosts gap
+      # went unnoticed (MUSHY-41).
+      - BRIDGE_WS_URL=${BRIDGE_WS_URL:-ws://host.docker.internal:8081}
+      - BRIDGE_HEALTH_URL=${BRIDGE_HEALTH_URL:-http://host.docker.internal:8081/health}
+      - DRAFT_NUDGE_FRACTION=${DRAFT_NUDGE_FRACTION:-0.8}
+      - MAX_EDIT_TURNS=${MAX_EDIT_TURNS:-3}
       - FARMOS_URL=${FARMOS_URL:-http://10.68.155.50:18080}
       - FARMOS_USERNAME=${FARMOS_USERNAME}
       - FARMOS_INTEGRATION=${FARMOS_INTEGRATION:-0}
