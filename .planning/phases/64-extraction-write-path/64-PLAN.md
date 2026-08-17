@@ -859,7 +859,18 @@ Handled tags: `send_confirm_prompt`, `send_ask_back`, `send_needs_review_ping`, 
 
 **Divergence D-1 applies here.** `send_confirm_prompt` is a new case with no Node counterpart. It routes exactly like `send_ask_back` (same `_resolve_ask_back_target`, same `related_draft_id` / `related_capture_id` threading) but sends `draft_row["farmer_facing_preview"]`, which the pipeline will have populated via `build_confirm_prompt`. Do NOT add a `handoff_to_phase_39` case — the tag no longer exists.
 
-Before writing this task, check the actual keyword names on `farm_agent/signal_io/client.py`'s `send` — the Python client may name them differently from Node's options object. Match the Python client.
+The Python client's signature is already confirmed (`farm_agent/signal_io/client.py:185`) and matches the keywords used below:
+
+```python
+async def send(self, body: str, *, bypass_cap: bool = False,
+               to: str | dict | None = None, intent: str | None = None,
+               related_capture_id: str | None = None,
+               related_draft_id: str | None = None,
+               source_module: str = "signal_io",
+               quote: dict | None = None) -> dict
+```
+
+Two things to know about it: a group target is the dict `{"groupId": "<internal_id>"}` (camelCase — `client.py:220`; anything else raises `ValueError("invalid send target")`), and `send` **raises** on an invalid target or an HTTP error rather than returning `{"ok": False}`. `_safe_send` must therefore catch, not just check the return value.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -911,7 +922,10 @@ async def test_ask_back_routes_to_group_when_group_kind():
         "reply_target_kind": "group", "group_id": "g1", "source_capture_ids": [],
     })
     _, kw = c.sent[0]
-    assert kw["to"] == {"group_id": "g1"} or kw.get("group_id") == "g1"
+    # SignalClient.send resolves a group target from {"groupId": ...} -- camelCase,
+    # verified at farm_agent/signal_io/client.py:220. A snake_case key raises
+    # ValueError("invalid send target").
+    assert kw["to"] == {"groupId": "g1"}
 
 
 async def test_ask_back_group_kind_without_group_id_has_no_target():
@@ -2306,7 +2320,7 @@ except Exception:  # noqa: BLE001 -- gate input is best-effort
 last_bot = recent_out[-1] if recent_out else None
 ```
 
-Check the real signature of `select_recent_outbound_by_recipient` in `farm_agent/capture/capture_history.py` and match it. Exactly one call per capture.
+Its signature is confirmed: `select_recent_outbound_by_recipient(pool, recipient, since_ms) -> list[dict]` (`capture_history.py:81`), and it never raises — the try/except above is belt-and-braces, keep it but do not rely on it. Exactly one call per capture.
 
 After the `insert_capture` block, add the enqueue seam, porting capture.js:205-222:
 
