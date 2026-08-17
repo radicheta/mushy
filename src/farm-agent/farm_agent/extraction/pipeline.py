@@ -60,7 +60,6 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime, timezone
-from types import SimpleNamespace
 
 from farm_agent.extraction import extraction_db as _extraction_db_module
 from farm_agent.extraction import multimodal
@@ -256,7 +255,7 @@ def create_extraction_pipeline(
             extraction_db=db,
             state_machine=sm,
             preview_builder=pb,
-            outbound_dispatcher=SimpleNamespace(dispatch=_dispatch),
+            outbound_dispatcher={"dispatch": _dispatch},
             config=config,
             log=_log,
         )

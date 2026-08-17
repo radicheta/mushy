@@ -31,20 +31,35 @@ the single-draft path (pipeline.py): the FSM's send_confirm_prompt tag is now
 live, so a clean small-N draft gets a preview built via build_confirm_prompt
 and a confirm-prompt dispatch, not silence.
 
-run_multi_confirm also carries a necessary divergence from a literal
-pipeline.js:393-493 port: Node inserts each draft as pending, then updates it
-to whatever the FSM says (typically awaiting_farmer for a clean draft) before
-moving to the next draft in the loop, with no accommodation for D-02c's
-partial unique index (at most one pending/awaiting_farmer row per sender).
-Against a DB that actually enforces that index, a second clean draft to the
-same sender fails its INSERT outright -- the same in_flight_conflict-drops-
-siblings failure mode the 2026-05-25 batch-mode fix exists to prevent, just
-reached via a different code path. Since only one draft can hold the
-in-flight slot at a time regardless, run_multi_confirm downgrades the PRIOR
-loop draft to needs_review (reason multi_confirm_superseded) before inserting
-the next one; its confirm prompt was already dispatched, so nothing is lost,
-and only the last draft in the batch remains the "live" one a farmer
-YES/NO/EDIT reply resolves against.
+MUSHY-76 D-4: run_multi_confirm cannot literally give N drafts N independent
+confirm prompts. Phase 53 BACK-02 intended exactly that for small-N
+high-confidence multi-draft captures, but the FSM's clean-confirm (and
+under-cap ask-back) branches both resolve to AWAITING_FARMER, and D-02c's
+partial unique index permits at most ONE pending/awaiting_farmer row per
+sender, globally -- not per draft. A literal pipeline.js:393-493 port (insert
+each draft PENDING, then update to whatever the FSM says) hits this the
+moment a second draft in the same batch would also reach awaiting_farmer: in
+Node, against a real DB, that second INSERT fails with in_flight_conflict and
+the draft is silently dropped -- the identical failure class the 2026-05-25
+batch-mode fix exists to prevent, just reached via a different path. (Node's
+own pipeline.test.js never catches this because its insertDraft mock always
+returns ok:true, never enforcing the index.)
+
+Changing the index to allow more than one in-flight row per sender is out of
+scope here -- it is shared with the live Node agent against the production
+database. Instead: every draft still persists, deterministically. The FIRST
+draft to resolve to AWAITING_FARMER claims the slot and gets its per-draft
+dispatch (send_confirm_prompt or send_ask_back). Every SUBSEQUENT draft that
+would also resolve to AWAITING_FARMER is persisted as needs_review instead
+(needs_review_reason='multi_confirm_slot_taken') and gets no per-draft
+dispatch -- persisting it for operator review beats Node's silent drop.
+Drafts that land in needs_review on their own merits (askback_cap) keep their
+own needs_review_reason and are unaffected by the slot rule. Because the FSM
+transition is pure, run_multi_confirm evaluates it BEFORE inserting each
+draft so the correct, already-final status can be written in a single insert
+-- no draft is ever inserted as pending/awaiting_farmer only to be downgraded
+a moment later, which would still race the next draft's insert against the
+partial index.
 """
 
 from __future__ import annotations
@@ -159,7 +174,7 @@ async def run_batch_mode(
     # One summary ping to the operator for the whole page.
     if persisted:
         try:
-            await outbound_dispatcher.dispatch("send_batch_review_summary", {
+            await outbound_dispatcher["dispatch"]("send_batch_review_summary", {
                 "sender_e164": sender,
                 "source_capture_ids": source_capture_ids_base,
                 "reply_target_kind": capture_ctx.get("reply_target_kind"),
@@ -215,57 +230,18 @@ async def run_multi_confirm(
 
     results: list[dict] = []
     side_effects_all: list[str] = []
-    # D-02c generalization: the partial unique index allows at most ONE
-    # pending/awaiting_farmer row per sender, globally -- not per draft. The
-    # FSM's clean-confirm branch always resolves to awaiting_farmer, so a
-    # straight per-draft insert-then-update (as in Node) hits the identical
-    # in_flight_conflict class of bug the 2026-05-25 batch-mode fix guards
-    # against: the second draft's INSERT would fail outright and be dropped.
-    # Since only one draft can hold the slot at a time anyway, downgrade the
-    # PRIOR loop draft out of awaiting_farmer before inserting the next one --
-    # its confirm prompt was already sent, so nothing is lost, it just no
-    # longer blocks the sender's in-flight slot. Only the last draft in the
-    # batch remains the "live" one a farmer YES/NO/EDIT reply resolves.
-    prior_awaiting_id: str | None = None
+    # D-4: whether an earlier draft in THIS batch has already claimed the
+    # sender's one in-flight slot. The FSM transition is pure (no IO), so it
+    # is evaluated BEFORE inserting each draft -- the correct, already-final
+    # status is written on a single insert. No draft is ever written as
+    # pending/awaiting_farmer only to be downgraded a moment later, which
+    # would still race the next draft's insert against the partial index.
+    slot_taken = False
     for i, item in enumerate(drafts_arr):
-        if prior_awaiting_id is not None:
-            down = await extraction_db.update_draft_status(
-                pool, prior_awaiting_id, state_machine.DraftStatus.NEEDS_REVIEW,
-                {"needs_review_reason": "multi_confirm_superseded"},
-            )
-            if not down.get("ok"):
-                _log and _log.warning(
-                    "[extraction] multi_confirm: supersede idx=%d failed: %s",
-                    i - 1, down.get("reason"),
-                )
-            prior_awaiting_id = None
-
         item = item or {}
         draft = item.get("draft")
         per_field_confidence = item.get("per_field_confidence") or {}
         draft_id = extraction_db.compute_draft_id([capture_id], i)
-
-        ins = await extraction_db.insert_draft(
-            pool,
-            {
-                "id": draft_id,
-                "sender_e164": sender,
-                "farmos_person": capture_ctx.get("farmos_person"),
-                "source_capture_ids": [capture_id],
-                "status": state_machine.DraftStatus.PENDING,
-                "log_type": draft.get("type") if draft else None,
-                "draft_json": draft,
-                "per_field_confidence": per_field_confidence,
-                "askback_turns": 0,
-                "reply_target_kind": capture_ctx.get("reply_target_kind"),
-                "group_id": capture_ctx.get("group_id"),
-            },
-        )
-        if not ins.get("ok"):
-            _log and _log.warning(
-                "[extraction] multi_confirm: insert_draft idx=%d failed: %s", i, ins.get("reason")
-            )
-            continue
 
         # Run the FSM with the real configured max_askback_turns; the high-conf
         # path typically produces send_confirm_prompt directly (no ask-back).
@@ -282,7 +258,23 @@ async def run_multi_confirm(
             },
         )
 
+        final_status = transition.next_status
         d_extras: dict = {}
+        slot_conflict = False
+        if transition.reason == "askback_cap":
+            d_extras["needs_review_reason"] = "askback_cap_exceeded"
+        if final_status == state_machine.DraftStatus.AWAITING_FARMER:
+            if slot_taken:
+                # D-4: first draft to reach awaiting_farmer wins the slot
+                # deterministically; every later one that would also reach it
+                # is persisted for operator review instead of either holding
+                # a second (index-violating) in-flight row or being dropped.
+                final_status = state_machine.DraftStatus.NEEDS_REVIEW
+                d_extras["needs_review_reason"] = "multi_confirm_slot_taken"
+                slot_conflict = True
+            else:
+                slot_taken = True
+
         # D-1: the FSM's send_confirm_prompt tag is live (Task 2), so a clean
         # draft now gets a preview and a confirm-prompt dispatch here too.
         needs_preview = any(e in transition.side_effects for e in _PREVIEW_SIDE_EFFECTS)
@@ -309,40 +301,55 @@ async def run_multi_confirm(
                     "[extraction] multi_confirm: preview build failed: %s", e
                 )
 
-        final_upd = await extraction_db.update_draft_status(
-            pool, draft_id, transition.next_status, d_extras
+        ins = await extraction_db.insert_draft(
+            pool,
+            {
+                "id": draft_id,
+                "sender_e164": sender,
+                "farmos_person": capture_ctx.get("farmos_person"),
+                "source_capture_ids": [capture_id],
+                "status": final_status,
+                "log_type": draft.get("type") if draft else None,
+                "draft_json": draft,
+                "per_field_confidence": per_field_confidence,
+                "askback_turns": 0,
+                "farmer_facing_preview": d_extras.get("farmer_facing_preview"),
+                "needs_review_reason": d_extras.get("needs_review_reason"),
+                "reply_target_kind": capture_ctx.get("reply_target_kind"),
+                "group_id": capture_ctx.get("group_id"),
+            },
         )
-        if not final_upd.get("ok"):
+        if not ins.get("ok"):
             _log and _log.warning(
-                "[extraction] multi_confirm: final status update idx=%d failed: %s",
-                i, final_upd.get("reason"),
+                "[extraction] multi_confirm: insert_draft idx=%d failed: %s", i, ins.get("reason")
             )
+            continue
 
-        d_draft_row = {
-            "id": draft_id,
-            "sender_e164": sender,
-            "farmos_person": capture_ctx.get("farmos_person"),
-            "status": transition.next_status,
-            "draft_json": draft,
-            "farmer_facing_preview": d_extras.get("farmer_facing_preview"),
-            "reply_target_kind": capture_ctx.get("reply_target_kind"),
-            "group_id": capture_ctx.get("group_id"),
-            "source_capture_ids": [capture_id],
-            "askback_turns": transition.next_askback_turns or 0,
-        }
-        for effect in transition.side_effects:
-            try:
-                await outbound_dispatcher.dispatch(effect, d_draft_row)
-                side_effects_all.append(effect)
-            except Exception as e:  # noqa: BLE001 -- fail-soft, never fail the fan-out
-                _log and _log.warning(
-                    "[extraction] multi_confirm: dispatch %s failed: %s", effect, e
-                )
+        # D-4: a draft that lost the slot race gets no per-draft dispatch --
+        # its confirm prompt / ask-back was never promised, unlike the winner.
+        if not slot_conflict:
+            d_draft_row = {
+                "id": draft_id,
+                "sender_e164": sender,
+                "farmos_person": capture_ctx.get("farmos_person"),
+                "status": final_status,
+                "draft_json": draft,
+                "farmer_facing_preview": d_extras.get("farmer_facing_preview"),
+                "reply_target_kind": capture_ctx.get("reply_target_kind"),
+                "group_id": capture_ctx.get("group_id"),
+                "source_capture_ids": [capture_id],
+                "askback_turns": transition.next_askback_turns or 0,
+            }
+            for effect in transition.side_effects:
+                try:
+                    await outbound_dispatcher["dispatch"](effect, d_draft_row)
+                    side_effects_all.append(effect)
+                except Exception as e:  # noqa: BLE001 -- fail-soft, never fail the fan-out
+                    _log and _log.warning(
+                        "[extraction] multi_confirm: dispatch %s failed: %s", effect, e
+                    )
 
-        if transition.next_status == state_machine.DraftStatus.AWAITING_FARMER:
-            prior_awaiting_id = draft_id
-
-        results.append({"id": draft_id, "status": transition.next_status})
+        results.append({"id": draft_id, "status": final_status})
 
     return {
         "ok": True,
