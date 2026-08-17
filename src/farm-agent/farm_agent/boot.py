@@ -140,8 +140,13 @@ async def main() -> None:
         farmos_client = create_farmos_client(
             config.farmos_url, config.farmos_username, config.farmos_password, http
         )
+        # MUSHY-38: the commit drain MUST get the shared SignalClient. Its three
+        # terminal outcomes (committed / commit_failed / fidelity hold) all happen
+        # long after the farmer's YES was acked, so without a client every one of
+        # them is silent and a failed write reads as a success to the farmer.
+        # Reuses the one SignalClient (D-05) -- no second client is constructed.
         commit_watchdog_task = asyncio.create_task(
-            commit_watchdog_loop(pool, farmos_client, config)
+            commit_watchdog_loop(pool, farmos_client, config, signal_client=signal_client)
         )
 
     elapsed = time.monotonic() - t0

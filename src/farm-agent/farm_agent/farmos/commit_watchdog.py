@@ -68,6 +68,38 @@ def _is_transient(result: dict | None) -> bool:
     return bool(_TRANSIENT_PATTERN.search(reason))
 
 
+async def _send_farmer(signal_client, row: dict, body: str, intent: str) -> None:
+    """Best-effort farmer send from the commit watchdog (MUSHY-38).
+
+    DM-only, matching the Node original: an outcome ack is per-farmer and never
+    goes to a group (outbound-confirm.js send_commit_outcome_ack).
+
+    NEVER raises. A dead signal-cli must not unwind a commit that already
+    succeeded, and must not abort the drain of the remaining rows -- but it MUST
+    leave a WARNING so the operator can see the farmer was not reached.
+    """
+    if signal_client is None:
+        log.warning(
+            "[commit_watchdog] no signal_client wired; farmer NOT told (%s) draft_id=%s",
+            intent, row.get("id"),
+        )
+        return
+    to = row.get("sender_e164")
+    if not to:
+        log.warning(
+            "[commit_watchdog] no DM target; farmer NOT told (%s) draft_id=%s",
+            intent, row.get("id"),
+        )
+        return
+    try:
+        await signal_client.send(body, to=to, related_draft_id=row.get("id"), intent=intent)
+    except Exception as e:  # noqa: BLE001
+        log.warning(
+            "[commit_watchdog] outcome ack send failed draft_id=%s intent=%s: %s",
+            row.get("id"), intent, e,
+        )
+
+
 async def tick_once(
     pool,
     farmos_client: dict,
@@ -77,6 +109,7 @@ async def tick_once(
     db=None,
     router=None,
     csv_rows: list | None = None,
+    signal_client=None,
 ) -> None:
     """One commit watchdog tick: release stale locks, drain confirmed Python-owned drafts.
 
@@ -146,7 +179,9 @@ async def tick_once(
                 if gate.get("reason") == "strain_mismatch":
                     # Hold draft -- commit_router.commit MUST NOT be called (T-62-30)
                     await db.hold_for_fidelity(pool, draft_id)
-                    # Dispatch ask-back best-effort (best-effort: log so the operator sees it)
+                    # MUSHY-38: the ask-back used to be rendered and then only
+                    # LOGGED, so the farmer was never actually asked and the draft
+                    # sat held forever. Send it.
                     ask_back_msg = gate.get("ask_back_msg", "")
                     log.warning(
                         "[commit_watchdog] fidelity hold draft_id=%s "
@@ -156,6 +191,10 @@ async def tick_once(
                         gate.get("csv_strain"),
                         ask_back_msg,
                     )
+                    if ask_back_msg:
+                        await _send_farmer(
+                            signal_client, locked_row, ask_back_msg, "fidelity_ask_back",
+                        )
                     continue  # skip commit_router.commit
 
                 # Step 3c: commit to farmOS via router
@@ -170,14 +209,35 @@ async def tick_once(
                         "http_status": result.get("http_status"),
                         "latency_ms": result.get("latency_ms"),
                     })
+                    # MUSHY-38 / Node T4 parity: tell the farmer it actually landed.
+                    # Sent AFTER mark_committed so a crash in between drops the ack
+                    # rather than double-acking (same <=1-dropped-ack trade-off the
+                    # Node original takes with its tryMarkOutcomeAckSent CAS claim).
+                    await _send_farmer(
+                        signal_client, locked_row,
+                        "Saved to farmOS.",
+                        "commit_outcome_ack",
+                    )
                     continue
 
                 # Step 3d (failure): transient + attempt < max -> requeue; else -> mark_failed
                 attempt = locked_row.get("commit_attempt_count") or 0
                 if _is_transient(result) and attempt < retry_max:
+                    # Still retrying -- stay quiet. The farmer only hears about an
+                    # outcome once it is terminal.
                     await db.requeue_for_retry(pool, draft_id)
                 else:
-                    await db.mark_failed(pool, draft_id, result.get("reason") or "unknown")
+                    reason = result.get("reason") or "unknown"
+                    await db.mark_failed(pool, draft_id, reason)
+                    # MUSHY-38 / Node T6 parity. THIS is the CRIT path: dispatch already
+                    # told the farmer "Got it! Your entry was recorded." at YES time, so
+                    # without this they are left believing a failed write succeeded.
+                    await _send_farmer(
+                        signal_client, locked_row,
+                        f"Couldn't save that to farmOS: {reason}. "
+                        "Reply EDIT to fix it, or leave it and it stays flagged for review.",
+                        "commit_outcome_ack",
+                    )
 
             except asyncio.CancelledError:
                 raise
@@ -185,7 +245,7 @@ async def tick_once(
                 log.warning("[commit_watchdog] row %s threw: %s", draft_id, e)
 
 
-async def commit_watchdog_loop(pool, farmos_client: dict, config) -> None:
+async def commit_watchdog_loop(pool, farmos_client: dict, config, signal_client=None) -> None:
     """Async commit drain loop.
 
     Mirrors confirm_watchdog_loop (confirm/watchdog.py): immediate-then-sleep,
@@ -199,6 +259,12 @@ async def commit_watchdog_loop(pool, farmos_client: dict, config) -> None:
 
     Launched from boot.py via asyncio.create_task(commit_watchdog_loop(...)).
     Cancelled via commit_watchdog_task.cancel() on shutdown (CancelledError swallowed).
+
+    signal_client is REQUIRED in production (MUSHY-38): without it every terminal
+    outcome of this drain is silent to the farmer, who was already told "Got it!
+    Your entry was recorded." at YES time. It stays optional in the signature only
+    so existing tests can call the loop without one; a missing client is logged
+    loudly at WARNING per send.
     """
     lock = asyncio.Lock()
     interval = config.commit_watchdog_interval_ms / 1000
@@ -215,7 +281,8 @@ async def commit_watchdog_loop(pool, farmos_client: dict, config) -> None:
 
     # Immediate tick on boot (restart-safe: catches rows that aged during restart)
     try:
-        await tick_once(pool, farmos_client, config, lock=lock, csv_rows=csv_rows)
+        await tick_once(pool, farmos_client, config, lock=lock, csv_rows=csv_rows,
+                        signal_client=signal_client)
     except asyncio.CancelledError:
         raise
     except Exception as e:  # noqa: BLE001
@@ -225,7 +292,8 @@ async def commit_watchdog_loop(pool, farmos_client: dict, config) -> None:
     while True:
         try:
             await asyncio.sleep(interval)
-            await tick_once(pool, farmos_client, config, lock=lock, csv_rows=csv_rows)
+            await tick_once(pool, farmos_client, config, lock=lock, csv_rows=csv_rows,
+                        signal_client=signal_client)
         except asyncio.CancelledError:
             raise
         except Exception as e:  # noqa: BLE001

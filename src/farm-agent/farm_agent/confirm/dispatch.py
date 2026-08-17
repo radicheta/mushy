@@ -281,6 +281,25 @@ async def _handle_standard_confirm(
     for effect in result.side_effects:
         if effect == "send_confirm_ack":
             res = await repo.confirm_draft(pool, draft_id)
+            if not res.get("ok"):
+                # MUSHY-40: confirm_draft NEVER raises (T-61-05) -- on a DB error it
+                # returns {"ok": False, "reason": ...} with NO "rowcount" key. Branching
+                # on rowcount alone sent "Already recorded." here, telling the farmer
+                # their entry was saved when nothing was written. The draft is still
+                # awaiting_farmer, so retrying YES genuinely works.
+                await _ack_send(
+                    signal_client,
+                    "Couldn't save that just now, the database didn't respond. "
+                    "Nothing is lost. Reply YES again in a minute and it will go through.",
+                    to=to,
+                    related_draft_id=draft_id,
+                    intent="confirm_failed_ack",
+                )
+                log.warning(
+                    "[dispatch] confirm_draft failed draft_id=%s reason=%s",
+                    draft_id, res.get("reason"),
+                )
+                return {"action": "confirm_failed", "ok": False, "reason": res.get("reason")}
             if res.get("rowcount") == 1:
                 await _ack_send(
                     signal_client,
@@ -319,6 +338,26 @@ async def _handle_standard_confirm(
 
         if effect == "send_discard_ack":
             res = await repo.discard_draft(pool, draft_id)
+            if not res.get("ok"):
+                # MUSHY-40: same ok-vs-rowcount conflation as the confirm arm above.
+                # A DB failure fell into the rowcount==0 arm, which deliberately sends
+                # NOTHING -- so the farmer said NO, heard silence, and then got a
+                # confusing expiry message 30 min later. rowcount==0 means "someone
+                # else already transitioned it" (benign); ok=False means "the write
+                # failed" (must be surfaced).
+                await _ack_send(
+                    signal_client,
+                    "Couldn't discard that just now, the database didn't respond. "
+                    "Reply NO again in a minute.",
+                    to=to,
+                    related_draft_id=draft_id,
+                    intent="discard_failed_ack",
+                )
+                log.warning(
+                    "[dispatch] discard_draft failed draft_id=%s reason=%s",
+                    draft_id, res.get("reason"),
+                )
+                return {"action": "discard_failed", "ok": False, "reason": res.get("reason")}
             if res.get("rowcount") == 1:
                 # Transition succeeded -- send factually-correct ack (no-silent-failure)
                 await _ack_send(
