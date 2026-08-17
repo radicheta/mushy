@@ -66,6 +66,7 @@ from farm_agent.confirm.strain_ask_back import (
     render_strain_ask_back,
     resolve_strain,
 )
+from farm_agent.extraction.starting_seq import handle_starting_seq_reply
 from farm_agent.tenancy.tenant import mask_number
 
 log = logging.getLogger(__name__)
@@ -499,6 +500,7 @@ async def route_confirm_reply(
     repo=None,
     extractor=None,
     extraction_db=None,
+    outbound_dispatcher=None,
 ) -> dict | None:
     """Route an inbound farmer reply for a draft.
 
@@ -524,7 +526,14 @@ async def route_confirm_reply(
     extraction_db:
         Injected farm_agent.extraction.extraction_db module or fake; defaults
         to the real module. Used by the EDIT re-extraction handler to persist
-        the corrected draft.
+        the corrected draft, and (D-3) by the starting-SEQ reply handler to
+        re-fetch and update the draft.
+    outbound_dispatcher:
+        {"dispatch": async (effect, draft_row) -> dict} dict, dict-subscript
+        shape only (matches pipeline.py / batch_mode.py / starting_seq.py).
+        Required for the D-3 starting-SEQ intercept below to actually notify
+        the farmer; no module-level default exists (there is no bare "real"
+        outbound dispatcher -- it is built from a live signal_client).
 
     Returns a dict with at least an 'action' key, or None if no routing matched.
     The FALL_THROUGH_SENTINEL is returned for strain-intercept unknown replies --
@@ -532,6 +541,33 @@ async def route_confirm_reply(
     """
     if repo is None:
         repo = _real_repo
+
+    # D-3: a draft awaiting a starting-SEQ answer is not awaiting a YES/NO/EDIT
+    # confirmation, and a bare "4" must not be parsed as one. This MUST run
+    # before the strain intercept and _parse_yes_no_edit -- a draft can only
+    # be in one of these states, but the order still needs to be deterministic.
+    # Task 7 ported handle_starting_seq_reply with no caller (Node never routed
+    # to it either); this closes that gap so the farmer's answer actually lands.
+    draft_json = draft_row.get("draft_json") or {}
+    if (
+        draft_json.get("type") == "seeding_session"
+        and draft_json.get("needs_input") == "starting_seq"
+    ):
+        capture_ctx = {
+            "sender_name": draft_row.get("sender_name"),
+            "farmos_person": draft_row.get("farmos_person"),
+            "reply_target_kind": draft_row.get("reply_target_kind"),
+            "group_id": draft_row.get("group_id"),
+        }
+        return await handle_starting_seq_reply(
+            draft_id=draft_row["id"],
+            reply_text=text,
+            capture_ctx=capture_ctx,
+            pool=pool,
+            extraction_db=extraction_db if extraction_db is not None else _real_extraction_db,
+            outbound_dispatcher=outbound_dispatcher,
+            log=log,
+        )
 
     # Strain intercept: draft is awaiting farmer strain confirmation
     if draft_row.get("needs_review_reason") == "strain_unknown_pending_confirm":

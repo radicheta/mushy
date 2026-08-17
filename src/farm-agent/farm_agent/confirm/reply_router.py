@@ -84,7 +84,9 @@ def create_confirm_reply_router(
     confirm_repo=None,
     extraction_db=None,
     extractor=None,
-    outbound_dispatcher=None,  # noqa: ARG001 -- reserved seam; sends go direct via signal_client (matches dispatch.py's _ack_send pattern), not this dispatcher.
+    outbound_dispatcher=None,  # D-3 (MUSHY-76 task 8b): forwarded to route_confirm_reply for
+                                # the starting-SEQ intercept only; every other path still sends
+                                # direct via signal_client (dispatch.py's _ack_send pattern).
     log: logging.Logger | None = None,
 ) -> dict:
     """Factory returning {"try_route": async (envelope: dict) -> bool}."""
@@ -191,6 +193,7 @@ def create_confirm_reply_router(
         result = await route_confirm_reply(
             pool, signal_client, config, draft_row, text,
             repo=repo, extractor=extractor, extraction_db=extraction_db,
+            outbound_dispatcher=outbound_dispatcher,
         )
 
         # 6. NOOP / strain-unknown falls through -- do NOT record, let capture handle it.
