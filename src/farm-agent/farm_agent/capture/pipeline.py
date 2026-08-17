@@ -38,6 +38,7 @@ from typing import Any, Callable
 from psycopg_pool import AsyncConnectionPool
 from ulid import ULID
 
+from farm_agent.capture import capture_history
 from farm_agent.capture import capture_repo as _default_capture_repo
 from farm_agent.signal_io.router import _read_dm, mask_number, resolve_farmer
 from farm_agent.tenancy.tenant import TenantConfig
@@ -136,7 +137,7 @@ def create_capture_pipeline(
     dispatch_result: Callable | None = None,
     log: logging.Logger | None = None,
     gate: dict | None = None,
-    extractor: dict | None = None,
+    extraction_pipeline: Any = None,
 ) -> dict:
     """Factory returning {"handle": handle, "record_reply_capture": record_reply_capture}.
 
@@ -157,6 +158,12 @@ def create_capture_pipeline(
                           Default None = gate disabled (backward-compatible). When set,
                           the gate is called fail-open after transcription -- a gate error
                           never blocks capture from being persisted (T-59-03-02).
+        extraction_pipeline: Optional MUSHY-76 seam -- {"enqueue": async(ctx)} dict,
+                          the shape create_extraction_pipeline() returns.
+                          Default None = extraction disabled. When set and the gate
+                          allows extraction and the sender resolves to a known farmer,
+                          enqueue() is fired after insert_capture (fire-and-forget;
+                          never blocks or breaks capture).
 
     Returns:
         {"handle": handle, "record_reply_capture": record_reply_capture}
@@ -270,6 +277,9 @@ def create_capture_pipeline(
             # T-59-03-02: gate error never blocks capture from being persisted.
             # T-59-03-01: log only gate outcome + masked sender; never env_ctx text/transcript.
             extraction_gate: str | None = None
+            # Fail-open default: absent or errored gate never blocks extraction
+            # (matches capture.js:186-190).
+            gate_allow_extract = True
             if gate is not None:
                 try:
                     env_ctx = {
@@ -277,10 +287,19 @@ def create_capture_pipeline(
                         "transcript": transcript,
                         "attachmentCount": len(attachment_paths),
                     }
-                    # TODO(Phase 60): wire last_bot_outbound from capture_history.select_recent_outbound_by_recipient
-                    # so rule_negative can fast-reject short acks within the 30-min attestation window.
-                    gate_result = await gate["classify"](env_ctx, None, int(time.time() * 1000))
+                    # Phase 60: source last_bot_outbound so rule_negative can
+                    # fast-reject short acks within the 30-min attestation window.
+                    neg_since_ms = captured_at_ms - 30 * 60 * 1000
+                    try:
+                        recent_out = await capture_history.select_recent_outbound_by_recipient(
+                            pool, source, neg_since_ms
+                        )
+                    except Exception:  # noqa: BLE001 -- gate input is best-effort
+                        recent_out = []
+                    last_bot = recent_out[-1] if recent_out else None
+                    gate_result = await gate["classify"](env_ctx, last_bot, int(time.time() * 1000))
                     extraction_gate = gate_result.get("gate")
+                    gate_allow_extract = gate_result.get("allow_extract", True)
                     _log.info(
                         "[capture] gate=%s allow_extract=%s sender=%s",
                         gate_result.get("gate"),
@@ -293,7 +312,9 @@ def create_capture_pipeline(
                         mask_number(source),
                         exc,
                     )
-                    # extraction_gate stays None -- capture is still persisted (T-59-03-02)
+                    # extraction_gate stays None; gate_allow_extract stays True --
+                    # capture is still persisted and extraction is not blocked
+                    # (T-59-03-02).
 
             # --- Step 4: persist signal_capture row (fail-open) ---
             row = {
@@ -322,6 +343,35 @@ def create_capture_pipeline(
                     persist_result.get("reason"),
                 )
                 degraded = True
+
+            # MUSHY-76: fire-and-forget extraction enqueue. Gated on the event-gate's
+            # allow_extract AND on a resolved farmer slug -- '(unassigned)' means we do
+            # not know who sent it, and an unattributed draft cannot be confirmed by
+            # anyone. Extraction failures never break capture (this block never raises).
+            if (
+                gate_allow_extract
+                and extraction_pipeline is not None
+                and farmos_person
+                and farmos_person != "(unassigned)"
+            ):
+                try:
+                    await extraction_pipeline["enqueue"]({
+                        "capture_id": capture_id,
+                        "sender": source,
+                        "farmos_person": farmos_person,
+                        "text": text,
+                        "transcripts": [transcript] if transcript else [],
+                        "attachment_paths": attachment_paths,
+                        "reply_target_kind": reply_target_kind,
+                        "group_id": group_id,
+                        "captured_at_ms": captured_at_ms,
+                        "corpus_context": None,   # live captures never set this (T-58-03-04)
+                    })
+                except Exception as exc:  # noqa: BLE001 -- extraction never breaks capture
+                    _log.warning(
+                        "[capture] extraction enqueue failed: sender=%s err=%s",
+                        mask_number(source), exc,
+                    )
 
             # --- Step 5: return CaptureResult and optionally fire Phase 59+ seam ---
             result = {

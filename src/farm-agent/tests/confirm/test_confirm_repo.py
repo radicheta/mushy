@@ -347,3 +347,128 @@ async def test_find_awaiting_prefers_awaiting_farmer_over_commit_failed(pool):
         f"CR-03 ordering: awaiting_farmer must win over commit_failed, "
         f"expected {af_id}, got {row['id']!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Task 8c: find_active_drafts_for_sender (MUSHY-76 confirm-reply router)
+# ---------------------------------------------------------------------------
+
+
+async def _insert_draft_with_updated_at(
+    pool, status: str, updated_at_expr: str, *, sender_e164: str
+) -> str:
+    """Insert a draft with a specific status and an explicit updated_at offset.
+
+    updated_at_expr is a raw SQL expression (e.g. "NOW() - interval '7 hours'")
+    -- safe here because it is a fixed literal supplied by the test, never
+    farmer input.
+    """
+    draft_id = uuid.uuid4().hex
+    async with pool.connection() as conn:
+        await conn.execute(
+            f"""
+            INSERT INTO signal_draft
+              (id, status, sender_e164, edit_turn_count, nudge_sent_at,
+               draft_json, per_field_confidence, farmer_facing_preview,
+               reply_target_kind, created_at, updated_at)
+            VALUES (%s, %s, %s, 0, NULL, %s::jsonb, %s::jsonb, %s, 'dm',
+                    NOW(), {updated_at_expr})
+            """,  # noqa: S608 -- updated_at_expr is a fixed test literal, not farmer input
+            (
+                draft_id,
+                status,
+                sender_e164,
+                json.dumps({"species_code": "SHI"}),
+                json.dumps({"species_code": 0.95}),
+                "SHI on straw -- confirm?",
+            ),
+        )
+    return draft_id
+
+
+@_requires_db
+async def test_find_active_drafts_includes_awaiting_and_recent_commit_failed(pool):
+    """find_active_drafts_for_sender returns both an awaiting_farmer AND a recent
+    commit_failed draft for the same sender, awaiting_farmer first (CONTEXT D-06).
+    """
+    sender = f"+1777{uuid.uuid4().hex[:7]}"
+    cf_id = await _insert_draft_with_status(pool, "commit_failed", sender_e164=sender)
+    af_id = await _insert_draft_with_status(pool, "awaiting_farmer", sender_e164=sender)
+
+    rows = await confirm_repo.find_active_drafts_for_sender(pool, sender)
+
+    ids = [r["id"] for r in rows]
+    assert ids == [af_id, cf_id], (
+        f"expected [awaiting_farmer, commit_failed] order, got {ids}"
+    )
+
+
+@_requires_db
+async def test_find_active_drafts_ages_out_stale_commit_failed(pool):
+    """2026-05-23 staleness filter: commit_failed older than 6h is excluded.
+
+    Without this filter, a ten-day-old ack-debt draft would trap every fresh
+    capture in the numbered ask-back forever.
+    """
+    sender = f"+1666{uuid.uuid4().hex[:7]}"
+    await _insert_draft_with_updated_at(
+        pool, "commit_failed", "NOW() - interval '10 days'", sender_e164=sender
+    )
+
+    rows = await confirm_repo.find_active_drafts_for_sender(pool, sender)
+
+    assert rows == [], (
+        "a commit_failed draft older than 6h must be excluded from the active-draft "
+        "lookup -- otherwise it traps every fresh capture in numbered ask-back"
+    )
+
+
+@_requires_db
+async def test_find_active_drafts_returns_empty_for_no_active(pool):
+    sender = f"+1555{uuid.uuid4().hex[:7]}"
+    rows = await confirm_repo.find_active_drafts_for_sender(pool, sender)
+    assert rows == []
+
+
+# ---------------------------------------------------------------------------
+# Task 8c: find_draft_by_quoted_msg_ts (MUSHY-76 confirm-reply router)
+# ---------------------------------------------------------------------------
+
+
+async def _insert_outbound(pool, *, related_draft_id: str, signal_msg_ts: int, recipient_e164: str) -> None:
+    async with pool.connection() as conn:
+        await conn.execute(
+            """
+            INSERT INTO signal_outbound
+              (tenant_id, sent_at, recipient_e164, intent, body, source_module,
+               related_draft_id, signal_msg_ts)
+            VALUES ('test', NOW(), %s, 'confirm_prompt', 'body', 'test', %s, %s)
+            """,
+            (recipient_e164, related_draft_id, signal_msg_ts),
+        )
+
+
+@_requires_db
+async def test_find_draft_by_quoted_msg_ts_resolves_via_outbound_join(pool):
+    sender = f"+1444{uuid.uuid4().hex[:7]}"
+    draft_id = await _insert_draft(pool, sender_e164=sender)
+    quote_ts = 1_700_000_000_000
+    await _insert_outbound(pool, related_draft_id=draft_id, signal_msg_ts=quote_ts, recipient_e164=sender)
+
+    row = await confirm_repo.find_draft_by_quoted_msg_ts(pool, quote_ts)
+
+    assert row is not None
+    assert row["id"] == draft_id
+    assert row["sender_e164"] == sender
+
+
+@_requires_db
+async def test_find_draft_by_quoted_msg_ts_returns_none_when_unmatched(pool):
+    row = await confirm_repo.find_draft_by_quoted_msg_ts(pool, 9_999_999_999_999)
+    assert row is None
+
+
+async def test_find_draft_by_quoted_msg_ts_returns_none_for_none_ts():
+    """No DB required -- the None guard short-circuits before any query."""
+    row = await confirm_repo.find_draft_by_quoted_msg_ts(object(), None)
+    assert row is None

@@ -276,6 +276,11 @@ class TenantConfig:
     # --- farmOS fidelity gate ---
     fidelity_csv_path: str
 
+    # --- Extraction (Phase 64 / MUSHY-76) ---
+    extraction_confidence_threshold: float
+    draft_idle_gap_min: int
+    max_askback_turns: int
+
     # --- General ---
     log_level: str
 
@@ -371,6 +376,22 @@ def load(env: dict[str, str] | None = None) -> TenantConfig:
     # --- farmOS fidelity gate ---
     fidelity_csv_path = _pick(tenant_cfg, env, "FIDELITY_CSV_PATH", "")
 
+    # --- Extraction (Phase 64 / MUSHY-76) ---
+    extraction_confidence_threshold = _parse_float_env(
+        env, "EXTRACTION_CONFIDENCE_THRESHOLD", 0.7
+    )
+    if not (0.0 <= extraction_confidence_threshold <= 1.0):
+        import warnings
+
+        warnings.warn(
+            f"[config] EXTRACTION_CONFIDENCE_THRESHOLD={extraction_confidence_threshold!r} "
+            "out of range [0,1]; clamping to 0.7",
+            stacklevel=2,
+        )
+        extraction_confidence_threshold = 0.7
+    draft_idle_gap_min = _parse_int_env(env, "DRAFT_IDLE_GAP_MIN", 30)
+    max_askback_turns = _parse_int_env(env, "MAX_ASKBACK_TURNS", 3)
+
     # --- General ---
     log_level = env.get("LOG_LEVEL") or "info"
 
@@ -405,5 +426,8 @@ def load(env: dict[str, str] | None = None) -> TenantConfig:
         commit_watchdog_batch_cap=commit_watchdog_batch_cap,
         commit_retry_max=commit_retry_max,
         fidelity_csv_path=str(fidelity_csv_path),
+        extraction_confidence_threshold=extraction_confidence_threshold,
+        draft_idle_gap_min=draft_idle_gap_min,
+        max_askback_turns=max_askback_turns,
         log_level=log_level,
     )

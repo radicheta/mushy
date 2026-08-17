@@ -196,6 +196,27 @@ async def test_tick_once_skips_expire_when_already_expired():
 
 
 @pytest.mark.asyncio
+async def test_tick_once_nudge_body_contains_preview():
+    """D-2: unlike Node (watchdog.js:31, minutesRemaining only), the nudge body
+    must name which draft is nudging the farmer.
+    """
+    from farm_agent.confirm.watchdog import tick_once  # noqa: PLC0415
+
+    fake_signal = FakeSignalClientWatchdog()
+    stub_repo = StubConfirmRepo(
+        nudge_candidates=[_make_nudge_row()],
+        nudge_rowcounts=[1],
+    )
+    config = _make_config()
+    lock = asyncio.Lock()
+
+    await tick_once(object(), fake_signal, config, lock=lock, repo=stub_repo)
+
+    assert len(fake_signal.sends) == 1
+    assert "5 bags inoculation" in fake_signal.sends[0]["body"]
+
+
+@pytest.mark.asyncio
 async def test_tick_once_appends_event_on_nudge_send():
     """tick_once appends a nudge_sent event after a successful nudge send."""
     from farm_agent.confirm.watchdog import tick_once  # noqa: PLC0415
