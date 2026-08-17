@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 import farm_agent.confirm.confirm_repo as _real_repo
 import farm_agent.extraction.extraction_db as _real_extraction_db
@@ -256,6 +257,38 @@ def _parse_yes_no_edit(text: str) -> str | None:
     return None
 
 
+def _extract_edit_text(text: str) -> str:
+    """Correction text handed to the extractor. Port of confirm/parser.js:31-38.
+
+    Node recognizes only the literal 'edit' token for stripping (not our other
+    dispatch-level synonyms change/redo/fix, which are Python-only additions
+    to _EDIT_TOKENS and fall through to the implicit-edit case below):
+
+      - Leading 'edit' token (case-insensitive): the correction is everything
+        after the first whitespace run, trimmed, with the remainder's
+        ORIGINAL casing preserved.
+      - 'EDIT' with nothing after it: the correction is '' (does NOT fall
+        through to the whole body).
+      - Anything else (implicit edit, e.g. 'change it to 750g' or a bare
+        correction with no verb at all): the full trimmed body is the
+        correction.
+
+    A leading command verb is noise in the farmer_correction slot fed to the
+    model as the farmer's own words -- production does not send it, so we
+    must not either.
+    """
+    trimmed = (text or "").strip()
+    if not trimmed:
+        return ""
+    first_token = re.split(r"\s+", trimmed, maxsplit=1)[0].lower()
+    if first_token == "edit":
+        m = re.search(r"\s", trimmed)
+        if m is None:
+            return ""
+        return trimmed[m.start() + 1 :].strip()
+    return trimmed
+
+
 async def _handle_standard_confirm(
     pool,
     signal_client,
@@ -400,7 +433,7 @@ async def _handle_standard_confirm(
                 config=config,
                 log=log,
             )
-            edit_res = await handler["handle_edit"](draft_row, text)
+            edit_res = await handler["handle_edit"](draft_row, _extract_edit_text(text))
             if edit_res.get("ok") and edit_res.get("side_effect") == "send_preview_resend":
                 await _ack_send(
                     signal_client,

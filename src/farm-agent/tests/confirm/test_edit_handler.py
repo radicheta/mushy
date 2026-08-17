@@ -146,9 +146,62 @@ async def test_dispatch_edit_reply_reaches_the_extractor_and_resends_preview():
         repo=fake_repo, extractor=ex, extraction_db=FakeExtractionDb(),
     )
 
-    assert calls[0] == "EDIT no it was 750 grams"
+    # The EDIT verb must not reach the extractor -- only the remainder is the
+    # farmer's correction (parser.js:31-38 parity).
+    assert calls[0] == "no it was 750 grams"
     assert result is not None
     assert result.get("action") == "edited"
     assert result.get("ok") is True
     assert fake_signal.sends, "farmer must hear the re-rendered preview after EDIT"
     assert "750" in fake_signal.sends[-1]["body"]
+
+
+# ---------------------------------------------------------------------------
+# _extract_edit_text: the EDIT verb must not reach the extractor
+# (Fix round 1 -- ported from confirm/parser.js:31-38)
+# ---------------------------------------------------------------------------
+
+
+def test_extract_edit_text_strips_leading_edit_verb_preserves_casing():
+    from farm_agent.confirm.dispatch import _extract_edit_text
+
+    assert _extract_edit_text("EDIT no it was 750 Grams") == "no it was 750 Grams"
+
+
+def test_extract_edit_text_bare_edit_with_nothing_after_is_empty():
+    from farm_agent.confirm.dispatch import _extract_edit_text
+
+    assert _extract_edit_text("EDIT") == ""
+    assert _extract_edit_text("edit   ") == ""
+
+
+def test_extract_edit_text_implicit_edit_is_full_trimmed_body():
+    from farm_agent.confirm.dispatch import _extract_edit_text
+
+    assert _extract_edit_text("  no it was 750 grams  ") == "no it was 750 grams"
+    # A recognized dispatch-level EDIT synonym (change/redo/fix) is NOT the
+    # literal 'edit' token Node strips -- it falls through to the implicit
+    # case, matching parser.js (which does not recognize these at all).
+    assert _extract_edit_text("change it to 750g") == "change it to 750g"
+
+
+async def test_dispatch_bare_edit_reply_sends_empty_correction_not_the_verb():
+    """Farmer sends bare 'EDIT' (no remainder): correction must be '', not 'EDIT'."""
+    from farm_agent.confirm.dispatch import route_confirm_reply
+    from tests.confirm.test_strain_ask_back import (
+        FakeConfirmRepoForDispatch,
+        FakeSignalClient,
+        _make_config,
+        _make_standard_draft_row,
+    )
+
+    ex, calls = _extractor({"ok": True, "draft": CORRECTED, "per_field_confidence": {},
+                            "drafts": [{"draft": CORRECTED, "per_field_confidence": {}}]})
+    draft = _make_standard_draft_row()
+
+    await route_confirm_reply(
+        object(), FakeSignalClient(), _make_config(), draft, "EDIT",
+        repo=FakeConfirmRepoForDispatch(), extractor=ex, extraction_db=FakeExtractionDb(),
+    )
+
+    assert calls[0] == ""
