@@ -209,11 +209,12 @@ async def test_insert_conflict_returns_reason():
     assert res == {"ok": False, "reason": "in_flight_conflict"}
 
 
-async def test_multi_draft_routes_to_unimplemented_stub_without_crashing():
-    # Task 6 owns multi-draft routing; here it must stay a stub that enqueue's
-    # outer try/except converts into a clean ok:False, never an unhandled raise.
+async def test_multi_draft_routes_to_batch_mode():
+    # Task 6: multi-draft routing is real. Two drafts with empty
+    # per_field_confidence -> _min_leaf_confidence returns 0 (conservative,
+    # no confidence signal) -> _should_batch_review is True -> run_batch_mode.
     # Also proves the single-draft tests above exercise a genuinely different
-    # branch (drafts.length == 1 never reaches this stub).
+    # branch (drafts.length == 1 never reaches multi-draft routing).
     db = FakeDb()
     p = _pipeline(db, _extractor({
         "ok": True,
@@ -225,8 +226,10 @@ async def test_multi_draft_routes_to_unimplemented_stub_without_crashing():
         "usage": None,
     }))
     res = await p["enqueue"](CTX)
-    assert res["ok"] is False
-    assert db.inserted == []
+    assert res["ok"] is True
+    assert res["mode"] == "batch"
+    assert res["count"] == 2
+    assert len(db.inserted) == 2
 
 
 async def test_dispatch_failure_does_not_fail_enqueue():

@@ -25,12 +25,16 @@ Sequence (mirrors pipeline.js:289-791):
      needs-review-ping / confirm-prompt -- see D-1 below)
   7. dispatch each side_effect via outbound_dispatcher.dispatch
 
-Two branches are intentionally NOT ported here and are stubbed to raise
+One branch is intentionally NOT ported here and is stubbed to raise
 NotImplementedError, caught by the outer try/except like any other failure:
-  - multi-draft routing (drafts.length > 1)     -- Task 6
   - seeding_session starting_seq short-circuit  -- Task 7
 handle_starting_seq_reply (pipeline.js:792+) is out of this port's line range
 entirely and is stubbed the same way.
+
+Multi-draft routing (drafts.length > 1, pipeline.js:393-407) dispatches to
+farm_agent.extraction.batch_mode.run_batch_mode or .run_multi_confirm (Task
+6): run_batch_mode when _should_batch_review(drafts) is true or any draft is
+a seeding_session, else run_multi_confirm.
 
 MUSHY-76 D-1 divergence from Node (pipeline.js:698-699): Node's preview check
 covers only send_ask_back and send_needs_review_ping, so a cleanly-extracted
@@ -56,11 +60,13 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 from farm_agent.extraction import extraction_db as _extraction_db_module
 from farm_agent.extraction import multimodal
 from farm_agent.extraction import preview_builder as _preview_builder_module
 from farm_agent.extraction import state_machine as _state_machine_module
+from farm_agent.extraction.batch_mode import run_batch_mode, run_multi_confirm
 from farm_agent.tenancy.tenant import mask_number
 
 logger = logging.getLogger(__name__)
@@ -233,9 +239,30 @@ def create_extraction_pipeline(
         outbound_dispatcher["dispatch"] if outbound_dispatcher is not None else _noop_dispatch
     )
 
-    async def _route_multi(**kwargs):
-        # Task 6: small-N fan-out / runBatchMode (pipeline.js:382-514).
-        raise NotImplementedError("multi-draft routing is ported in Task 6")
+    async def _route_multi(*, drafts_arr, capture_ctx, sender, capture_id, now_ms, in_flight):
+        # pipeline.js:395-407 routing rule.
+        has_seeding_session = any(
+            ((item or {}).get("draft") or {}).get("type") == "seeding_session"
+            for item in drafts_arr
+        )
+        route_kwargs = dict(
+            drafts_arr=drafts_arr,
+            capture_ctx=capture_ctx,
+            sender=sender,
+            capture_id=capture_id,
+            now_ms=now_ms,
+            in_flight=in_flight,
+            pool=pool,
+            extraction_db=db,
+            state_machine=sm,
+            preview_builder=pb,
+            outbound_dispatcher=SimpleNamespace(dispatch=_dispatch),
+            config=config,
+            log=_log,
+        )
+        if _should_batch_review(drafts_arr) or has_seeding_session:
+            return await run_batch_mode(source_capture_ids_base=[capture_id], **route_kwargs)
+        return await run_multi_confirm(**route_kwargs)
 
     async def _handle_starting_seq_askback(**kwargs):
         # Task 7: seeding_session starting_seq short-circuit (pipeline.js:582-672).
