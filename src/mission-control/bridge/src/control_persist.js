@@ -35,6 +35,36 @@ function mergeOverlay(existing, entries) {
     return out;
 }
 
+// MUSHY-34: params the controller declares as INTEGER. Everything ELSE that
+// reaches the overlay is a double — see forceDoubleDecimals.
+const INT_PARAMS = new Set(
+    Object.keys(cp.ALLOWLIST).filter((k) => cp.ALLOWLIST[k].type === cp.T_INTEGER),
+);
+
+// MUSHY-34 — the 2026-06-28 reboot landmine. JS has one number type, so js-yaml
+// dumps the double 1800.0 as bare `1800`; ROS2 then loads it as INTEGER and
+// fc_controller dies at startup with InvalidParameterTypeException. The node
+// only re-reads the overlay on restart, so the bad value sits latent until a
+// reboot detonates it — that cost 5h23m of open-loop humidifier on 2026-06-28.
+//
+// The trigger is not only a fresh persist of an integral double: renderOverlay
+// re-dumps the WHOLE merged overlay, so a hand-fixed `1800.0` already on disk
+// gets demoted back to `1800` by the next unrelated persist. That is exactly
+// how the 06-27 band change re-armed it.
+//
+// Unknown keys default to DOUBLE, not int. That is deliberate: the param that
+// actually caused the incident (pid_integrator_decay_tau) is not in the
+// allowlist at all — it reached the overlay by another path — so keying off
+// "known doubles" would have missed the one case we are fixing. Every
+// controller param typed INTEGER is explicitly allowlisted (the Phase 29/30
+// alerter + scheduler knobs); anything else is PID tuning, i.e. a double.
+function forceDoubleDecimals(body) {
+    return body.replace(
+        /^(\s*)([\w.]+): (-?\d+)$/gm,
+        (line, indent, key, num) => (INT_PARAMS.has(key) ? line : `${indent}${key}: ${num}.0`),
+    );
+}
+
 // renderOverlay: yaml string with header. js-yaml dumps NaN → `.nan` natively
 // (verified: node -e "yaml.dump({a:NaN})" → "a: .nan"). Defensive normalization
 // kept for safety in case js-yaml options change.
@@ -45,6 +75,7 @@ function renderOverlay(obj, opts = {}) {
         `# Last write: ${ts}\n`;
     let body = yaml.dump(obj, { lineWidth: 200, sortKeys: true });
     body = body.replace(/: NaN$/gm, ': .nan').replace(/: nan$/gm, ': .nan');
+    body = forceDoubleDecimals(body);
     return header + body;
 }
 

@@ -293,6 +293,10 @@ function makeHandler(rosNode, opts = {}) {
 }
 
 module.exports = {
+    T_BOOL,
+    T_INTEGER,
+    T_DOUBLE,
+    T_STRING,
     ALLOWLIST,
     DECLARED_MODES,
     MAX_PARAMS_PER_REQUEST,

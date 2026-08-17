@@ -101,6 +101,68 @@ describe('renderOverlay', () => {
         expect(reparsed.fc_controller.ros__parameters['modes.fruiting.band_low']).toBe(0.94);
     });
 
+    // MUSHY-34 — the 2026-06-28 landmine. js-yaml has no int/double distinction,
+    // so an integral-valued double round-trips to a bare int and the next
+    // fc-core restart dies with InvalidParameterTypeException. Cost the farm a
+    // 5h23m open-loop humidifier window.
+    test('integral-valued doubles keep a decimal point (MUSHY-34)', () => {
+        const obj = {
+            fc_controller: {
+                ros__parameters: { pid_integrator_decay_tau: 1800.0, pid_kp: 1 },
+            },
+        };
+        const rendered = persist.renderOverlay(obj, { timestamp: 'X' });
+        expect(rendered).toMatch(/pid_integrator_decay_tau: 1800\.0$/m);
+        expect(rendered).toMatch(/pid_kp: 1\.0$/m);
+    });
+
+    test('re-render of a parsed overlay does not demote doubles to ints (MUSHY-34)', () => {
+        // The actual 06-28 mechanism: the tau was hand-fixed to 1800.0 in the
+        // file, then a LATER persist of an unrelated band change read it back,
+        // parsed it to JS number 1800, and re-dumped it as a bare int.
+        const onDisk = 'fc_controller:\n  ros__parameters:\n    pid_integrator_decay_tau: 1800.0\n';
+        const merged = persist.mergeOverlay(yaml.load(onDisk), [
+            { param: 'modes.fruiting.band_low', value: 0.885 },
+        ]);
+        const rendered = persist.renderOverlay(merged, { timestamp: 'X' });
+        expect(rendered).toMatch(/pid_integrator_decay_tau: 1800\.0$/m);
+    });
+
+    test('known-integer params stay bare ints (MUSHY-34)', () => {
+        // The inverse crash: writing 8.0 for an INTEGER-declared param kills the
+        // controller just as dead. These are the Phase 29/30 alerter + scheduler
+        // knobs, typed T_INTEGER in the control_param allowlist.
+        const obj = {
+            fc_controller: {
+                ros__parameters: {
+                    heartbeat_hour: 7,
+                    'modes.fruiting.alerter.oob_window_min': 8,
+                    pi_offline_min: 10,
+                },
+            },
+        };
+        const rendered = persist.renderOverlay(obj, { timestamp: 'X' });
+        expect(rendered).toMatch(/heartbeat_hour: 7$/m);
+        expect(rendered).toMatch(/modes\.fruiting\.alerter\.oob_window_min: 8$/m);
+        expect(rendered).toMatch(/pi_offline_min: 10$/m);
+    });
+
+    test('non-integral doubles, NaN and strings are untouched (MUSHY-34)', () => {
+        const obj = {
+            fc_controller: {
+                ros__parameters: {
+                    'modes.fruiting.band_low': 0.885,
+                    'modes.fruiting.t_target': NaN,
+                    active_mode: 'fruiting',
+                },
+            },
+        };
+        const rendered = persist.renderOverlay(obj, { timestamp: 'X' });
+        expect(rendered).toMatch(/modes\.fruiting\.band_low: 0\.885$/m);
+        expect(rendered).toMatch(/modes\.fruiting\.t_target: \.nan$/m);
+        expect(rendered).toMatch(/active_mode: fruiting$/m);
+    });
+
     test('sortKeys produces stable output for idempotency', () => {
         const a = persist.renderOverlay(
             { fc_controller: { ros__parameters: { b: 2, a: 1 } } },
