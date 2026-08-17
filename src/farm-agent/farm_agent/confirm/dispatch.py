@@ -20,7 +20,9 @@ Routing logic:
          send_confirm_ack     -> confirm_repo.confirm_draft; rowcount==1 -> ack + commit-trigger
                                  rowcount==0 -> idempotent ack (no second marker)
          send_discard_ack     -> discard_draft + ack
-         run_edit_reextraction -> bump_edit_turn + STUB log (Phase 62 deferred)
+         run_edit_reextraction -> real EDIT re-extraction (confirm/edit_handler.py):
+                                 bumps edit_turn_count, re-extracts with the farmer's
+                                 correction, updates the draft in place, resends preview
          send_edit_cap_msg    -> expire_draft('edit_cap_exceeded') + cap message
          send_confirm_idempotent_ack -> idempotent ack only (no commit-trigger)
 
@@ -43,6 +45,14 @@ import json
 import logging
 
 import farm_agent.confirm.confirm_repo as _real_repo
+import farm_agent.extraction.extraction_db as _real_extraction_db
+from farm_agent.confirm.edit_handler import create_edit_handler
+from farm_agent.confirm.preview import (
+    build_confirm_ack,
+    build_discard_ack,
+    build_edit_cap_msg,
+    build_idempotent_ack,
+)
 from farm_agent.confirm.state_machine import (
     ConfirmEvent,
     Event,
@@ -138,7 +148,7 @@ async def _handle_strain_intercept(
         if res.get("rowcount") == 1:
             await _ack_send(
                 signal_client,
-                "Got it! Your answer was recorded.",
+                build_confirm_ack(draft_id),
                 to=to,
                 related_draft_id=draft_id,
                 intent="confirm_ack",
@@ -153,7 +163,7 @@ async def _handle_strain_intercept(
             # rowcount==0: already confirmed (idempotent ack, no second marker)
             await _ack_send(
                 signal_client,
-                "Already recorded.",
+                build_idempotent_ack(),
                 to=to,
                 related_draft_id=draft_id,
                 intent="confirm_ack_idempotent",
@@ -194,7 +204,7 @@ async def _handle_strain_intercept(
             else:
                 await _ack_send(
                     signal_client,
-                    "Already recorded.",
+                    build_idempotent_ack(),
                     to=to,
                     related_draft_id=draft_id,
                     intent="confirm_ack_idempotent",
@@ -253,6 +263,9 @@ async def _handle_standard_confirm(
     draft_row: dict,
     text: str,
     repo,
+    *,
+    extractor=None,
+    extraction_db=None,
 ) -> dict | None:
     """Handle standard YES/NO/EDIT routing through the FSM + SQL guards."""
     draft_id = draft_row["id"]
@@ -303,7 +316,7 @@ async def _handle_standard_confirm(
             if res.get("rowcount") == 1:
                 await _ack_send(
                     signal_client,
-                    "Got it! Your entry was recorded.",
+                    build_confirm_ack(draft_id),
                     to=to,
                     related_draft_id=draft_id,
                     intent="confirm_ack",
@@ -318,7 +331,7 @@ async def _handle_standard_confirm(
                 # rowcount==0: idempotent ack, NO second trigger (T-61-12)
                 await _ack_send(
                     signal_client,
-                    "Already recorded.",
+                    build_idempotent_ack(),
                     to=to,
                     related_draft_id=draft_id,
                     intent="confirm_ack_idempotent",
@@ -329,7 +342,7 @@ async def _handle_standard_confirm(
             # Dup-YES on already-confirmed draft
             await _ack_send(
                 signal_client,
-                "Already recorded.",
+                build_idempotent_ack(),
                 to=to,
                 related_draft_id=draft_id,
                 intent="confirm_ack_idempotent",
@@ -362,29 +375,67 @@ async def _handle_standard_confirm(
                 # Transition succeeded -- send factually-correct ack (no-silent-failure)
                 await _ack_send(
                     signal_client,
-                    "OK, discarded.",
+                    build_discard_ack(),
                     to=to,
                     related_draft_id=draft_id,
                     intent="discard_ack",
                 )
             else:
                 # rowcount==0: race lost -- draft already expired/transitioned by watchdog.
-                # Do not send "OK, discarded." (would be factually wrong); send nothing
+                # Do not send a discard ack (would be factually wrong); send nothing
                 # to match Node _runTransition behavior (no ack on rowcount=0 discard).
                 pass
             log.info("[dispatch] discarded draft_id=%s rowcount=%s", draft_id, res.get("rowcount"))
             return {"action": "discarded", "rowcount": res.get("rowcount")}
 
         if effect == "run_edit_reextraction":
-            await repo.bump_edit_turn(pool, draft_id)
-            _run_edit_reextraction_stub(draft_id)
-            return {"action": "edit_stub"}
+            # Real EDIT re-extraction (replaces the Phase 61 stub, which logged
+            # a line and dropped the farmer's correction). bump_edit_turn is
+            # owned by the handler now, not called separately here.
+            handler = create_edit_handler(
+                pool=pool,
+                extractor=extractor,
+                confirm_repo=repo,
+                extraction_db=extraction_db or _real_extraction_db,
+                config=config,
+                log=log,
+            )
+            edit_res = await handler["handle_edit"](draft_row, text)
+            if edit_res.get("ok") and edit_res.get("side_effect") == "send_preview_resend":
+                await _ack_send(
+                    signal_client,
+                    edit_res.get("new_preview") or "",
+                    to=to,
+                    related_draft_id=draft_id,
+                    intent="edit_preview_resend",
+                )
+                log.info("[dispatch] edit re-extraction ok draft_id=%s", draft_id)
+                return {"action": "edited", "ok": True}
+            if edit_res.get("ok") and edit_res.get("side_effect") == "send_edit_cap_msg":
+                await repo.expire_draft(pool, draft_id, "edit_cap_exceeded")
+                await _ack_send(
+                    signal_client,
+                    build_edit_cap_msg(max_edit_turns),
+                    to=to,
+                    related_draft_id=draft_id,
+                    intent="edit_cap_msg",
+                )
+                log.info("[dispatch] edit_cap_exceeded (post-handler) draft_id=%s", draft_id)
+                return {"action": "edit_cap_exceeded"}
+            if edit_res.get("ok"):
+                # side_effect == "noop" -- draft no longer active (concurrent confirm/expire)
+                return {"action": "edit_noop", "reason": edit_res.get("reason")}
+            log.warning(
+                "[dispatch] edit re-extraction failed draft_id=%s reason=%s",
+                draft_id, edit_res.get("reason"),
+            )
+            return {"action": "edit_failed", "ok": False, "reason": edit_res.get("reason")}
 
         if effect == "send_edit_cap_msg":
             await repo.expire_draft(pool, draft_id, "edit_cap_exceeded")
             await _ack_send(
                 signal_client,
-                "Too many edits. This entry needs manual review.",
+                build_edit_cap_msg(max_edit_turns),
                 to=to,
                 related_draft_id=draft_id,
                 intent="edit_cap_msg",
@@ -396,14 +447,6 @@ async def _handle_standard_confirm(
             return {"action": "noop", "reason": result.reason}
 
     return {"action": "noop", "reason": result.reason}
-
-
-def _run_edit_reextraction_stub(draft_id: str) -> None:
-    """Phase 61 stub: edit reextraction deferred to Phase 62.
-
-    Full Phase-60 extractor wire-up is deferred (RESEARCH A2 / Open Question 2).
-    """
-    log.info("[confirm] edit reextraction stub -- Phase 62 (draft_id=%s)", draft_id)
 
 
 # ---------------------------------------------------------------------------
@@ -419,6 +462,8 @@ async def route_confirm_reply(
     text: str,
     *,
     repo=None,
+    extractor=None,
+    extraction_db=None,
 ) -> dict | None:
     """Route an inbound farmer reply for a draft.
 
@@ -437,6 +482,14 @@ async def route_confirm_reply(
     repo:
         Injected confirm_repo module or fake; defaults to the real confirm_repo.
         Used for dependency injection in tests.
+    extractor:
+        {"extract": async fn} dict consumed by the EDIT re-extraction handler.
+        Required only when a farmer reply triggers the run_edit_reextraction
+        side effect; other reply kinds never touch it.
+    extraction_db:
+        Injected farm_agent.extraction.extraction_db module or fake; defaults
+        to the real module. Used by the EDIT re-extraction handler to persist
+        the corrected draft.
 
     Returns a dict with at least an 'action' key, or None if no routing matched.
     The FALL_THROUGH_SENTINEL is returned for strain-intercept unknown replies --
@@ -450,4 +503,7 @@ async def route_confirm_reply(
         return await _handle_strain_intercept(pool, signal_client, config, draft_row, text, repo)
 
     # Standard YES/NO/EDIT routing
-    return await _handle_standard_confirm(pool, signal_client, config, draft_row, text, repo)
+    return await _handle_standard_confirm(
+        pool, signal_client, config, draft_row, text, repo,
+        extractor=extractor, extraction_db=extraction_db,
+    )

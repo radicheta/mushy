@@ -32,6 +32,7 @@ import logging
 from datetime import datetime, timezone
 
 import farm_agent.confirm.confirm_repo as _real_repo
+from farm_agent.confirm.preview import build_expired_note, build_nudge
 from farm_agent.tenancy.tenant import mask_number
 
 log = logging.getLogger(__name__)
@@ -103,11 +104,12 @@ async def tick_once(
                     # Won the SQL race -- send nudge
                     mins_left = _minutes_remaining(row, timeout_min)
                     to = _route_target(row)
-                    preview = row.get("farmer_facing_preview") or ""
-                    msg = (
-                        f"Reminder: you have a pending entry waiting for confirmation.\n"
-                        f"Preview: {preview}\n"
-                        f"About {mins_left} minute(s) remaining to confirm or it will expire."
+                    # D-2: unlike Node (watchdog.js:31), which sends only
+                    # minutesRemaining, we pass the draft's preview through so
+                    # the farmer knows which draft is nudging them.
+                    msg = build_nudge(
+                        minutes_remaining=mins_left,
+                        preview_summary=row.get("farmer_facing_preview"),
                     )
                     try:
                         await signal_client.send(
@@ -153,12 +155,7 @@ async def tick_once(
                 if result.get("rowcount") == 1:
                     # Won the SQL race -- send expired note
                     to = _route_target(row)
-                    preview = row.get("farmer_facing_preview") or ""
-                    msg = (
-                        f"Your pending entry has expired (no response within {timeout_min} minutes).\n"
-                        f"Preview: {preview}\n"
-                        "Please submit again if you'd like to record this."
-                    )
+                    msg = build_expired_note()
                     try:
                         await signal_client.send(
                             msg,
