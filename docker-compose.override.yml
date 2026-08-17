@@ -188,6 +188,12 @@ services:
       context: ./src/farm-agent
       dockerfile: Dockerfile
     restart: unless-stopped
+    # MUSHY-41: host.docker.internal must resolve or BOTH the whisper call
+    # (WHISPER_URL below) and the Phase 63 chamber WS (BRIDGE_WS_URL, whose
+    # code default is ws://host.docker.internal:8081) fail. The Node alerter
+    # has carried this since Phase 25; the port was missing it.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file:
       # 2026-06-15: simple STRING form for compose v2.40 -- the object form
       # (`- path: ... required: false`) parses to env_file:None silently on
@@ -225,8 +231,26 @@ services:
       - WHISPER_URL=${WHISPER_URL:-http://host.docker.internal:8090}
       - CAPTURE_BASE_PATH=${CAPTURE_BASE_PATH:-/data/signal-capture}
       - CAPTURE_RETENTION_DAYS=${CAPTURE_RETENTION_DAYS:-30}
+      # MUSHY-39: the v1.11 CSV fidelity gate (T-62-09, the POY->KOY guard) is a
+      # no-op while this is empty -- load_fidelity_csv("") returns [] and every
+      # block passes through. Passthrough added so it CAN be enabled; default
+      # stays empty because switching it on is an operational decision, not a
+      # code fix: it starts holding drafts and asking the farmer to adjudicate.
+      # To enable, set the path AND mount the CSV read-only below. Note the CSV
+      # is a second reading, not ground truth -- the gate's job is to FLAG
+      # disagreement, not to overwrite the draft.
+      - FIDELITY_CSV_PATH=${FIDELITY_CSV_PATH:-}
       - TZ=${TZ:-America/Montevideo}
       - LOG_LEVEL=${LOG_LEVEL:-info}
+    # MUSHY-41: without these, attachments were written to container-local disk
+    # (lost on every rebuild) and whisper -- which runs on the HOST network --
+    # was handed /data/signal-capture/... paths that existed only inside this
+    # container, so every audio transcription failed degraded. The host and
+    # container paths are deliberately IDENTICAL: that is what makes a path
+    # written in here also valid for the host-side whisper process. Mirrors the
+    # Node alerter's volumes block.
+    volumes:
+      - /data/signal-capture:/data/signal-capture
     networks:
       - signal-net
       - default

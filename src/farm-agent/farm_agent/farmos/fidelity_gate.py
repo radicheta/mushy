@@ -97,6 +97,30 @@ def _extract_draft_strain(draft: dict) -> str | None:
     return None
 
 
+def _extract_block_name(draft: dict) -> str:
+    """Extract the B5 block name from a draft row.
+
+    MUSHY-39: this used to read draft["block_name"], but signal_draft has NO
+    block_name column -- so it was always "" and the gate degraded to
+    "block_not_in_csv" pass-through on every production row, silently disabling
+    the POY->KOY misattribution guard (T-62-09). The tests hid it by hand-building
+    rows with a top-level block_name that no real row has.
+
+    Canonical location is draft_json.block_name: the seeding extraction schema
+    requires it, and commit-seeding.js:47 reads `dj.block_name`. The top-level
+    key is still honoured for callers that flatten the row first.
+    """
+    dj = draft.get("draft_json") or {}
+    if isinstance(dj, dict):
+        v = dj.get("block_name")
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    v = draft.get("block_name")
+    if isinstance(v, str) and v.strip():
+        return v.strip()
+    return ""
+
+
 def check_fidelity(draft: dict, csv_rows: list[dict]) -> dict:
     """Compare draft block_name strain against the CSV source.
 
@@ -120,7 +144,7 @@ def check_fidelity(draft: dict, csv_rows: list[dict]) -> dict:
         Disagreement -- hold draft as fidelity_cross_check_unverified and emit
         farmer ask-back (D-06; never a silent hold).
     """
-    block_name = (draft.get("block_name") or "").strip()
+    block_name = _extract_block_name(draft)
 
     # Build a lookup table from the CSV rows for this call.
     # block_name is the key; strain_code is the expected value.
