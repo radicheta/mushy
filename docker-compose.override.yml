@@ -148,8 +148,12 @@ services:
       - CAPTURE_RETENTION_DAYS=${CAPTURE_RETENTION_DAYS:-30}
       - CAPTURE_RETENTION_CRON=${CAPTURE_RETENTION_CRON:-15 3 * * *}
       # Phase 39 (D-03a, D-04..D-04c): confirm-loop timeouts + edit cap.
-      - DRAFT_PENDING_TIMEOUT_MIN=${DRAFT_PENDING_TIMEOUT_MIN:-30}
-      - DRAFT_NUDGE_FRACTION=${DRAFT_NUDGE_FRACTION:-0.8}
+      # 2026-08-17 farmer feedback: the window "felt like 5 minutes". It was 30,
+      # but the nudge fired at 80% (24 min) and its text -- "auto-expires in
+      # 6 min" -- was the only deadline the farmer ever saw. Widened to 60 with
+      # the nudge at the halfway mark, so the reminder arrives with 30 min left.
+      - DRAFT_PENDING_TIMEOUT_MIN=${DRAFT_PENDING_TIMEOUT_MIN:-60}
+      - DRAFT_NUDGE_FRACTION=${DRAFT_NUDGE_FRACTION:-0.5}
       - DRAFT_WATCHDOG_INTERVAL_MS=${DRAFT_WATCHDOG_INTERVAL_MS:-60000}
       - MAX_EDIT_TURNS=${MAX_EDIT_TURNS:-3}
       # Phase 40 (D-01b, D-07, D-07a): farmOS write path + commit watchdog.
@@ -251,12 +255,13 @@ services:
       # went unnoticed (MUSHY-41).
       - BRIDGE_WS_URL=${BRIDGE_WS_URL:-ws://host.docker.internal:8081}
       - BRIDGE_HEALTH_URL=${BRIDGE_HEALTH_URL:-http://host.docker.internal:8081/health}
-      - DRAFT_NUDGE_FRACTION=${DRAFT_NUDGE_FRACTION:-0.8}
+      # Kept identical to the alerter block above -- see the note there.
+      - DRAFT_NUDGE_FRACTION=${DRAFT_NUDGE_FRACTION:-0.5}
       - MAX_EDIT_TURNS=${MAX_EDIT_TURNS:-3}
       - FARMOS_URL=${FARMOS_URL:-http://10.68.155.50:18080}
       - FARMOS_USERNAME=${FARMOS_USERNAME}
       - FARMOS_INTEGRATION=${FARMOS_INTEGRATION:-0}
-      - DRAFT_PENDING_TIMEOUT_MIN=${DRAFT_PENDING_TIMEOUT_MIN:-30}
+      - DRAFT_PENDING_TIMEOUT_MIN=${DRAFT_PENDING_TIMEOUT_MIN:-60}
       - DRAFT_WATCHDOG_INTERVAL_MS=${DRAFT_WATCHDOG_INTERVAL_MS:-60000}
       - COMMIT_WATCHDOG_INTERVAL_MS=${COMMIT_WATCHDOG_INTERVAL_MS:-30000}
       - COMMIT_WATCHDOG_BATCH_CAP=${COMMIT_WATCHDOG_BATCH_CAP:-10}
