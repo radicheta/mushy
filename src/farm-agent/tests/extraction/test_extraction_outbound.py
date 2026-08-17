@@ -79,7 +79,9 @@ async def test_batch_summary_counts_clean_and_needs_review():
     c = FakeSignalClient()
     await _dispatcher(c)("send_batch_review_summary", {
         "sender_e164": "+59891111111",
-        "draftIds": [
+        # snake_case, matching the real producer (batch_mode.py). Hand-writing
+        # Node's camelCase draftIds here is what hid C-1.
+        "draft_ids": [
             {"id": "a" * 20, "status": "needs_review"},
             {"id": "b" * 20, "status": "needs_review"},
             {"id": "c" * 20, "status": "awaiting_farmer"},

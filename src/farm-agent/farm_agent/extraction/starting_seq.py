@@ -45,7 +45,11 @@ from __future__ import annotations
 import logging
 import re
 
-from farm_agent.extraction.preview_builder import fmt_num, sanitize_farmer_text
+from farm_agent.extraction.preview_builder import (
+    fmt_num,
+    render_seeding_session,
+    sanitize_farmer_text,
+)
 from farm_agent.extraction.seq_helper import (
     lookup_last_seq_for_date,
     mint_child_block_names,
@@ -342,8 +346,16 @@ async def handle_starting_seq_reply(
         updated_draft = {**draft, "groups": updated_groups}
         updated_draft.pop("needs_input", None)
 
+        # Re-render the preview off the FILLED draft. row["farmer_facing_preview"] is
+        # still the ask-back question; persisting and dispatching it would answer the
+        # farmer's SEQ reply with the same question they just answered.
+        filled_preview = render_seeding_session(updated_draft)
+
         upd = await extraction_db.update_draft_status(
-            pool, draft_id, DraftStatus.AWAITING_FARMER, {"draft_json": updated_draft}
+            pool,
+            draft_id,
+            DraftStatus.AWAITING_FARMER,
+            {"draft_json": updated_draft, "farmer_facing_preview": filled_preview},
         )
         if not upd.get("ok"):
             _log.warning("[extraction] starting_seq fill update failed: %s", upd.get("reason"))
@@ -353,6 +365,7 @@ async def handle_starting_seq_reply(
             await outbound_dispatcher["dispatch"]("send_seeding_session_filled_preview", {
                 **row,
                 "draft_json": updated_draft,
+                "farmer_facing_preview": filled_preview,
                 "status": DraftStatus.AWAITING_FARMER,
             })
         except Exception as e:  # noqa: BLE001

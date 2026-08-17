@@ -72,7 +72,7 @@ def test_seeding_session_table_columns_align():
     # rows by position and checks their alignment directly.
     draft = {
         "type": "seeding_session",
-        "event_date": "20260522",
+        "event_date": "2026-05-22",
         "groups": [
             {"parent": {"value": "KOY"}, "species": {"value": "KOY"},
              "qty": {"value": 3}, "child_block_names": {"value": ["a", "b", "c"]}},
@@ -157,10 +157,10 @@ def test_render_scalar_bool_lowercase_matches_node():
 
 
 def test_render_starting_seq_ask_back_matches_node():
-    draft = {"event_date": "20260522", "groups": [{"qty": {"value": 3}}, {"qty": {"value": 2}}]}
+    draft = {"event_date": "2026-05-22", "groups": [{"qty": {"value": 3}}, {"qty": {"value": 2}}]}
     out = render_starting_seq_ask_back(draft)
     assert out == (
-        "Inoc session: 20260522\n"
+        "Inoc session: 2026-05-22\n"
         "5 blocks across 2 parents (awaiting starting block-number)\n\n"
         "Reply with the starting SEQ (e.g. 4)."
     )

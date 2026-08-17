@@ -167,6 +167,13 @@ services:
       - COMMIT_RETRY_BACKOFF_MS=${COMMIT_RETRY_BACKOFF_MS:-1000,4000,16000}
       - COMMIT_LOCK_STALE_MIN=${COMMIT_LOCK_STALE_MIN:-5}
       - FARMOS_INTEGRATION=${FARMOS_INTEGRATION:-0}
+      # MUSHY-76 (task 9): extraction-pipeline knobs. Listed here as well as on
+      # alerter-py so one .env value moves BOTH agents. This service passes only
+      # what it explicitly lists, so omitting them here would let a .env override
+      # drift the Python agent away from the live Node one.
+      - EXTRACTION_CONFIDENCE_THRESHOLD=${EXTRACTION_CONFIDENCE_THRESHOLD:-0.7}
+      - DRAFT_IDLE_GAP_MIN=${DRAFT_IDLE_GAP_MIN:-30}
+      - MAX_ASKBACK_TURNS=${MAX_ASKBACK_TURNS:-3}
     volumes:
       - /data/signal-capture:/data/signal-capture
       - ./scripts/signal:/opt/scripts/signal:ro

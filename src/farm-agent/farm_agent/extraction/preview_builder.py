@@ -303,11 +303,11 @@ def render_seeding_session(draft: dict) -> str:
     # has populated names); otherwise fall back to qty.value.
     total_children = 0
     for g in groups:
-        names = (g or {}).get("child_block_names", {}).get("value") if g else None
+        names = ((g or {}).get("child_block_names") or {}).get("value") if g else None
         if isinstance(names, list):
             total_children += len(names)
         else:
-            qv = (g or {}).get("qty", {}).get("value") if g else None
+            qv = ((g or {}).get("qty") or {}).get("value") if g else None
             if isinstance(qv, (int, float)) and not isinstance(qv, bool):
                 total_children += qv
 
@@ -342,11 +342,11 @@ def render_starting_seq_ask_back(draft: dict) -> str:
     groups = draft.get("groups") if isinstance(draft.get("groups"), list) else []
     total_children = 0
     for g in groups:
-        names = (g or {}).get("child_block_names", {}).get("value") if g else None
+        names = ((g or {}).get("child_block_names") or {}).get("value") if g else None
         if isinstance(names, list):
             total_children += len(names)
         else:
-            qv = (g or {}).get("qty", {}).get("value") if g else None
+            qv = ((g or {}).get("qty") or {}).get("value") if g else None
             if isinstance(qv, (int, float)) and not isinstance(qv, bool):
                 total_children += qv
     date = draft.get("event_date")
@@ -364,16 +364,16 @@ def render_starting_seq_ask_back(draft: dict) -> str:
 
 
 def _format_session_row(key: int, g: dict | None) -> list[str]:
-    parent_val = (g or {}).get("parent", {}).get("value") if g else None
+    parent_val = ((g or {}).get("parent") or {}).get("value") if g else None
     if parent_val == "NO_PARENT":
         parent = "no parent recorded"
     else:
         parent = str(parent_val) if parent_val is not None else "[?]"
-    species_val = (g or {}).get("species", {}).get("value") if g else None
+    species_val = ((g or {}).get("species") or {}).get("value") if g else None
     species = str(species_val) if species_val is not None else "[?]"
-    qty_val = (g or {}).get("qty", {}).get("value") if g else None
+    qty_val = ((g or {}).get("qty") or {}).get("value") if g else None
     qty = fmt_num(qty_val) if qty_val is not None else "[?]"
-    names = (g or {}).get("child_block_names", {}).get("value") if g else None
+    names = ((g or {}).get("child_block_names") or {}).get("value") if g else None
     names = names if isinstance(names, list) else []
     return [str(key), parent, species, qty, _render_children(names)]
 

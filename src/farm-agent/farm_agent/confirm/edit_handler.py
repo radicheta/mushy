@@ -137,11 +137,16 @@ def create_edit_handler(*, pool, extractor, confirm_repo, extraction_db, config,
                 threshold=getattr(config, "extraction_confidence_threshold", 0.7),
             )
 
-            upd = await extraction_db.update_draft_status(
+            # update_draft_after_edit carries Node's WHERE ... AND status='awaiting_farmer'
+            # guard (confirmDb.updateDraftAfterEdit). extraction_db.update_draft_status has
+            # no status predicate and SETS the status, so an EDIT racing a YES -- or arriving
+            # after a confirm/commit/expire -- would resurrect a closed draft and overwrite
+            # its contents. The commit_failed -> awaiting_farmer reactivation above already
+            # lands the status change, so the happy path is unaffected.
+            upd = await confirm_repo.update_draft_after_edit(
                 pool,
                 draft_id,
-                "awaiting_farmer",
-                extras={
+                {
                     "draft_json": draft,
                     "per_field_confidence": per_field_confidence or None,
                     "farmer_facing_preview": new_preview,

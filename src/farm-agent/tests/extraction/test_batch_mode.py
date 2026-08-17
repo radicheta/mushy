@@ -3,7 +3,7 @@
 import pytest
 
 from farm_agent.extraction.batch_mode import run_batch_mode, run_multi_confirm
-from farm_agent.extraction import preview_builder, state_machine
+from farm_agent.extraction import outbound, preview_builder, state_machine
 
 
 class RealisticDb:
@@ -85,6 +85,72 @@ async def test_batch_mode_persists_every_draft_on_the_page():
                                **_kwargs(db, d, drafts))
     assert res["count"] == 7
     assert len(db.rows) == 7
+
+
+async def test_batch_summary_payload_carries_every_draft_id_on_the_seam():
+    """C-1: the producer key here and the consumer key in outbound.py must be the
+    SAME key. They were draft_ids vs draftIds, so every page reported 0 drafts."""
+    db, d = RealisticDb(), FakeDispatcher()
+    drafts = [_clean(i) for i in range(7)]
+    await run_batch_mode(source_capture_ids_base=["cap1"], **_kwargs(db, d, drafts))
+
+    summaries = [payload for effect, payload in d.calls if effect == "send_batch_review_summary"]
+    assert len(summaries) == 1
+    assert len(summaries[0]["draft_ids"]) == 7
+
+    # And the real consumer must read that payload, not an empty list.
+    sent = []
+
+    class FakeSignal:
+        async def send(self, body, **kw):
+            sent.append(body)
+            return {"ok": True}
+
+    dispatcher = outbound.create_outbound_dispatcher(
+        FakeSignal(), _config(), preview_builder, "+59891000000"
+    )
+    res = await dispatcher["dispatch"]("send_batch_review_summary", summaries[0])
+    assert res.get("ok") is True
+    assert "7 drafts" in sent[0]
+    assert "IDs: ." not in sent[0]
+
+
+async def test_batch_mode_continues_past_a_failed_draft_mid_page():
+    """Deferred item: the per-draft fail-soft `continue`. One bad entry on a
+    paper-log page must not take the rest of the page down with it."""
+    db, d = RealisticDb(), FakeDispatcher()
+
+    real_insert = db.insert_draft
+    calls = {"n": 0}
+
+    async def flaky_insert(pool, row):
+        calls["n"] += 1
+        if calls["n"] == 3:
+            return {"ok": False, "reason": "boom"}
+        return await real_insert(pool, row)
+
+    db.insert_draft = flaky_insert
+
+    real_update = db.update_draft_status
+
+    async def flaky_update(pool, draft_id, status, extras=None):
+        # Last entry on the page, so its row staying 'pending' cannot take the
+        # in-flight slot from a later sibling.
+        if draft_id.endswith("#6"):
+            return {"ok": False, "reason": "boom"}
+        return await real_update(pool, draft_id, status, extras)
+
+    db.update_draft_status = flaky_update
+
+    drafts = [_clean(i) for i in range(7)]
+    res = await run_batch_mode(source_capture_ids_base=["cap1"], **_kwargs(db, d, drafts))
+
+    # The failed insert drops exactly one draft; the failed status update does
+    # not drop its draft (it is still reported), and neither aborts the page.
+    assert res["count"] == 6
+    assert len(db.rows) == 6
+    summaries = [payload for effect, payload in d.calls if effect == "send_batch_review_summary"]
+    assert len(summaries[0]["draft_ids"]) == 6
 
 
 async def test_batch_mode_routes_clean_drafts_to_needs_review():

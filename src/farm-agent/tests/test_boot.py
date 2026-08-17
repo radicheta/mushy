@@ -476,7 +476,8 @@ async def test_boot_dispatch_handle_carries_capture_to_a_draft_row(monkeypatch, 
 
     async with pool.connection() as conn:
         result = await conn.execute(
-            "SELECT draft_json, status FROM signal_draft WHERE sender_e164=%s", (sender,)
+            "SELECT draft_json, status, origin FROM signal_draft WHERE sender_e164=%s",
+            (sender,),
         )
         rows = await result.fetchall()
 
@@ -500,4 +501,12 @@ async def test_boot_dispatch_handle_carries_capture_to_a_draft_row(monkeypatch, 
     assert draft_json["harvest_batch_id"] == "B1", (
         f"draft row exists but draft_json does not match the fake extractor's "
         f"output: {draft_json!r}"
+    )
+    # I-3 / top design risk: the LIVE Node commit watchdog selects
+    # WHERE status='confirmed' AND origin != 'python'. A Python draft left at the
+    # column default would be committed to the real farm's production farmOS by
+    # the other agent. Asserted here against a real row, not against SQL text.
+    assert rows[0][2] == "python", (
+        f"signal_draft.origin is {rows[0][2]!r}, not 'python' -- the Node commit "
+        "watchdog would pick this draft up and write it to production farmOS"
     )

@@ -4,14 +4,22 @@ from farm_agent.confirm.edit_handler import create_edit_handler
 
 
 class FakeConfirmRepo:
-    def __init__(self, bump_ok=True):
+    def __init__(self, bump_ok=True, edit_rowcount=1):
         self.bumped = []
         self.bump_ok = bump_ok
         self.events = []  # (draft_id, event, payload)
+        self.edits = []  # (draft_id, fields)
+        self.edit_rowcount = edit_rowcount
 
     async def bump_edit_turn(self, pool, draft_id):
         self.bumped.append(draft_id)
         return {"ok": self.bump_ok, "edit_turn_count": 1}
+
+    async def update_draft_after_edit(self, pool, draft_id, fields):
+        # Real SQL is WHERE id=%s AND status='awaiting_farmer'; rowcount 0 means
+        # the draft left awaiting_farmer before the update landed.
+        self.edits.append((draft_id, fields))
+        return {"ok": True, "rowcount": self.edit_rowcount}
 
     async def append_event_via_pool(self, pool, draft_id, event, payload):
         self.events.append((draft_id, event, payload))
@@ -67,13 +75,43 @@ async def test_edit_passes_the_correction_to_the_extractor():
 async def test_edit_updates_draft_in_place_same_id():
     ex, _ = _extractor({"ok": True, "draft": CORRECTED, "per_field_confidence": {},
                         "drafts": [{"draft": CORRECTED, "per_field_confidence": {}}]})
-    db = FakeExtractionDb()
-    h = create_edit_handler(pool=None, extractor=ex, confirm_repo=FakeConfirmRepo(),
-                            extraction_db=db, config=_config())
+    repo = FakeConfirmRepo()
+    h = create_edit_handler(pool=None, extractor=ex, confirm_repo=repo,
+                            extraction_db=FakeExtractionDb(), config=_config())
     await h["handle_edit"](ROW, "750 grams")
-    draft_id, status, extras = db.updates[-1]
+    draft_id, fields = repo.edits[-1]
     assert draft_id == "d1"
-    assert extras["draft_json"]["qty_g"] == 750
+    assert fields["draft_json"]["qty_g"] == 750
+
+
+async def test_edit_goes_through_the_status_guarded_repo_not_update_draft_status():
+    """C-3: the write MUST carry Node's WHERE ... AND status='awaiting_farmer'
+    guard. extraction_db.update_draft_status has no status predicate and SETS
+    the status, so an EDIT racing a YES would resurrect a closed draft."""
+    ex, _ = _extractor({"ok": True, "draft": CORRECTED, "per_field_confidence": {},
+                        "drafts": [{"draft": CORRECTED, "per_field_confidence": {}}]})
+    repo = FakeConfirmRepo()
+    db = FakeExtractionDb()
+    h = create_edit_handler(pool=None, extractor=ex, confirm_repo=repo,
+                            extraction_db=db, config=_config())
+    res = await h["handle_edit"](ROW, "750 grams")
+    assert res["ok"] is True
+    assert len(repo.edits) == 1
+    assert db.updates == [], "unguarded update_draft_status must not be used for EDIT"
+
+
+async def test_edit_on_a_draft_that_left_awaiting_farmer_is_a_noop():
+    """C-3: guarded UPDATE matches no row (the draft was confirmed / committed /
+    expired mid-EDIT). Node returns draft_no_longer_active; so must we."""
+    ex, _ = _extractor({"ok": True, "draft": CORRECTED, "per_field_confidence": {},
+                        "drafts": [{"draft": CORRECTED, "per_field_confidence": {}}]})
+    repo = FakeConfirmRepo(edit_rowcount=0)
+    h = create_edit_handler(pool=None, extractor=ex, confirm_repo=repo,
+                            extraction_db=FakeExtractionDb(), config=_config())
+    res = await h["handle_edit"](ROW, "750 grams")
+    assert res["ok"] is True
+    assert res["side_effect"] == "noop"
+    assert res["reason"] == "draft_no_longer_active"
 
 
 async def test_edit_returns_preview_resend_with_new_preview():

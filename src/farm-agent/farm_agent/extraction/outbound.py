@@ -127,8 +127,12 @@ def create_outbound_dispatcher(
         return await _send_farmer_preview(draft_row, "seeding_session_filled_preview")
 
     async def _send_batch_review_summary(batch: dict) -> dict:
-        # batch = {sender_e164, draftIds: [{id, type, status}, ...], reply_target_kind,
+        # batch = {sender_e164, draft_ids: [{id, type, status}, ...], reply_target_kind,
         #          group_id, source_capture_ids}
+        # Key is snake_case draft_ids, matching the producer (batch_mode.py) and every
+        # other field in the payload. Node's camelCase draftIds is a sanctioned rename:
+        # reading it here while the producer sent draft_ids made every summary report
+        # zero drafts.
         # One Signal message to Don Santiago summarising the page instead of N per-draft pings.
         no_operator = (
             not operator_recipient
@@ -138,7 +142,9 @@ def create_outbound_dispatcher(
         if no_operator:
             logger.warning("[outbound] batch_review_summary: no_target (operator_recipient unset)")
             return {"ok": False, "reason": "no_target"}
-        drafts = batch.get("draftIds") if batch and isinstance(batch.get("draftIds"), list) else []
+        drafts = (
+            batch.get("draft_ids") if batch and isinstance(batch.get("draft_ids"), list) else []
+        )
         sender = (batch and batch.get("sender_e164")) or "(unknown)"
         if _is_operator_equals_sender(sender):
             logger.info(

@@ -124,6 +124,57 @@ async def test_numeric_reply_mints_seq_across_groups():
     assert [n[-1] for n in groups[1]["child_block_names"]["value"]] == ["6", "7", "8"]
 
 
+async def test_answered_seq_is_answered_with_the_filled_table_not_the_question():
+    """C-2: the farmer answers "4" and must receive the filled session preview.
+    The row still holds the ask-back text, so dispatching row unchanged sent the
+    same question back -- with needs_input already cleared, so their next reply
+    fell through to the standard confirm path."""
+    from farm_agent.extraction import outbound, preview_builder
+
+    ask_back = build_starting_seq_ask_back_text(
+        total_children=5, event_date="2026-05-22", last_seq=None,
+        last_block_name=None, sender_name=None,
+    )
+    row = _session_row()
+    row["farmer_facing_preview"] = ask_back
+    db, d = FakeDb(row), FakeDispatcher()
+
+    res = await handle_starting_seq_reply(
+        draft_id="d1", reply_text="4", capture_ctx={},
+        pool=None, extraction_db=db, outbound_dispatcher={"dispatch": d.dispatch}, log=None)
+    assert res["ok"] is True
+
+    # The refreshed preview must be PERSISTED (the nudge re-reads the row later).
+    _, _, extras = db.updates[-1]
+    assert "YES to commit" in extras["farmer_facing_preview"]
+
+    # ... and it must be what actually goes down the wire.
+    effect, dispatched = d.calls[-1]
+    assert effect == "send_seeding_session_filled_preview"
+
+    sent = []
+
+    class FakeSignal:
+        async def send(self, body, **kw):
+            sent.append(body)
+            return {"ok": True}
+
+    class C:
+        pass
+
+    dispatcher = outbound.create_outbound_dispatcher(
+        FakeSignal(), C(), preview_builder, "+59891000000"
+    )
+    await dispatcher["dispatch"]("send_seeding_session_filled_preview", dispatched)
+    body = sent[0]
+    # Group 1 (2 children) renders comma-joined; group 2 (3 consecutive) collapses.
+    assert "260522_KOY_4, 260522_KOY_5" in body
+    assert "260522_KOY_6..8" in body
+    assert "YES to commit | NO to cancel | EDIT to change" in body
+    assert "What block number should I start at?" not in body
+    assert "starting SEQ" not in body
+
+
 async def test_reply_clears_needs_input():
     db, d = FakeDb(_session_row()), FakeDispatcher()
     await handle_starting_seq_reply(

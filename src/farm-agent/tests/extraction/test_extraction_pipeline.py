@@ -209,6 +209,38 @@ async def test_append_continuity_updates_existing_draft():
     assert extras["log_type"] == "harvest"
 
 
+async def test_replace_continuity_reuses_the_draft_without_extending_captures():
+    """I-5: the third continuity branch. `replace` supersedes the in-flight draft
+    body on the SAME row, so it keeps the prior source_capture_ids rather than
+    extending them the way `append` does."""
+    pool = FakePool()
+    db = FakeDb(in_flight={"id": "existing", "source_capture_ids": ["cap0"],
+                           "askback_turns": 1, "updated_at": None})
+    p = _pipeline(db, _extractor({
+        "ok": True, "drafts": [{"draft": CLEAN, "per_field_confidence": {}}],
+        "draft": CLEAN, "per_field_confidence": {}, "continuity_decision": "replace",
+        "usage": None,
+    }), pool=pool)
+    res = await p["enqueue"](CTX)
+    assert res["ok"] is True
+    assert res["draft_id"] == "existing"
+    assert res["continuity"] == "replace"
+    assert db.inserted == []
+
+    # The new body lands on the existing row.
+    persist_updates = [u for u in db.updates if u[0] == "existing"]
+    assert persist_updates
+    _, status, extras = persist_updates[0]
+    assert status == "pending"
+    assert extras["draft_json"] == CLEAN
+
+    # ... and source_capture_ids is NOT extended: the raw-SQL write rewrites the
+    # prior list unchanged, where `append` would have written ["cap0", "cap1"].
+    assert len(pool.calls) == 1
+    _sql, params = pool.calls[0]
+    assert params == (["cap0"], "existing")
+
+
 async def test_append_persists_source_capture_ids_via_raw_sql():
     # The append-path extras whitelist excludes arrays (extraction_db.py), so
     # source_capture_ids is extended via a separate raw pool.execute() call --
