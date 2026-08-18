@@ -427,3 +427,57 @@ async def test_dispatch_failure_does_not_fail_enqueue():
     }), BadDispatcher())
     res = await p["enqueue"](CTX)
     assert res["ok"] is True
+
+
+# ---------------------------------------------------------------------------
+# Seam: the pipeline must survive what the extractor ACTUALLY produces
+# ---------------------------------------------------------------------------
+
+
+def _real_extractor_result():
+    """pack_result() over a REAL Submission -- the genuine extractor output.
+
+    Every other test in this file hands the pipeline hand-written dicts, which
+    is exactly why the live-fire crash ("'SeedingSession' object has no
+    attribute 'get'") reached production-adjacent code. This one drives the
+    real boundary function over the real pydantic schemas.
+    """
+    import json  # noqa: PLC0415
+    from pathlib import Path  # noqa: PLC0415
+
+    from farm_agent.extraction.extractor import pack_result  # noqa: PLC0415
+    from farm_agent.extraction.schemas.submission import Submission  # noqa: PLC0415
+
+    fixture = (
+        Path(__file__).parent.parent
+        / "fixtures" / "extraction" / "seeding-session-may22" / "expected-draft.json"
+    )
+    submission = Submission.model_validate({
+        "drafts": [{
+            "draft": json.loads(fixture.read_text()),
+            "per_field_confidence": {"event_date": 0.98, "groups": 0.95},
+        }],
+        "continuity": "start_new",
+        "continuity_reason": "New seeding session",
+        "capture_kind": "voice_note",
+    })
+    return pack_result(submission, {"input_tokens": 10, "output_tokens": 20})
+
+
+async def test_real_extractor_output_flows_through_to_an_inserted_draft_row():
+    import json  # noqa: PLC0415
+
+    db = FakeDb()
+    p = _pipeline(db, _extractor(_real_extractor_result()))
+
+    res = await p["enqueue"](CTX)
+
+    assert res["ok"] is True, f"pipeline rejected real extractor output: {res}"
+    assert len(db.inserted) == 1, "no draft row inserted from real extractor output"
+    row = db.inserted[0]
+    assert row["source_capture_ids"] == ["cap1"]
+    # draft_json goes into a jsonb column via Jsonb(...) -- it must be plain data.
+    persisted = row.get("draft_json") or db.updates[-1][2].get("draft_json")
+    assert isinstance(persisted, dict)
+    assert persisted["type"] == "seeding_session"
+    json.dumps(persisted)

@@ -156,13 +156,13 @@ async def test_real_sonnet_may22_extraction() -> None:
 
         drafts = result.get("drafts") or []
         assert len(drafts) >= 1, "No drafts returned"
-        seeding_session = drafts[0].draft
+        seeding_session = drafts[0]["draft"]
 
-        assert seeding_session.type == "seeding_session", (
-            f"Expected type=seeding_session, got {seeding_session.type!r}"
+        assert seeding_session["type"] == "seeding_session", (
+            f"Expected type=seeding_session, got {seeding_session['type']!r}"
         )
-        assert len(seeding_session.groups) == 5, (
-            f"Expected 5 groups, got {len(seeding_session.groups)} -- "
+        assert len(seeding_session["groups"]) == 5, (
+            f"Expected 5 groups, got {len(seeding_session['groups'])} -- "
             "real model-accuracy signal; do NOT relax the assertion; record mismatched count as a finding."
         )
 
@@ -170,8 +170,8 @@ async def test_real_sonnet_may22_extraction() -> None:
         # Child block name assertions (NOT KOY parent attribution)
         # -----------------------------------------------------------------------
         all_child_names = []
-        for group in seeding_session.groups:
-            names = group.child_block_names.value
+        for group in seeding_session["groups"]:
+            names = group["child_block_names"]["value"]
             all_child_names.extend(names)
 
         assert len(all_child_names) == 11, (
@@ -191,13 +191,13 @@ async def test_real_sonnet_may22_extraction() -> None:
         # -----------------------------------------------------------------------
         # Per-field provenance assertions
         # -----------------------------------------------------------------------
-        for i, group in enumerate(seeding_session.groups):
-            assert hasattr(group.parent, "value"), f"Group {i}: parent.value missing"
-            assert hasattr(group.parent, "confidence"), f"Group {i}: parent.confidence missing"
-            assert hasattr(group.parent, "sources"), f"Group {i}: parent.sources missing"
-            assert hasattr(group.species, "value"), f"Group {i}: species.value missing"
-            assert hasattr(group.qty, "value"), f"Group {i}: qty.value missing"
-            assert hasattr(group.child_block_names, "value"), (
+        for i, group in enumerate(seeding_session["groups"]):
+            assert "value" in group["parent"], f"Group {i}: parent.value missing"
+            assert "confidence" in group["parent"], f"Group {i}: parent.confidence missing"
+            assert "sources" in group["parent"], f"Group {i}: parent.sources missing"
+            assert "value" in group["species"], f"Group {i}: species.value missing"
+            assert "value" in group["qty"], f"Group {i}: qty.value missing"
+            assert "value" in group["child_block_names"], (
                 f"Group {i}: child_block_names.value missing"
             )
 
@@ -208,7 +208,7 @@ async def test_real_sonnet_may22_extraction() -> None:
             f"\n[live-fire] Cache liveness: "
             f"cache_creation={cache_creation}  cache_read={cache_read}"
             f"\n[live-fire] Draft shape: "
-            f"type={seeding_session.type}  groups={len(seeding_session.groups)}  "
+            f"type={seeding_session['type']}  groups={len(seeding_session['groups'])}  "
             f"children={len(all_child_names)}"
             f"\n[live-fire] Child names: {all_child_names}"
             f"\n[live-fire] Usage: {usage}"

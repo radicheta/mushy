@@ -125,22 +125,26 @@ async def test_extractor_replay_may22_fixture():
     assert result["ok"] is True, f"extract failed: {result.get('reason')}"
 
     first_draft_submission = result["drafts"][0]
-    seeding_session = first_draft_submission.draft
+    assert isinstance(first_draft_submission, dict)
+    seeding_session = first_draft_submission["draft"]
+    assert isinstance(seeding_session, dict), (
+        "pack_result must hand downstream plain dicts, not pydantic models"
+    )
 
     # Type check
-    assert seeding_session.type == "seeding_session"
+    assert seeding_session["type"] == "seeding_session"
 
     # 5 groups
-    assert len(seeding_session.groups) == 5, (
-        f"Expected 5 groups, got {len(seeding_session.groups)}"
+    assert len(seeding_session["groups"]) == 5, (
+        f"Expected 5 groups, got {len(seeding_session['groups'])}"
     )
 
     # 11 children total across all groups
     all_child_names = []
-    for group in seeding_session.groups:
-        child_block_names_field = group.child_block_names
+    for group in seeding_session["groups"]:
+        child_block_names_field = group["child_block_names"]
         # child_block_names is Provenanced[list[ChildBlockNameOrSentinel]]
-        names = child_block_names_field.value
+        names = child_block_names_field["value"]
         all_child_names.extend(names)
 
     assert len(all_child_names) == 11, (
@@ -155,18 +159,18 @@ async def test_extractor_replay_may22_fixture():
     )
 
     # Per-field provenance present on each group field
-    for i, group in enumerate(seeding_session.groups):
-        assert hasattr(group.parent, "value"), f"Group {i}: parent.value missing"
-        assert hasattr(group.parent, "confidence"), f"Group {i}: parent.confidence missing"
-        assert hasattr(group.parent, "sources"), f"Group {i}: parent.sources missing"
+    for i, group in enumerate(seeding_session["groups"]):
+        assert "value" in group["parent"], f"Group {i}: parent.value missing"
+        assert "confidence" in group["parent"], f"Group {i}: parent.confidence missing"
+        assert "sources" in group["parent"], f"Group {i}: parent.sources missing"
 
-        assert hasattr(group.species, "value"), f"Group {i}: species.value missing"
-        assert hasattr(group.qty, "value"), f"Group {i}: qty.value missing"
-        assert hasattr(group.child_block_names, "value"), f"Group {i}: child_block_names.value missing"
+        assert "value" in group["species"], f"Group {i}: species.value missing"
+        assert "value" in group["qty"], f"Group {i}: qty.value missing"
+        assert "value" in group["child_block_names"], f"Group {i}: child_block_names.value missing"
 
         # confidence must be in [0, 1]
-        assert 0.0 <= group.parent.confidence <= 1.0, (
-            f"Group {i}: parent.confidence={group.parent.confidence} out of range"
+        assert 0.0 <= group["parent"]["confidence"] <= 1.0, (
+            f"Group {i}: parent.confidence={group['parent']['confidence']} out of range"
         )
 
 

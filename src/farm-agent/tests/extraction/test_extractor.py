@@ -395,3 +395,53 @@ async def test_on_llm_call_observer_fires_on_error():
     assert _resp is None
     assert isinstance(_exc, RuntimeError)
     assert "timeout" in str(_exc)
+
+
+# ---------------------------------------------------------------------------
+# Boundary: pack_result must return plain dicts, never pydantic models
+# ---------------------------------------------------------------------------
+
+
+def test_pack_result_returns_plain_json_safe_dicts():
+    """A REAL Submission through pack_result must come out as plain dicts.
+
+    Regression for the first real-model live-fire failure: pack_result handed
+    `SeedingSession` model instances downstream, and every consumer (pipeline,
+    batch_mode, starting_seq, preview_builder, state_machine, seq_helper) does
+    dict access -> "'SeedingSession' object has no attribute 'get'". Every
+    hermetic test fed hand-written dicts, so nothing caught it. jsonb
+    persistence (Jsonb(draft_json)) would have failed next regardless.
+    """
+    from farm_agent.extraction.extractor import pack_result  # noqa: PLC0415
+    from farm_agent.extraction.schemas.submission import Submission  # noqa: PLC0415
+
+    # The genuine article: a real Submission built through the real schemas.
+    submission = Submission.model_validate(_valid_submission_dict())
+    assert submission.drafts[0].draft.type == "seeding_session"  # models on the way in
+
+    result = pack_result(submission, {"input_tokens": 1, "output_tokens": 2})
+
+    assert result["ok"] is True
+    assert isinstance(result["draft"], dict)
+    assert isinstance(result["per_field_confidence"], dict)
+    assert isinstance(result["drafts"], list)
+    for item in result["drafts"]:
+        assert isinstance(item, dict)
+        assert isinstance(item["draft"], dict)
+        assert isinstance(item["per_field_confidence"], dict)
+
+    # Nested structures too -- a half-converted result would just move the crash.
+    first = result["draft"]
+    assert first["type"] == "seeding_session"
+    assert first.get("groups")
+    for group in first["groups"]:
+        assert isinstance(group, dict)
+        assert isinstance(group["parent"], dict)
+        assert isinstance(group["child_block_names"]["value"], list)
+
+    # Scalars pass through unchanged, and the whole thing is jsonb-safe.
+    assert result["continuity_decision"] == "start_new"
+    assert result["capture_kind"] == "voice_note"
+    json.dumps(result["draft"])
+    json.dumps(result["drafts"])
+    json.dumps(result["per_field_confidence"])

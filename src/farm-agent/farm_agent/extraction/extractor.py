@@ -177,17 +177,28 @@ def pack_result(submission: Submission, usage: dict) -> dict:
     """Expand a validated Submission into the canonical extractor result dict.
 
     Mirrors Node's packResult (extractor.js lines 250-270).
+
+    Node's packResult returns the zod-validated tool input as PLAIN JS objects, and
+    every consumer in this port (pipeline, batch_mode, starting_seq, preview_builder,
+    state_machine, seq_helper) was written against that shape -- they do dict access
+    (draft.get("type"), draft["groups"]).  So the pydantic models MUST be dumped to
+    plain python data here, at the boundary, not handled downstream.
+
+    mode="json" so nested models, enums and any date-like fields come out as
+    JSON-safe primitives: draft_json is a jsonb column written via
+    psycopg.types.json.Jsonb(...), which cannot adapt a BaseModel either.
     """
-    drafts = list(submission.drafts) if submission.drafts else []
+    dumped = submission.model_dump(mode="json")
+    drafts: list[dict] = list(dumped.get("drafts") or [])
     first = drafts[0] if drafts else None
     return {
         "ok": True,
         "drafts": drafts,
-        "continuity_decision": submission.continuity,
-        "continuity_reason": submission.continuity_reason,
-        "draft": first.draft if first is not None else None,
-        "per_field_confidence": first.per_field_confidence if first is not None else None,
-        "capture_kind": submission.capture_kind,
+        "continuity_decision": dumped.get("continuity"),
+        "continuity_reason": dumped.get("continuity_reason"),
+        "draft": first.get("draft") if first is not None else None,
+        "per_field_confidence": first.get("per_field_confidence") if first is not None else None,
+        "capture_kind": dumped.get("capture_kind"),
         "usage": usage,
     }
 
