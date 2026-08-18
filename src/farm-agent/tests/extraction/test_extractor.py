@@ -12,6 +12,7 @@ Covers:
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -445,3 +446,105 @@ def test_pack_result_returns_plain_json_safe_dicts():
     json.dumps(result["draft"])
     json.dumps(result["drafts"])
     json.dumps(result["per_field_confidence"])
+
+
+# ---------------------------------------------------------------------------
+# Continuity path: the in-flight draft is a RAW DB ROW, not a hand-written dict
+# ---------------------------------------------------------------------------
+
+_ISO_TS_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
+
+
+async def _real_in_flight_row(pool, sender: str) -> dict:
+    """Insert a draft and read it back through the REAL DAO, so the fixture cannot drift.
+
+    Returns exactly what pipeline.py hands the extractor on the continuity path:
+    extraction_db.get_in_flight_for_sender(), i.e. dict(zip(cursor.description, row)) --
+    timestamptz -> datetime, jsonb -> dict, text[] -> list.
+    """
+    from farm_agent.extraction import extraction_db  # noqa: PLC0415
+
+    # Only this test's own sender; D-02c allows at most one in-flight draft per sender.
+    async with pool.connection() as conn:
+        await conn.execute("DELETE FROM signal_draft WHERE sender_e164 = %s", (sender,))
+
+    draft = json.loads((FIXTURE_DIR / "expected-draft.json").read_text())
+    ins = await extraction_db.insert_draft(pool, {
+        "id": extraction_db.compute_draft_id([f"cap-{sender}"]),
+        "sender_e164": sender,
+        "farmos_person": "santi",
+        "source_capture_ids": [f"cap-{sender}"],
+        "status": "awaiting_farmer",
+        "log_type": "seeding_session",
+        "draft_json": draft,
+        "per_field_confidence": {"event_date": 0.98},
+        "farmer_facing_preview": "preview",
+        "reply_target_kind": "dm",
+    })
+    assert ins["ok"] is True, ins
+
+    row = await extraction_db.get_in_flight_for_sender(pool, sender)
+    assert row is not None, "DAO returned no in-flight row -- fixture setup is broken"
+    return row
+
+
+async def test_extract_serializes_a_real_in_flight_db_row(pool):
+    """MUSHY-76: the continuity path must survive a raw DB row's datetimes.
+
+    The farmer's follow-up to an open draft (the common multi-message
+    inoculation shape) hands the extractor a RAW signal_draft row, where
+    created_at/updated_at are datetimes. json.dumps raised on them, so the
+    call never reached the model and every follow-up degraded to
+    {ok:False} silently. Every hermetic test passed a hand-written dict with
+    no datetime in it, which is why 1084 green tests missed it.
+
+    Drives the real extract() with a row read back through the real DAO
+    against the throwaway :5434 postgres, so the fixture cannot drift from
+    the real row shape again.
+    """
+    import datetime as dt  # noqa: PLC0415
+
+    sender = "+19995500076"  # unique to this test
+    row = await _real_in_flight_row(pool, sender)
+
+    # The row really is the hazard: datetimes, a jsonb dict, a text[] list.
+    assert isinstance(row["created_at"], dt.datetime)
+    assert row["created_at"].tzinfo is not None
+    assert isinstance(row["updated_at"], dt.datetime)
+    assert isinstance(row["draft_json"], dict)
+    assert isinstance(row["source_capture_ids"], list)
+
+    fake = FakeAnthropicClientForExtractor([{"tool_input": _valid_submission_dict()}])
+    extractor = _make_extractor(fake)
+
+    result = await extractor["extract"](
+        captures=[{"text": "add one more bag", "transcript": None, "images": []}],
+        in_flight_draft=row,
+    )
+
+    assert result["ok"] is True, result  # not {'ok': False, 'reason': '...not JSON serializable'}
+    assert len(fake.calls) == 1, "the model was never called -- the request did not assemble"
+
+    blocks = fake.calls[0]["messages"][-1]["content"]
+    texts = [b["text"] for b in blocks if b.get("type") == "text"]
+    in_flight_text = next(t for t in texts if t.startswith("In-flight draft: "))
+    assert _ISO_TS_RE.search(in_flight_text), (
+        f"no ISO-8601 timestamp in the serialized in-flight draft: {in_flight_text[:200]!r}"
+    )
+    # It is real JSON the model can parse, and the datetime came through as ISO-8601.
+    payload = json.loads(in_flight_text[len("In-flight draft: "):])
+    assert payload["created_at"] == row["created_at"].isoformat()
+    assert payload["draft_json"]["type"] == "seeding_session"
+
+    async with pool.connection() as conn:
+        await conn.execute("DELETE FROM signal_draft WHERE sender_e164 = %s", (sender,))
+
+
+def test_json_default_raises_on_genuinely_unknown_types():
+    """default= must NOT be a str() catch-all -- garbage the model reasons over is worse."""
+    from farm_agent.extraction.extractor import json_default  # noqa: PLC0415
+
+    with pytest.raises(TypeError):
+        json_default(b"\x00\x01")
+    with pytest.raises(TypeError):
+        json_default(object())
