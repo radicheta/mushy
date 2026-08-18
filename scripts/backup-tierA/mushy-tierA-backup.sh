@@ -19,6 +19,7 @@ VPS_REPO="${VPS_REPO:-/var/backups/mushy-tierA}"
 RECIPIENT_PUB="${RECIPIENT_PUB:-/etc/mushy/tierA-recipients.txt}"
 BRIDGE_HEARTBEAT_URL="${BRIDGE_HEARTBEAT_URL:-http://localhost:8081/heartbeat-alert}"
 RETENTION_DAYS="${RETENTION_DAYS:-30}"
+REPO_SCRIPT="${REPO_SCRIPT:-/mnt/slime-kingdom/opt/mushy/scripts/backup-tierA/mushy-tierA-backup.sh}"
 
 STAMP=$(date -u +%Y%m%d-%H%M)
 WORK=$(mktemp -d -t mushy-tierA-XXXXXX)
@@ -35,6 +36,19 @@ fail() {
     > /dev/null 2>&1 || true
   exit 1
 }
+
+# MUSHY-45: warn if the deployed copy has drifted from the repo copy.
+# This script ran for weeks without the signal-cli staging block below because
+# the repo version was edited and never re-installed, and nothing noticed. A
+# warning is deliberate rather than a hard fail: a drifted backup that still
+# runs beats no backup at all. Install with scripts/backup-tierA/install.sh.
+if [ -r "$REPO_SCRIPT" ] && ! cmp -s "$0" "$REPO_SCRIPT"; then
+  log "WARNING: deployed $0 differs from repo $REPO_SCRIPT -- re-run install.sh"
+  curl -sS --max-time 10 -X POST "$BRIDGE_HEARTBEAT_URL" \
+    -H 'Content-Type: application/json' \
+    -d '{"source":"backup-tierA","message":"\u26a0\ufe0f Tier A backup script has drifted from the repo copy -- re-run install.sh"}' \
+    > /dev/null 2>&1 || true
+fi
 
 # 1. Stage source files into WORK/payload/
 mkdir -p "$WORK/payload/elder-plops" "$WORK/payload/fc1" "$WORK/payload/vps"
@@ -61,6 +75,15 @@ if docker volume inspect mushy_signal-cli-data >/dev/null 2>&1; then
     alpine:3 sh -c 'tar -czf /out/signal-cli-data.tar.gz -C /data .' \
     || fail "tar mushy_signal-cli-data"
   log "  staged docker volume mushy_signal-cli-data ($(stat -c%s "$WORK/payload/elder-plops/signal-cli-data.tar.gz") bytes)"
+  # MUSHY-45: the identity is the single point of failure for ALL farmer
+  # alerting -- losing it means full re-registration and re-linking every
+  # farmer's trust. If the volume exists, a staged tarball is not optional;
+  # a silent skip here is exactly how it went missing for weeks.
+  SIGNAL_TAR="$WORK/payload/elder-plops/signal-cli-data.tar.gz"
+  [ -s "$SIGNAL_TAR" ] || fail "signal-cli identity not staged (tarball missing or empty)"
+  if [ "$(stat -c%s "$SIGNAL_TAR")" -lt 1024 ]; then
+    fail "signal-cli identity tarball implausibly small ($(stat -c%s "$SIGNAL_TAR") bytes)"
+  fi
 else
   log "  skip: mushy_signal-cli-data volume not present"
 fi
