@@ -35,6 +35,7 @@ import httpx
 from farm_agent.tenancy.tenant import load as load_config
 from farm_agent.persistence.pool import build_pool
 from farm_agent.persistence.migrations import run_migrations
+from farm_agent.persistence import outbound_repo
 from farm_agent.signal_io.client import SignalClient
 from farm_agent.signal_io.receive_loop import ReceiveLoop
 from farm_agent.capture.transcribe_client import create_transcribe_client
@@ -87,9 +88,15 @@ async def main() -> None:
     http = httpx.AsyncClient()
     # Phase 63 / Pitfall 9: the outbound cap now lives on ChamberConfig (D-03), so
     # boot supplies it through the hook. SignalClient's own constant is only a floor.
+    # MUSHY-90: outbound_repo + pool are what arm the persist hook in
+    # SignalClient.send(). Without them every send writes no signal_outbound row,
+    # silently, and confirm_repo.find_draft_by_quoted_msg_ts has nothing to join
+    # against -- so a quoted reply cannot be pinned to the draft it answers.
     signal_client = SignalClient(
         config=config,
         http=http,
+        outbound_repo=outbound_repo,
+        pool=pool,
         get_max_sends_per_hour=lambda: chamber_config.max_sends_per_hour,
     )
     transcribe_client = create_transcribe_client(config.whisper_url, http)

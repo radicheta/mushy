@@ -410,7 +410,9 @@ async def test_boot_dispatch_handle_carries_capture_to_a_draft_row(monkeypatch, 
 
     extract_calls: list = []
 
-    async def _fake_extract(captures, in_flight_draft=None, corpus_context=None):
+    # **kwargs so a new extractor kwarg (e.g. MUSHY-83's capture_date_iso) does not
+    # break this fake and turn a wiring test red for an unrelated reason.
+    async def _fake_extract(captures, in_flight_draft=None, corpus_context=None, **kwargs):
         extract_calls.append(captures)
         return {
             "ok": True,
@@ -509,4 +511,107 @@ async def test_boot_dispatch_handle_carries_capture_to_a_draft_row(monkeypatch, 
     assert rows[0][2] == "python", (
         f"signal_draft.origin is {rows[0][2]!r}, not 'python' -- the Node commit "
         "watchdog would pick this draft up and write it to production farmOS"
+    )
+
+
+# ---------------------------------------------------------------------------
+# MUSHY-90: boot must wire outbound persistence into the SignalClient it builds.
+#
+# boot.py constructed SignalClient without outbound_repo/pool, so the persist
+# hook at client.py:289 was permanently false -- every send returned ok and wrote
+# no signal_outbound row, silently (no else branch, no log). That kills
+# confirm_repo.find_draft_by_quoted_msg_ts, which resolves a quoted reply by
+# joining signal_outbound, right as MUSHY-53 made multiple in-flight drafts per
+# sender possible.
+#
+# Asserted against a REAL row, not against the constructor kwargs: a kwargs
+# assertion would pass on a repo object that cannot actually write.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_boot_signal_client_persists_outbound_row(monkeypatch, pool):
+    """A send through boot's own SignalClient must land a signal_outbound row."""
+    if not _db_reachable():
+        pytest.skip("no test DB reachable -- start postgres:14 on port 5434")
+
+    import uuid  # noqa: PLC0415
+
+    from tests.conftest import TEST_ENV  # noqa: PLC0415
+    for k, v in TEST_ENV.items():
+        monkeypatch.setenv(k, v)
+
+    import farm_agent.boot as boot_mod  # noqa: PLC0415
+
+    captured: dict = {}
+
+    class CapturingReceiveLoop:
+        """Captures the real SignalClient boot composed, instead of polling."""
+
+        def __init__(self, signal_client, dispatch, config) -> None:
+            captured["signal_client"] = signal_client
+
+        async def start(self) -> None:
+            return None
+
+        async def stop(self) -> None:
+            return None
+
+    monkeypatch.setattr(boot_mod, "ReceiveLoop", CapturingReceiveLoop)
+
+    from farm_agent.boot import main  # noqa: PLC0415
+
+    task = asyncio.create_task(main())
+    try:
+        await asyncio.wait_for(asyncio.shield(task), timeout=5.0)
+    except asyncio.TimeoutError:
+        pass  # expected -- main() idles on stop.wait() after boot completes
+    except Exception:  # noqa: BLE001 -- surfaced by the assertion below
+        pass
+
+    assert "signal_client" in captured, (
+        "boot.py never constructed a ReceiveLoop -- boot did not complete wiring"
+    )
+    signal_client = captured["signal_client"]
+
+    # Stub only the wire POST. Everything else (repo, pool, row shape) is real.
+    msg_ts = 1_700_000_000_000 + int(uuid.uuid4().int % 1_000_000)
+
+    class _FakeResponse:
+        status_code = 200
+        content = b"{}"
+
+        def json(self) -> dict:
+            return {"timestamp": msg_ts}
+
+    async def _fake_post(*args, **kwargs):
+        return _FakeResponse()
+
+    monkeypatch.setattr(signal_client.http, "post", _fake_post)
+
+    body = f"outbound wiring probe {uuid.uuid4().hex[:8]}"
+    result = await signal_client.send(body, intent="test_probe")
+
+    async with pool.connection() as conn:
+        rows = await (await conn.execute(
+            "SELECT intent, signal_msg_ts FROM signal_outbound WHERE body=%s",
+            (body,),
+        )).fetchall()
+
+    task.cancel()
+    try:
+        await task
+    except (asyncio.CancelledError, Exception):
+        pass
+
+    assert result["ok"] is True, f"send() did not succeed: {result!r}"
+    assert len(rows) == 1, (
+        f"expected exactly one signal_outbound row for the sent body, found "
+        f"{len(rows)}. boot.py built SignalClient without outbound_repo/pool, so "
+        "the persist hook is a no-op and quote-reply pinning has nothing to join "
+        "against (MUSHY-90)."
+    )
+    assert rows[0][0] == "test_probe"
+    assert rows[0][1] == msg_ts, (
+        "signal_msg_ts was not persisted -- find_draft_by_quoted_msg_ts joins on "
+        "this column, so a NULL here is as dead as a missing row"
     )
