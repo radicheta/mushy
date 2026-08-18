@@ -57,6 +57,7 @@ Reference:
 from __future__ import annotations
 
 import os
+import uuid
 from pathlib import Path
 
 import anthropic
@@ -107,8 +108,31 @@ def _assert_not_prod_port(pool) -> None:
     )
 
 
+# Sender unique to this test. NOT tenant_config.signal_recipient (+10000000001):
+# the hermetic suite leaves awaiting_farmer drafts for that number in the :5434
+# database, so which path this test took depended on what ran before it.
+LIVE_FIRE_SENDER = "+19995500110"
+
+
 async def test_may22_session_lands_a_real_draft(pool, tenant_config):
+    """Exercises the FRESH-DRAFT path: no in-flight draft exists for this sender.
+
+    Deterministic by construction -- LIVE_FIRE_SENDER is used by no other test,
+    and any prior draft for it (i.e. a previous run of this same test) is
+    cleared below. Nothing outside the throwaway :5434 database is touched, and
+    no other sender's rows are deleted. The continuity path (a follow-up to an
+    open draft, where the raw DB row's datetimes broke json.dumps -- MUSHY-76)
+    is covered hermetically by
+    tests/extraction/test_extractor.py::test_extract_serializes_a_real_in_flight_db_row.
+    """
     _assert_not_prod_port(pool)
+
+    async with pool.connection() as conn:
+        await conn.execute("DELETE FROM signal_draft WHERE sender_e164 = %s", (LIVE_FIRE_SENDER,))
+
+    # Unique per run: the draft id is a hash of the capture ids, so a stable
+    # capture id would collide on the primary key with the previous run's row.
+    capture_id = f"live-fire-may22-{uuid.uuid4().hex[:8]}"
 
     api_key = os.environ["ANTHROPIC_API_KEY"]
     client = anthropic.AsyncAnthropic(api_key=api_key, max_retries=2)
@@ -130,8 +154,8 @@ async def test_may22_session_lands_a_real_draft(pool, tenant_config):
         text_followup = (FIXTURE_DIR / "text-followup.txt").read_text(encoding="utf-8")
 
         res = await pipeline["enqueue"]({
-            "capture_id": "live-fire-may22",
-            "sender": tenant_config.signal_recipient,
+            "capture_id": capture_id,
+            "sender": LIVE_FIRE_SENDER,
             "farmos_person": "santi",
             "text": text_followup,
             "transcripts": [transcript],
@@ -148,7 +172,7 @@ async def test_may22_session_lands_a_real_draft(pool, tenant_config):
             cur = await conn.execute(
                 "SELECT id, status, log_type, origin, farmer_facing_preview, draft_json "
                 "FROM signal_draft WHERE %s = ANY(source_capture_ids)",
-                ("live-fire-may22",),
+                (capture_id,),
             )
             rows = await cur.fetchall()
 

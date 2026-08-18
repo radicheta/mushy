@@ -30,9 +30,12 @@ Security:
 from __future__ import annotations
 
 import asyncio
+import datetime as _dt
+import decimal
 import inspect
 import json
 import logging
+import uuid
 
 import anthropic
 from pydantic import ValidationError
@@ -56,6 +59,49 @@ TOOL_DESCRIPTION = (
 # Timeout mirrors the Node extractor (60 000ms) -- longer than the gate (2 000ms)
 # because multi-event seeding sessions can produce large responses.
 _DEFAULT_TIMEOUT_MS = 60_000
+
+
+# ---------------------------------------------------------------------------
+# JSON serialization of raw DB rows (MUSHY-76)
+# ---------------------------------------------------------------------------
+
+
+def json_default(o):
+    """`default=` hook for json.dumps over raw psycopg rows.
+
+    The in-flight draft handed to build_initial_user_content() is a RAW
+    signal_draft row (extraction_db.get_in_flight_for_sender zips
+    cursor.description over the tuple), so created_at / updated_at /
+    confirmed_at / expired_at / nudge_sent_at arrive as python datetimes and
+    plain json.dumps raises TypeError before the model is ever called.
+
+    Node is the shape source of truth: `pg` hands JSON.stringify JS Dates
+    (-> ISO-8601 strings), numerics and uuids as strings. This mirrors that:
+
+      datetime / date / time -> .isoformat()   (matches JS Date -> ISO-8601)
+      Decimal                -> str            (matches pg numeric -> JS string)
+      UUID                   -> str            (matches pg uuid  -> JS string)
+
+    DELIBERATELY NOT HANDLED -- these raise TypeError rather than being coerced:
+      bytes / memoryview (bytea), timedelta (interval), sets, model objects.
+    A `default=str` catch-all would silently turn structured values into
+    garbage prose that the model then reasons over as if it were data. There is
+    no bytea or interval column on signal_draft, so a raise here means a real
+    schema change nobody accounted for -- fail loudly (the extractor's outer
+    fail-open still turns it into {ok:False}) rather than quietly mislead.
+    """
+    if isinstance(o, (_dt.datetime, _dt.date, _dt.time)):
+        return o.isoformat()
+    if isinstance(o, decimal.Decimal):
+        return str(o)
+    if isinstance(o, uuid.UUID):
+        return str(o)
+    raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable")
+
+
+def _dumps(obj) -> str:
+    """json.dumps with the row-aware default hook. Use at every dumps site here."""
+    return json.dumps(obj, default=json_default)
 
 
 # ---------------------------------------------------------------------------
@@ -119,13 +165,13 @@ def build_initial_user_content(
     if corpus_context is not None and isinstance(corpus_context, dict):
         blocks.append({
             "type": "text",
-            "text": f"corpus_context: {json.dumps(corpus_context)}",
+            "text": f"corpus_context: {_dumps(corpus_context)}",
         })
 
     # In-flight draft block (always present; "none" when absent)
     blocks.append({
         "type": "text",
-        "text": f"In-flight draft: {json.dumps(in_flight_draft) if in_flight_draft is not None else 'none'}",
+        "text": f"In-flight draft: {_dumps(in_flight_draft) if in_flight_draft is not None else 'none'}",
     })
 
     # Optional farmer correction block
@@ -177,17 +223,28 @@ def pack_result(submission: Submission, usage: dict) -> dict:
     """Expand a validated Submission into the canonical extractor result dict.
 
     Mirrors Node's packResult (extractor.js lines 250-270).
+
+    Node's packResult returns the zod-validated tool input as PLAIN JS objects, and
+    every consumer in this port (pipeline, batch_mode, starting_seq, preview_builder,
+    state_machine, seq_helper) was written against that shape -- they do dict access
+    (draft.get("type"), draft["groups"]).  So the pydantic models MUST be dumped to
+    plain python data here, at the boundary, not handled downstream.
+
+    mode="json" so nested models, enums and any date-like fields come out as
+    JSON-safe primitives: draft_json is a jsonb column written via
+    psycopg.types.json.Jsonb(...), which cannot adapt a BaseModel either.
     """
-    drafts = list(submission.drafts) if submission.drafts else []
+    dumped = submission.model_dump(mode="json")
+    drafts: list[dict] = list(dumped.get("drafts") or [])
     first = drafts[0] if drafts else None
     return {
         "ok": True,
         "drafts": drafts,
-        "continuity_decision": submission.continuity,
-        "continuity_reason": submission.continuity_reason,
-        "draft": first.draft if first is not None else None,
-        "per_field_confidence": first.per_field_confidence if first is not None else None,
-        "capture_kind": submission.capture_kind,
+        "continuity_decision": dumped.get("continuity"),
+        "continuity_reason": dumped.get("continuity_reason"),
+        "draft": first.get("draft") if first is not None else None,
+        "per_field_confidence": first.get("per_field_confidence") if first is not None else None,
+        "capture_kind": dumped.get("capture_kind"),
         "usage": usage,
     }
 
