@@ -142,6 +142,7 @@ def build_initial_user_content(
     in_flight_draft=None,
     corpus_context=None,
     farmer_correction: str | None = None,
+    capture_date_iso: str | None = None,
 ) -> list[dict]:
     """Build the user message content list for the extraction call.
 
@@ -166,6 +167,23 @@ def build_initial_user_content(
         blocks.append({
             "type": "text",
             "text": f"corpus_context: {_dumps(corpus_context)}",
+        })
+
+    # 2026-08-18 (MUSHY-83): a photographed notebook page reading "8/16" with no
+    # year on it extracted as 2025-08-16, and stamped 25xxxx on every parent ref
+    # too. Nothing in the prompt had ever told the model what day it was. Signal
+    # strips EXIF from attachments, so the capture's received-at is the only
+    # trustworthy date we have. Farm notebooks are written up on or near the day.
+    if isinstance(capture_date_iso, str) and capture_date_iso.strip():
+        day = capture_date_iso[:10]
+        blocks.append({
+            "type": "text",
+            "text": (
+                f"Capture received: {capture_date_iso} (day {day}). Undated notebook entries "
+                f'are from on or shortly before this day -- resolve a bare month/day like "8/16" '
+                f"against this year, and do not invent a different year for the event or for any "
+                f"asset reference. Only use another year when the source states one explicitly."
+            ),
         })
 
     # In-flight draft block (always present; "none" when absent)
@@ -316,6 +334,7 @@ def create_extractor(
         in_flight_draft=None,
         corpus_context=None,
         farmer_correction: str | None = None,
+        capture_date_iso: str | None = None,
     ) -> dict:
         """Extract a structured draft from captures via Sonnet forced tool-use.
 
@@ -335,6 +354,7 @@ def create_extractor(
                 in_flight_draft=in_flight_draft,
                 corpus_context=corpus_context,
                 farmer_correction=farmer_correction,
+                capture_date_iso=capture_date_iso,
             )
             messages = [
                 *cacheable_few_shot(),

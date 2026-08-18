@@ -212,6 +212,20 @@ def _normalize_updated_at_ms(updated_at) -> int | None:
     return None
 
 
+def _capture_date_iso(capture_ctx: dict, now_ms: int) -> str:
+    """ISO-8601 anchor handed to the extractor so undated pages get the right year.
+
+    MUSHY-83. Prefers the capture's own `captured_at_ms` over the clock: a replay
+    of a stored capture must anchor to when the farmer sent it, not to when we
+    reprocessed it, or the replay reintroduces the wrong-year bug it was meant to
+    fix. Falls back to now_ms when the field is missing or unusable.
+    """
+    ms = capture_ctx.get("captured_at_ms")
+    if not isinstance(ms, (int, float)) or isinstance(ms, bool):
+        ms = now_ms
+    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).isoformat().replace("+00:00", "Z")
+
+
 async def _noop_dispatch(effect, row):  # pragma: no cover -- only used absent a real dispatcher
     return {"ok": True, "noop": True}
 
@@ -341,6 +355,12 @@ def create_extraction_pipeline(
                     captures,
                     in_flight_draft=treat_in_flight,
                     corpus_context=capture_ctx.get("corpus_context"),
+                    # MUSHY-83: without this the model has no idea what day it
+                    # is, and an undated notebook page ("8/16") gets a
+                    # hallucinated year. Prefer the capture's own received-at
+                    # over the clock so a replay anchors to when the farmer sent
+                    # it, not when we reprocessed it.
+                    capture_date_iso=_capture_date_iso(capture_ctx, now_ms),
                 )
             except Exception as e:  # noqa: BLE001
                 _log.warning("[extraction] extract threw sender=%s: %s", mask_number(sender), e)

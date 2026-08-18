@@ -548,3 +548,62 @@ def test_json_default_raises_on_genuinely_unknown_types():
         json_default(b"\x00\x01")
     with pytest.raises(TypeError):
         json_default(object())
+
+
+# ---------------------------------------------------------------------------
+# capture-date anchor (MUSHY-83)
+#
+# 2026-08-18 live-fire on the Node stack: a photographed notebook page reading
+# "8/16" with no year on it extracted as event_date 2025-08-16, and stamped
+# 25xxxx on every parent ref too. Nothing in the prompt ever told the model what
+# day it was. Signal strips EXIF from attachments, so the capture's own
+# received-at is the only trustworthy date available. Port of the Node fix
+# (2b19ec4) -- capture_ctx already carries captured_at_ms on this side too.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_capture_date_iso_emits_anchor_block():
+    """capture_date_iso emits an anchor block naming the day."""
+    from farm_agent.extraction.extractor import build_initial_user_content  # noqa: PLC0415
+
+    blocks = build_initial_user_content(captures=[], capture_date_iso="2026-08-18T21:42:08.711Z")
+    anchors = [b for b in blocks if b.get("type") == "text" and "Capture received" in b.get("text", "")]
+    assert len(anchors) == 1
+    assert "2026-08-18" in anchors[0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_capture_date_anchor_warns_against_inventing_a_year():
+    """The anchor must tell the model not to invent a different year."""
+    from farm_agent.extraction.extractor import build_initial_user_content  # noqa: PLC0415
+
+    blocks = build_initial_user_content(captures=[], capture_date_iso="2026-08-18T21:42:08.711Z")
+    anchor = next(b for b in blocks if b.get("type") == "text" and "Capture received" in b.get("text", ""))
+    assert "year" in anchor["text"].lower()
+
+
+@pytest.mark.asyncio
+async def test_absent_capture_date_iso_leaves_blocks_unchanged():
+    """Back-compat: no capture_date_iso -> byte-identical blocks."""
+    from farm_agent.extraction.extractor import build_initial_user_content  # noqa: PLC0415
+
+    base = build_initial_user_content(captures=[])
+    for empty in (None, "", "   "):
+        assert build_initial_user_content(captures=[], capture_date_iso=empty) == base
+    assert not [b for b in base if b.get("type") == "text" and "Capture received" in b.get("text", "")]
+
+
+@pytest.mark.asyncio
+async def test_capture_date_iso_reaches_the_request_via_extract():
+    """capture_date_iso threads through extract() into the outgoing user turn."""
+    valid = _valid_submission_dict()
+    client = FakeAnthropicClientForExtractor([{"tool_input": valid}])
+    extractor = _make_extractor(client)
+    await extractor["extract"]([], capture_date_iso="2026-08-18T21:42:08.711Z")
+    req = client.calls[0]
+    user_msg = req["messages"][-1]
+    anchors = [b for b in user_msg["content"]
+               if b.get("type") == "text" and "Capture received" in b.get("text", "")]
+    assert len(anchors) == 1
+    assert "2026-08-18" in anchors[0]["text"]

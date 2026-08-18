@@ -43,7 +43,7 @@ def _extractor(result):
     calls = []
 
     async def extract(captures, in_flight_draft=None, corpus_context=None,
-                      farmer_correction=None):
+                      farmer_correction=None, capture_date_iso=None):
         calls.append(farmer_correction)
         return result
 

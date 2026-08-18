@@ -97,7 +97,7 @@ CLEAN = {"type": "harvest", "harvest_batch_id": "H1", "qty_g": 500,
 
 def _extractor(result):
     async def extract(captures, in_flight_draft=None, corpus_context=None,
-                      farmer_correction=None):
+                      farmer_correction=None, capture_date_iso=None):
         return result
     return {"extract": extract}
 
@@ -315,7 +315,7 @@ async def test_extractor_receives_loaded_image_blocks(tmp_path):
     received = {}
 
     async def extract(captures, in_flight_draft=None, corpus_context=None,
-                      farmer_correction=None):
+                      farmer_correction=None, capture_date_iso=None):
         received["captures"] = captures
         return {
             "ok": True, "drafts": [{"draft": CLEAN, "per_field_confidence": {}}],
@@ -481,3 +481,52 @@ async def test_real_extractor_output_flows_through_to_an_inserted_draft_row():
     assert isinstance(persisted, dict)
     assert persisted["type"] == "seeding_session"
     json.dumps(persisted)
+
+
+# MUSHY-83: the pipeline must hand the extractor the CAPTURE's received-at, not
+# the wall clock. This is the seam the Node fix shipped without covering -- the
+# extractor unit test proved the block renders, but nothing proved the pipeline
+# passes the right instant, which is the half that decides whether a replayed
+# capture reanchors to its original day.
+#
+# The harness clock is also 1_000_000, so a test using CTX's own captured_at_ms
+# cannot tell the two sources apart. Use a distinct capture timestamp.
+_ANCHOR_MS = 1_755_000_000_000  # 2025-08-12T ~14:40Z -- nowhere near the 1970 clock
+
+
+async def _anchor_seen(ctx):
+    """Run enqueue and return the capture_date_iso the extractor was handed."""
+    received = {}
+
+    async def extract(captures, in_flight_draft=None, corpus_context=None,
+                      farmer_correction=None, capture_date_iso=None):
+        received["anchor"] = capture_date_iso
+        return {
+            "ok": True, "drafts": [{"draft": CLEAN, "per_field_confidence": {}}],
+            "draft": CLEAN, "per_field_confidence": {}, "continuity_decision": "start_new",
+            "usage": None,
+        }
+
+    p = _pipeline(FakeDb(), {"extract": extract})
+    res = await p["enqueue"](ctx)
+    assert res["ok"] is True
+    return received["anchor"]
+
+
+async def test_pipeline_anchors_extraction_to_the_capture_timestamp():
+    anchor = await _anchor_seen(dict(CTX, captured_at_ms=_ANCHOR_MS))
+    assert anchor.startswith("2025-08-12"), anchor
+    assert not anchor.startswith("1970"), "used the clock instead of the capture"
+
+
+async def test_pipeline_falls_back_to_the_clock_when_capture_timestamp_missing():
+    ctx = dict(CTX)
+    ctx.pop("captured_at_ms")
+    anchor = await _anchor_seen(ctx)
+    # Degrades to an anchor, never to no anchor: the clock is 1_000_000ms.
+    assert anchor.startswith("1970-01-01"), anchor
+
+
+async def test_pipeline_ignores_an_unusable_capture_timestamp():
+    anchor = await _anchor_seen(dict(CTX, captured_at_ms="not-a-number"))
+    assert anchor.startswith("1970-01-01"), anchor
