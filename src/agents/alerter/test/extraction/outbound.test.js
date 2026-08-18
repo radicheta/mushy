@@ -306,3 +306,68 @@ describe('createOutboundDispatcher', () => {
     expect(signalClient.send).not.toHaveBeenCalled();
   });
 });
+
+// 2026-08-18 live-fire: pipeline.js and starting_seq dispatch these two side
+// effects, but neither had a case here -- both fell to default and returned
+// unknown_side_effect. The draft went to awaiting_farmer with a preview stored
+// and NOTHING was sent, so the farmer sat waiting on a question never asked.
+// The Python port (farm_agent/extraction/outbound.py) already routes both
+// exactly like send_ask_back; Node never caught up.
+describe('seeding-session side effects reach the farmer (Node/Python parity)', () => {
+  const CASES = ['send_starting_seq_askback', 'send_seeding_session_filled_preview'];
+
+  test.each(CASES)('%s DM -> sends the preview to the sender', async (sideEffect) => {
+    const signalClient = makeSignalOk();
+    const d = createOutboundDispatcher({
+      signalClient, config: {}, logger: silentLogger,
+      previewBuilder, operatorRecipient: '+59892893012',
+    });
+    const row = makeDraftRow({
+      draft_json: { type: 'seeding_session' },
+      farmer_facing_preview: 'August 16 inoc, 8 blocks. What block number should I start at?',
+    });
+    const r = await d.dispatch(sideEffect, row);
+    expect(r.ok).toBe(true);
+    expect(r.reason).not.toBe('unknown_side_effect');
+    expect(signalClient.send).toHaveBeenCalledTimes(1);
+    expect(signalClient.send.mock.calls[0][1].to).toBe('+59898018597');
+    expect(signalClient.send.mock.calls[0][0]).toContain('What block number');
+  });
+
+  test.each(CASES)('%s group -> routes to the group, not the DM', async (sideEffect) => {
+    const signalClient = makeSignalOk();
+    const d = createOutboundDispatcher({
+      signalClient, config: {}, logger: silentLogger,
+      previewBuilder, operatorRecipient: '+59892893012',
+    });
+    const row = makeDraftRow({ reply_target_kind: 'group', group_id: 'grp-abc' });
+    const r = await d.dispatch(sideEffect, row);
+    expect(r.ok).toBe(true);
+    expect(signalClient.send.mock.calls[0][1].to).toEqual({ groupId: 'grp-abc' });
+  });
+
+  test.each(CASES)('%s carries relatedDraftId so the reply can be pinned', async (sideEffect) => {
+    const signalClient = makeSignalOk();
+    const d = createOutboundDispatcher({
+      signalClient, config: {}, logger: silentLogger,
+      previewBuilder, operatorRecipient: '+59892893012',
+    });
+    const row = makeDraftRow();
+    await d.dispatch(sideEffect, row);
+    expect(signalClient.send.mock.calls[0][1].relatedDraftId).toBe('abcdef1234567890');
+  });
+
+  test('every side effect the extraction code dispatches has a case here', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const dir = path.join(__dirname, '../../src/extraction');
+    const dispatched = new Set();
+    for (const f of fs.readdirSync(dir).filter((n) => n.endsWith('.js'))) {
+      const src = fs.readFileSync(path.join(dir, f), 'utf8');
+      for (const m of src.matchAll(/dispatch\('([a-z_]+)'/g)) dispatched.add(m[1]);
+    }
+    const outboundSrc = fs.readFileSync(path.join(dir, 'outbound.js'), 'utf8');
+    const unhandled = [...dispatched].filter((s) => !outboundSrc.includes(`case '${s}'`));
+    expect(unhandled).toEqual([]);
+  });
+});

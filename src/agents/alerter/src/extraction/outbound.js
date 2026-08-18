@@ -162,6 +162,15 @@ function createOutboundDispatcher({
       switch (sideEffect) {
         case 'send_ask_back':
           return await sendAskBack(draftRow || {});
+        // 2026-08-18: both of these are dispatched by the seeding-session flow
+        // (pipeline.js + the starting-seq handler) and had no case here, so they
+        // fell to default and sent nothing while the draft sat in
+        // awaiting_farmer. Routing is identical to send_ask_back -- same target
+        // resolution, same farmer_facing_preview payload -- which is exactly how
+        // farm_agent/extraction/outbound.py has always handled them.
+        case 'send_starting_seq_askback':
+        case 'send_seeding_session_filled_preview':
+          return await sendAskBack(draftRow || {});
         case 'send_needs_review_ping':
           return await sendNeedsReviewPing(draftRow || {});
         case 'send_batch_review_summary':
