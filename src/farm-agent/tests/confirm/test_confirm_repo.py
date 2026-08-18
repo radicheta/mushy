@@ -68,8 +68,22 @@ VALUES (%s, 'awaiting_farmer', %s, 0, NULL,
 """
 
 
-async def _insert_draft(pool, *, sender_e164: str = "+10000000001") -> str:
+def _unique_sender(prefix: str) -> str:
+    """A sender nobody else in the suite will use.
+
+    MUSHY-79: signal_draft has a partial unique index (one in-flight draft per
+    sender). Tests that shared a hardcoded sender collided with whatever a
+    sibling test -- or a previous run against the same database -- left behind,
+    which is why the failure count depended on whether the volume was fresh.
+    The newer tests in this file already mint a unique sender; these helpers now
+    do the same by default, so callers who do not care cannot collide.
+    """
+    return f"{prefix}{uuid.uuid4().hex[:7]}"
+
+
+async def _insert_draft(pool, *, sender_e164: str | None = None) -> str:
     """Insert a minimal awaiting_farmer draft and return its id (hex string)."""
+    sender_e164 = sender_e164 if sender_e164 is not None else _unique_sender("+1222")
     draft_id = uuid.uuid4().hex
     async with pool.connection() as conn:
         await conn.execute(
@@ -171,7 +185,7 @@ VALUES (%s, %s, %s, 0, NULL,
 """
 
 
-async def _insert_draft_with_status(pool, status: str, *, sender_e164: str = "+10000000099") -> str:
+async def _insert_draft_with_status(pool, status: str, *, sender_e164: str | None = None) -> str:
     """Insert a draft with a specific status and return its id."""
     draft_id = uuid.uuid4().hex
     async with pool.connection() as conn:

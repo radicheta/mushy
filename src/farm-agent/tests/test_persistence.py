@@ -276,7 +276,7 @@ async def test_migrations_origin_and_commit_columns(pool):
                 SELECT column_name
                 FROM information_schema.columns
                 WHERE table_name = 'signal_draft'
-                  AND column_name = $1
+                  AND column_name = %s
                 """,
                 [col],
             )
@@ -288,18 +288,18 @@ async def test_migrations_origin_and_commit_columns(pool):
         # --- freshly-inserted row defaults origin to 'node' ---
         test_id = "test-phase62-origin-default-check"
         await conn.execute(
-            "DELETE FROM signal_draft WHERE id = $1",
+            "DELETE FROM signal_draft WHERE id = %s",
             [test_id],
         )
         await conn.execute(
             """
             INSERT INTO signal_draft (id, sender_e164, status)
-            VALUES ($1, '+10000000099', 'pending')
+            VALUES (%s, '+10000000099', 'pending')
             """,
             [test_id],
         )
         val_row = await conn.execute(
-            "SELECT origin FROM signal_draft WHERE id = $1",
+            "SELECT origin FROM signal_draft WHERE id = %s",
             [test_id],
         )
         inserted = await val_row.fetchone()
@@ -309,7 +309,7 @@ async def test_migrations_origin_and_commit_columns(pool):
         )
 
         # Cleanup
-        await conn.execute("DELETE FROM signal_draft WHERE id = $1", [test_id])
+        await conn.execute("DELETE FROM signal_draft WHERE id = %s", [test_id])
 
 
 # ---------------------------------------------------------------------------
