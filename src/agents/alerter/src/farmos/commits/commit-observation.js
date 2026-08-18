@@ -3,6 +3,9 @@
 // Phase 40 B7.4 observation: resolve QRs + upload attachments + create
 // observation log referencing assets and (best-effort) file_ids. Missing
 // attachments are skipped per D-05a, NOT a commit failure.
+//
+// MUSHY-36 (2026-08-18): attachments now use the field-scoped binary route.
+// See the comment at the upload call below.
 
 const logs = require('../logs');
 const qrMod = require('../qr');
@@ -28,8 +31,20 @@ async function commitObservation(client, draft, ctx) {
   if (ctx && typeof ctx.capturePathsFor === 'function' && captureIds.length > 0) {
     try { paths = await ctx.capturePathsFor(captureIds); } catch (_) { paths = []; }
   }
+  // MUSHY-36: photos go through the FIELD-SCOPED binary route
+  // POST /api/asset/fungi/{uuid}/image, which creates the file and links it to
+  // the asset in one call. The legacy files.uploadAttachments() posts
+  // octet-stream to /api/file/file, which this farmOS does not route (415,
+  // verified dev AND prod), so every observation photo failed while the commit
+  // still acked ok. The `file` field rejects jpg/png with a 422, hence `image`.
+  // Attach to the first resolved asset -- it already exists, so there is no
+  // create-then-upload ordering problem. This mirrors the Python port at
+  // farm_agent/farmos/commits/commit_observation.py.
   const upRes = paths.length > 0
-    ? await files.uploadAttachments(client, paths, { logger: ctx && ctx.logger })
+    ? await files.uploadFieldAttachments(
+        client, '/api/asset/fungi', assetIds[0], 'image', paths,
+        { logger: ctx && ctx.logger },
+      )
     : { fileIds: [], skipped: [], failed: [] };
 
   // Attachments are best-effort (D-05a) and never fail the commit, but a failed
