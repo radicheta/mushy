@@ -7,7 +7,18 @@ from farm_agent.extraction import outbound, preview_builder, state_machine
 
 
 class RealisticDb:
-    """Enforces the D-02c partial unique index: one in-flight draft per sender."""
+    """Mirrors the signal_draft schema as it actually is.
+
+    MUSHY-53/80: the D-02c partial unique index that permitted one in-flight
+    draft per sender has been dropped, so several drafts from the same capture
+    can be awaiting_farmer at once. This fake used to enforce that uniqueness;
+    leaving it in would make the fake disagree with the real table and hide the
+    very behaviour these tests exist to check.
+
+    The count is still bounded, just not by the database: _should_batch_review
+    routes anything over 5 drafts to batch review, and batch review parks every
+    draft in needs_review. So at most 5 in-flight drafts per sender.
+    """
 
     def __init__(self):
         self.rows = {}
@@ -16,17 +27,6 @@ class RealisticDb:
         return "d-" + "|".join(sorted(ids)) + ("" if index in (None, 0) else f"#{index}")
 
     async def insert_draft(self, pool, row):
-        # A Postgres partial unique index only constrains rows that satisfy
-        # its own WHERE predicate -- a row being inserted with a status
-        # outside ('pending','awaiting_farmer') never participates in the
-        # index, so it cannot conflict with anything, regardless of what
-        # other rows exist for the sender.
-        if row["status"] in ("pending", "awaiting_farmer"):
-            in_flight = [r for r in self.rows.values()
-                         if r["sender_e164"] == row["sender_e164"]
-                         and r["status"] in ("pending", "awaiting_farmer")]
-            if in_flight:
-                return {"ok": False, "reason": "in_flight_conflict"}
         self.rows[row["id"]] = dict(row)
         return {"ok": True, "id": row["id"]}
 
@@ -194,31 +194,52 @@ async def test_draft_ids_are_unique_per_index():
     assert len(set(res["draft_ids"])) == 3
 
 
-async def test_multi_confirm_first_draft_gets_the_slot():
-    """D-4: only one draft per sender can hold the in-flight slot. The first
-    clean draft claims it and gets its confirm prompt; the second is
-    persisted as needs_review instead of being dropped (Node's behavior) or
-    arbitrarily winning the slot by iteration order.
+async def test_multi_confirm_gives_every_clean_draft_its_own_prompt():
+    """MUSHY-53/80: this is what Phase 53 BACK-02 intended all along.
+
+    "DT tubs 0519 1 and 2" is two entries, so the farmer gets two independent
+    confirm prompts and can answer them separately. Previously the first draft
+    took the only in-flight slot and the second was parked in needs_review
+    (D-4), where the farmer never saw it -- better than Node, which dropped it
+    outright, but still not the designed behaviour.
     """
     db, d = RealisticDb(), FakeDispatcher()
     drafts = [_clean(0), _clean(1)]
     res = await run_multi_confirm(**_kwargs(db, d, drafts))
     assert res["mode"] == "multi_confirm"
     assert res["count"] == 2
-    assert [e for e, _ in d.calls].count("send_confirm_prompt") == 1
+    assert [e for e, _ in d.calls].count("send_confirm_prompt") == 2
 
     rows_by_id = {r["id"]: r for r in db.rows.values()}
-    first_row = rows_by_id[res["draft_ids"][0]]
-    second_row = rows_by_id[res["draft_ids"][1]]
-    assert first_row["status"] == "awaiting_farmer"
-    assert second_row["status"] == "needs_review"
-    assert second_row["needs_review_reason"] == "multi_confirm_slot_taken"
+    for draft_id in res["draft_ids"]:
+        row = rows_by_id[draft_id]
+        assert row["status"] == "awaiting_farmer", f"{draft_id} did not reach awaiting_farmer"
+        assert row.get("needs_review_reason") is None
 
 
-async def test_multi_confirm_persists_all_drafts_despite_slot_conflict():
-    """No draft is ever dropped, even though only one can hold the slot."""
+async def test_multi_confirm_persists_all_drafts():
+    """No draft is ever dropped."""
     db, d = RealisticDb(), FakeDispatcher()
     drafts = [_clean(0), _clean(1), _clean(2)]
     res = await run_multi_confirm(**_kwargs(db, d, drafts))
     assert res["count"] == 3
     assert len(db.rows) == 3
+    assert [e for e, _ in d.calls].count("send_confirm_prompt") == 3
+
+
+async def test_multi_confirm_stays_within_the_small_n_cap():
+    """The cap is 5, enforced by _should_batch_review upstream, not by the DB.
+
+    This pins the contract that lifting the unique index relies on: anything
+    larger than 5 never reaches run_multi_confirm in the first place.
+    """
+    from farm_agent.extraction.pipeline import _should_batch_review
+
+    # High confidence throughout, so only the count rule is under test.
+    def _hc(i):
+        d = _clean(i)
+        d["per_field_confidence"] = {"qty_g": 0.95}
+        return d
+
+    assert _should_batch_review([_hc(i) for i in range(5)]) is False
+    assert _should_batch_review([_hc(i) for i in range(6)]) is True

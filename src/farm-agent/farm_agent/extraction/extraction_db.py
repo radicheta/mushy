@@ -44,10 +44,15 @@ INSERT INTO signal_draft
 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 """
 
+# MUSHY-53/80: several in-flight drafts per sender are now possible (up to the
+# small-N cap of 5), so LIMIT 1 without an ORDER BY would pick an arbitrary row
+# and the continuity context handed to the extractor would vary run to run.
+# Most-recently-updated is the one the farmer is actually mid-conversation with.
 _SELECT_IN_FLIGHT_SQL = """
 SELECT * FROM signal_draft
  WHERE sender_e164 = %s
    AND status IN ('pending','awaiting_farmer')
+ ORDER BY updated_at DESC
  LIMIT 1
 """
 
@@ -128,9 +133,12 @@ async def insert_draft(pool: AsyncConnectionPool, row: dict) -> dict:
 
 
 async def get_in_flight_for_sender(pool: AsyncConnectionPool, sender_e164: str) -> dict | None:
-    """Return the single in-flight draft (pending|awaiting_farmer) for a sender, or None.
+    """Return the most recent in-flight draft (pending|awaiting_farmer), or None.
 
-    D-02c guarantees at most one exists. Returns None on error (never-throw).
+    MUSHY-53/80: a sender may now hold several in-flight drafts, so this is
+    explicitly "the most recently updated one", not "the only one". Used for
+    continuity context and the idle-supersede decision, both of which want the
+    conversation the farmer touched last. Returns None on error (never-throw).
     """
     try:
         async with pool.connection() as conn:
