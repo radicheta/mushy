@@ -210,3 +210,45 @@ async def test_send_with_invalid_quote_no_raise(signal_http):
         # Should NOT raise
         result = await client.send("msg", quote={"not": "valid"})
     assert result["ok"] is True
+
+
+# ---------------------------------------------------------------------------
+# receive() must outlast a slow signal-cli (MUSHY-88)
+#
+# 2026-08-18 cutover: the port shipped `timeout=timeout_sec + 5` on receive(),
+# giving a 6s ceiling against a 4.3-5.1s baseline. A poll carrying a photo batch
+# took 8.657s; httpx aborted at 6s, the loop logged an empty warning, and
+# signal-cli returned 200 two seconds later to a client that had hung up.
+# /v1/receive is DESTRUCTIVE -- those messages were dequeued and lost.
+#
+# Node has never had a timeout here at all (signal.js:212 is a bare
+# `await fetch(url)`), so this was a port-introduced regression.
+# ---------------------------------------------------------------------------
+
+
+async def test_receive_survives_a_signal_cli_response_slower_than_the_old_ceiling(signal_http):
+    """A poll slower than the old 6s ceiling must still return its envelopes.
+
+    Losing them is unrecoverable: signal-cli has already dequeued.
+    """
+    slow = 8.7  # the observed real duration that lost a farmer's messages
+
+    async def _slow_response(request):
+        await asyncio.sleep(0)  # yield; the assertion is on the configured timeout
+        return httpx.Response(200, json=[{"envelope": {"source": "+10000000001"}}])
+
+    route = signal_http.get("http://signal-cli:8080/v1/receive/+10000000000").mock(
+        side_effect=_slow_response
+    )
+    client = _make_client(signal_http, default_target="+10000000001")
+    async with client.http:
+        result = await client.receive(timeout_sec=1)
+    assert result[0]["envelope"]["source"] == "+10000000001"
+
+    # The read timeout actually configured must comfortably exceed a slow poll.
+    sent = route.calls[0].request
+    configured = sent.extensions.get("timeout", {}).get("read")
+    assert configured is None or configured > slow, (
+        f"receive() read timeout {configured}s does not survive a {slow}s poll; "
+        "signal-cli dequeues on send, so a timeout here loses farmer messages"
+    )

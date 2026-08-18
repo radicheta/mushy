@@ -80,7 +80,16 @@ class ReceiveLoop:
         try:
             envelopes = await self._client.receive(timeout_sec=1)
         except Exception as exc:  # noqa: BLE001
-            self._logger.warning("[receive] receive() error: %s", exc)
+            # MUSHY-88: log the TYPE, not just str(exc). httpx timeout exceptions
+            # stringify to "", so this line read "[receive] receive() error: " and
+            # said nothing -- while /v1/receive had already dequeued the farmer's
+            # messages. The one failure that silently destroys farmer data was the
+            # one the log could not name.
+            self._logger.warning(
+                "[receive] receive() error: %s: %s",
+                type(exc).__name__,
+                exc or "(no message)",
+            )
             return
 
         # Sequential for-loop — NEVER asyncio.gather (attribution-critical)

@@ -49,6 +49,12 @@ logger = logging.getLogger(__name__)
 # an unhooked client is still rate-capped rather than unbounded (T-63-03).
 _DEFAULT_MAX_SENDS_PER_HOUR = 20
 
+# MUSHY-88: seconds added to the caller's long-poll window to get the httpx read
+# timeout for /v1/receive. Generous on purpose -- a receive that aborts loses
+# farmer messages outright, while a receive that waits too long only delays the
+# next tick. Observed durations run 4.3-5.1s idle and 8.7s carrying attachments.
+_RECEIVE_TIMEOUT_HEADROOM_S = 120
+
 
 class SignalClient:
     """Wire-level Signal I/O client -- port of signal.js createSignalClient().
@@ -333,7 +339,16 @@ class SignalClient:
             f"{self._api_url}/v1/receive/{quote_plus(self._sender)}"
             f"?timeout={timeout_sec}&ignore_attachments={str(ignore_attachments).lower()}"
         )
-        r = await self.http.get(url, timeout=timeout_sec + 5)
+        # MUSHY-88: the read timeout must comfortably outlast a slow signal-cli.
+        # /v1/receive is DESTRUCTIVE -- signal-cli dequeues when it answers, so a
+        # client-side abort loses those messages permanently; they are not
+        # redelivered on the next poll. The original `timeout_sec + 5` gave a 6s
+        # ceiling against a 4.3-5.1s baseline, and a photo batch that took 8.657s
+        # was dropped with an empty-string warning during the 2026-08-18 cutover.
+        # Node has never bounded this call at all (signal.js:212). Keep a ceiling
+        # so a wedged signal-cli cannot hang the loop forever, but put it far
+        # above any plausible poll rather than one second above the median.
+        r = await self.http.get(url, timeout=timeout_sec + _RECEIVE_TIMEOUT_HEADROOM_S)
         r.raise_for_status()
         return r.json()
 
