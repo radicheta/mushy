@@ -344,6 +344,11 @@ function createExtractionPipeline({
           captures,
           inFlightDraft: treatInFlight,
           corpusContext: captureCtx.corpusContext || null,
+          // 2026-08-18: without this the model has no idea what day it is, and
+          // an undated notebook page ("8/16") gets a hallucinated year. Prefer
+          // the capture's own received-at over the clock so a replay anchors to
+          // when the farmer actually sent it, not when we reprocessed it.
+          captureDateIso: new Date(captureCtx.capturedAtMs || nowMs).toISOString(),
         });
       } catch (e) {
         logger.warn && logger.warn(`[extraction] extract threw: ${e.message}`);

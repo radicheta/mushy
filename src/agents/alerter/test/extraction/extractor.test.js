@@ -459,3 +459,55 @@ describe('extractor onLlmCall observer (Phase 54 Plan 03)', () => {
     expect(observed[0].request_hash).not.toBe(observed[1].request_hash);
   });
 });
+
+describe('capture-date anchor: undated paper-log pages must not get a hallucinated year', () => {
+  const { buildInitialUserContent } = _internal;
+  let extractor;
+  beforeEach(() => {
+    mockCreate.mockReset();
+    extractor = createExtractor({ apiKey: 'sk-test', logger: silentLogger });
+  });
+
+  // 2026-08-18 live-fire: a photographed notebook page reading "8/16" with no
+  // year on it extracted as event_date 2025-08-16, and stamped 25xxxx on every
+  // parent ref too. Root cause: nothing in the prompt ever told the model what
+  // day it was, so it had no anchor. Signal strips EXIF, so the capture's own
+  // received-at timestamp is the only trustworthy date available.
+  test('captureDateIso emits an anchor block naming the date', () => {
+    const blocks = buildInitialUserContent({
+      captures: [],
+      inFlightDraft: null,
+      captureDateIso: '2026-08-18T21:42:08.711Z',
+    });
+    const anchor = blocks.find((b) => b.type === 'text' && /Capture received/.test(b.text));
+    expect(anchor).toBeDefined();
+    expect(anchor.text).toContain('2026-08-18');
+  });
+
+  test('anchor block instructs against inventing a different year', () => {
+    const blocks = buildInitialUserContent({
+      captures: [],
+      inFlightDraft: null,
+      captureDateIso: '2026-08-18T21:42:08.711Z',
+    });
+    const anchor = blocks.find((b) => b.type === 'text' && /Capture received/.test(b.text));
+    expect(anchor.text).toMatch(/year/i);
+  });
+
+  test('absent captureDateIso leaves blocks unchanged (back-compat)', () => {
+    const base = buildInitialUserContent({ captures: [], inFlightDraft: null });
+    const withNull = buildInitialUserContent({ captures: [], inFlightDraft: null, captureDateIso: null });
+    expect(JSON.stringify(withNull)).toBe(JSON.stringify(base));
+    expect(base.some((b) => b.type === 'text' && /Capture received/.test(b.text))).toBe(false);
+  });
+
+  test('captureDateIso reaches buildInitialUserContent via extract()', async () => {
+    mockCreate.mockResolvedValueOnce(toolUseResponse(validInput()));
+    await extractor.extract({ captures: [], inFlightDraft: null, captureDateIso: '2026-08-18T21:42:08.711Z' });
+    const req = mockCreate.mock.calls[0][0];
+    const userMsg = req.messages[req.messages.length - 1];
+    const anchor = userMsg.content.find((b) => b.type === 'text' && /Capture received/.test(b.text));
+    expect(anchor).toBeDefined();
+    expect(anchor.text).toContain('2026-08-18');
+  });
+});

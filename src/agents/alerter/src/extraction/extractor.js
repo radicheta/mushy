@@ -51,7 +51,7 @@ function buildToolSpec() {
   };
 }
 
-function buildInitialUserContent({ captures, inFlightDraft, corpusContext, farmerCorrection }) {
+function buildInitialUserContent({ captures, inFlightDraft, corpusContext, farmerCorrection, captureDateIso }) {
   // Capture set -> a single user turn with: corpus context, in-flight summary, then per-capture text/transcript/images.
   // Plan 07 bug fix (Rule 1): close the last few-shot tool_use with a tool_result
   // block. Anthropic rejects 400 if any tool_use lacks an immediately-following
@@ -70,6 +70,21 @@ function buildInitialUserContent({ captures, inFlightDraft, corpusContext, farme
     blocks.push({
       type: 'text',
       text: `corpus_context: ${JSON.stringify(corpusContext)}`,
+    });
+  }
+  // 2026-08-18: a photographed notebook page reading "8/16" with no year on it
+  // extracted as 2025-08-16, and stamped 25xxxx on every parent ref too. Nothing
+  // in the prompt had ever told the model what day it was. Signal strips EXIF
+  // from attachments, so the capture's received-at timestamp is the only
+  // trustworthy date we have. Farm notebooks are written up on or near the day.
+  if (typeof captureDateIso === 'string' && captureDateIso.trim() !== '') {
+    const day = captureDateIso.slice(0, 10);
+    blocks.push({
+      type: 'text',
+      text: `Capture received: ${captureDateIso} (day ${day}). Undated notebook entries `
+        + `are from on or shortly before this day -- resolve a bare month/day like "8/16" `
+        + `against this year, and do not invent a different year for the event or for any `
+        + `asset reference. Only use another year when the source states one explicitly.`,
     });
   }
   blocks.push({
@@ -168,14 +183,14 @@ function createExtractor({
   }
 
   return {
-    async extract({ captures, inFlightDraft, corpusContext, farmerCorrection } = {}) {
+    async extract({ captures, inFlightDraft, corpusContext, farmerCorrection, captureDateIso } = {}) {
       const captureId = Array.isArray(captures) && captures[0] && captures[0].captureId
         ? captures[0].captureId
         : null;
       try {
         const systemBlocks = CACHEABLE_SYSTEM_BLOCKS;
         const fewShot = cacheableFewShot();
-        const userContent = buildInitialUserContent({ captures, inFlightDraft, corpusContext, farmerCorrection });
+        const userContent = buildInitialUserContent({ captures, inFlightDraft, corpusContext, farmerCorrection, captureDateIso });
         const messages = [...fewShot, { role: 'user', content: userContent }];
 
         const baseReq = {
