@@ -106,6 +106,21 @@ class ReceiveLoop:
                 )
                 continue
 
+            # MUSHY-89: an envelope carrying neither text nor attachments is not
+            # farmer content -- it is a delivery receipt, a read receipt or a
+            # typing indicator. Dispatching one costs a signal_capture row, an
+            # event-gate call and a re-extraction against the in-flight draft,
+            # which re-sends whatever ask-back is outstanding. That ask-back makes
+            # the farmer's phone emit another receipt, and the loop sustains
+            # itself: six identical messages reached the farmer at ~20s intervals
+            # during the 2026-08-18 cutover before the agent was stopped by hand.
+            # Node gates the capture branch the same way (receive-loop.js:419,
+            # `text || attachments.length`). An uncaptioned photo has attachments
+            # and is real content, so attachments alone are enough to pass.
+            dm = _router._read_dm(env)
+            if not (dm.get("message") or dm.get("attachments")):
+                continue
+
             # Per-envelope try/except — one bad envelope must not kill the tick
             try:
                 await self._dispatch(env)

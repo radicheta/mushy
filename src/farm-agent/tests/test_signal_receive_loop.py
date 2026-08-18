@@ -236,3 +236,86 @@ async def test_tick_survives_receive_exception(caplog):
     assert any(r.levelno >= logging.WARNING for r in caplog.records), (
         "Expected a warning log for receive() failure"
     )
+
+
+# ---------------------------------------------------------------------------
+# Contentless envelopes must not be dispatched (MUSHY-89)
+#
+# 2026-08-18 cutover: every ask-back the bot sent made the farmer's phone return
+# a delivery/read receipt. Those envelopes carry no dataMessage.message and no
+# attachments, but the port dispatched them anyway -- so each receipt became an
+# empty signal_capture row, cleared the event gate, re-ran extraction against the
+# same in-flight draft, found the starting-seq question still unanswered, and
+# re-sent it. Which produced another receipt. Six identical messages reached the
+# farmer at ~20s intervals before the agent was stopped by hand.
+#
+# Node has never had this problem: receive-loop.js:419 gates the capture branch
+# on `(text || attachments.length)`, so a contentless envelope is skipped.
+# ---------------------------------------------------------------------------
+
+
+async def test_receipt_envelope_is_not_dispatched():
+    """An envelope with neither text nor attachments must not reach dispatch.
+
+    This is the self-sustaining ask-back loop guard: dispatching a receipt
+    re-triggers whatever ask-back produced it.
+    """
+    from farm_agent.signal_io.receive_loop import ReceiveLoop  # noqa: PLC0415
+
+    cfg = _config()
+    dispatched = []
+
+    async def dispatch(env):
+        dispatched.append(env)
+
+    receipt = {"envelope": {"source": cfg.signal_recipient,
+                            "receiptMessage": {"when": 1787092920558, "isDelivery": True}}}
+    typing = {"envelope": {"source": cfg.signal_recipient,
+                           "typingMessage": {"action": "STARTED"}}}
+    empty_dm = {"envelope": {"source": cfg.signal_recipient, "dataMessage": {"message": None}}}
+
+    client = FakeSignalClient([receipt, typing, empty_dm])
+    loop = ReceiveLoop(signal_client=client, dispatch=dispatch, config=cfg)
+    await loop.tick()
+
+    assert dispatched == [], (
+        f"Contentless envelopes were dispatched ({len(dispatched)}); each one "
+        "re-triggers the ask-back that generated it"
+    )
+
+
+async def test_envelope_with_attachments_but_no_text_is_still_dispatched():
+    """A photo with no caption is real farmer content and must survive the guard."""
+    from farm_agent.signal_io.receive_loop import ReceiveLoop  # noqa: PLC0415
+
+    cfg = _config()
+    dispatched = []
+
+    async def dispatch(env):
+        dispatched.append(env)
+
+    photo = {"envelope": {"source": cfg.signal_recipient,
+                          "dataMessage": {"message": None,
+                                          "attachments": [{"id": "abc.jpg"}]}}}
+    client = FakeSignalClient([photo])
+    loop = ReceiveLoop(signal_client=client, dispatch=dispatch, config=cfg)
+    await loop.tick()
+
+    assert len(dispatched) == 1, "an uncaptioned photo is content and must dispatch"
+
+
+async def test_text_envelope_still_dispatches():
+    """Regression guard: the ordinary text path is unaffected."""
+    from farm_agent.signal_io.receive_loop import ReceiveLoop  # noqa: PLC0415
+
+    cfg = _config()
+    dispatched = []
+
+    async def dispatch(env):
+        dispatched.append(env)
+
+    client = FakeSignalClient([_envelope(cfg.signal_recipient, text="YES")])
+    loop = ReceiveLoop(signal_client=client, dispatch=dispatch, config=cfg)
+    await loop.tick()
+
+    assert len(dispatched) == 1
