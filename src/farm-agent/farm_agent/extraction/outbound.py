@@ -49,9 +49,16 @@ def create_outbound_dispatcher(
     preview_builder,
     operator_recipient: str | None,
     log: logging.Logger | None = None,
+    get_last_sent_body=None,
 ) -> dict:
     logger = log or logging.getLogger(__name__)
     sanitize = preview_builder.sanitize_farmer_text
+
+    # MUSHY-91: draft ids already reported to the operator as flooding. In-memory
+    # and reset on restart, matching the SignalClient send-history precedent (D-04):
+    # the point is to not move the flood onto the operator's phone, and a restart
+    # is not a flood.
+    duplicate_reported: set = set()
 
     def _resolve_ask_back_target(draft_row: dict):
         if draft_row and draft_row.get("reply_target_kind") == "group":
@@ -94,6 +101,31 @@ def create_outbound_dispatcher(
             and operator_recipient == sender_e164
         )
 
+    async def _report_duplicate(draft_row: dict, log_tag: str, text: str) -> None:
+        """Tell the operator once that a draft is repeating itself (MUSHY-91).
+
+        Once per draft, not once per suppression -- otherwise the flood simply
+        moves from the farmer's phone to the operator's.
+
+        Deliberately NOT trinity-skipped, unlike needs_review_ping. That skip
+        exists so Santi is not messaged twice about the same thing; here the
+        farmer-facing send was suppressed, so there is no second copy and this is
+        the only signal that a draft is stuck.
+        """
+        draft_id = (draft_row and draft_row.get("id")) or ""
+        if not operator_recipient or draft_id in duplicate_reported:
+            return
+        duplicate_reported.add(draft_id)
+        sender = (draft_row and draft_row.get("sender_e164")) or "(unknown)"
+        raw = (
+            f"Hey Don Santiago, draft {draft_id} for {sender} tried to re-send the "
+            f"same message ({log_tag}) with nothing changed. Held it back. "
+            f"The draft is likely stuck waiting on a reply it cannot parse."
+        )
+        await _safe_send(sanitize(raw), operator_recipient, None, draft_id or None)
+        logger.info("[outbound] duplicate_send reported to operator draft=%s",
+                    _trunc_id(draft_id))
+
     async def _send_farmer_preview(draft_row: dict, log_tag: str) -> dict:
         """Shared send-to-farmer path for send_ask_back and send_confirm_prompt (D-1)."""
         target = _resolve_ask_back_target(draft_row)
@@ -104,6 +136,36 @@ def create_outbound_dispatcher(
             return {"ok": False, "reason": "no_target"}
         raw = (draft_row and draft_row.get("farmer_facing_preview")) or ""
         text = sanitize(raw)
+
+        # MUSHY-91: never send the farmer an identical message for the same draft
+        # twice. askback_turns caps at 3 but only advances on a reply the confirm
+        # loop understands, so unparseable input (or a contentless envelope, as on
+        # 2026-08-18) leaves the cap unreachable and the resend unbounded. The
+        # invariant lives on the send, not on comprehension.
+        #
+        # Fail-open on purpose: no hook, or a lookup that throws, degrades to
+        # sending. Outbound persistence is itself fail-open, so silence here is not
+        # evidence of a duplicate -- and the failure this guard prevents is noisy,
+        # while the failure it must never cause is a farmer waiting on a message
+        # that was silently withheld.
+        draft_id = (draft_row and draft_row.get("id")) or None
+        if get_last_sent_body is not None and draft_id:
+            try:
+                last_body = await get_last_sent_body(draft_id)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(
+                    "[outbound] %s: duplicate-check lookup failed, sending anyway: %s",
+                    log_tag, e,
+                )
+                last_body = None
+            if last_body is not None and last_body == text:
+                logger.warning(
+                    "[outbound] %s suppressed duplicate send draft=%s preview=\"%s\"",
+                    log_tag, _trunc_id(draft_id), text[:40],
+                )
+                await _report_duplicate(draft_row, log_tag, text)
+                return {"ok": False, "reason": "duplicate_send"}
+
         res = await _safe_send(
             text, target, _first_capture_id(draft_row), draft_row.get("id") or None
         )

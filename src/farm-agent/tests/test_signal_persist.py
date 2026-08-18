@@ -401,3 +401,56 @@ async def test_send_no_intent_defaults_to_unknown(respx_mock, caplog):
     assert row["intent"] == "unknown"
     assert any("intent" in r.message.lower() or "unknown" in r.message.lower()
                for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# MUSHY-91: last_body_for_draft, against the real schema.
+#
+# The duplicate-send guard is only as good as this lookup. A query that always
+# returns None disarms the guard silently and looks exactly like a draft that
+# has never been sent to -- so it is pinned against real rows, not a fake pool.
+# ---------------------------------------------------------------------------
+
+
+@_requires_db
+@pytest.mark.asyncio
+async def test_last_body_for_draft_returns_the_most_recent_body(pool):
+    import uuid  # noqa: PLC0415
+    from farm_agent.persistence.outbound_repo import (  # noqa: PLC0415
+        insert_outbound, last_body_for_draft,
+    )
+
+    draft_id = f"draft-{uuid.uuid4().hex[:10]}"
+    older = datetime.datetime.now(tz=datetime.timezone.utc) - datetime.timedelta(minutes=5)
+    newer = datetime.datetime.now(tz=datetime.timezone.utc)
+
+    await insert_outbound(pool, _row(
+        related_draft_id=draft_id, body="first question", sent_at=older))
+    await insert_outbound(pool, _row(
+        related_draft_id=draft_id, body="second question", sent_at=newer))
+
+    assert await last_body_for_draft(pool, draft_id) == "second question"
+
+
+@_requires_db
+@pytest.mark.asyncio
+async def test_last_body_for_draft_is_scoped_to_its_own_draft(pool):
+    """A busy sender's other drafts must not suppress this one's ask-back."""
+    import uuid  # noqa: PLC0415
+    from farm_agent.persistence.outbound_repo import (  # noqa: PLC0415
+        insert_outbound, last_body_for_draft,
+    )
+
+    mine = f"draft-{uuid.uuid4().hex[:10]}"
+    theirs = f"draft-{uuid.uuid4().hex[:10]}"
+    await insert_outbound(pool, _row(related_draft_id=theirs, body="not mine"))
+
+    assert await last_body_for_draft(pool, mine) is None
+
+
+@pytest.mark.asyncio
+async def test_last_body_for_draft_fails_open_to_none():
+    """A lookup outage must read as 'no evidence of a duplicate', never as one."""
+    from farm_agent.persistence.outbound_repo import last_body_for_draft  # noqa: PLC0415
+
+    assert await last_body_for_draft(FakeRaisingPool(), "draft-abc") is None

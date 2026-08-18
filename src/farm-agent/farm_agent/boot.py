@@ -127,6 +127,9 @@ async def main() -> None:
         preview_builder=extraction_preview_builder,
         operator_recipient=config.signal_recipient,
         log=log,
+        # MUSHY-91: lets the dispatcher see what it last sent for a draft, so an
+        # identical message is not sent twice. Reads the rows MUSHY-90 armed.
+        get_last_sent_body=lambda draft_id: outbound_repo.last_body_for_draft(pool, draft_id),
     )
     extraction_pipeline = create_extraction_pipeline(
         pool=pool, extractor=extractor, config=config,

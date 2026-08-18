@@ -83,3 +83,30 @@ async def insert_outbound(pool: AsyncConnectionPool, row: dict) -> dict:
     except Exception as e:  # noqa: BLE001 -- fail-open per D-02 / T-57-01-01
         logger.warning("[outbound_repo] insert_outbound failed: %s", e)
         return {"ok": False, "reason": str(e)}
+
+
+async def last_body_for_draft(pool: AsyncConnectionPool, draft_id: str) -> str | None:
+    """Return the body of the most recent send for a draft, or None (MUSHY-91).
+
+    Fail-open like insert_outbound: any error returns None, which the caller
+    reads as "no evidence of a duplicate" and sends. A lookup outage must never
+    withhold a farmer message.
+    """
+    if not draft_id:
+        return None
+    try:
+        async with pool.connection() as conn:
+            cur = await conn.execute(
+                """
+                SELECT body FROM signal_outbound
+                 WHERE related_draft_id = %s
+                 ORDER BY sent_at DESC
+                 LIMIT 1
+                """,
+                (draft_id,),
+            )
+            row = await cur.fetchone()
+        return row[0] if row else None
+    except Exception as e:  # noqa: BLE001 -- fail-open
+        logger.warning("[outbound_repo] last_body_for_draft failed: %s", e)
+        return None
