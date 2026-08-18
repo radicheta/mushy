@@ -6,6 +6,7 @@ Mirrors persistence/outbound_repo.py exactly (structure, psycopg3 pattern, fail-
 
 Provides:
   insert_capture(pool, row) -> {ok:True} | {ok:False, reason}  -- NEVER raises
+  update_extraction_gate(pool, capture_id, gate) -> {ok} dict  -- NEVER raises
   mark_expired_older_than(pool, age_seconds) -> int             -- NEVER raises
 
 Critical subtleties (from 58-PATTERNS.md):
@@ -47,6 +48,13 @@ UPDATE signal_capture
    SET expired = true
  WHERE captured_at < NOW() - (%s || ' seconds')::interval
    AND expired IS DISTINCT FROM true
+"""
+
+
+# MUSHY-78: extraction_gate is stamped after the gate runs, because the row is
+# now INSERTed before the gate (persist-first durability). Mirrors capture.js:194.
+_UPDATE_GATE_SQL = """
+UPDATE signal_capture SET extraction_gate = %s WHERE id = %s
 """
 
 
@@ -113,6 +121,29 @@ async def insert_capture(pool: AsyncConnectionPool, row: dict) -> dict:
         return {"ok": True}
     except Exception as e:  # noqa: BLE001 -- fail-open per D-04 / T-58-02-03
         logger.warning("[capture_repo] insert_capture failed: %s", e)
+        return {"ok": False, "reason": str(e)}
+
+
+async def update_extraction_gate(pool: AsyncConnectionPool, capture_id: str, gate: str) -> dict:
+    """Stamp the event-gate outcome on an already-persisted signal_capture row.
+
+    MUSHY-78: the row is INSERTed before the gate runs (so a hung gate cannot
+    lose the farmer's message), which makes extraction_gate a follow-up UPDATE.
+    Mirrors capture.js:192-199 ("D-04 audit column -- best-effort UPDATE; never
+    throws"): the audit column is not worth failing a capture over.
+
+    Returns:
+        {"ok": True}                        on success
+        {"ok": False, "reason": str(e)}     on any exception (fail-open, D-04)
+
+    NEVER raises.
+    """
+    try:
+        async with pool.connection() as conn:
+            await conn.execute(_UPDATE_GATE_SQL, (gate, capture_id))
+        return {"ok": True}
+    except Exception as e:  # noqa: BLE001 -- fail-open per D-04
+        logger.warning("[capture_repo] update_extraction_gate failed: %s", e)
         return {"ok": False, "reason": str(e)}
 
 

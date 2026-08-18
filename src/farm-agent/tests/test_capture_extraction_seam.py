@@ -40,6 +40,9 @@ class FakeRepo:
     async def insert_capture(self, pool, row):
         return {"ok": True}
 
+    async def update_extraction_gate(self, pool, capture_id, gate):
+        return {"ok": True}
+
 
 def _envelope(sender="+59891111111", text="harvested 500g"):
     return {"envelope": {"source": sender, "dataMessage": {

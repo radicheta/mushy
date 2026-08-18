@@ -176,12 +176,25 @@ class FakeCaptureRepo:
     def __init__(self, should_raise: bool = False):
         self.should_raise = should_raise
         self.calls: list[dict] = []
+        self.gate_updates: list[tuple[str, str]] = []
 
     async def insert_capture(self, pool: object, row: dict) -> dict:
         """Mimic capture_repo.insert_capture signature."""
         self.calls.append(row)
         if self.should_raise:
             raise RuntimeError("FakeCaptureRepo: simulated insert failure")
+        return {"ok": True}
+
+    async def update_extraction_gate(self, pool: object, capture_id: str, gate: str) -> dict:
+        """Mimic capture_repo.update_extraction_gate (MUSHY-78 follow-up UPDATE).
+
+        Applies the gate to the recorded row so assertions on self.calls see the
+        same final shape the real signal_capture row ends up with.
+        """
+        self.gate_updates.append((capture_id, gate))
+        for row in self.calls:
+            if row.get("id") == capture_id:
+                row["extraction_gate"] = gate
         return {"ok": True}
 
 

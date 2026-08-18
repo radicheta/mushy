@@ -273,7 +273,41 @@ def create_capture_pipeline(
                     )
                     degraded = True
 
-            # --- Step 3b: gate call (Phase 59 event-gate, fail-open) ---
+            # --- Step 3b: persist signal_capture row (fail-open) ---
+            # MUSHY-78: this INSERT runs BEFORE the event gate. The gate does a DB
+            # read and a Haiku call; anything that kills the process inside that
+            # window used to lose the farmer's message with no record it arrived.
+            # Node has always done it in this order -- capture.js:117-118: "persist
+            # row BEFORE LLM call so capture is durable even if LLM hangs".
+            row = {
+                "id": capture_id,
+                "captured_at": datetime.fromtimestamp(captured_at_ms / 1000, tz=timezone.utc),
+                "sender": source,
+                "message_type": message_type,
+                "raw_text": text,
+                "attachment_paths": attachment_paths,
+                "transcript": transcript,
+                "degraded": degraded,
+                "group_id": group_id,
+                "farmos_person": farmos_person,
+                "reply_target_kind": reply_target_kind,
+                "signal_msg_ts": signal_msg_ts,
+                "quote_msg_ts": quote_msg_ts,
+                "quote_author_e164": quote_author,
+                # corpus_context: always None for live captures (T-58-03-04)
+                # extraction_gate is stamped by the follow-up UPDATE below (MUSHY-78).
+                "extraction_gate": None,  # Phase 59; VARCHAR(32), migration 007
+            }
+            persist_result = await _repo.insert_capture(pool, row)
+            if not persist_result.get("ok"):
+                _log.warning(
+                    "[capture] insert_capture failed (D-04 fail-open): sender=%s reason=%s",
+                    mask_number(source),
+                    persist_result.get("reason"),
+                )
+                degraded = True
+
+            # --- Step 3c: gate call (Phase 59 event-gate, fail-open) ---
             # T-59-03-02: gate error never blocks capture from being persisted.
             # T-59-03-01: log only gate outcome + masked sender; never env_ctx text/transcript.
             extraction_gate: str | None = None
@@ -316,33 +350,11 @@ def create_capture_pipeline(
                     # capture is still persisted and extraction is not blocked
                     # (T-59-03-02).
 
-            # --- Step 4: persist signal_capture row (fail-open) ---
-            row = {
-                "id": capture_id,
-                "captured_at": datetime.fromtimestamp(captured_at_ms / 1000, tz=timezone.utc),
-                "sender": source,
-                "message_type": message_type,
-                "raw_text": text,
-                "attachment_paths": attachment_paths,
-                "transcript": transcript,
-                "degraded": degraded,
-                "group_id": group_id,
-                "farmos_person": farmos_person,
-                "reply_target_kind": reply_target_kind,
-                "signal_msg_ts": signal_msg_ts,
-                "quote_msg_ts": quote_msg_ts,
-                "quote_author_e164": quote_author,
-                # corpus_context: always None for live captures (T-58-03-04)
-                "extraction_gate": extraction_gate,  # Phase 59; VARCHAR(32), migration 007
-            }
-            persist_result = await _repo.insert_capture(pool, row)
-            if not persist_result.get("ok"):
-                _log.warning(
-                    "[capture] insert_capture failed (D-04 fail-open): sender=%s reason=%s",
-                    mask_number(source),
-                    persist_result.get("reason"),
-                )
-                degraded = True
+                # MUSHY-78: extraction_gate is an audit column, so it is a
+                # best-effort UPDATE on the row already persisted above -- it
+                # never throws and never blocks (capture.js:192-199).
+                if extraction_gate is not None:
+                    await _repo.update_extraction_gate(pool, capture_id, extraction_gate)
 
             # MUSHY-76: fire-and-forget extraction enqueue. Gated on the event-gate's
             # allow_extract AND on a resolved farmer slug -- '(unassigned)' means we do
