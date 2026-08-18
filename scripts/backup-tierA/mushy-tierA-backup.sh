@@ -68,11 +68,18 @@ done
 # + re-link of all farmer Signal trust (multi-hour reconstruction). Bundled
 # via a transient alpine container so we don't need sudo to read the volume's
 # _data directory.
+#
+# MUSHY-45: ./attachments is EXCLUDED. It is ~96% of the volume (227 MB vs
+# 9 MB without it) and is farmer media, which is replaceable and explicitly
+# Tier B/C per this script's own header — Tier A is "small, irreplaceable
+# bits". The identity (data/accounts.json + data/<id>.d/account.db) is what
+# makes this backup exist, and it is tiny. Do not re-add attachments here
+# without also rethinking the nightly upload cost to the VPS.
 if docker volume inspect mushy_signal-cli-data >/dev/null 2>&1; then
   docker run --rm \
     -v mushy_signal-cli-data:/data:ro \
     -v "$WORK/payload/elder-plops":/out \
-    alpine:3 sh -c 'tar -czf /out/signal-cli-data.tar.gz -C /data .' \
+    alpine:3 sh -c 'tar -czf /out/signal-cli-data.tar.gz -C /data --exclude=./attachments .' \
     || fail "tar mushy_signal-cli-data"
   log "  staged docker volume mushy_signal-cli-data ($(stat -c%s "$WORK/payload/elder-plops/signal-cli-data.tar.gz") bytes)"
   # MUSHY-45: the identity is the single point of failure for ALL farmer
