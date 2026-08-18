@@ -10,7 +10,8 @@
 //   - get(/api/log/<type>/<uuid>)  -> full log body by id    [Phase 51 Wave 0]
 //   - post(/api/asset/fungi)        -> assigns a unique id, records name
 //   - post(/api/log/<type>)         -> assigns a unique log id
-//   - postBinary(/api/file/file)    -> assigns a unique file id
+//   - postBinary(/api/{type}/{bundle}/{uuid}/{field}) -> assigns a unique file id
+//   - postBinary(/api/file/file)    -> 415, as the real farmOS does (MUSHY-36)
 //   - patch(/api/asset/fungi/<uuid> | /api/log/<type>/<uuid>) [Phase 51 Wave 0]
 //   - delete(<path>)                                          [Phase 51 Wave 0]
 //
@@ -245,6 +246,22 @@ function makeMockClient({
 
     postBinary: jest.fn(async (path, bytes, opts) => {
       calls.push({ method: 'POST_BINARY', path, opts });
+      // MUSHY-36: this farmOS has NO octet-stream route at /api/file/file. It
+      // answers 415 "No route found that matches Content-Type:
+      // application/octet-stream" -- verified on dev AND prod. The mock used to
+      // return 201 here, so every caller of the legacy route looked healthy in
+      // tests while failing 100% of the time in production. Reject it the way
+      // the real server does.
+      if (path === '/api/file/file') {
+        return _ok(415, {
+          errors: [{
+            status: '415',
+            detail: 'No route found that matches "Content-Type: application/octet-stream"',
+          }],
+        });
+      }
+      // Field-scoped binary route: POST /api/{type}/{bundle}/{uuid}/{field}.
+      // Creates the file AND links it to the entity field in one call.
       const id = 'file-' + (fileSeq++);
       created.files.push({ id });
       return _ok(201, { data: { id } });

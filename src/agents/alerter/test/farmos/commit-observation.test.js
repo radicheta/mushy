@@ -32,6 +32,26 @@ describe('commit-observation (Phase 40 Plan 04)', () => {
     expect(captureCalled).toBe(1);
   });
 
+  it('MUSHY-36: photos POST to the field-scoped image route, never /api/file/file', async () => {
+    // The legacy route 415s on this farmOS, so an observation photo sent there
+    // is silently dropped while the commit still acks ok. Pin the URL, not just
+    // the resulting count -- a count assertion passes against any route the
+    // mock happens to accept.
+    const client = makeMockClient({ knownAssetsByQr: { Q: 'asset-uuid-1' } });
+    const ctx = { capturePathsFor: async () => [realPath] };
+    const r = await commitObservation(client, {
+      id: 'd-route', log_type: 'observation', source_capture_ids: ['cap-1'],
+      draft_json: { qr_codes: ['Q'], timestamp: 1700000000 },
+    }, ctx);
+
+    expect(r.ok).toBe(true);
+    const binaryCalls = client._calls.filter((c) => c.method === 'POST_BINARY');
+    expect(binaryCalls.length).toBe(1);
+    expect(binaryCalls[0].path).toBe('/api/asset/fungi/asset-uuid-1/image');
+    expect(binaryCalls.some((c) => c.path === '/api/file/file')).toBe(false);
+    expect(r.file_ids).toEqual(['file-1']);
+  });
+
   it('zero attachments -> log POSTed without relationships.file', async () => {
     const client = makeMockClient({ knownAssetsByQr: { Q: 'a' } });
     const r = await commitObservation(client, {

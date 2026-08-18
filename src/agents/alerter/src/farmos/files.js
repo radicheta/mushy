@@ -8,8 +8,12 @@
 // this farmOS does NOT route (415 "No route found that matches Content-Type:
 // application/octet-stream" -- verified dev AND prod). This path has never worked live.
 // The correct mechanism is the field-scoped binary route below (uploadFieldAttachment).
-// commit-observation.js still uses the legacy path and needs the same migration.
 // See memory project_farmos_image_upload_needs_field_scoped_route.
+//
+// MUSHY-36 (2026-08-18): commit-observation.js was the last caller and has been
+// migrated. uploadAttachment/uploadAttachments now have ZERO production callers.
+// They are kept only because their unit tests still pin the error shapes; do not
+// reach for them. Anything uploading binary to farmOS wants uploadFieldAttachment.
 
 const fs = require('fs');
 const path = require('path');
