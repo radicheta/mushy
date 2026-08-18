@@ -27,6 +27,37 @@ Rebuilding `alerter-py` is task #1.
 
 ---
 
+## Update, later the same evening
+
+Worked the suggested order. MUSHY-90 and MUSHY-91 are **closed**; `main` is
+pushed at `8370ea8`.
+
+- `bbd04c3` — MUSHY-90. boot passes `outbound_repo` + `pool` into `SignalClient`.
+- `8370ea8` — MUSHY-91. Identical-body suppression at
+  `extraction/outbound.py:_send_farmer_preview`, the choke-point for all four
+  farmer-facing draft sends, backed by a new `outbound_repo.last_body_for_draft`.
+  Fail-open in every direction; pings Don Santiago once per draft.
+
+**The image is rebuilt** and now carries MUSHY-88, -89, -90 and -91 — verified by
+reading the files inside the image, not by trusting the branch. The trap this doc
+opened with is closed.
+
+Suite is green at **1117 passed / 4 skipped** against a fresh `:5434`, so
+MUSHY-79's "never green with a DB" no longer holds. One pre-existing red in
+`test_boot.py` was fixed on the way past: its fake extractor had gone stale on
+MUSHY-83's new `capture_date_iso` argument.
+
+**Still true:** nothing is serving Signal. Both agents remain stopped and
+signal-cli is queuing. Bringing `alerter-py` up is a farmer-visible action and
+was left for a human to call.
+
+**Next:** the MUSHY-53/80 fan-out gate on Python. Note that MUSHY-90 makes
+quote-reply pinning *possible* but the `signal_outbound` join has not been
+exercised end-to-end against a real quoted reply yet — that live check is still
+owed before the gate can be called closed.
+
+---
+
 ## What happened
 
 Node was stopped and the Python agent ran live against real farmer traffic for
