@@ -4,7 +4,7 @@ milestone: 999.33
 milestone_name: Digital Twin / FC-1 Steady Humidity Hold
 status: executing
 last_updated: "2026-08-17T03:00:00.000Z"
-last_activity: 2026-08-17 -- triage; MUSHY-34 overlay serializer fixed; MUSHY-37 found already resolved
+last_activity: 2026-08-18 -- MUSHY-78 capture durability landed; MUSHY-76 closed; MUSHY-79 triaged; fc1 back online
 paused_milestone: v1.12
 paused_milestone_name: Farm-Agent Python Port
 paused_progress:
@@ -54,10 +54,22 @@ ticketed: MUSHY-72 (ventilation, currently lumped into the leak coefficient),
 MUSHY-68 (substrate as a moisture reservoir), MUSHY-69 (summer solar gain),
 MUSHY-61 (held-out rainy/clear day validation).
 
-**FC-1 is OFFLINE** as of 2026-08-16 07:45 UTC — unreachable on both LAN and wg0,
-all telemetry topics dark, last RH 95.3%. The alerter is behaving correctly and
-has been sending hourly CRITICAL "chamber uncontrolled" alerts to the farmer
-since 18:53 that day. Physical/farm-side; nothing to fix in software.
+**FC-1 is BACK ONLINE** as of 2026-08-18 (verified ~01:05 UTC). Reachable on
+both LAN and wg0, `uptime` reports 6 days — so it never rebooted, and the
+2026-08-16 07:45 UTC outage was a WAN drop, not a host failure. All 18 topics
+are publishing; live readings are RH 96.7% and 9.09 °C. This matches the known
+"WAN drops when the door is closed + rain" pattern: offline did not mean
+uncontrolled.
+
+Note for whoever looks next: RH 96.7% sits ~5 points above the fruiting band
+high (`fc1/prod` runs target 0.90, band [0.885, 0.915]), and 9.09 °C is cold.
+Worth a look at whether that is the post-outage recovery transient or a real
+hold failure. Not investigated here.
+
+The prior state of this note, for the record: unreachable on both LAN and wg0,
+all telemetry topics dark, last RH 95.3%, with the alerter correctly sending
+hourly CRITICAL "chamber uncontrolled" alerts to the farmer since 18:53 on
+2026-08-16.
 
 **`fc1/prod` is 113 commits BEHIND main.** The drift that MUSHY-37 described has
 reversed: the prod calibration is now fully on main (verified by `git cherry` and
