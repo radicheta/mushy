@@ -178,10 +178,25 @@ async def _run_draft_migrations(conn) -> None:
         "CREATE INDEX IF NOT EXISTS idx_signal_draft_sender_status "
         "ON signal_draft (sender_e164, status)"
     )
-    # D-02c: partial unique index -- at-most-one in-flight draft per sender.
+    # MUSHY-53/80: D-02c's partial UNIQUE index (at-most-one in-flight draft
+    # per sender) is dropped. It made a small multi-entry capture impossible to
+    # confirm entry-by-entry: the first draft took the only slot and the rest
+    # were dropped (Node) or parked in needs_review (Python D-4). Reply routing
+    # already handles several open drafts -- quote-pinning, then a numbered
+    # disambiguation ask-back (CONTEXT D-04/D-06).
+    #
+    # This is the one DROP allowed in this file, and it is whitelisted by name
+    # in test_migrations_additive_only. It removes an index, never a row or a
+    # column, so it cannot destroy data. Node's extraction-db.js drops it too;
+    # if only one stack is updated, the other RECREATES it on next boot and the
+    # old behaviour silently returns.
+    #
+    # The in-flight count stays bounded by routing, not by the database:
+    # _should_batch_review sends captures over 5 drafts to batch review, which
+    # parks every draft in needs_review. Max 5 in-flight drafts per sender.
+    # idx_signal_draft_sender_status still covers (sender_e164, status) lookups.
     await conn.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_signal_draft_in_flight_per_sender "
-        "ON signal_draft (sender_e164) WHERE status IN ('pending','awaiting_farmer')"
+        "DROP INDEX IF EXISTS idx_signal_draft_in_flight_per_sender"
     )
 
     # Future-extensibility no-op (extraction-db.js line 56-58): needs_review_reason

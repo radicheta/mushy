@@ -47,10 +47,23 @@ async function initDb(pool) {
     CREATE INDEX IF NOT EXISTS idx_signal_draft_sender_status
     ON signal_draft (sender_e164, status)
   `);
-  // D-02c: partial unique index enforces at-most-one in-flight draft per sender.
+  // MUSHY-53/80: D-02c's partial UNIQUE index (at-most-one in-flight draft per
+  // sender) is DROPPED, not created. It made a small multi-entry capture
+  // impossible to confirm entry-by-entry -- the first draft took the only slot
+  // and every sibling insert died on 23505, so Node silently dropped all but
+  // the first entry of a page.
+  //
+  // This DROP must stay in lockstep with farm_agent/persistence/migrations.py.
+  // Both stacks run their schema init at boot against the SAME database; if
+  // only one is updated, the other recreates the index and the old
+  // silently-dropping behaviour returns without anything failing.
+  //
+  // The in-flight count is bounded by routing, not by the database:
+  // shouldBatchReview sends captures over 5 drafts to batch review, which
+  // parks every draft in needs_review. idx_signal_draft_sender_status above
+  // still covers (sender_e164, status) lookups.
   await pool.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_signal_draft_in_flight_per_sender
-    ON signal_draft (sender_e164) WHERE status IN ('pending','awaiting_farmer')
+    DROP INDEX IF EXISTS idx_signal_draft_in_flight_per_sender
   `);
   // Future-extensibility no-op: idempotent placeholder for the next column add.
   await pool.query(
@@ -115,6 +128,7 @@ async function getInFlightForSender(pool, senderE164) {
     `SELECT * FROM signal_draft
      WHERE sender_e164 = $1
        AND status IN ('pending','awaiting_farmer')
+     ORDER BY updated_at DESC
      LIMIT 1`,
     [senderE164]
   );

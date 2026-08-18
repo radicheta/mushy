@@ -313,6 +313,54 @@ async def test_migrations_origin_and_commit_columns(pool):
 
 
 # ---------------------------------------------------------------------------
+# MUSHY-53/80: several in-flight drafts per sender
+# ---------------------------------------------------------------------------
+
+
+@_requires_db
+async def test_sender_can_hold_several_in_flight_drafts(pool):
+    """The one-in-flight-draft-per-sender unique index is gone.
+
+    A small multi-entry capture ("DT tubs 0519 1 and 2") must be able to put
+    every entry in awaiting_farmer at once so each gets its own confirm prompt.
+    Observed against the real table rather than a fake, because the fake used to
+    be the only thing enforcing this and it disagreed with the schema.
+    """
+    import uuid as _uuid  # noqa: PLC0415
+
+    sender = f"+1333{_uuid.uuid4().hex[:7]}"
+    ids = [_uuid.uuid4().hex for _ in range(3)]
+    async with pool.connection() as conn:
+        for draft_id in ids:
+            await conn.execute(
+                "INSERT INTO signal_draft (id, sender_e164, status) VALUES (%s, %s, %s)",
+                (draft_id, sender, "awaiting_farmer"),
+            )
+        cur = await conn.execute(
+            "SELECT count(*) FROM signal_draft "
+            "WHERE sender_e164 = %s AND status = 'awaiting_farmer'",
+            (sender,),
+        )
+        assert (await cur.fetchone())[0] == 3
+        await conn.execute("DELETE FROM signal_draft WHERE sender_e164 = %s", (sender,))
+
+
+@_requires_db
+async def test_in_flight_unique_index_is_absent_after_migrations(pool):
+    """The index itself must be gone, not merely unenforced by luck."""
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            "SELECT indexname FROM pg_indexes "
+            "WHERE tablename = 'signal_draft' "
+            "AND indexname = 'idx_signal_draft_in_flight_per_sender'"
+        )
+        assert await cur.fetchone() is None, (
+            "idx_signal_draft_in_flight_per_sender still exists -- run_migrations "
+            "must drop it (MUSHY-53/80)"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Task 2: additive-only source guard (DB-INDEPENDENT -- MUST ALWAYS RUN)
 # ---------------------------------------------------------------------------
 
@@ -365,10 +413,23 @@ def test_migrations_additive_only():
 
     all_sql = "\n".join(sql_strings)
 
-    # --- No DROP (any form) in SQL ---
+    # --- No DROP (any form) in SQL, except one named index ---
+    #
+    # MUSHY-53/80 whitelists exactly one statement: dropping the partial unique
+    # index that allowed a single in-flight draft per sender. Deliberately
+    # narrow -- it matches that index BY NAME, so it cannot be widened by
+    # accident. Dropping an index removes no rows and no columns, which is the
+    # class of damage this guard exists to prevent; the live Node alerter reads
+    # the same tables and is unaffected by the index's absence (it catches the
+    # 23505 it will now never see).
+    _WHITELISTED_DROP_RE = re.compile(
+        r"DROP\s+INDEX\s+IF\s+EXISTS\s+idx_signal_draft_in_flight_per_sender",
+        re.IGNORECASE,
+    )
     drop_matches = [
         s.strip()
         for s in re.findall(r"[^\n]*\bDROP\b[^\n]*", all_sql, re.IGNORECASE)
+        if not _WHITELISTED_DROP_RE.search(s)
     ]
     assert not drop_matches, (
         f"migrations.py SQL contains DROP statements (forbidden -- additive-only): {drop_matches}"

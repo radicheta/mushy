@@ -37,7 +37,7 @@ describe('extraction-db', () => {
       expect(sql1).toMatch(/CREATE INDEX IF NOT EXISTS idx_signal_draft_sender_status/);
 
       const sql2 = pool.query.mock.calls[2][0];
-      expect(sql2).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS idx_signal_draft_in_flight_per_sender/);
+      expect(sql2).toMatch(/DROP INDEX IF EXISTS idx_signal_draft_in_flight_per_sender/);
 
       const sql3 = pool.query.mock.calls[3][0];
       expect(sql3).toMatch(/ALTER TABLE signal_draft ADD COLUMN IF NOT EXISTS needs_review_reason text/);
@@ -49,10 +49,15 @@ describe('extraction-db', () => {
       expect(sql5).toMatch(/ALTER TABLE signal_draft ADD COLUMN IF NOT EXISTS discarded_at timestamptz/);
     });
 
-    test('partial unique index restricts to in-flight statuses (D-02c)', async () => {
+    test('MUSHY-53/80: the one-in-flight-draft-per-sender index is dropped, not created', async () => {
+      // Both stacks init schema against the same database at boot. If Node
+      // still CREATEd this index, it would silently restore the old behaviour
+      // right after farm_agent dropped it, and a small multi-entry capture
+      // would go back to losing every entry after the first.
       await initDb(pool);
-      const sql2 = pool.query.mock.calls[2][0];
-      expect(sql2).toMatch(/WHERE status IN \('pending','awaiting_farmer'\)/);
+      const allSql = pool.query.mock.calls.map((c) => c[0]).join('\n');
+      expect(allSql).toMatch(/DROP INDEX IF EXISTS idx_signal_draft_in_flight_per_sender/);
+      expect(allSql).not.toMatch(/CREATE UNIQUE INDEX[\s\S]*idx_signal_draft_in_flight_per_sender/);
     });
 
     test('is idempotent -- second invocation yields 12 total queries with same shape', async () => {
