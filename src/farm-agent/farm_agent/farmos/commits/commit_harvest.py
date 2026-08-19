@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import re
 import time
-from datetime import datetime, timezone
+from farm_agent.farmos.farm_time import ymd
 
 from farm_agent.farmos.assets import upsert_fungi_asset
 from farm_agent.farmos.logs import create_log
@@ -130,7 +130,7 @@ async def commit_harvest(client: dict, draft: dict, ctx: dict | None = None) -> 
         note_parts.append("Weights:\n" + weight_lines)
     notes = "\n".join(note_parts)
 
-    name = "harvest " + datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%Y-%m-%d")
+    name = "harvest " + ymd(timestamp)
     log_res = await create_log(client, "harvest", {
         "name": name,
         "timestamp": timestamp,

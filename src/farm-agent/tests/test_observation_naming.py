@@ -16,8 +16,10 @@ from __future__ import annotations
 
 from farm_agent.farmos.commits.commit_observation import _observation_name
 
-# 2026-08-18T00:00:00Z
-TS = 1787011200
+# 2026-08-18, date-only, as the commit path now stores it: local midnight
+# (03:00Z for UYT), not UTC midnight. MUSHY-94 -- at UTC midnight this rendered
+# as 2026-08-17 and the fallback name disagreed with its own timestamp.
+TS = 1787011200 + 3 * 3600
 
 
 def test_name_carries_the_asset_and_the_state():

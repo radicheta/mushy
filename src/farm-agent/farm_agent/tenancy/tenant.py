@@ -247,6 +247,11 @@ class TenantConfig:
     farmos_username: str
     farmos_integration: bool
 
+    # MUSHY-94: the zone the farm's calendar day is measured in. Date-only farm
+    # events commit at midnight HERE, and log names render here, so the date the
+    # farmer stated is the date farmOS shows.
+    farm_timezone: str
+
     # --- TimescaleDB (non-secret fields) ---
     timescale_host: str
     timescale_db: str
@@ -346,6 +351,7 @@ def load(env: dict[str, str] | None = None) -> TenantConfig:
     farmos_url = _pick(tenant_cfg, env, "FARMOS_URL", "http://10.68.155.50:18080")
     farmos_username = _pick(tenant_cfg, env, "FARMOS_USERNAME", "")
     farmos_integration = _resolve_farmos_integration(tenant_cfg, env)
+    farm_timezone = _pick(tenant_cfg, env, "TZ", None) or "America/Montevideo"
 
     # --- TimescaleDB ---
     timescale_host = env.get("TIMESCALE_HOST") or "host.docker.internal"
@@ -411,6 +417,7 @@ def load(env: dict[str, str] | None = None) -> TenantConfig:
         farmos_url=str(farmos_url),
         farmos_username=str(farmos_username),
         farmos_integration=farmos_integration,
+        farm_timezone=str(farm_timezone),
         timescale_host=timescale_host,
         timescale_db=timescale_db,
         timescale_user=timescale_user,

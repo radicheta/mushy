@@ -615,3 +615,46 @@ async def test_boot_signal_client_persists_outbound_row(monkeypatch, pool):
         "signal_msg_ts was not persisted -- find_draft_by_quoted_msg_ts joins on "
         "this column, so a NULL here is as dead as a missing row"
     )
+
+
+# ---------------------------------------------------------------------------
+# test_boot_applies_the_farm_timezone  (MUSHY-94)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_boot_applies_the_farm_timezone(monkeypatch, caplog):
+    """The commit path measures a farm day in the tenant's zone -- if boot loads
+    it but never applies it.
+
+    Loaded-but-never-wired is the exact shape of MUSHY-76 and MUSHY-90, and it
+    fails silently: an agent committing every log a day early looks identical to
+    a working one. So this asserts the module state boot is supposed to set, not
+    that the config field parsed.
+    """
+    if not _db_reachable():
+        pytest.skip("no test DB reachable -- start postgres:14 on port 5434")
+
+    from tests.conftest import TEST_ENV  # noqa: PLC0415
+    for k, v in TEST_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("TZ", "Asia/Tokyo")
+
+    from farm_agent.farmos import farm_time  # noqa: PLC0415
+    monkeypatch.setattr(farm_time, "_tz_name", "UTC")
+
+    from farm_agent.boot import main  # noqa: PLC0415
+
+    with caplog.at_level(logging.INFO, logger="farm_agent"):
+        task = asyncio.create_task(main())
+        try:
+            await asyncio.wait_for(asyncio.shield(task), timeout=5.0)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            pass
+        finally:
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+
+    assert farm_time._tz_name == "Asia/Tokyo"

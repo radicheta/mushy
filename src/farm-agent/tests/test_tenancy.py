@@ -458,6 +458,28 @@ def test_tenants_base_parent_is_repo_root():
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# MUSHY-94 -- farm timezone
+# ---------------------------------------------------------------------------
+
+
+def test_farm_timezone_defaults_to_the_farm_not_utc():
+    """UTC was the old behaviour and it is what put logs on the wrong day."""
+    cfg = _tenant_mod.load(_env(TENANT_ID="t1"))
+    assert cfg.farm_timezone == "America/Montevideo"
+
+
+def test_farm_timezone_reads_the_zone_the_container_already_sets():
+    cfg = _tenant_mod.load(_env(TENANT_ID="t1", TZ="Asia/Tokyo"))
+    assert cfg.farm_timezone == "Asia/Tokyo"
+
+
+def test_farm_timezone_ignores_an_empty_zone():
+    """Docker sets TZ= (empty) more often than it unsets it."""
+    cfg = _tenant_mod.load(_env(TENANT_ID="t1", TZ=""))
+    assert cfg.farm_timezone == "America/Montevideo"
+
+
 def test_no_other_module_reads_os_environ():
     """FND-02: grep that os.environ is only read in the sanctioned config loaders.
 

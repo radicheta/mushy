@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timezone
+from farm_agent.farmos.farm_time import ymd
 
 from farm_agent.farmos.files import upload_field_attachments
 from farm_agent.farmos.logs import create_log
@@ -52,9 +52,7 @@ def _observation_name(dj: dict, timestamp) -> str:
     """
     refs = [r for r in (dj.get("qr_codes") or []) if isinstance(r, str) and r.strip()]
     if not refs:
-        return "observation " + datetime.fromtimestamp(
-            timestamp, tz=timezone.utc
-        ).strftime("%Y-%m-%d")
+        return "observation " + ymd(timestamp)
 
     name = f"Obs {refs[0].strip()}"
     if len(refs) > 1:

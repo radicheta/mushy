@@ -15,7 +15,7 @@ ASCII-only. No em-dashes. Never-throws at the handler level.
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
+from farm_agent.farmos.farm_time import ymd
 
 from farm_agent.farmos.logs import create_log
 from farm_agent.farmos.qr import resolve_qr
@@ -50,7 +50,7 @@ async def commit_input(client: dict, draft: dict, ctx: dict | None = None) -> di
     else:
         notes = existing_notes
 
-    name = "input " + datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%Y-%m-%d")
+    name = "input " + ymd(timestamp)
     r = await create_log(client, "input", {
         "name": name,
         "timestamp": timestamp,

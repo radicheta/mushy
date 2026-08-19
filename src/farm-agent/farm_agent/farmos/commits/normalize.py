@@ -25,8 +25,7 @@ ASCII-only. No em-dashes.
 """
 from __future__ import annotations
 
-import math
-from datetime import datetime, timezone
+from farm_agent.farmos.farm_time import epoch_for_event_timestamp
 
 
 def normalize(draft: dict) -> dict:
@@ -54,14 +53,16 @@ def normalize(draft: dict) -> dict:
     # Common transforms (all log_types)
     # ------------------------------------------------------------------
 
-    # event_timestamp (ISO string) -> timestamp (unix seconds, floor).
+    # event_timestamp (ISO string) -> timestamp (unix seconds).
     # Guard: skip if timestamp already a number (idempotency).
+    # MUSHY-94: a date-only event (exact UTC midnight, which is what the
+    # extractor emits for a day the farmer named) resolves to LOCAL midnight,
+    # so the date that renders is the date the farmer stated. A real clock time
+    # is left where it is. See farmos/farm_time.py.
     if not isinstance(dj.get("timestamp"), (int, float)) and isinstance(dj.get("event_timestamp"), str):
-        try:
-            dt = datetime.fromisoformat(dj["event_timestamp"].replace("Z", "+00:00"))
-            dj["timestamp"] = math.floor(dt.timestamp())
-        except (ValueError, AttributeError):
-            pass
+        epoch = epoch_for_event_timestamp(dj["event_timestamp"])
+        if epoch is not None:
+            dj["timestamp"] = epoch
 
     # asset_ref (string) -> qr_codes (string[]). Filter <UNKNOWN> sentinel.
     # Guard: skip if qr_codes already an array (idempotency).

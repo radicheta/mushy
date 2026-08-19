@@ -15,7 +15,7 @@ ASCII-only. No em-dashes. Never-throws at the handler level.
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
+from farm_agent.farmos.farm_time import ymd
 
 from farm_agent.farmos.logs import create_log
 from farm_agent.farmos.qr import resolve_qr
@@ -23,7 +23,7 @@ from farm_agent.farmos.qr import resolve_qr
 
 def _ymd(unix_sec: float) -> str:
     """Format unix seconds as YYYY-MM-DD (UTC). Mirrors _ymd() from commit-activity.js."""
-    return datetime.fromtimestamp(unix_sec, tz=timezone.utc).strftime("%Y-%m-%d")
+    return ymd(unix_sec)
 
 
 async def commit_activity(client: dict, draft: dict, ctx: dict | None = None) -> dict:

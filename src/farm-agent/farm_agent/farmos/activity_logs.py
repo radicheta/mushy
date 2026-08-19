@@ -21,20 +21,23 @@ from __future__ import annotations
 import math
 import time
 
+from farm_agent.farmos.farm_time import date_only_epoch
+
 
 def epoch_seconds_for_date(date_str: str) -> int:
-    """Parse YYYY-MM-DD as UTC midnight; return Unix epoch seconds.
+    """Parse YYYY-MM-DD as LOCAL midnight; return Unix epoch seconds.
 
     Port of epochSecondsForDate() from activityLogs.js.
     Falls back to now() on parse failure (mirrors JS Date.parse NaN path).
+
+    MUSHY-94: was UTC midnight, which farmOS rendered at 21:00 the previous day
+    for a farm running UTC-3. The date the farmer stated is now the date that
+    renders. See farmos/farm_time.py.
     """
-    try:
-        from datetime import datetime, timezone  # noqa: PLC0415
-        dt = datetime.strptime(date_str + "T00:00:00Z", "%Y-%m-%dT%H:%M:%SZ")
-        dt = dt.replace(tzinfo=timezone.utc)
-        return int(dt.timestamp())
-    except Exception:  # noqa: BLE001
+    epoch = date_only_epoch(date_str)
+    if epoch is None:
         return math.floor(time.time())
+    return epoch
 
 
 async def create_group_assignment_log(client: dict, opts: dict) -> dict:

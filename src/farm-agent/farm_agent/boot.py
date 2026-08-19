@@ -32,6 +32,7 @@ import time
 import anthropic
 import httpx
 
+from farm_agent.farmos.farm_time import configure as configure_farm_timezone
 from farm_agent.tenancy.tenant import load as load_config
 from farm_agent.persistence.pool import build_pool
 from farm_agent.persistence.migrations import run_migrations
@@ -72,6 +73,10 @@ async def main() -> None:
 
     # FND-02: tenancy.load is the sole env reader; config object is NEVER logged.
     config = load_config(os.environ)
+
+    # MUSHY-94: the commit path measures a farm day in this zone. Set before any
+    # component that can build or render a log timestamp exists.
+    configure_farm_timezone(config.farm_timezone)
 
     # Phase 63: chamber (mushy-private) config composes the Foray TenantConfig (D-02).
     # T-56-06-01: never logged.
