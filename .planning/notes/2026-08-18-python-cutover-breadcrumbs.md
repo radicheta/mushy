@@ -73,16 +73,29 @@ Python has no catch-all), and dies with the cutover. The keyword half ports
 falls through to the capture pipeline as a new capture. Fixing that means
 classifying farmer intent, which is a product call, so it was left.
 
-**Next, and it needs a human with the phone:** the MUSHY-53/80 fan-out gate is
-one live-fire message. Everything blocking it is closed. Send, from the farmer's
-phone:
+**MUSHY-53/80 ship-gate PASSED**, live, 2026-08-19 03:03-03:06Z. Both closed.
 
-> 18 Aug 2026: checked 260519_DT_1 and 260519_DT_2, both fully colonized
+One farmer message ("18 Aug 2026: checked 260519_DT_1 and 260519_DT_2, both
+fully colonized") produced two drafts and **two independent confirm prompts** 8s
+apart — the behaviour those tickets are named for, never observed before.
 
-Expect two independent confirm prompts; answer them out of order using quoted
-replies, which is exactly the disambiguation MUSHY-90 restored. Watch for a
-"suppressed duplicate" warning — MUSHY-91 would collapse two byte-identical
-prompts into one send, which reads like a fan-out failure but is not.
+All three farmer replies **pinned by quote**, and were answered **out of order**
+(the second entry was corrected before the first was confirmed). That is
+MUSHY-90's payoff: quote pinning is what routes an answer to the right draft
+once several are in flight, and it was inoperative on Python until that morning.
+
+Both entries reached prod farmOS as separate observations:
+`640dbb1f-1203-4d83-99b3-547996caa4ac` (DT_1) and
+`9e9c18c6-f18a-4846-b3cf-e3b3944cb64d` (DT_2, carrying the correction as
+`state: contaminated`). No `in_flight_conflict`, no dropped sibling.
+
+**One defect surfaced, filed as MUSHY-92, not worked.** The `edit:` reply never
+reached the edit path: `_parse_yes_no_edit` matches the first whitespace token
+and the colon is part of it, so `edit:` never equals `edit`. It fell through to
+the capture pipeline and re-extracted instead. The correction still landed, which
+is what makes it easy to miss — the only evidence in the data is
+`edit_turn_count = 0` with no edit event. This is the *keyword* half of MUSHY-85
+with a much narrower trigger than that ticket assumed.
 
 ---
 
