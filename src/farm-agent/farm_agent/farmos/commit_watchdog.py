@@ -8,6 +8,7 @@ Provides:
   tick_once(pool, farmos_client, config, *, lock=None, db=None, router=None, csv_rows=None) -> None
   commit_watchdog_loop(pool, farmos_client, config) -> None  (coroutine, run until cancelled)
   _is_transient(result) -> bool
+  build_failure_ack(result) -> str
 
 Design:
   - Ticks IMMEDIATELY on boot (restart-safe), then every commit_watchdog_interval_ms.
@@ -66,6 +67,53 @@ def _is_transient(result: dict | None) -> bool:
         return True
     reason = str(result.get("reason") or "")
     return bool(_TRANSIENT_PATTERN.search(reason))
+
+
+# MUSHY-75: farmOS reason codes are internal. A farmer reading
+# "observation_requires_target" learns nothing they can act on, and that code is
+# the single most common commit failure on prod. Only reasons actually seen are
+# translated; anything else falls through verbatim, because an untranslated code
+# is still better than swallowing the cause -- which was the original bug.
+_REASON_IN_PLAIN_WORDS = {
+    "observation_requires_target": "I could not tell which bag or block it was about",
+    "no_target_asset_for_activity": "I could not tell which bag or block it was about",
+    "missing_source_block": "I could not find the source block it came from",
+    "fungi_type_not_found": "that strain is not set up in farmOS yet",
+    "partial_commit_failed": "only part of it saved",
+}
+
+
+def build_failure_ack(result: dict | None) -> str:
+    """Farmer-facing text for a terminal commit failure (MUSHY-75).
+
+    Transport and validation failures need opposite responses:
+
+      transport  -> farmOS was unreachable. The entry is correct. Asking the
+                    farmer to fix it sends them hunting for a mistake that is
+                    not there, which is what happened on 2026-08-16.
+      validation -> farmOS answered and refused. The entry does need fixing.
+
+    _is_transient already draws that line; before this the wording discarded it
+    and every failure ended "Reply EDIT to fix it".
+
+    Deliberately promises no automatic retry. A draft reaching this point is at
+    the attempt cap and the watchdog will not pick it up again on its own, so
+    "it will be retried" would be false.
+    """
+    reason = str((result or {}).get("reason") or "unknown")
+
+    if _is_transient(result):
+        return (
+            "Couldn't save that to farmOS: the server was unreachable. "
+            "Nothing is wrong with your entry, so there is nothing to fix. "
+            "It is flagged and held here."
+        )
+
+    cause = _REASON_IN_PLAIN_WORDS.get(reason, reason)
+    return (
+        f"Couldn't save that to farmOS: {cause}. "
+        "Reply EDIT to fix it, or leave it and it stays flagged for review."
+    )
 
 
 async def _send_farmer(signal_client, row: dict, body: str, intent: str) -> None:
@@ -232,10 +280,11 @@ async def tick_once(
                     # MUSHY-38 / Node T6 parity. THIS is the CRIT path: dispatch already
                     # told the farmer "Got it! Your entry was recorded." at YES time, so
                     # without this they are left believing a failed write succeeded.
+                    # MUSHY-75: and it must name the real cause -- a transport
+                    # failure is not the farmer's entry being wrong.
                     await _send_farmer(
                         signal_client, locked_row,
-                        f"Couldn't save that to farmOS: {reason}. "
-                        "Reply EDIT to fix it, or leave it and it stays flagged for review.",
+                        build_failure_ack(result),
                         "commit_outcome_ack",
                     )
 
