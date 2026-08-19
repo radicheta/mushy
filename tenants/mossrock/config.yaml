@@ -18,7 +18,11 @@ SIGNAL_GROUP_ID: ""
 # "farmos_agent", which does not; the working account is "mushy-bot". Note the
 # layer order is YAML -> env -> default, so a wrong value here SILENTLY
 # OVERRIDES a correct FARMOS_USERNAME in the environment.
-FARMOS_URL: "http://10.68.155.50:18080"
+# Prod farmOS. :18080 is DEV -- confirmed 2026-08-19 that every farmer commit
+# belongs on prod (:8082), where the Aug 16/18 sessions landed. Dev's newest log
+# is from 2026-06-11. A wrong URL here fails OPEN: it would succeed against the
+# wrong farmOS rather than erroring, unlike the username which 400s.
+FARMOS_URL: "http://10.68.155.50:8082"
 FARMOS_USERNAME: "mushy-bot"
 FARMOS_INTEGRATION: false
 

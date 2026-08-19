@@ -606,3 +606,13 @@ def _repo_mossrock_config() -> dict:
 
 def test_mossrock_tenant_config_names_the_real_farmos_account():
     assert _repo_mossrock_config().get("FARMOS_USERNAME") == "mushy-bot"
+
+
+def test_mossrock_tenant_config_points_at_prod_farmos():
+    """The wrong URL fails OPEN: it would succeed against the wrong farmOS.
+
+    Prod runs :8082; the committed config named dev :18080. Because _pick is
+    YAML -> env -> default, mounting the tenants directory would have silently
+    redirected farmer commits to dev, where the newest log is from 2026-06-11.
+    """
+    assert "8082" in (_repo_mossrock_config().get("FARMOS_URL") or "")
