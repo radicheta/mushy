@@ -47,14 +47,42 @@ MUSHY-79's "never green with a DB" no longer holds. One pre-existing red in
 `test_boot.py` was fixed on the way past: its fake extractor had gone stale on
 MUSHY-83's new `capture_date_iso` argument.
 
-**Still true:** nothing is serving Signal. Both agents remain stopped and
-signal-cli is queuing. Bringing `alerter-py` up is a farmer-visible action and
-was left for a human to call.
+**`alerter-py` is now UP**, alone, on an image carrying MUSHY-88/89/90/91 and
+MUSHY-84. Node stays stopped. It drained the queued farmer message on the first
+poll and sent one ask-back (draft `bbf34ce39b`).
 
-**Next:** the MUSHY-53/80 fan-out gate on Python. Note that MUSHY-90 makes
-quote-reply pinning *possible* but the `signal_outbound` join has not been
-exercised end-to-end against a real quoted reply yet — that live check is still
-owed before the gate can be called closed.
+MUSHY-90 is verified **live**, not just by test: the first Python-era
+`signal_outbound` row landed at `23:55:01Z` with `signal_msg_ts` populated,
+where the previous newest row was the `22:10:37Z` Node one. Quoted-reply pinning
+now has rows to join.
+
+`idx_signal_draft_in_flight_per_sender` is confirmed absent under the Python
+agent too — MUSHY-53's schema half is deployed on this stack, not only the Node
+one it was verified on. The rollback caution in
+[[project_in_flight_draft_index_dropped]] is now live.
+
+**MUSHY-84 fixed** (`3dee8ad`) after verifying it does port. A control word with
+no live draft is answered honestly instead of extracted into a phantom. Its
+third symptom (a stranded `needs_review` draft the farmer cannot close) is NOT
+fixed; ticket left In Progress.
+
+**MUSHY-85 verified, not fixed.** It splits: the turn-economics half is Node-only
+(`parser.js:39`'s implicit-EDIT catch-all makes every non-YES/NO reply an edit;
+Python has no catch-all), and dies with the cutover. The keyword half ports
+*inverted* — on Python a plain-language correction is not recognised at all and
+falls through to the capture pipeline as a new capture. Fixing that means
+classifying farmer intent, which is a product call, so it was left.
+
+**Next, and it needs a human with the phone:** the MUSHY-53/80 fan-out gate is
+one live-fire message. Everything blocking it is closed. Send, from the farmer's
+phone:
+
+> 18 Aug 2026: checked 260519_DT_1 and 260519_DT_2, both fully colonized
+
+Expect two independent confirm prompts; answer them out of order using quoted
+replies, which is exactly the disambiguation MUSHY-90 restored. Watch for a
+"suppressed duplicate" warning — MUSHY-91 would collapse two byte-identical
+prompts into one send, which reads like a fan-out failure but is not.
 
 ---
 
