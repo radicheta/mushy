@@ -36,12 +36,16 @@ EVAL_TICK_INTERVAL_S = 30.0
 class ChamberService:
     """Drives the alert FSM from bridge events and sends via the SHARED client."""
 
-    def __init__(self, *, config, signal_client, http, log=None, clock=None) -> None:
+    def __init__(self, *, config, signal_client, http, log=None, clock=None,
+                 last_sent_day=None) -> None:
         self._config = config
         self._signal_client = signal_client
         self._http = http
         self._log = log or logger
         self._clock = clock or (lambda: int(time.time() * 1000))
+        # MUSHY-98: async () -> 'YYYY-MM-DD' | None, so a restart after the
+        # heartbeat hour does not re-send the day.
+        self._last_sent_day = last_sent_day
 
         self.state = state.initial_state(self._clock())
         self._tasks: list[asyncio.Task] = []
@@ -65,7 +69,12 @@ class ChamberService:
         """
         for action in actions:
             try:
-                await self._signal_client.send(action["body"])
+                # MUSHY-98: label the send. Without an intent every chamber
+                # message landed in signal_outbound as 'unknown', so heartbeats
+                # and alerts could not be counted or audited after the fact.
+                await self._signal_client.send(
+                    action["body"], intent=action.get("kind")
+                )
             except Exception as e:  # noqa: BLE001 -- fail-open by design
                 self._log.warning(
                     "[chamber] send failed for %s: %s", action.get("kind"), e
@@ -88,9 +97,17 @@ class ChamberService:
     def get_summary(self) -> dict:
         """The heartbeat summary. Keys match message.format_heartbeat (Plan 05)."""
         st = self.state
+        # MUSHY-98: age against the last TELEMETRY FRAME, not the moment the
+        # socket opened. ws_last_connected_ms is stamped once at connect and
+        # never refreshed, so the healthier the connection the older fc1
+        # appeared -- the live heartbeat said "Pi last seen: 899 seconds ago"
+        # while frames were arriving every second. The connection time remains
+        # the fallback for the window after a connect but before the first
+        # frame, where it is the only thing known.
+        last_seen_ms = st.fc1_last_msg_ts or st.ws_last_connected_ms
         pi_last_seen_sec = None
-        if st.ws_last_connected_ms is not None:
-            pi_last_seen_sec = int((self._clock() - st.ws_last_connected_ms) / 1000)
+        if last_seen_ms is not None:
+            pi_last_seen_sec = int((self._clock() - last_seen_ms) / 1000)
         return {
             "rh": st.current_rh,
             "temp": st.current_temp,
@@ -150,6 +167,7 @@ class ChamberService:
                 config=self._config,
                 get_summary=self.get_summary,
                 dispatch=self._dispatch_heartbeat,
+                last_sent_day=self._last_sent_day,
                 log=self._log,
             )
         ))

@@ -169,8 +169,14 @@ async def main() -> None:
 
     # Phase 63 / D-05: chamber reuses the ONE SignalClient and the ONE ReceiveLoop.
     # A second poller on the same Signal number would silently eat inbound messages.
+    # MUSHY-98: let the chamber service see whether today's heartbeat already
+    # went out, so a redeploy after the heartbeat hour does not send a second.
+    async def _last_heartbeat_day():
+        return await outbound_repo.last_heartbeat_day(pool, chamber_config.timezone)
+
     chamber_service = ChamberService(
-        config=chamber_config, signal_client=signal_client, http=http, log=log
+        config=chamber_config, signal_client=signal_client, http=http, log=log,
+        last_sent_day=_last_heartbeat_day,
     )
     chamber_dispatch = make_composite_dispatch(
         chamber_service=chamber_service,

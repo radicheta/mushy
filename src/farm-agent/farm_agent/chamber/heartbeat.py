@@ -41,6 +41,23 @@ class HeartbeatState:
     deferring_day: str | None = None
 
 
+def seed_from_history(state: HeartbeatState, already_sent_day: str | None) -> None:
+    """Carry the last-sent day across a restart (MUSHY-98).
+
+    heartbeat_loop builds a fresh HeartbeatState on every boot -- D-06 Node
+    parity, and harmless while the heartbeat never fired. MUSHY-97 made it live:
+    with telemetry flowing, every restart after heartbeat_hour sent the farmer
+    another full heartbeat, and deploys cluster.
+
+    `already_sent_day` is the local day of the last heartbeat actually sent, or
+    None if that cannot be determined. None deliberately leaves the state
+    untouched: a DB that cannot answer must not silence the heartbeat, since a
+    missing heartbeat is the failure this whole path exists to prevent.
+    """
+    if already_sent_day:
+        state.last_fired_day = already_sent_day
+
+
 def tick(*, state: HeartbeatState, config, now_ms: int, get_summary, dispatch, log=None) -> None:
     """One scheduler check. Port of heartbeat.js:42-72.
 
@@ -100,6 +117,8 @@ async def heartbeat_loop(
     dispatch,
     clock=None,
     interval_s: float = 900.0,
+    last_sent_day=None,
+    sleep=None,
     log=None,
 ) -> None:
     """Run tick() every interval_s forever. Port of heartbeat.js:75-78.
@@ -114,7 +133,15 @@ async def heartbeat_loop(
     import time
 
     clock = clock or (lambda: int(time.time() * 1000))
+    sleep = sleep or asyncio.sleep     # injected so tests can bound the loop
     state = HeartbeatState()
+    if last_sent_day is not None:
+        try:
+            seed_from_history(state, await last_sent_day())
+        except Exception as e:  # noqa: BLE001 -- never block the loop on history
+            (log or logger).warning(
+                "[heartbeat] could not read send history: %s: %s", type(e).__name__, e
+            )
     while True:
         tick(
             state=state,
@@ -124,4 +151,4 @@ async def heartbeat_loop(
             dispatch=dispatch,
             log=log,
         )
-        await asyncio.sleep(interval_s)
+        await sleep(interval_s)

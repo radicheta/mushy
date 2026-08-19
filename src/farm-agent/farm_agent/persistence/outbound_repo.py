@@ -110,3 +110,37 @@ async def last_body_for_draft(pool: AsyncConnectionPool, draft_id: str) -> str |
     except Exception as e:  # noqa: BLE001 -- fail-open
         logger.warning("[outbound_repo] last_body_for_draft failed: %s", e)
         return None
+
+
+# ---------------------------------------------------------------------------
+# MUSHY-98 -- one heartbeat per local day, across restarts
+# ---------------------------------------------------------------------------
+
+_LAST_HEARTBEAT_DAY_SQL = """
+SELECT to_char(sent_at AT TIME ZONE %s, 'YYYY-MM-DD')
+  FROM signal_outbound
+ WHERE intent = 'heartbeat' OR body LIKE '[HEARTBEAT]%%'
+ ORDER BY sent_at DESC
+ LIMIT 1
+"""
+
+
+async def last_heartbeat_day(pool: AsyncConnectionPool, tz_name: str) -> str | None:
+    """Local day of the most recent heartbeat sent, or None.
+
+    Matches on the body as well as the intent because heartbeats sent before
+    MUSHY-98 carry intent 'unknown' or 'attestation_kickoff' -- so the guard
+    works on the history that already exists, not only on rows written from now
+    on.
+
+    Returns None on any failure. A DB that cannot answer must not silence the
+    heartbeat: a missing heartbeat is the failure this path exists to prevent.
+    """
+    try:
+        async with pool.connection() as conn:
+            cur = await conn.execute(_LAST_HEARTBEAT_DAY_SQL, (tz_name,))
+            row = await cur.fetchone()
+        return row[0] if row and row[0] else None
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[outbound_repo] last_heartbeat_day failed: %s", e)
+        return None
