@@ -468,12 +468,31 @@ Suite **1177 passed / 4 skipped** against a fresh `:5434` (was 1133/4).
 MUSHY-95's fallback test had pinned the UTC-midnight epoch, so it had encoded
 the bug; updated to the post-fix timestamp. The two fixes interlock.
 
-### Still open on MUSHY-94
+### MUSHY-94 historical backfill -- DONE, ticket CLOSED
 
-The ~180 already-committed logs still carry UTC midnight, so **as of today there
-is a discontinuity mid-log**: events before `e57c3b8` render a day early, events
-after render correctly. Rewriting them corrects the record but edits committed
-farm history. Don Santiago's call, unchanged.
+Don Santiago authorised the rewrite the same evening, on the condition that a
+log carrying a real clock time is left alone. **146 logs moved from UTC midnight
+to local midnight, 116 human-created logs untouched, 0 failures** (`da8fdfc`).
+Paper trail, including the old timestamp of every edited log, is in
+`.planning/notes/2026-08-19-mushy94-backfill/`. The change is reversible.
+
+The condition was unambiguous in the data: the two sets are **disjoint by
+author**. All 146 logs at exact UTC midnight are mushy-committed; none of the
+116 human logs sit there. `timestamp % 86400 == 0` was the discriminator. The
+ticket's "~180" counted committed drafts, not logs.
+
+**The near-miss is the part to remember.** The first survey *missed 28 logs
+while duplicating 28 others*: farmOS paginates inconsistently without an
+explicit sort, so `page[limit]=200` plus a `next` link returns an overlapping
+window. Both passes reported a plausible 262 rows and the run reported "146
+candidates, 0 failed". Trusting that would have left 28 seeding logs silently a
+day early -- indistinguishable from success, and the exact failure this ticket
+exists to fix. It surfaced only because the arithmetic did not reconcile (27
+skips nothing accounted for). Always pass `sort=drupal_internal__id` when
+paginating farmOS.
+
+*Reconcile the arithmetic of a batch; do not read its failure count.* "0 failed"
+was true and the batch was still incomplete.
 
 ### Triage of the other 57 open tickets
 
