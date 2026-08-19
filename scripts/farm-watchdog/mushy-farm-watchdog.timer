@@ -1,0 +1,15 @@
+[Unit]
+Description=Run the farm capability watchdog on a schedule (MUSHY-43)
+
+[Timer]
+# 5 min after boot: long enough for the stack to settle (stack-reconcile runs
+# at 3 min), short enough that a bad boot is caught before anyone relies on it.
+OnBootSec=5min
+# Every 15 min. The failures this exists to catch ran for 3 days, 5.5 weeks and
+# 7.8 days respectively, so the cadence is not the hard part -- being noticed at
+# all is. 15 min keeps the ntfy backoff sane and the probe load negligible.
+OnUnitActiveSec=15min
+Unit=mushy-farm-watchdog.service
+
+[Install]
+WantedBy=timers.target

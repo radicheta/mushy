@@ -1,0 +1,24 @@
+[Unit]
+Description=Check that farm CAPABILITIES still work, and push failures out of band (MUSHY-43)
+# Needs docker for the container checks and the database reads. Not Requires=:
+# a watchdog that refuses to run when part of the farm is broken is useless
+# precisely when it matters.
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+# Root: reads the docker socket and execs into the timescale container.
+ExecStart=/usr/local/bin/farm-watchdog --notify
+# The out-of-band topic. NOT Signal: the single most important thing this
+# watches IS Signal, so alerting through it would be circular. Provision as
+# root-only (mode 600) -- the topic URL is a shared secret.
+EnvironmentFile=-/etc/mushy-watchdog/env
+# Exit 1 (something BROKEN) and 2 (something UNKNOWN) are both real outcomes
+# that have already been reported by --notify, so do not spam the journal with
+# unit failures on top.
+SuccessExitStatus=0 1 2
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
