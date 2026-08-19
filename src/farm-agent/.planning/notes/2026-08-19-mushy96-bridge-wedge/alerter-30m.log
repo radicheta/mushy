@@ -1,0 +1,173 @@
+2026-08-19 18:48:01,370 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:48:09,439 httpx INFO HTTP Request: GET http://signal-cli:8080/v1/receive/%2B59891840205?timeout=1&ignore_attachments=false "HTTP/1.1 200 OK"
+2026-08-19 18:48:11,378 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:48:21,385 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:48:31,393 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:48:41,401 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:48:43,903 httpx INFO HTTP Request: GET http://signal-cli:8080/v1/receive/%2B59891840205?timeout=1&ignore_attachments=false "HTTP/1.1 200 OK"
+2026-08-19 18:48:51,410 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:49:01,421 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:49:11,428 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:49:18,696 httpx INFO HTTP Request: GET http://signal-cli:8080/v1/receive/%2B59891840205?timeout=1&ignore_attachments=false "HTTP/1.1 200 OK"
+2026-08-19 18:49:21,435 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:49:31,443 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:49:41,451 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:49:51,462 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:49:53,833 httpx INFO HTTP Request: GET http://signal-cli:8080/v1/receive/%2B59891840205?timeout=1&ignore_attachments=false "HTTP/1.1 200 OK"
+2026-08-19 18:50:01,470 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:50:11,479 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:50:21,489 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:50:28,959 httpx INFO HTTP Request: GET http://signal-cli:8080/v1/receive/%2B59891840205?timeout=1&ignore_attachments=false "HTTP/1.1 200 OK"
+2026-08-19 18:50:31,497 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:50:41,504 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:50:51,512 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:51:01,520 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:51:04,360 httpx INFO HTTP Request: GET http://signal-cli:8080/v1/receive/%2B59891840205?timeout=1&ignore_attachments=false "HTTP/1.1 200 OK"
+2026-08-19 18:51:11,528 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:51:21,536 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:51:31,544 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:51:41,471 httpx INFO HTTP Request: GET http://signal-cli:8080/v1/receive/%2B59891840205?timeout=1&ignore_attachments=false "HTTP/1.1 200 OK"
+2026-08-19 18:51:41,567 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:51:51,575 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:52:01,582 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:52:11,589 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:52:18,772 httpx INFO HTTP Request: GET http://signal-cli:8080/v1/receive/%2B59891840205?timeout=1&ignore_attachments=false "HTTP/1.1 200 OK"
+2026-08-19 18:52:21,614 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:52:31,621 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:52:41,643 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:52:51,665 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:52:56,569 httpx INFO HTTP Request: GET http://signal-cli:8080/v1/receive/%2B59891840205?timeout=1&ignore_attachments=false "HTTP/1.1 200 OK"
+2026-08-19 18:53:01,672 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:53:11,679 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:53:21,706 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:53:31,714 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:53:35,037 httpx INFO HTTP Request: GET http://signal-cli:8080/v1/receive/%2B59891840205?timeout=1&ignore_attachments=false "HTTP/1.1 200 OK"
+2026-08-19 18:53:41,781 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:53:51,818 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:54:01,826 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:54:11,833 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:54:16,483 httpx INFO HTTP Request: GET http://signal-cli:8080/v1/receive/%2B59891840205?timeout=1&ignore_attachments=false "HTTP/1.1 200 OK"
+2026-08-19 18:54:21,840 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:54:31,848 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:54:41,854 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:54:56,861 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 18:55:07,356 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:55:22,363 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 18:55:37,369 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 18:55:52,378 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 18:56:07,383 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 18:56:20,137 farm_agent.boot WARNING [bridge-client] connect failed: sent 1011 (internal error) keepalive ping timeout; no close frame received
+2026-08-19 18:56:30,147 farm_agent.boot WARNING [chamber] send failed for send: 
+2026-08-19 18:56:31,140 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake
+2026-08-19 18:56:43,144 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake
+2026-08-19 18:56:47,487 farm_agent.signal_io.receive_loop WARNING [receive] receive() error: ReadTimeout: 
+2026-08-19 18:56:57,155 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake
+2026-08-19 18:57:15,164 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake
+2026-08-19 18:57:41,176 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake
+2026-08-19 18:58:11,718 farm_agent.boot INFO [bridge-client] ws_open
+2026-08-19 18:58:11,766 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 18:58:21,769 farm_agent.boot WARNING [chamber] send failed for recovery: 
+2026-08-19 18:58:26,775 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 18:58:41,782 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 18:58:56,788 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 18:59:11,801 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 18:59:18,507 farm_agent.signal_io.receive_loop WARNING [receive] receive() error: ReadTimeout: 
+2026-08-19 18:59:21,725 farm_agent.boot WARNING [bridge-client] connect failed: sent 1011 (internal error) keepalive ping timeout; no close frame received
+2026-08-19 18:59:32,730 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake
+2026-08-19 18:59:44,735 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake
+2026-08-19 18:59:55,946 farm_agent.boot INFO [bridge-client] ws_open
+2026-08-19 18:59:57,228 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:00:07,239 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:00:10,083 farm_agent.boot INFO [heartbeat] deferred for 2026-08-19 -- bridge summary empty, will retry
+2026-08-19 19:00:18,734 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:00:28,742 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:00:43,746 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 19:00:58,751 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 19:01:13,756 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 19:01:25,958 farm_agent.boot WARNING [bridge-client] connect failed: sent 1011 (internal error) keepalive ping timeout; no close frame received
+2026-08-19 19:01:36,967 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake
+2026-08-19 19:01:47,813 farm_agent.boot INFO [bridge-client] ws_open
+2026-08-19 19:01:49,522 farm_agent.signal_io.receive_loop WARNING [receive] receive() error: ReadTimeout: 
+2026-08-19 19:01:52,816 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 19:02:03,538 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:02:14,420 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:02:26,205 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:02:38,332 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:02:53,336 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 19:03:04,543 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:03:19,551 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 19:03:34,559 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 19:03:49,565 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 19:03:57,831 farm_agent.boot WARNING [bridge-client] connect failed: sent 1011 (internal error) keepalive ping timeout; no close frame received
+2026-08-19 19:04:08,843 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake
+2026-08-19 19:04:20,534 farm_agent.signal_io.receive_loop WARNING [receive] receive() error: ReadTimeout: 
+2026-08-19 19:04:20,845 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake
+2026-08-19 19:04:30,538 farm_agent.boot INFO [bridge-client] ws_open
+2026-08-19 19:04:33,261 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:04:43,535 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:04:54,290 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:05:07,854 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:05:18,177 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:05:28,530 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:05:37,205 httpx INFO HTTP Request: GET http://signal-cli:8080/v1/receive/%2B59891840205?timeout=1&ignore_attachments=false "HTTP/1.1 200 OK"
+2026-08-19 19:05:38,544 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:05:48,708 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:05:58,716 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:06:08,740 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:06:21,419 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:06:34,327 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:06:45,141 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:06:56,613 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:07:07,381 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:07:20,286 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:07:35,291 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 19:07:50,303 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 19:08:00,549 farm_agent.boot WARNING [bridge-client] connect failed: sent 1011 (internal error) keepalive ping timeout; no close frame received
+2026-08-19 19:08:08,219 farm_agent.signal_io.receive_loop WARNING [receive] receive() error: ReadTimeout: 
+2026-08-19 19:08:11,553 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake
+2026-08-19 19:08:20,733 farm_agent.boot INFO [bridge-client] ws_open
+2026-08-19 19:08:22,238 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:08:32,556 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:08:43,451 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:08:53,717 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:09:04,311 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:09:19,319 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 19:09:29,523 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:09:44,527 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 19:09:59,539 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 19:10:14,551 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 19:10:29,557 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 19:10:30,870 farm_agent.boot WARNING [bridge-client] connect failed: sent 1011 (internal error) keepalive ping timeout; no close frame received
+2026-08-19 19:10:39,231 farm_agent.signal_io.receive_loop WARNING [receive] receive() error: ReadTimeout: 
+2026-08-19 19:10:42,523 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake
+2026-08-19 19:10:47,533 farm_agent.boot INFO [bridge-client] ws_open
+2026-08-19 19:10:48,796 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:10:59,484 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:11:09,900 httpx INFO HTTP Request: GET http://host.docker.internal:8081/health "HTTP/1.1 200 OK"
+2026-08-19 19:11:24,907 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 19:11:39,916 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 19:11:54,924 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 19:11:57,540 farm_agent.boot WARNING [bridge-client] connect failed: sent 1011 (internal error) keepalive ping timeout; no close frame received
+2026-08-19 19:12:08,547 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake
+2026-08-19 19:12:20,558 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake
+2026-08-19 19:12:34,564 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake
+2026-08-19 19:12:52,575 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake
+2026-08-19 19:13:09,974 httpx INFO HTTP Request: GET http://signal-cli:8080/v1/receive/%2B59891840205?timeout=1&ignore_attachments=false "HTTP/1.1 400 Bad Request"
+2026-08-19 19:13:09,976 farm_agent.signal_io.receive_loop WARNING [receive] receive() error: HTTPStatusError: Client error '400 Bad Request' for url 'http://signal-cli:8080/v1/receive/%2B59891840205?timeout=1&ignore_attachments=false'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-08-19 19:13:18,594 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake
+2026-08-19 19:13:48,599 farm_agent.boot INFO [bridge-client] ws_open
+2026-08-19 19:13:53,603 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 19:14:08,615 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 19:14:23,618 farm_agent.boot WARNING [bridge-client] /health poll failed: 
+2026-08-19 19:14:38,616 farm_agent.boot WARNING [bridge-client] connect failed: sent 1011 (internal error) keepalive ping timeout; no close frame received
+2026-08-19 19:14:49,082 farm_agent.boot WARNING [chamber] send failed for send: 
+2026-08-19 19:14:49,619 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake
+2026-08-19 19:15:01,631 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake
+2026-08-19 19:15:10,476 farm_agent.boot INFO [heartbeat] deferred for 2026-08-19 -- bridge summary empty, will retry
+2026-08-19 19:15:15,639 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake
+2026-08-19 19:15:33,651 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake
+2026-08-19 19:15:41,213 farm_agent.signal_io.receive_loop WARNING [receive] receive() error: ReadTimeout: 
+2026-08-19 19:16:01,423 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake
+2026-08-19 19:16:43,715 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake
+2026-08-19 19:17:24,624 farm_agent.boot WARNING [bridge-client] connect failed: timed out during opening handshake

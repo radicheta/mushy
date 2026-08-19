@@ -22,12 +22,23 @@ from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
+# MUSHY-96: deferrals before the log escalates from INFO to WARNING. At the
+# 15-minute tick this is an hour of silence, which is well past a cold start and
+# squarely a fault.
+DEFERRALS_BEFORE_ALARM = 4
+
 
 @dataclass
 class HeartbeatState:
     """In-memory scheduler state. Resets on restart, matching Node (D-06)."""
 
     last_fired_day: str | None = None
+
+    # MUSHY-96: how many times TODAY the heartbeat has deferred on an empty
+    # summary. A permanently flapping bridge deferred every 15 minutes at INFO
+    # level and burned the whole day without anyone noticing.
+    deferrals_today: int = 0
+    deferring_day: str | None = None
 
 
 def tick(*, state: HeartbeatState, config, now_ms: int, get_summary, dispatch, log=None) -> None:
@@ -60,9 +71,24 @@ def tick(*, state: HeartbeatState, config, now_ms: int, get_summary, dispatch, l
                 dispatch({"type": "heartbeat_tick", "summary": summary})
                 log.info("[heartbeat] fired for %s", day)
             else:
-                log.info(
-                    "[heartbeat] deferred for %s -- bridge summary empty, will retry", day
-                )
+                if state.deferring_day != day:
+                    state.deferring_day = day
+                    state.deferrals_today = 0
+                state.deferrals_today += 1
+                # Escalate rather than repeat: a couple of deferrals is a normal
+                # cold start, a sustained run means the bridge is not delivering
+                # telemetry at all and the day is being lost.
+                if state.deferrals_today >= DEFERRALS_BEFORE_ALARM:
+                    log.warning(
+                        "[heartbeat] STILL deferred for %s after %d attempts -- the "
+                        "bridge has delivered no telemetry; today's heartbeat is "
+                        "being lost", day, state.deferrals_today,
+                    )
+                else:
+                    log.info(
+                        "[heartbeat] deferred for %s -- bridge summary empty, will retry",
+                        day,
+                    )
     except Exception as e:  # noqa: BLE001 -- defense in depth; the loop must survive
         log.warning("[heartbeat] tick error: %s", e)
 

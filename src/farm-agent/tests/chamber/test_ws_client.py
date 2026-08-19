@@ -150,8 +150,10 @@ class _FakeConnect:
         self.outcomes = list(outcomes)
         self.attempts = 0
 
-    async def __call__(self, url):
+    async def __call__(self, url, **kwargs):
+        # MUSHY-96 passes keepalive params; accept and ignore them here.
         self.attempts += 1
+        self.kwargs = kwargs
         outcome = self.outcomes.pop(0) if self.outcomes else OSError("exhausted")
         if isinstance(outcome, Exception):
             raise outcome
@@ -188,19 +190,31 @@ async def test_reconnect_waits_follow_the_node_schedule(chamber_config):
     assert slept[:5] == [1.0, 2.0, 4.0, 8.0, 16.0]
 
 
-async def test_successful_connect_resets_backoff(chamber_config):
-    """bridge-client.js:49 -- a good open resets the schedule to 1s."""
+async def test_opening_alone_no_longer_resets_the_backoff(chamber_config):
+    """MUSHY-96 -- REPLACES test_successful_connect_resets_backoff.
+
+    js:49 reset the schedule on a good OPEN. This test used to assert that,
+    with a connection that "connects, closes immediately" -- which is exactly
+    the live failure: a bridge under load accepted the socket, the client's
+    keepalive killed it seconds later, the backoff reset to 1s, and the client
+    reconnected every second while every reconnect made the bridge replay its
+    buffer again.
+
+    Opening is not success. Staying open is. A connection that proves itself
+    still resets the schedule -- see
+    tests/chamber/test_ws_reconnect_storm.py::test_a_connection_that_held_resets_the_backoff.
+    """
     connect = _FakeConnect([
         OSError("refused"), OSError("refused"),       # backoff climbs to 4s
         [],                                            # connects, closes immediately
-        OSError("refused"),                            # must restart at 1s
+        OSError("refused"),
     ])
     client, slept = _make_client(chamber_config, connect)
     with pytest.raises(asyncio.CancelledError):
         await client.run()
     assert slept[0] == 1.0
     assert slept[1] == 2.0
-    assert slept[2] == 1.0     # reset after the successful connect
+    assert slept[2] == 4.0, "a connect-then-die must NOT reset the schedule"
 
 
 async def test_messages_are_dispatched(chamber_config):

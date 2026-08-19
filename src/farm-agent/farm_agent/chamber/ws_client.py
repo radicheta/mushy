@@ -34,6 +34,21 @@ HEALTH_POLL_INTERVAL_S = 10.0
 MIN_BACKOFF_MS = 1_000
 MAX_BACKOFF_MS = 30_000
 
+# MUSHY-96: a connection must EARN a backoff reset by staying open. Node reset
+# on a successful open (js:49), so a socket that opened and died a second later
+# reset the schedule to 1s -- the client then reconnected every second, and
+# every reconnect made the bridge replay its buffer again, which made the next
+# ping likelier to time out. Self-amplifying, like MUSHY-89's receipt loop.
+HEALTHY_CONNECTION_MS = 30_000
+
+# Keepalive tuned for a peer that goes busy, not one that goes away. The
+# websockets default ping_timeout of 20s killed good sockets while the bridge
+# replayed a backlog (observed: replays growing 138 -> 375 -> 1222 rows).
+# Pings stay ON so a genuinely dead bridge is still detected, just not one that
+# is merely slow.
+PING_INTERVAL_S = 20
+PING_TIMEOUT_S = 90
+
 
 def next_backoff_ms(current_ms: int) -> int:
     """Double the backoff, capped. Port of bridge-client.js:80.
@@ -154,7 +169,10 @@ class WsClient:
         except asyncio.CancelledError:
             raise
         except Exception as e:  # noqa: BLE001 -- fail-open by design
-            self._log.warning("[bridge-client] /health poll failed: %s", e)
+            # MUSHY-88 again: httpx timeouts stringify to "".
+            self._log.warning(
+                "[bridge-client] /health poll failed: %s: %s", type(e).__name__, e
+            )
             self._on_liveness(parse_health(None, self._clock()))
 
     async def _health_loop(self) -> None:
@@ -178,12 +196,17 @@ class WsClient:
         """
         backoff = MIN_BACKOFF_MS
         while True:
+            opened_at_ms = None
             try:
-                sock = await self._connect(self._config.bridge_ws_url)
+                sock = await self._connect(
+                    self._config.bridge_ws_url,
+                    ping_interval=PING_INTERVAL_S,
+                    ping_timeout=PING_TIMEOUT_S,
+                )
                 async with sock:
                     self._ws_connected = True
                     self._ws_last_connected_ms = self._clock()
-                    backoff = MIN_BACKOFF_MS      # reset on a good open (js:49)
+                    opened_at_ms = self._clock()
                     self._log.info("[bridge-client] ws_open")
                     await self.poll_health()
                     health_task = asyncio.create_task(self._health_loop())
@@ -206,7 +229,11 @@ class WsClient:
             except asyncio.CancelledError:
                 raise                              # shutdown must propagate
             except Exception as e:  # noqa: BLE001
-                self._log.warning("[bridge-client] connect failed: %s", e)
+                # MUSHY-88's lesson: an httpx/websockets timeout stringifies to
+                # "", so name the type or the log identifies nothing.
+                self._log.warning(
+                    "[bridge-client] connect failed: %s: %s", type(e).__name__, e
+                )
 
             # Closed or failed: report liveness from the CACHED health snapshot,
             # so the FSM keeps the fc1 timestamp it needs to judge chamber-dark.
@@ -214,5 +241,20 @@ class WsClient:
             self._on_liveness(
                 parse_health(self._last_health, self._clock(), ws_connected=False)
             )
+
+            # MUSHY-96: reset only if this connection PROVED itself. Opening is
+            # not success. A socket that dies immediately leaves the schedule
+            # climbing, so a flapping bridge is backed away from instead of
+            # hammered.
+            if opened_at_ms is not None:
+                held_ms = self._clock() - opened_at_ms
+                if held_ms >= HEALTHY_CONNECTION_MS:
+                    backoff = MIN_BACKOFF_MS
+                else:
+                    self._log.warning(
+                        "[bridge-client] connection held only %dms; backing off %dms",
+                        held_ms, backoff,
+                    )
+
             await self._sleep(backoff / 1000)
             backoff = next_backoff_ms(backoff)
