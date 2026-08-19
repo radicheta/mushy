@@ -399,3 +399,21 @@ either. Run its tests in the image:
 docker run --rm -v "$PWD":/app -w /app mushy-whisper-transcribe \
   python3 -m pytest test -q -m "not gpu"
 ```
+
+**MUSHY-94 filed 2026-08-19, not worked.** Date-only farm logs are committed at
+UTC midnight and farmOS renders in `America/Montevideo`, so every one displays
+on the *previous* calendar day. `inoc 2026-08-16` shows a timestamp of
+2026-08-15; the Aug 18 observations show 2026-08-17. Name and timestamp
+contradict each other on the same row, and the name is the one that is right.
+
+Confirmed at the source, not inferred: prod `config` row `system.date` has
+`timezone.default = "America/Montevideo"`, `user.configurable = true`.
+
+Fix direction is local midnight (03:00Z for UYT) on the agent's commit path.
+The ~180 existing rows are an open question -- rewriting them edits committed
+farm history, leaving them puts a discontinuity mid-log. Don Santiago's call.
+
+Also still unfiled: the two Aug 18 observations are both named
+`observation 2026-08-18`, so the list cannot distinguish DT_1 from DT_2. The
+seeding logs do this correctly (`Inoc 260816_WIN_3`); the convention was never
+applied to the observation path.
