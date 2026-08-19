@@ -241,3 +241,68 @@ before the swap is called done.
   loop *understands*. That makes the cap arrive too early for a farmer typing
   plain-language corrections, and unreachable for unparseable input. One
   counter, two opposite failures (MUSHY-85 and MUSHY-91).
+
+---
+
+## Update — 2026-08-19 morning session
+
+`main` pushed at `3f9f4e6`. `alerter-py` rebuilt from it and recreated at
+11:14:46Z; boot clean, receive loop polling, Node still stopped.
+
+**MUSHY-92 fixed and deployed** (`3f9f4e6`). Test-first: six new tests in
+`tests/confirm/test_edit_handler.py`, five watched fail before the change.
+
+The control verb is now the leading run of *letters*, not the first
+whitespace-delimited token, with attached punctuation treated as a separator.
+`_split_leading_verb` is shared by `_parse_yes_no_edit` and
+`_extract_edit_text`, which settles the open question the ticket left: the
+correction handed to the model no longer starts with a stray colon. `edit:`,
+`edit: 750g` and the glued `edit:750g` all reach the edit path now.
+
+Two things worth knowing beyond the ticket:
+
+- The same defect was on **every** verb, not just `edit`. `yes.`, `No!` and
+  `ok,` were all unparseable. Those are more likely from a farmer than `edit:`
+  is, and each one fell through to the capture pipeline as a fresh capture.
+- The obvious prefix-match fix is wrong and there are pinning tests for it.
+  `fixed the fan in FC1` and `yesterday we harvested 2kg` are real log entries
+  that start with a control verb; a lookahead requires end-of-string,
+  whitespace or punctuation after the verb so they stay log entries.
+
+Side effect on `_is_bare_control_word` (reply_router, MUSHY-84's fix): a
+single-word `yes.` is now confirm-thread traffic instead of an extraction.
+Intended direction; router tests green.
+
+**MUSHY-89 closed on live evidence.** This doc said a unit test could not close
+it. Receipt-shaped rows on prod `signal_capture` (`raw_text IS NULL AND
+cardinality(attachment_paths) = 0`) over the last 20h: **6 rows, all between
+22:43:22Z and 22:45:00Z on Aug 18**, at the ~20s intervals — the original
+flood, before the fixed image started at `00:01:49Z`. **Zero since**, across
+~14h of live traffic including the 03:03-03:06Z fan-out gate, which produced
+four farmer replies and six outbound sends and so generated exactly the
+receipt traffic that drove the loop.
+
+**Suite is 1133 passed / 4 skipped** against a fresh `:5434`.
+
+### Gotcha — the test DB credentials are not the obvious ones
+
+A `postgres:14` on `:5434` with the default `POSTGRES_PASSWORD=postgres` and
+db `postgres` does not fail fast: the DB-gated tests **hang** rather than skip,
+and `pytest -q` buffers, so the run looks alive with an empty output file. The
+conftest defaults (`tests/conftest.py:39-41`) are db `test_farm_agent`, user
+`postgres`, password `test`:
+
+```
+docker run -d --rm --name mushy-test-pg -p 5434:5432 \
+  -e POSTGRES_PASSWORD=test -e POSTGRES_USER=postgres \
+  -e POSTGRES_DB=test_farm_agent postgres:14
+```
+
+Wrong creds cost ~15 minutes of a run that was never going to finish.
+
+### Still open, unchanged
+
+MUSHY-84 (stranded `needs_review` draft the farmer cannot close) and MUSHY-85's
+keyword half (a plain-language correction with no verb is not recognised at
+all) are both product calls and were not touched. MUSHY-92 was only the
+mechanical half.
