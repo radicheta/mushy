@@ -603,3 +603,94 @@ Pre-existing rows are deliberately not backfilled, so no validation failure can
 be resurrected: verified live, 0 parked / 0 requeued / 10 untouched.
 
 Suite **1215 passed / 4 skipped**.
+
+---
+
+## Update -- 2026-08-19 late evening: the chamber alerter was DEAF
+
+The biggest find of the cutover, and it was found by accident.
+
+**MUSHY-97 (`1815523`): the Python chamber alerter received no telemetry at all
+from the 2026-08-18 cutover until tonight.** `service._on_ws_message` asserted
+"a bridge frame is already the FSM's event shape" and dropped anything without a
+`type` key. The bridge sends measurement-keyed frames with **no `type` at all**:
+
+```
+{"humidity": 0.913, "timestamp": 1787179328207}
+{"sensor_health": {"level": 0, "message": "ok", ...}, "timestamp": ...}
+```
+
+Sniffed live over 30s: **173 frames, ZERO recognised**. For a day and a half
+there was no RH out-of-band alert, no sensor-health alert, no stuck-humidifier
+alert, no CO2 alert. `pi_liveness` was the only surviving detector because it
+arrives via `on_liveness`, which was wired -- so a fully dark chamber would still
+have alerted, but a chamber going wrong *while online* would not have.
+
+Node translated in `index.js:229-257`. The port lost it. New
+`chamber/frame_adapter.py` restores it.
+
+**How it hid:** the wiring-seam class again, same shape as MUSHY-90. Adapter
+logic and FSM each fine; nothing exercised the join. So the guard is NOT another
+unit test -- `test_a_raw_bridge_frame_reaches_the_fsm` drives a raw frame through
+the service and asserts the FSM moved. Reverting the seam fails it.
+
+**How it was found:** only because MUSHY-96's storm fix worked. Once the socket
+held open and the summary was STILL empty, the problem was provably never
+connectivity. Chasing the heartbeat is what surfaced it; nothing was watching for
+"connected but receiving nothing".
+
+Two adapter details that are behaviour, not style, both pinned:
+- **`is not None`, never truthiness.** 0.0 %RH, 0 ppm CO2 and a humidifier that
+  is OFF are real readings a truthiness check discards silently.
+- **Check ORDER is Node's if/else-if chain.** A frame with both `humidity` and
+  `humidity_2` is a primary reading; only a frame with no primary key falls
+  through to the slot-2 SCD41 freshness branch.
+
+### MUSHY-96 (`3e807e5`): the reconnect storm -- real, fixed, but NOT the cause
+
+Three compounding faults, self-amplifying like MUSHY-89:
+
+1. `connect()` took the websockets default `ping_timeout` of 20s, so a bridge
+   busy replaying a backlog could not answer in time and the **client** killed a
+   good socket with 1011 keepalive ping timeout.
+2. **The backoff reset on a successful OPEN** (js:49 parity). A socket that
+   opened and died a second later reset the schedule to 1s, so the retry rate
+   never decayed. This is the amplifier.
+3. Every reconnect makes the bridge replay its buffer from scratch, leaving it
+   busier and the next ping likelier to time out. Replays grew 138 -> 375 ->
+   **1222 rows** while this ran.
+
+A connection must now EARN its reset by staying open 30s. Verified live:
+**0 reconnects in 10 minutes**, against 8-9 per 10 minutes before.
+
+Diagnostic worth keeping: the bridge was at **0.25% CPU and 115MB** while
+unresponsive. Not saturation -- blocked on I/O. And it recovered on its own, so
+resist restarting it; that would have destroyed the evidence and fixed nothing.
+
+Two logs stringified their exception to nothing (MUSHY-88's trap, third
+occurrence). Both name `type(e).__name__` now.
+
+### Boot-order race, not fixed
+
+The heartbeat loop ticks immediately on start, ~3ms BEFORE `ws_open`, so the
+first tick after every restart always defers on an empty summary and the real
+attempt is 15 minutes later. Harmless but confusing when verifying a deploy: do
+not read the boot-time `deferred` line as a failure.
+
+### MUSHY-44 decisions (Don Santiago, 2026-08-19)
+
+- **Quirks 1 and 3: FIX.** (1) `tick` does not fast-fire `pi` while the health
+  poll does -- the alert is slowest exactly when the fast path is broken, and
+  MUSHY-96 proved the fast path does break. (3) sht30/scd41/sensor watchdogs
+  never see Tier B/C overrides; zero live impact today (no globals event had ever
+  been received -- itself a symptom of MUSHY-97) but a silent-non-application
+  trap. **Not yet implemented.**
+- **Quirk 2: KEEP**, relabelled as deliberate asymmetric hysteresis rather than
+  an accident. Fast to alarm, slow to clear is right given the SCD41 wedge
+  history. **Not yet relabelled.**
+- **Quirk 4: already shipped and live** (`state.py:688`, `>=`).
+- **MUSHY-3/4/5 CANCELLED** as overtaken: the cutover happened without the gate,
+  Node is retired, and scoring against it answers no live question.
+
+Note `63-07-SUMMARY.md`, which MUSHY-44 cites as its source, **no longer exists
+in any branch**. The quirk-4 delta survives only as a code comment and a test.
