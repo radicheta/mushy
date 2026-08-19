@@ -64,8 +64,20 @@ class FakeCommitDb:
         self._rec("mark_committed", draft_id=draft_id)
         return {"ok": True, "rowcount": 1}
 
-    async def mark_failed(self, pool, draft_id: str, reason: str | None) -> dict:
-        self._rec("mark_failed", draft_id=draft_id, reason=reason)
+    async def mark_failed(
+        self, pool, draft_id: str, reason: str | None, transport: bool = False
+    ) -> dict:
+        # MUSHY-75: transport is recorded so the recovery pass can tell a dead
+        # server apart from a bad entry.
+        self._rec("mark_failed", draft_id=draft_id, reason=reason, transport=transport)
+        return {"ok": True, "rowcount": 1}
+
+    async def find_transport_parked(self, pool) -> list:
+        self._rec("find_transport_parked")
+        return list(getattr(self, "parked", []))
+
+    async def requeue_parked(self, pool, draft_id: str) -> dict:
+        self._rec("requeue_parked", draft_id=draft_id)
         return {"ok": True, "rowcount": 1}
 
     async def requeue_for_retry(self, pool, draft_id: str) -> dict:

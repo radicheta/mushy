@@ -37,8 +37,10 @@ import asyncio
 import logging
 import re
 
+import farm_agent.farmos.commit_recovery as _recover
 import farm_agent.farmos.commit_db as _real_db
 import farm_agent.farmos.commits.commit_router as _real_router
+from farm_agent.farmos.assets import find_asset_by_name as _find_asset_by_name
 from farm_agent.farmos.fidelity_gate import check_fidelity, load_fidelity_csv
 
 log = logging.getLogger(__name__)
@@ -162,6 +164,7 @@ async def tick_once(
     """One commit watchdog tick: release stale locks, drain confirmed Python-owned drafts.
 
     Sequence per tick:
+      0. recover_transport_parked (MUSHY-75: un-park drafts farmOS says are absent)
       1. release_stale_locks (reclaim stuck 'committing' rows)
       2. find_confirmed_candidates(origin='python', batch_cap)
       3. Per row:
@@ -204,6 +207,16 @@ async def tick_once(
     retry_max = getattr(config, "commit_retry_max", 3)
 
     async with lock:
+        # Step 0 (MUSHY-75): give transport-parked drafts another chance, but only
+        # where farmOS confirms their blocks are absent. Runs BEFORE the drain so
+        # anything requeued commits on this same tick. Never raises.
+        await _recover.recover_transport_parked(
+            pool,
+            lambda name: _find_asset_by_name(farmos_client, name),
+            db,
+            signal_client,
+        )
+
         # Step 1: release stale committing locks
         await db.release_stale_locks(pool)
 
@@ -276,7 +289,7 @@ async def tick_once(
                     await db.requeue_for_retry(pool, draft_id)
                 else:
                     reason = result.get("reason") or "unknown"
-                    await db.mark_failed(pool, draft_id, reason)
+                    await db.mark_failed(pool, draft_id, reason, _is_transient(result))
                     # MUSHY-38 / Node T6 parity. THIS is the CRIT path: dispatch already
                     # told the farmer "Got it! Your entry was recorded." at YES time, so
                     # without this they are left believing a failed write succeeded.

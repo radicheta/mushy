@@ -68,6 +68,7 @@ _MARK_FAILED_SQL = """
 UPDATE signal_draft
    SET status='commit_failed',
        commit_failed_reason=%s,
+       commit_failed_transport=%s,
        committed_at=NOW()
  WHERE id=%s AND status='committing'
 """
@@ -165,16 +166,20 @@ async def mark_committed(
 
 
 async def mark_failed(
-    pool: AsyncConnectionPool, draft_id: str, reason: str | None
+    pool: AsyncConnectionPool, draft_id: str, reason: str | None, transport: bool = False
 ) -> dict:
     """CAS: status='committing' -> 'commit_failed', store commit_failed_reason.
 
     rowcount=0 if not currently 'committing' (idempotent no-op).
+
+    MUSHY-75: `transport` records whether the failure was the server being
+    unreachable rather than the entry being wrong. It cannot be recovered from
+    the reason string later, and the recovery pass needs it.
     """
     try:
         reason_str = str(reason) if reason is not None else None
         async with pool.connection() as conn:
-            result = await conn.execute(_MARK_FAILED_SQL, (reason_str, draft_id))
+            result = await conn.execute(_MARK_FAILED_SQL, (reason_str, bool(transport), draft_id))
         return {"ok": True, "rowcount": result.rowcount}
     except Exception as e:  # noqa: BLE001
         logger.warning("[commit_db] mark_failed failed draft_id=%s: %s", draft_id, e)
@@ -234,3 +239,58 @@ async def release_stale_locks(
     except Exception as e:  # noqa: BLE001
         logger.warning("[commit_db] release_stale_locks failed stale_min=%s: %s", stale_min, e)
         return {"ok": False, "reason": str(e), "released_ids": []}
+
+
+# ---------------------------------------------------------------------------
+# MUSHY-75 -- transport-parked recovery
+# ---------------------------------------------------------------------------
+
+_FIND_TRANSPORT_PARKED_SQL = """
+SELECT id, log_type, draft_json, sender_e164, commit_attempt_count
+  FROM signal_draft
+ WHERE status='commit_failed'
+   AND commit_failed_transport IS TRUE
+   AND origin='python'
+ ORDER BY confirmed_at
+ LIMIT 20
+"""
+
+_REQUEUE_PARKED_SQL = """
+UPDATE signal_draft
+   SET status='confirmed',
+       commit_attempt_count=0,
+       commit_failed_reason=NULL,
+       commit_failed_transport=NULL
+ WHERE id=%s AND status='commit_failed' AND commit_failed_transport IS TRUE
+"""
+
+
+async def find_transport_parked(pool: AsyncConnectionPool) -> list[dict]:
+    """Drafts stuck at the attempt cap because farmOS was unreachable.
+
+    Bounded at 20: a recovery pass runs inside the watchdog tick and a farmOS
+    outage could park many drafts at once. The rest come back next tick.
+    """
+    try:
+        async with pool.connection() as conn:
+            cur = await conn.execute(_FIND_TRANSPORT_PARKED_SQL)
+            cols = [d[0] for d in cur.description]
+            return [dict(zip(cols, r)) for r in await cur.fetchall()]
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[commit_db] find_transport_parked failed: %s", e)
+        return []
+
+
+async def requeue_parked(pool: AsyncConnectionPool, draft_id: str) -> dict:
+    """CAS: 'commit_failed' (transport) -> 'confirmed', attempts reset to 0.
+
+    The status+transport guard is what stops this resurrecting a validation
+    failure, which really does need the farmer to fix it.
+    """
+    try:
+        async with pool.connection() as conn:
+            result = await conn.execute(_REQUEUE_PARKED_SQL, (draft_id,))
+        return {"ok": True, "rowcount": result.rowcount}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[commit_db] requeue_parked failed draft_id=%s: %s", draft_id, e)
+        return {"ok": False, "reason": str(e)}

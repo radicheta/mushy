@@ -204,6 +204,14 @@ async def _run_draft_migrations(conn) -> None:
     await conn.execute(
         "ALTER TABLE signal_draft ADD COLUMN IF NOT EXISTS needs_review_reason text"
     )
+    # MUSHY-75: remember WHETHER a terminal commit failure was transport.
+    # commit_failed_reason alone cannot answer it -- "fetch failed" matches no
+    # network pattern and was only classed transient because http_status was
+    # None, which the row does not keep. Without this the recovery pass would
+    # have to guess from a string.
+    await conn.execute(
+        "ALTER TABLE signal_draft ADD COLUMN IF NOT EXISTS commit_failed_transport boolean"
+    )
 
     # Phase 49 Plan 01: discard columns.
     await conn.execute(
