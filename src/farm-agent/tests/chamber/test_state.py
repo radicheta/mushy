@@ -342,17 +342,16 @@ def test_pi_liveness_fires_on_first_detection(chamber_config):
     assert any(a["kind"] == "send" and a["alert_type"] == "pi" for a in actions)
 
 
-def test_parity_quirk_tick_pi_does_not_fast_fire(chamber_config):
-    """PINNED QUIRK -- js:580 passes `effective`, NOT the fast-fire copy.
+def test_tick_fires_pi_as_fast_as_the_health_poll(chamber_config):
+    """MUSHY-44 quirk 1 -- FIXED 2026-08-19. Replaces
+    test_parity_quirk_tick_pi_does_not_fast_fire.
 
-    js:547 (pi_liveness) builds piCfg with oob_n=1/oob_window_min=0; js:580 (tick)
-    does not. So the same outage fires immediately when the health poll reports it
-    and is debounced when only the periodic tick sees it.
-
-    63-RESEARCH.md Pitfall 3 states both call sites use the override and advises
-    applying one helper 'consistently'. That is wrong -- verified against state.js
-    on 2026-07-25. Making them consistent CHANGES SC1 timing and fails Phase 64.
-    Reproduce the asymmetry; raise it as a delta candidate, do not fix it here.
+    Node fast-fired pi only from the pi_liveness path (js:547); the periodic
+    tick (js:580) debounced the same outage through oob_n / oob_window_min. The
+    alert was therefore SLOWEST exactly when the fast path was broken, and
+    MUSHY-96 showed the fast path does break -- the 10s health poll failed for
+    hours while the tick kept running. A dark chamber controller must not wait
+    for a debounce.
     """
     cfg = _cfg(chamber_config, ALERT_OOB_N="5", ALERT_OOB_WINDOW_MIN="3",
                ALERT_PI_OFFLINE_MIN="5")
@@ -362,11 +361,31 @@ def test_parity_quirk_tick_pi_does_not_fast_fire(chamber_config):
     now = BOOT + 90 * MIN
 
     st, actions = state.transition(st, {"type": "tick"}, now, cfg)
-    assert st.per_type["pi"].state == "PENDING"      # NOT FIRING
-    # No PI action. (The same tick legitimately fires the sht30/scd41 watchdogs,
-    # which DO fast-fire from raw config -- js:609-623 -- so the action list is
-    # not globally empty. Filtering to pi is what pins this quirk.)
-    assert [a for a in actions if a.get("alert_type") == "pi"] == []
+    assert st.per_type["pi"].state == "FIRING"
+    assert [a for a in actions if a.get("alert_type") == "pi"], (
+        "the tick path must fire pi immediately, like the health-poll path"
+    )
+
+
+def test_both_pi_paths_now_agree(chamber_config):
+    """The asymmetry itself is gone: same outage, same verdict, either route."""
+    cfg = _cfg(chamber_config, ALERT_OOB_N="5", ALERT_OOB_WINDOW_MIN="3",
+               ALERT_PI_OFFLINE_MIN="5")
+    now = BOOT + 90 * MIN
+
+    via_tick = state.initial_state(BOOT)
+    via_tick.ws_connected = False
+    via_tick.ws_last_connected_ms = BOOT
+    via_tick, _ = state.transition(via_tick, {"type": "tick"}, now, cfg)
+
+    via_poll = state.initial_state(BOOT)
+    via_poll.ws_connected = False
+    via_poll.ws_last_connected_ms = BOOT
+    via_poll, _ = state.transition(
+        via_poll, {"type": "pi_liveness", "ws_connected": False, "ros_connected": False},
+        now, cfg,
+    )
+    assert via_tick.per_type["pi"].state == via_poll.per_type["pi"].state
 
 
 def test_parity_quirk_sensor_fires_on_one_error_recovers_on_five(chamber_config):
@@ -400,22 +419,55 @@ def test_parity_quirk_sensor_fires_on_one_error_recovers_on_five(chamber_config)
     assert actions[0]["kind"] == "recovery"
 
 
-def test_parity_quirk_sensor_watchdogs_ignore_tier_c_overrides(chamber_config):
-    """PINNED QUIRK -- js:610, 621 build sensorCfg from raw `config`, not `effective`.
+def _healthy_pi(st, now):
+    """Keep the pi detector quiet.
 
-    A Tier C global sensor_offline_min override therefore never reaches the
-    sht30/scd41 watchdogs, despite D-01's 'detectors consume the effective config'
-    framing. Verified against state.js on 2026-07-25.
+    D-07 suppresses per-sensor alerts while pi is FIRING, so a sensor test with
+    a dark Pi proves nothing about the sensor path. This matters more since
+    quirk 1 was fixed: the tick now fast-fires pi, so a stale-Pi fixture reaches
+    FIRING far sooner than it used to and silently masks the sensor.
+    """
+    st.ws_connected = True
+    st.ros_connected = True
+    st.ws_last_connected_ms = now
+    st.fc1_last_msg_ts = now
+    return st
+
+
+def test_sensor_watchdogs_honour_a_tier_c_override(chamber_config):
+    """MUSHY-44 quirk 3 -- FIXED 2026-08-19. Replaces
+    test_parity_quirk_sensor_watchdogs_ignore_tier_c_overrides.
+
+    js:610/621 built sensorCfg from RAW config, so a global sensor_offline_min
+    override never reached the sht30/scd41 watchdogs despite D-01 saying
+    detectors consume the effective config. It failed SILENTLY -- an operator
+    widening the threshold got no effect and no error, the same trap as
+    MUSHY-48's dead tenant config and MUSHY-90's unwired hook.
     """
     cfg = _cfg(chamber_config, ALERT_SENSOR_OFFLINE_MIN="5")
-    st = state.initial_state(BOOT)
-    st.alerter_globals = {"sensor_offline_min": 600}     # 10h -- would suppress
+    now = BOOT + 30 * MIN                                # > env 5min, < global 600min
+    st = _healthy_pi(state.initial_state(BOOT), now)
+    st.alerter_globals = {"sensor_offline_min": 600}     # 10h -- must suppress
     st.globals_received_at_ms = BOOT
     st.sht30_last_seen_ms = BOOT
-    now = BOOT + 30 * MIN                                # > env 5min, < global 600min
 
     st, _ = state.transition(st, {"type": "tick"}, now, cfg)
-    # env threshold wins because the override never reaches this call site
+    assert st.per_type["sht30"].state != "FIRING", (
+        "a Tier C override must reach the sensor watchdogs (was FIRING on the "
+        "5min env value before the fix)"
+    )
+
+
+def test_sensor_watchdog_still_fires_past_the_overridden_threshold(chamber_config):
+    """Honouring the override must not disable the watchdog."""
+    cfg = _cfg(chamber_config, ALERT_SENSOR_OFFLINE_MIN="5")
+    now = BOOT + 30 * MIN
+    st = _healthy_pi(state.initial_state(BOOT), now)
+    st.alerter_globals = {"sensor_offline_min": 20}      # 30min elapsed > 20min
+    st.globals_received_at_ms = BOOT
+    st.sht30_last_seen_ms = BOOT
+
+    st, _ = state.transition(st, {"type": "tick"}, now, cfg)
     assert st.per_type["sht30"].state == "FIRING"
 
 

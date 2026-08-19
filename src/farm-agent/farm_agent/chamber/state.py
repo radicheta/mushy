@@ -361,11 +361,16 @@ def _last_known(st: ChamberState) -> dict | None:
     return None
 
 
-def _eval_pi(nxt, config, now_ms, pi_config_is_fast_fire: bool):
+def _eval_pi(nxt, config, now_ms):
     """Shared pi evaluation for the pi_liveness (js:514-551) and tick (js:560-582) paths.
 
-    `pi_config_is_fast_fire` is the ONLY difference between the two call sites, and
-    it is a real Node asymmetry, not a simplification -- see the call-site matrix.
+    MUSHY-44 quirk 1, FIXED 2026-08-19 (sanctioned delta from js:580). Node
+    fast-fired only from the pi_liveness path; the periodic tick debounced the
+    same outage through oob_n / oob_window_min. That made the alert SLOWEST
+    exactly when the fast path was broken -- and MUSHY-96 showed the fast path
+    does break: the 10s health poll was failing for hours while the tick still
+    ran. A chamber controller going dark is the one alert that must not wait for
+    a debounce, so both call sites now fast-fire and the parameter is gone.
     """
     from farm_agent.chamber import rules
 
@@ -380,7 +385,7 @@ def _eval_pi(nxt, config, now_ms, pi_config_is_fast_fire: bool):
         config=effective,
     )
     pi_fields = {"last_seen_ms": nxt.ws_last_connected_ms, "last_known": _last_known(nxt)}
-    pi_cfg = _fast_fire(effective) if pi_config_is_fast_fire else effective
+    pi_cfg = _fast_fire(effective)
     entry, acts = drive_alert_type(nxt.per_type["pi"], "pi", offline, pi_fields, now_ms, pi_cfg)
     nxt.per_type["pi"] = entry
     return acts
@@ -389,15 +394,19 @@ def _eval_pi(nxt, config, now_ms, pi_config_is_fast_fire: bool):
 def _eval_physical_sensors(nxt, config, now_ms, values: dict | None = None):
     """sht30/scd41 watchdogs. js:385-414 (sensor_health) and js:609-626 (tick).
 
-    PARITY: sensorCfg is built from RAW `config`, never `effective`, and
-    is_sensor_silent likewise receives raw `config` -- so a Tier C
-    sensor_offline_min override never reaches these watchdogs (pinned quirk).
+    MUSHY-44 quirk 3, FIXED 2026-08-19 (sanctioned delta from js:353/386/437/
+    610/621). Node built sensorCfg from RAW `config`, so a Tier B/C
+    sensor_offline_min override never reached these watchdogs -- contradicting
+    D-01's "detectors consume the effective config" and failing silently, which
+    is the same trap as MUSHY-48's dead tenant config and MUSHY-90's unwired
+    hook. They now consume the effective config like every other detector.
     """
     from farm_agent.chamber import rules
 
     actions: list[dict] = []
     v = values or {}
-    sensor_cfg = _fast_fire(config)
+    effective = resolve_effective_config(nxt, config, now_ms) if has_mode_context(nxt) else config
+    sensor_cfg = _fast_fire(effective)
     # 2026-05-12 flap floor: honour a Pi-side `xxx_fresh=='false'` flag only once
     # sustained for sensor_flap_min_sec. The slow-silence path (is_sensor_silent)
     # is deliberately untouched and keeps gating on sensor_offline_min (MINUTES).
@@ -412,7 +421,7 @@ def _eval_physical_sensors(nxt, config, now_ms, values: dict | None = None):
             continue  # 999.42: a muted sensor is not evaluated at all
         last_ms = nxt.sht30_last_seen_ms if sensor == "sht30" else nxt.scd41_last_seen_ms
         stale = (v.get(f"{sensor}_fresh") == "false" and _flag_stale(last_ms)) or (
-            rules.is_sensor_silent(last_seen_ms=last_ms, now_ms=now_ms, config=config)
+            rules.is_sensor_silent(last_seen_ms=last_ms, now_ms=now_ms, config=effective)
         )
         entry, acts = drive_alert_type(
             nxt.per_type[sensor], sensor, stale, {"last_seen_ms": last_ms}, now_ms, sensor_cfg
@@ -617,7 +626,7 @@ def transition(prev: ChamberState, event: dict, now_ms: int, config):
 
         if (now_ms - nxt.booted_at_ms) >= STARTUP_GRACE_MS:
             # js:547 -- this call site DOES fast-fire.
-            actions.extend(_eval_pi(nxt, config, now_ms, pi_config_is_fast_fire=True))
+            actions.extend(_eval_pi(nxt, config, now_ms))
 
     elif etype == "tick":
         nxt.humidifier_cycle_log = [
@@ -626,8 +635,7 @@ def transition(prev: ChamberState, event: dict, now_ms: int, config):
         nxt.humidifier_cycles_last_24h = len(nxt.humidifier_cycle_log)
 
         if (now_ms - nxt.booted_at_ms) >= STARTUP_GRACE_MS:
-            # js:580 -- this call site does NOT fast-fire. Pinned parity quirk.
-            actions.extend(_eval_pi(nxt, config, now_ms, pi_config_is_fast_fire=False))
+            actions.extend(_eval_pi(nxt, config, now_ms))
 
         if (
             not nxt.warming_up
