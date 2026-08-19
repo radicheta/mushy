@@ -694,3 +694,58 @@ not read the boot-time `deferred` line as a failure.
 
 Note `63-07-SUMMARY.md`, which MUSHY-44 cites as its source, **no longer exists
 in any branch**. The quirk-4 delta survives only as a code comment and a test.
+
+---
+
+## Update -- 2026-08-19, MUSHY-98: the heartbeat tells the truth, once a day
+
+`0b64e20`, deployed and verified. Three defects on the very first heartbeat the
+Python agent ever delivered -- all of them invisible until MUSHY-97 made a
+heartbeat possible at all.
+
+**"Pi last seen: 899 seconds ago" while fc1 streamed every second.** The age came
+from `ws_last_connected_ms`, stamped once when the socket opened and never
+refreshed, so the healthier the connection the older fc1 looked. Now aged
+against the last telemetry frame, with connection time as the fallback for the
+window after a connect but before the first frame. A genuinely quiet Pi still
+reads as quiet -- pinned, because fixing a false alarm must not hide a real one.
+
+**Every chamber send landed as `intent = 'unknown'`.** `perform()` passed no
+intent at all. Now carries the action's kind (`heartbeat`, `alert`, `recovery`).
+
+**A restart after the heartbeat hour re-sent the day.** `heartbeat_loop` built a
+fresh `HeartbeatState` each boot (D-06 Node parity) -- harmless while the
+heartbeat never fired, live the moment telemetry flowed. Today's 20:03 redeploy
+was queued to send a second heartbeat at 20:18. The loop now seeds
+`last_fired_day` from what was actually sent. **The duplicate was prevented, not
+just predicted:** the fix deployed at 20:13:51, the boot tick sent nothing, and
+the day's count stayed at 1.
+
+The history query matches on the **body** as well as the intent, so it works on
+rows written before this commit. Fails open in every direction (no history, null
+answer, throwing lookup all still send) -- a missing heartbeat is the failure
+this path exists to prevent, so the duplicate guard must never cause one.
+
+Guarded at the **loop**, not the helper. MUSHY-97's lesson applied deliberately.
+
+### Correction worth keeping: a bad filter hid the evidence
+
+My first pass reported "no heartbeat rows on Aug 18 or 19". Wrong. One reached
+the farmer at **2026-08-18 20:10Z** -- with intent `attestation_kickoff`, so a
+filter on `intent ilike '%heartbeat%'` missed it. It was Node's, before Python
+took over. The substantive finding held (today's was the first the *Python*
+agent ever sent) but the stated evidence was wrong, and the intent bug is
+exactly why. When auditing sends, **match the body, not only the intent**, until
+enough history carries correct intents.
+
+### Where this leaves the chamber path
+
+Working and verified end to end tonight: bridge frames -> FSM (MUSHY-97), stable
+socket (MUSHY-96), correct pi age and one heartbeat per day (MUSHY-98), quirks 1
+and 3 fixed (MUSHY-44).
+
+Still open and now the obvious next one: **MUSHY-43** (high) -- reliable Signal
+alerting, client currency and outage detection. Nothing anywhere noticed the
+alerter was deaf for a day and a half. That is the systemic gap this whole
+evening kept running into, and [[feedback_alerter_needs_meta_watchdog]] has been
+saying so for months.
