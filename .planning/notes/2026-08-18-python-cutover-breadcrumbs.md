@@ -527,3 +527,53 @@ is not actually configured, so that gate is inert.
 env-shaped strings, even when it is a source patch and reads no secret. Writing
 the same script to a file and running it is the way past; do not fight the hook
 inline.
+
+---
+
+## Update -- 2026-08-19 evening, MUSHY-75
+
+`main` pushed at `7a9674f`, `alerter-py` rebuilt and recreated, verified live in
+the container. Ticket left **In Progress**: the messaging half is done, the
+retry half is a decision (below).
+
+A terminal commit failure ended every message with "Reply EDIT to fix it", so a
+transport failure told the farmer their correct entry was malformed. On
+2026-08-16 the farmer's 4-block inoc session failed three times with `fetch
+failed` (prod farmOS had been 500ing since the Aug 13 cold start) and they were
+told the save failed "because data validation failed".
+
+`_is_transient` already drew the line; only the wording discarded it. Transport
+now reads "the server was unreachable. Nothing is wrong with your entry, so
+there is nothing to fix." Validation still asks for an EDIT.
+
+The ack **promises no retry, and a test pins that**: a draft here is at the
+attempt cap and the watchdog never picks it up again, so any promise would be a
+lie. Prod reason codes seen by farmers are also translated now
+(`observation_requires_target`, 4 of 12 failures, meant nothing to a farmer);
+unrecognised codes still pass through verbatim.
+
+22 new tests, mutation-checked (collapsing the branches fails 8). Suite **1199
+passed / 4 skipped**.
+
+### A lost farm record, found while checking the parked drafts
+
+Exactly two drafts ever failed on transport, both `seeding_session`, both at
+attempt cap. **They need opposite handling, which is the argument against a
+blanket auto-requeue:**
+
+- `84d75743ae` (2026-08-16, 4 blocks) -- **data IS in farmOS**, recovered via
+  Node the same evening (seeding 272/273/274/275 + activity 276). The row is
+  stale, not stranded. Requeuing would **duplicate four blocks**.
+- `1192a845a7` (2026-08-02, **9 blocks**) -- **genuinely lost**. None of
+  `260802_KOS_1`, `_DT_2`, `_WIN_3..9` exist in farmOS. A confirmed farm record,
+  parked 17 days, silently absent from the farm history.
+
+A naive "reset the attempt count once the target is reachable" would have
+double-committed the first and rescued the second. **Any auto-requeue needs an
+existence check against farmOS before the write, not a reachability check.** The
+commit path has no upsert-by-identity (Phase 51's layer is a separate
+milestone), so the DB cannot distinguish the two cases -- only farmOS can.
+
+Neither was touched: requeuing writes prod farm records and DMs the farmer.
+Awaiting Don Santiago. Recommendation: requeue `1192a845a7` only, and reconcile
+`84d75743ae`'s row to committed without a write.
