@@ -306,3 +306,96 @@ MUSHY-84 (stranded `needs_review` draft the farmer cannot close) and MUSHY-85's
 keyword half (a plain-language correction with no verb is not recognised at
 all) are both product calls and were not touched. MUSHY-92 was only the
 mechanical half.
+
+---
+
+## Update — 2026-08-19 afternoon
+
+`main` pushed at `d69ebe6`. Four tickets closed today, one filed.
+
+**MUSHY-48 closed** (`4697c81`). `tenants/mossrock/config.yaml` named
+`farmos_agent`, an account that does not exist; it is now `mushy-bot`.
+
+The ticket's mechanism was inverted and that is the part worth keeping. It said
+the Phase 62 live-fire passed "with FARMOS_USERNAME=mushy-bot overriding the
+config". Env cannot override the config: `_pick` is YAML -> env -> default, so
+YAML wins. It passed because **`TENANTS_BASE` resolves to `/tenants` inside the
+container and that directory is not mounted** (verified: `TENANTS_BASE.exists()`
+is False in the running agent). The tenant YAML is dead config in prod today.
+
+So the hazard is not a gap being filled, it is a correct environment being
+silently overridden the moment anyone mounts that directory. `FARMOS_URL` in the
+same file still points at dev `:18080` while prod runs `:8082` -- same hazard,
+worse in kind, since a wrong username fails closed on a 400 and a wrong URL
+would succeed against the wrong farmOS. Left for Don Santiago to decide.
+
+**MUSHY-84 closed** (`8166994`), third symptom done. A farmer's NO now actually
+closes a stranded `needs_review` draft via a new `discard_needs_review_draft`,
+and the ack says "Closed that one" instead of "already pending review".
+
+NO only: a draft reaches `needs_review` by exhausting the ask-back cap, so
+honouring YES or EDIT there restarts the loop the cap exists to stop. The DAO is
+a separate statement, not a loosened `_DISCARD_SQL`, because that one's
+`awaiting_farmer` guard is what stops a NO unwriting a committed observation.
+The guard was **mutation-checked**: dropping the status clause fails all four
+status refusals plus idempotency, so those tests genuinely bite.
+
+Scale, for anyone tempted to build more here: 3 `needs_review` rows exist
+against 182 committed and 70 expired, and all 3 are from May. They predate the
+24h lookup window and need clearing by hand.
+
+**MUSHY-33 closed** (`d69ebe6`) -- whisper on-demand GPU.
+
+The model held **2,050 MiB of a shared 6GB RTX 2060 around the clock to serve 12
+voice notes since 2026-04-28**. It now runs in a worker subprocess spawned on
+demand and reaped after `WHISPER_IDLE_UNLOAD_S` (default 600s).
+
+Subprocess, not the in-process unload the ticket proposed: `del model` frees the
+weights but leaves the CUDA context (~300 MiB) for the life of the container.
+Killing the child returns everything.
+
+**`/health` no longer means "model loaded".** It means the last CUDA probe
+succeeded; `model_loaded` rides along as information. If it still gated the 200,
+the reaper would mark the container unhealthy every time it did its job. A 200
+with `model_loaded: false` is now the normal idle state, not a fault.
+
+Verified live end to end: reap observed (VRAM 2,050 -> 0, health stayed 200),
+cold respawn **4.2s** including the model load, real voice note transcribes warm
+in 6.1s.
+
+That 4.2s is the finding. The ticket assumed a 30-60s cold-start penalty; with
+the HF cache volume warm it is ~4s against a 200s caller budget
+(`capture/transcribe_client.py:31`). The tradeoff this ticket agonised over
+barely exists, so a much shorter idle window is defensible if VRAM gets tight.
+
+**MUSHY-93 filed, not worked.** `vad_filter=True` on audio with no speech hands
+faster-whisper an empty segment list and it raises `max() arg is an empty
+sequence`. The repo's own GPU smoke fixture is a pure tone, so `pytest -m gpu`
+**cannot pass** and has presumably not been run in a long time. Pre-existing,
+same code path as before MUSHY-33. It matters beyond the fixture: a real note
+that is silence or wind fails rather than returning an empty transcript.
+
+### Decisions taken with Don Santiago (for MUSHY-87, not yet built)
+
+- Replay collision: **new replay-scoped draft ID, keep the superseded row**.
+  Draft IDs are a deterministic hash of capture IDs and `insert_draft` has no
+  upsert, so a replayed capture always collides. Hash in a replay marker;
+  `source_capture_ids` still names the originals. Non-destructive.
+- Replay sends: **dry-run by default, explicit flag to send**. A replay is
+  usually fixing your own extraction; an unexpected DM about a session the
+  farmer already logged is noise.
+
+### Gotcha — the repo root has a broken pyenv
+
+`python` at the repo root dies with ``pyenv: version `mushroom_farm' is not
+installed`` (`.python-version`). A heredoc script can print success and change
+nothing. Use `/mnt/slime-kingdom/opt/mushy/.venv/bin/python`, or run from
+`src/farm-agent`.
+
+The whisper service has its own deps and is not importable from that venv
+either. Run its tests in the image:
+
+```
+docker run --rm -v "$PWD":/app -w /app mushy-whisper-transcribe \
+  python3 -m pytest test -q -m "not gpu"
+```
