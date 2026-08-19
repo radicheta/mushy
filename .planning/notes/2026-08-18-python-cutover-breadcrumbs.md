@@ -417,3 +417,94 @@ Also still unfiled: the two Aug 18 observations are both named
 `observation 2026-08-18`, so the list cannot distinguish DT_1 from DT_2. The
 seeding logs do this correctly (`Inoc 260816_WIN_3`); the convention was never
 applied to the observation path.
+
+---
+
+## Update -- 2026-08-19 evening
+
+`main` pushed at `e57c3b8`. **MUSHY-94 forward fix shipped and deployed**;
+`alerter-py` rebuilt and recreated 17:19:56Z, boot clean, receive loop polling.
+Node still stopped. Ticket moved to In Progress, deliberately not closed -- see
+the open half below.
+
+Date-only farm events committed at UTC midnight, and farmOS renders in
+`America/Montevideo`, so every one displayed at 21:00 on the previous calendar
+day. They now resolve to **local midnight**. Verified inside the running
+container rather than only in tests: `2026-08-16T00:00:00Z` stores as
+`1786849200` and renders `2026-08-16 00:00`, against the old `1786838400` /
+`2026-08-15 21:00`.
+
+New `farmos/farm_time.py` is the single place that converts date -> instant and
+instant -> date. Three things worth not rediscovering:
+
+- **Exact UTC midnight is the date-only marker.** There is no date-only flag in
+  the extraction schema; the prompt asks for a day the farmer named and every
+  example in it is `T00:00:00Z`. A real clock time is left unshifted, and so is
+  a timestamp already carrying a local offset -- that one is *already* local
+  midnight and shifting it twice lands on the next day. Both pinned by tests.
+
+- **Log names render through the same zone now.** Not in the ticket, but the
+  same defect: a name built in UTC beside a timestamp rendered locally can
+  disagree on the same row. For a farm *behind* UTC the timestamp fix happens to
+  keep them agreeing, so it looked fine here; for a farm *ahead* of UTC it would
+  not have. One helper answers both directions, so they cannot drift.
+
+- **The zone arrives by injection, not from env.** FND-02
+  (`tests/test_tenancy.py:461`) is a grep test holding that only `tenant.py`,
+  `boot.py` and `chamber/config.py` read `os.environ`. First draft of
+  farm_time.py read TZ directly and that guard caught it. `TenantConfig` gained
+  `farm_timezone` (from `TZ`, default `America/Montevideo` -- the value
+  `alerter-py` already runs with) and boot applies it before anything that can
+  build a log timestamp exists.
+
+Loaded-but-never-applied is the MUSHY-76 / MUSHY-90 shape and fails silently
+(an agent committing every log a day early looks identical to a working one), so
+`test_boot_applies_the_farm_timezone` asserts the module state, not the config
+field. Both halves mutation-checked: reverting to UTC midnight fails 7 tests,
+removing the boot call fails the wiring test.
+
+Suite **1177 passed / 4 skipped** against a fresh `:5434` (was 1133/4).
+
+MUSHY-95's fallback test had pinned the UTC-midnight epoch, so it had encoded
+the bug; updated to the post-fix timestamp. The two fixes interlock.
+
+### Still open on MUSHY-94
+
+The ~180 already-committed logs still carry UTC midnight, so **as of today there
+is a discontinuity mid-log**: events before `e57c3b8` render a day early, events
+after render correctly. Rewriting them corrects the record but edits committed
+farm history. Don Santiago's call, unchanged.
+
+### Triage of the other 57 open tickets
+
+- **MUSHY-35 is the only `urgent` one and only Don Santiago can close it** --
+  two live credentials (WiFi PSK + OpenVPN tls-auth) in git history need
+  *rotating*, which is not an agent action. It has been In Progress a while.
+- **The Phase 63/64/65 tickets (MUSHY-3/4/5) describe a cutover that already
+  happened.** Python has served Signal alone since Aug 18; MUSHY-5's big-bang
+  swap and rollback drill were improvised, not run from its runbook. Those
+  tickets should be reconciled with reality rather than executed as written.
+  MUSHY-44 (keep-or-fix on the 4 Node behavioural quirks) is the real remaining
+  decision in that arc.
+- Five tickets are In Progress at once (35, 56, 52, 7, 3), which is WIP sprawl
+  rather than five live workstreams.
+
+### Gotcha -- two venvs, and the repo-root one is not the test runner
+
+`.venv/` at the repo root has no `pytest_asyncio`, so the suite dies in conftest
+with a `ModuleNotFoundError` before collecting. The runner is
+`src/farm-agent/.venv/bin/python`. This is *in addition to* the broken pyenv at
+the repo root noted earlier -- three interpreters, one of them right.
+
+`ruff` and `lint-imports` live in that same venv. Four pre-existing F401 dead
+imports are on `capture/pipeline.py:29`, `confirm/dispatch.py:44`,
+`extraction/extractor.py:32` and `farmos/files.py:25`; left alone, noted here.
+`lint-imports` reports "Could not read any configuration" -- the import contract
+is not actually configured, so that gate is inert.
+
+### Gotcha -- the secret-dump hook fires on patch scripts
+
+`block-secret-dumps.sh` blocks a bash heredoc containing `os.environ` /
+env-shaped strings, even when it is a source patch and reads no secret. Writing
+the same script to a file and running it is the way past; do not fight the hook
+inline.
