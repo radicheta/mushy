@@ -574,6 +574,32 @@ existence check against farmOS before the write, not a reachability check.** The
 commit path has no upsert-by-identity (Phase 51's layer is a separate
 milestone), so the DB cannot distinguish the two cases -- only farmOS can.
 
-Neither was touched: requeuing writes prod farm records and DMs the farmer.
-Awaiting Don Santiago. Recommendation: requeue `1192a845a7` only, and reconcile
-`84d75743ae`'s row to committed without a write.
+Don Santiago authorised all three recommendations the same evening.
+
+**`1192a845a7` is recovered.** Requeued, committed on the FIRST attempt. All 9
+blocks verified in prod farmOS by name: `260802_KOS_1` (seeding/280) through
+`260802_WIN_9` (seeding/288), plus `inoc 2026-08-02 (9 bags)` (activity/289).
+All render 2026-08-02, so MUSHY-94 held on a fresh commit. Farmer got exactly
+one ack.
+
+**`84d75743ae` reconciled** to `committed` carrying the five farmOS log ids it
+really produced (drupal 272-276) plus a note in `farmos_response` explaining
+why. No farmOS write, no farmer ack. Zero `fetch failed` rows remain; the 10
+still in `commit_failed` are all genuine validation failures.
+
+**Auto-retry shipped** (`aee7234`): `farmos/commit_recovery.py`, step 0 of the
+watchdog tick so anything un-parked commits on the same tick.
+
+Gotcha for anyone touching this: **a requeue must also flip `origin` to
+'python'**. The Phase 62 D-01 guard means the Python watchdog selects
+`origin='python'` and Node selected `origin!='python'`, so with Node retired a
+node-origin confirmed draft would be drained by nothing at all. Checked: there
+are currently no `node|confirmed` rows, so nothing else is orphaned.
+
+`commit_failed_transport` is a new column because the answer is NOT recoverable
+from the reason string -- `fetch failed` matches no network pattern and was
+classed transient only because `http_status` was None, which the row never kept.
+Pre-existing rows are deliberately not backfilled, so no validation failure can
+be resurrected: verified live, 0 parked / 0 requeued / 10 untouched.
+
+Suite **1215 passed / 4 skipped**.
