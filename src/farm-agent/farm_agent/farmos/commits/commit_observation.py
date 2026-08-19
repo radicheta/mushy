@@ -32,6 +32,39 @@ from farm_agent.farmos.qr import resolve_qr
 
 log = logging.getLogger(__name__)
 
+# farmOS log.name is a bounded field; keep well inside it.
+_MAX_NAME_LEN = 255
+
+
+def _observation_name(dj: dict, timestamp) -> str:
+    """Title for an observation log (MUSHY-95).
+
+    "observation <date>" named the day and nothing else, so two observations
+    committed on the same date rendered as identical rows and the farmer could
+    not tell which bag was which. The subject is already on the draft; this
+    puts it in the title, matching the seeding path's "Inoc 260816_WIN_3".
+
+    qr_codes rather than asset_ref: normalize.py derives it and filters the
+    <UNKNOWN> sentinel, so anything here is a real reference.
+
+    Falls back to the original date-only name when there is no asset, so the
+    title never renders with an empty subject.
+    """
+    refs = [r for r in (dj.get("qr_codes") or []) if isinstance(r, str) and r.strip()]
+    if not refs:
+        return "observation " + datetime.fromtimestamp(
+            timestamp, tz=timezone.utc
+        ).strftime("%Y-%m-%d")
+
+    name = f"Obs {refs[0].strip()}"
+    if len(refs) > 1:
+        name += f" +{len(refs) - 1}"
+
+    state = dj.get("state")
+    if isinstance(state, str) and state.strip():
+        name = f"{name}: {state.strip()}"
+    return name[:_MAX_NAME_LEN]
+
 
 async def commit_observation(client: dict, draft: dict, ctx: dict | None = None) -> dict:
     """Create an observation log for the given draft.
@@ -104,7 +137,7 @@ async def commit_observation(client: dict, draft: dict, ctx: dict | None = None)
                 draft_id,
             )
 
-    name = "observation " + datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%Y-%m-%d")
+    name = _observation_name(dj, timestamp)
     r = await create_log(client, "observation", {
         "name": name,
         "timestamp": timestamp,
