@@ -303,3 +303,54 @@ async def test_dispatch_bare_edit_reply_sends_empty_correction_not_the_verb():
     )
 
     assert calls[0] == ""
+
+
+# ---------------------------------------------------------------------------
+# MUSHY-92: punctuation after the control verb must not hide the edit path.
+# _parse_yes_no_edit matched the first WHITESPACE-delimited token, so the
+# colon in "edit:" (the form the bot's own copy teaches) was part of the
+# token and never equalled "edit". The reply fell through to the capture
+# pipeline and re-extracted instead of taking the cheap targeted edit.
+# ---------------------------------------------------------------------------
+
+
+def test_parse_edit_verb_with_trailing_colon_and_space():
+    from farm_agent.confirm.dispatch import _parse_yes_no_edit
+
+    assert _parse_yes_no_edit("edit: it was 750 grams") == "edit"
+
+
+def test_parse_edit_verb_with_colon_glued_to_the_correction():
+    from farm_agent.confirm.dispatch import _parse_yes_no_edit
+
+    assert _parse_yes_no_edit("EDIT:750 grams") == "edit"
+
+
+def test_parse_yes_no_verbs_tolerate_trailing_punctuation():
+    from farm_agent.confirm.dispatch import _parse_yes_no_edit
+
+    assert _parse_yes_no_edit("yes.") == "yes"
+    assert _parse_yes_no_edit("No!") == "no"
+    assert _parse_yes_no_edit("ok,") == "yes"
+
+
+def test_parse_does_not_match_a_longer_word_that_starts_with_a_verb():
+    from farm_agent.confirm.dispatch import _parse_yes_no_edit
+
+    # "fixed the fan in FC1" is a real log entry, not a control word.
+    assert _parse_yes_no_edit("fixed the fan in FC1") is None
+    assert _parse_yes_no_edit("yesterday we harvested 2kg") is None
+
+
+def test_extract_edit_text_strips_the_colon_with_the_verb():
+    from farm_agent.confirm.dispatch import _extract_edit_text
+
+    assert _extract_edit_text("edit: it was 750 Grams") == "it was 750 Grams"
+    assert _extract_edit_text("EDIT:750 grams") == "750 grams"
+
+
+def test_extract_edit_text_bare_edit_with_punctuation_only_is_empty():
+    from farm_agent.confirm.dispatch import _extract_edit_text
+
+    assert _extract_edit_text("edit:") == ""
+    assert _extract_edit_text("EDIT: ") == ""

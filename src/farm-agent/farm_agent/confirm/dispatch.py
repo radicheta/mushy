@@ -246,11 +246,37 @@ _NO_TOKENS = {"no", "nope", "cancel", "discard"}
 _EDIT_TOKENS = {"edit", "change", "redo", "fix"}
 
 
+# MUSHY-92: the control verb is the leading run of letters, NOT the first
+# whitespace-delimited token. Punctuation the farmer attaches to it ("edit:",
+# the form the bot's own copy teaches, or a plain "yes.") is a separator. The
+# lookahead keeps "fixed the fan" and "yesterday..." out -- a longer word that
+# merely starts with a verb is a log entry, not a control word.
+_LEADING_VERB_RE = re.compile(r"^([A-Za-z]+)(?=$|[\s:,.;!?])")
+_VERB_SEPARATOR_RE = re.compile(r"^[\s:,.;!?]+")
+
+
+def _split_leading_verb(text: str) -> tuple[str, str] | None:
+    """Split a leading control verb from its remainder.
+
+    Returns (verb lowercased, remainder with ORIGINAL casing) or None when the
+    message does not open with a bare word.
+    """
+    trimmed = (text or "").strip()
+    m = _LEADING_VERB_RE.match(trimmed)
+    if m is None:
+        return None
+    remainder = _VERB_SEPARATOR_RE.sub("", trimmed[m.end() :]).strip()
+    return m.group(1).lower(), remainder
+
+
 def _parse_yes_no_edit(text: str) -> str | None:
     """Parse a simple YES/NO/EDIT reply. Returns 'yes', 'no', 'edit', or None."""
     if not text:
         return None
-    first = text.strip().split()[0].lower()
+    split = _split_leading_verb(text)
+    if split is None:
+        return None
+    first = split[0]
     if first in _YES_TOKENS:
         return "yes"
     if first in _NO_TOKENS:
@@ -267,9 +293,10 @@ def _extract_edit_text(text: str) -> str:
     dispatch-level synonyms change/redo/fix, which are Python-only additions
     to _EDIT_TOKENS and fall through to the implicit-edit case below):
 
-      - Leading 'edit' token (case-insensitive): the correction is everything
-        after the first whitespace run, trimmed, with the remainder's
-        ORIGINAL casing preserved.
+      - Leading 'edit' verb (case-insensitive): the correction is everything
+        after the verb and any punctuation/whitespace separating it (MUSHY-92:
+        'edit:' and 'edit: ' count), trimmed, with the remainder's ORIGINAL
+        casing preserved.
       - 'EDIT' with nothing after it: the correction is '' (does NOT fall
         through to the whole body).
       - Anything else (implicit edit, e.g. 'change it to 750g' or a bare
@@ -283,12 +310,9 @@ def _extract_edit_text(text: str) -> str:
     trimmed = (text or "").strip()
     if not trimmed:
         return ""
-    first_token = re.split(r"\s+", trimmed, maxsplit=1)[0].lower()
-    if first_token == "edit":
-        m = re.search(r"\s", trimmed)
-        if m is None:
-            return ""
-        return trimmed[m.start() + 1 :].strip()
+    split = _split_leading_verb(trimmed)
+    if split is not None and split[0] == "edit":
+        return split[1]
     return trimmed
 
 
