@@ -22,6 +22,7 @@ import logging
 import time
 
 from farm_agent.chamber import heartbeat, snooze, state, ws_client
+from farm_agent.chamber.frame_adapter import bridge_frame_to_event
 from farm_agent.signal_io import router
 
 logger = logging.getLogger(__name__)
@@ -102,9 +103,17 @@ class ChamberService:
     # -- lifecycle ---------------------------------------------------------
 
     async def _on_ws_message(self, msg) -> None:
-        """A bridge frame is already the FSM's event shape."""
-        if isinstance(msg, dict) and msg.get("type"):
-            await self.on_event(msg)
+        """Translate a bridge frame into an FSM event, then apply it.
+
+        MUSHY-97: this used to assume "a bridge frame is already the FSM's event
+        shape" and drop anything without a `type`. The bridge sends
+        measurement-keyed frames with no `type` at all, so EVERY frame was
+        dropped and the chamber alerter was deaf. Node did the translation in
+        index.js:229-257; the port lost it. See chamber/frame_adapter.py.
+        """
+        event = bridge_frame_to_event(msg, self._clock())
+        if event is not None:
+            await self.on_event(event)
 
     def _dispatch_ws_message(self, msg) -> None:
         self._tasks.append(asyncio.create_task(self._on_ws_message(msg)))

@@ -294,3 +294,47 @@ def test_boot_does_not_log_chamber_config_fields():
     for line in re.findall(r"log\.info\((.*?)\)", src, re.S):
         assert "chamber_config." not in line
         assert "signal_sender" not in line
+
+
+# ---------------------------------------------------------------------------
+# MUSHY-97 -- the wiring seam itself
+#
+# The adapter and the FSM were both fine in isolation; the glue between them was
+# missing and the alerter was deaf for a day and a half. A unit test of either
+# side passes either way, so this drives a RAW BRIDGE FRAME through the service
+# the way the socket does, and asserts the FSM actually moved.
+# ---------------------------------------------------------------------------
+
+
+async def test_a_raw_bridge_frame_reaches_the_fsm(svc):
+    """The exact shape sniffed off prod: no `type` key anywhere."""
+    s, _ = svc()
+    await s._on_ws_message({"humidity": 0.913, "timestamp": 1787179328207})
+    assert s.state.current_rh == 0.913, "a real bridge frame must move the FSM"
+
+
+async def test_a_raw_frame_fills_the_heartbeat_summary(svc):
+    """The farmer-visible consequence: an empty summary defers the heartbeat."""
+    s, _ = svc()
+    assert s.get_summary()["rh"] is None
+    for frame in (
+        {"humidity": 0.91, "timestamp": 1},
+        {"temperature": 19.4, "timestamp": 2},
+        {"co2": 812, "timestamp": 3},
+    ):
+        await s._on_ws_message(frame)
+    summary = s.get_summary()
+    assert (summary["rh"], summary["temp"], summary["co2"]) == (0.91, 19.4, 812)
+
+
+async def test_mission_control_only_frames_are_still_ignored(svc):
+    """Most live traffic is not the alerter's business and must not throw."""
+    s, _ = svc()
+    for frame in (
+        {"humidifier_duty": 0, "timestamp": 1},
+        {"humidity_target": 0.915, "timestamp": 2},
+        {"pid_output": 0, "timestamp": 3},
+        {"vpd": 0.3, "water_vapor": 8.1, "timestamp": 4},
+    ):
+        await s._on_ws_message(frame)
+    assert s.state.current_rh is None
