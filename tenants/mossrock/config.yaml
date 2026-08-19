@@ -14,8 +14,12 @@ SIGNAL_RECIPIENT: "+59892893012"
 SIGNAL_GROUP_ID: ""
 
 # Phase 40 D-01b: farmOS write path.
+# MUSHY-48: this must name an account that exists in farmOS. It said
+# "farmos_agent", which does not; the working account is "mushy-bot". Note the
+# layer order is YAML -> env -> default, so a wrong value here SILENTLY
+# OVERRIDES a correct FARMOS_USERNAME in the environment.
 FARMOS_URL: "http://10.68.155.50:18080"
-FARMOS_USERNAME: "farmos_agent"
+FARMOS_USERNAME: "mushy-bot"
 FARMOS_INTEGRATION: false
 
 # Phase 44 D-06: gate convo-silence behavior. silent | negative_only | off.

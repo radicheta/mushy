@@ -575,3 +575,34 @@ def test_mask_number_non_string():
     """mask_number(non-str) == 'XXXX'."""
     assert _tenant_mod.mask_number(None) == "XXXX"   # type: ignore[arg-type]
     assert _tenant_mod.mask_number(12345) == "XXXX"  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# MUSHY-48: the committed mossrock tenant config must name an account that
+# actually exists in farmOS.
+#
+# This reads the REAL repo file, not a fixture. The value was wrong
+# ("farmos_agent"; the working account is "mushy-bot") and the drift was
+# invisible because TENANTS_BASE resolves to a non-existent /tenants inside
+# the container, so prod never loads this file and env wins. The moment the
+# directory is mounted the YAML takes precedence over env (_pick order is
+# YAML -> env -> default), and every farmOS commit silently fails auth: the
+# Drupal JSON login route answers 400 for an unknown username and client.py
+# returns an error envelope rather than raising, so the commit watchdog just
+# requeues forever.
+# ---------------------------------------------------------------------------
+
+
+def _repo_mossrock_config() -> dict:
+    from ruamel.yaml import YAML
+
+    path = _tenant_mod.TENANTS_BASE / "mossrock" / "config.yaml"
+    if not path.exists():  # pragma: no cover - repo layout guard
+        import pytest
+
+        pytest.skip(f"mossrock tenant config not found at {path}")
+    return YAML(typ="safe").load(path.read_text()) or {}
+
+
+def test_mossrock_tenant_config_names_the_real_farmos_account():
+    assert _repo_mossrock_config().get("FARMOS_USERNAME") == "mushy-bot"
