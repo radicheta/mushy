@@ -556,3 +556,75 @@ async def test_find_recent_terminal_draft_is_scoped_to_its_sender(pool):
         pool, "needs_review", "NOW()", sender_e164=theirs)
 
     assert await find_recent_terminal_draft_for_sender(pool, mine) is None
+
+
+# ---------------------------------------------------------------------------
+# MUSHY-84: discard_needs_review_draft, and the statuses it must refuse.
+#
+# The routing tests use a fake repo, so the WHERE guard itself is only proven
+# here. It is the guard that keeps a farmer's NO from unwriting a committed
+# observation, which is the reason this is a separate statement from
+# _DISCARD_SQL rather than a loosened one.
+# ---------------------------------------------------------------------------
+
+
+@_requires_db
+async def test_discard_needs_review_closes_the_stranded_draft(pool):
+    draft_id = await _insert_draft_with_status(
+        pool, "needs_review", sender_e164=_unique_sender("+1284")
+    )
+
+    r = await confirm_repo.discard_needs_review_draft(pool, draft_id)
+
+    assert r["ok"] is True, f"discard_needs_review_draft failed: {r}"
+    assert r["rowcount"] == 1
+
+    async with pool.connection() as conn:
+        result = await conn.execute(
+            "SELECT status, terminal_reason, discarded_at FROM signal_draft WHERE id=%s",
+            (draft_id,),
+        )
+        status, reason, discarded_at = await result.fetchone()
+    assert status == "discarded"
+    assert reason == "farmer_no_after_review"
+    assert discarded_at is not None, "discarded_at NULL was the tell that nothing happened"
+
+
+@_requires_db
+async def test_discard_needs_review_is_idempotent(pool):
+    draft_id = await _insert_draft_with_status(
+        pool, "needs_review", sender_e164=_unique_sender("+1284")
+    )
+
+    first = await confirm_repo.discard_needs_review_draft(pool, draft_id)
+    second = await confirm_repo.discard_needs_review_draft(pool, draft_id)
+
+    assert first["rowcount"] == 1
+    assert second["rowcount"] == 0, "a second NO must not re-close or re-event"
+
+    async with pool.connection() as conn:
+        result = await conn.execute(
+            "SELECT COUNT(*) FROM signal_draft_event WHERE draft_id=%s AND event='discarded'",
+            (draft_id,),
+        )
+        (count,) = await result.fetchone()
+    assert count == 1
+
+
+@_requires_db
+@pytest.mark.parametrize("status", ["committed", "awaiting_farmer", "expired", "confirmed"])
+async def test_discard_needs_review_refuses_every_other_status(pool, status):
+    """A NO must never unwrite real farm data, nor bypass the awaiting_farmer path."""
+    draft_id = await _insert_draft_with_status(
+        pool, status, sender_e164=_unique_sender("+1284")
+    )
+
+    r = await confirm_repo.discard_needs_review_draft(pool, draft_id)
+
+    assert r["ok"] is True
+    assert r["rowcount"] == 0, f"{status} must be untouchable by this DAO"
+
+    async with pool.connection() as conn:
+        result = await conn.execute("SELECT status FROM signal_draft WHERE id=%s", (draft_id,))
+        (after,) = await result.fetchone()
+    assert after == status, f"{status} draft was mutated"

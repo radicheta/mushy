@@ -55,6 +55,7 @@ import farm_agent.confirm.confirm_repo as _real_repo
 from farm_agent.confirm.dispatch import FALL_THROUGH_SENTINEL, route_confirm_reply
 from farm_agent.confirm.dispatch import _parse_yes_no_edit
 from farm_agent.confirm.preview import (
+    build_needs_review_closed,
     build_nothing_open,
     build_numbered_ask_back,
     build_quote_closed,
@@ -224,10 +225,48 @@ def create_confirm_reply_router(
                     closed_row = await repo.find_recent_terminal_draft_for_sender(pool, source)
                 except Exception as e:  # noqa: BLE001
                     _log.warning("[confirm] recent-terminal lookup failed: %s", e)
-                body = build_quote_closed(closed_row) if closed_row else build_nothing_open()
+
+                # MUSHY-84 (remaining half): a needs_review draft is stranded,
+                # not closed. The farmer said NO and was told it was pending
+                # review, so they believe it is gone while the row sits in the
+                # queue. The farmer is the source of truth about their own
+                # capture: their NO closes it for real.
+                #
+                # NO only. A draft reaches needs_review by exhausting the
+                # ask-back cap, so honouring YES or EDIT here would restart the
+                # loop the cap exists to stop.
+                closed_now = False
+                if (
+                    closed_row
+                    and closed_row.get("status") == "needs_review"
+                    and _parse_yes_no_edit(text) == "no"
+                ):
+                    try:
+                        res = await repo.discard_needs_review_draft(pool, closed_row["id"])
+                        closed_now = bool(res and res.get("rowcount") == 1)
+                    except Exception as e:  # noqa: BLE001
+                        _log.warning("[confirm] needs_review discard failed: %s", e)
+                    if not closed_now:
+                        # Lost a race, or the DAO failed. Fall back to describing
+                        # the row as it stands. Never claim a closure that did
+                        # not happen -- that false ack is the other half of this
+                        # same ticket.
+                        _log.warning(
+                            "[confirm] needs_review discard did not apply draft=%s",
+                            closed_row.get("id"),
+                        )
+
+                if closed_now:
+                    body = build_needs_review_closed()
+                elif closed_row:
+                    body = build_quote_closed(closed_row)
+                else:
+                    body = build_nothing_open()
                 _log.info(
-                    "[confirm] control word with no live draft: answered closed (draft=%s)",
+                    "[confirm] control word with no live draft: answered closed"
+                    " (draft=%s discarded=%s)",
                     (closed_row or {}).get("id"),
+                    closed_now,
                 )
                 try:
                     await signal_client.send(

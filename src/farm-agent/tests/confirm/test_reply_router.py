@@ -40,6 +40,7 @@ class FakeRepo:
         self.recent_terminal_draft: dict | None = None
         self.confirm_rowcount = 1
         self.discard_rowcount = 1
+        self.needs_review_discard_rowcount = 1
 
     async def find_draft_by_quoted_msg_ts(self, pool, quote_msg_ts):
         self.calls.append(("find_draft_by_quoted_msg_ts", quote_msg_ts))
@@ -60,6 +61,10 @@ class FakeRepo:
     async def discard_draft(self, pool, draft_id):
         self.calls.append(("discard_draft", draft_id))
         return {"ok": True, "rowcount": self.discard_rowcount}
+
+    async def discard_needs_review_draft(self, pool, draft_id):
+        self.calls.append(("discard_needs_review_draft", draft_id))
+        return {"ok": True, "rowcount": self.needs_review_discard_rowcount}
 
     async def append_event_via_pool(self, pool, draft_id, event, payload):
         self.calls.append(("append_event_via_pool", draft_id, event))
@@ -508,3 +513,124 @@ async def test_live_draft_still_wins_over_the_closed_path():
     await dispatch(_envelope(draft["sender_e164"], "YES"))
 
     assert repo.called("confirm_draft"), "an open draft must still be confirmed normally"
+
+
+# ---------------------------------------------------------------------------
+# MUSHY-84 (remaining half): a farmer's NO closes a stranded needs_review draft.
+#
+# The earlier fix stopped the phantom draft and the false "Discarded" ack, but
+# left the real draft sitting in the needs-review queue as a ghost the farmer
+# believed they had closed. The farmer is the source of truth about their own
+# capture, so declining it must actually close it.
+#
+# Scoped to NO on purpose. YES and EDIT stay blocked: a draft reaches
+# needs_review by exhausting the ask-back cap, and reopening it there would
+# restart the loop the cap exists to stop.
+# ---------------------------------------------------------------------------
+
+
+async def test_no_discards_a_stranded_needs_review_draft():
+    repo = FakeRepo()
+    sender = "+59891840001"
+    repo.recent_terminal_draft = _draft(draft_id="draft-STRANDED", sender_e164=sender,
+                                        status="needs_review")
+    signal = FakeSignalClient()
+    capture = FakeCaptureDouble()
+    _router, dispatch = _make_router(repo, signal, capture)
+
+    consumed = await dispatch(_envelope(sender, "NO"))
+
+    assert consumed is True
+    assert capture.handle_calls == [], "a control word must never reach the extractor"
+    assert ("discard_needs_review_draft", "draft-STRANDED") in repo.calls, (
+        "the farmer's NO must actually close the stranded draft"
+    )
+    assert len(signal.sends) == 1
+    assert signal.sends[0]["related_draft_id"] == "draft-STRANDED"
+
+
+async def test_yes_does_not_reopen_a_needs_review_draft():
+    repo = FakeRepo()
+    sender = "+59891840001"
+    repo.recent_terminal_draft = _draft(draft_id="draft-STRANDED", sender_e164=sender,
+                                        status="needs_review")
+    signal = FakeSignalClient()
+    capture = FakeCaptureDouble()
+    _router, dispatch = _make_router(repo, signal, capture)
+
+    consumed = await dispatch(_envelope(sender, "YES"))
+
+    assert consumed is True
+    assert not repo.called("discard_needs_review_draft")
+    assert not repo.called("confirm_draft"), "YES must not commit a capped draft"
+    assert capture.handle_calls == []
+
+
+async def test_no_does_not_discard_an_already_committed_draft():
+    repo = FakeRepo()
+    sender = "+59891840001"
+    repo.recent_terminal_draft = _draft(draft_id="draft-DONE", sender_e164=sender,
+                                        status="committed")
+    signal = FakeSignalClient()
+    capture = FakeCaptureDouble()
+    _router, dispatch = _make_router(repo, signal, capture)
+
+    consumed = await dispatch(_envelope(sender, "NO"))
+
+    assert consumed is True
+    assert not repo.called("discard_needs_review_draft"), (
+        "a committed draft is real farm data; NO must never unwrite it"
+    )
+    assert "saved" in signal.sends[0]["body"]
+
+
+async def test_no_with_nothing_open_still_answers_honestly():
+    repo = FakeRepo()
+    sender = "+59891840001"
+    repo.recent_terminal_draft = None
+    signal = FakeSignalClient()
+    capture = FakeCaptureDouble()
+    _router, dispatch = _make_router(repo, signal, capture)
+
+    consumed = await dispatch(_envelope(sender, "NO"))
+
+    assert consumed is True
+    assert not repo.called("discard_needs_review_draft")
+    assert len(signal.sends) == 1
+
+
+async def test_the_farmer_is_told_the_draft_was_closed_not_that_it_is_pending():
+    """The whole point: the ack must describe what just happened, not the old status."""
+    repo = FakeRepo()
+    sender = "+59891840001"
+    repo.recent_terminal_draft = _draft(draft_id="draft-STRANDED", sender_e164=sender,
+                                        status="needs_review")
+    signal = FakeSignalClient()
+    capture = FakeCaptureDouble()
+    _router, dispatch = _make_router(repo, signal, capture)
+
+    await dispatch(_envelope(sender, "NO"))
+
+    body = signal.sends[0]["body"].lower()
+    assert "pending review" not in body, (
+        "telling the farmer it is still pending is the bug this closes"
+    )
+    assert "closed" in body or "discarded" in body
+
+
+async def test_a_failed_discard_never_claims_the_draft_was_closed():
+    """No silent failure after a farmer control word, and no false acknowledgement."""
+    repo = FakeRepo()
+    sender = "+59891840001"
+    repo.recent_terminal_draft = _draft(draft_id="draft-STRANDED", sender_e164=sender,
+                                        status="needs_review")
+    repo.needs_review_discard_rowcount = 0  # lost a race; someone else moved it
+    signal = FakeSignalClient()
+    capture = FakeCaptureDouble()
+    _router, dispatch = _make_router(repo, signal, capture)
+
+    await dispatch(_envelope(sender, "NO"))
+
+    assert len(signal.sends) == 1, "the farmer must still get an answer"
+    body = signal.sends[0]["body"].lower()
+    assert "closed" not in body, "claiming closure that did not happen is MUSHY-84's false ack"

@@ -120,6 +120,19 @@ def build_nothing_open() -> str:
     )
 
 
+def build_needs_review_closed() -> str:
+    """Ack after a farmer's NO actually closes a stranded draft (MUSHY-84).
+
+    Must describe what just happened. The old reply said the entry was still
+    pending review, which was true of the row and false to the farmer, who had
+    just closed it.
+    """
+    return sanitize_farmer_text(
+        "Closed that one. Nothing was saved. "
+        "Send it again whenever you're ready and I'll start fresh."
+    )
+
+
 def build_quote_closed(draft_row: dict | None) -> str:
     """Polite ack for a quote-reply targeting an already-terminal draft.
 

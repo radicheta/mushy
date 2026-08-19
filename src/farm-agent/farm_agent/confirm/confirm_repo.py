@@ -56,6 +56,21 @@ UPDATE signal_draft
  RETURNING id
 """
 
+# MUSHY-84: the farmer closing a draft that already left awaiting_farmer.
+# Deliberately a SEPARATE statement rather than a loosened _DISCARD_SQL: that
+# one's status='awaiting_farmer' guard is what stops a NO from unwriting a
+# committed observation, and it must keep guarding exactly that. This one
+# accepts one extra status and nothing else.
+_DISCARD_NEEDS_REVIEW_SQL = """
+UPDATE signal_draft
+   SET status='discarded',
+       discarded_at=NOW(),
+       terminal_reason='farmer_no_after_review',
+       updated_at=NOW()
+ WHERE id=%s AND status='needs_review'
+ RETURNING id
+"""
+
 # expire_draft: two variants by reason
 _EXPIRE_SQL_TERMINAL = """
 UPDATE signal_draft
@@ -207,6 +222,37 @@ async def discard_draft(pool: AsyncConnectionPool, draft_id: str) -> dict:
         return {"ok": True, "rowcount": result.rowcount}
     except Exception as e:  # noqa: BLE001
         logger.warning("[confirm_repo] discard_draft failed draft_id=%s: %s", draft_id, e)
+        return {"ok": False, "reason": str(e)}
+
+
+async def discard_needs_review_draft(pool: AsyncConnectionPool, draft_id: str) -> dict:
+    """Close a stranded needs_review draft at the farmer's request (MUSHY-84).
+
+    A draft reaches needs_review by exhausting the ask-back cap. The farmer is
+    told it is pending review and reasonably believes their NO closed it, but
+    nothing did: the row stayed in the queue as a ghost.
+
+    rowcount=0 means the row was no longer in needs_review when this ran. The
+    caller MUST NOT tell the farmer it was closed in that case -- an
+    acknowledgement of something that did not happen is the other half of the
+    bug this fixes.
+
+    NEVER raises (T-61-05).
+    """
+    try:
+        async with pool.connection() as conn:
+            async with conn.transaction():
+                result = await conn.execute(_DISCARD_NEEDS_REVIEW_SQL, (draft_id,))
+                if result.rowcount == 1:
+                    await append_event(
+                        conn, draft_id, "discarded",
+                        {"terminal_reason": "farmer_no_after_review"},
+                    )
+        return {"ok": True, "rowcount": result.rowcount}
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            "[confirm_repo] discard_needs_review_draft failed draft_id=%s: %s", draft_id, e
+        )
         return {"ok": False, "reason": str(e)}
 
 
