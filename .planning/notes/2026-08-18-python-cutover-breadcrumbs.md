@@ -749,3 +749,51 @@ alerting, client currency and outage detection. Nothing anywhere noticed the
 alerter was deaf for a day and a half. That is the systemic gap this whole
 evening kept running into, and [[feedback_alerter_needs_meta_watchdog]] has been
 saying so for months.
+
+---
+
+## Update -- 2026-08-19, MUSHY-43: something finally watches the farm
+
+`50f3a0d`, `scripts/farm-watchdog/`. Ticket left **In Progress** -- detection is
+built and verified, delivery needs one root step (below).
+
+Twelve capability checks, each anchored to a real silent outage, all probing
+from OUTSIDE the thing they check. The design rule came from BONE-10: those
+healthchecks `curl localhost` *inside* the container, which succeeds perfectly
+when the container has no network at all, so docker health was actively
+misleading rather than merely useless.
+
+Verified both directions, which matters more than the code:
+- live against the whole farm: **12/12 ok, exit 0**
+- it DETECTS: simulated farmOS outage -> BROKEN exit 1; signal-cli down ->
+  UNKNOWN, correctly distinguished from *deregistered*; DB gone -> UNKNOWN exit 2
+
+### The mistake worth keeping
+
+The first version reported `heartbeat_today: BROKEN -- no heartbeat has ever
+been sent` when the **database was simply unreachable**. A false alarm, and
+exactly the conflation this ticket exists to stop: "I could not see" is not "it
+is broken". A watchdog that cries wolf when its own probe breaks trains you to
+ignore it, which is how you get back to 7.8 silent days.
+
+Found by **pointing it at a dead container**, not by reading the code. Two rules
+now enforced and tested: a probe that cannot run reports UNKNOWN never ok, and
+UNKNOWN never masks BROKEN.
+
+### Still owed (root, only Don Santiago can do it)
+
+1. `/etc/mushy-watchdog/env` with `NTFY_URL=` -- reuse the VPS receiver's
+   existing ntfy topic (off-box, off-Signal, survived every outage). Neither
+   that file nor `/etc/mushy-heartbeat/secret` exists on elder-plops today.
+2. Install `mushy-farm-watchdog.timer` (README has the commands).
+3. A deliberate signal-cli pin bump cadence. Detection of the *consequence* is
+   now 15 minutes instead of 7.8 days, but the pin itself still drifts.
+
+Until 1 and 2, the watchdog runs, reports and exits non-zero, and logs
+`NTFY_URL unset; not notifying` -- fail-visible, not a silent no-op.
+
+### Two layers, neither covering the other
+
+This timer on elder-plops catches a capability that stopped working while the
+host is fine. The VPS heartbeat receiver catches elder-plops going away
+entirely. A watchdog cannot report its own host's death.
