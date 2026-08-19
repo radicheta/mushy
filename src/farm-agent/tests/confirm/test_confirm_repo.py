@@ -486,3 +486,73 @@ async def test_find_draft_by_quoted_msg_ts_returns_none_for_none_ts():
     """No DB required -- the None guard short-circuits before any query."""
     row = await confirm_repo.find_draft_by_quoted_msg_ts(object(), None)
     assert row is None
+
+
+# ---------------------------------------------------------------------------
+# MUSHY-84: find_recent_terminal_draft_for_sender, against the real schema.
+#
+# This is what lets a control word with no live draft get an honest answer
+# instead of being extracted into a phantom. A query that always returned None
+# would still be safe (the reply degrades to the generic "nothing is open"),
+# but it would silently lose the specific answer, so it is pinned on real rows.
+# ---------------------------------------------------------------------------
+
+
+@_requires_db
+async def test_find_recent_terminal_draft_returns_the_latest_closed_draft(pool):
+    from farm_agent.confirm.confirm_repo import (  # noqa: PLC0415
+        find_recent_terminal_draft_for_sender,
+    )
+
+    sender = f"+1999{uuid.uuid4().hex[:8]}"
+    await _insert_draft_with_updated_at(
+        pool, "discarded", "NOW() - interval '3 hours'", sender_e164=sender)
+    newest = await _insert_draft_with_updated_at(
+        pool, "needs_review", "NOW() - interval '10 minutes'", sender_e164=sender)
+
+    row = await find_recent_terminal_draft_for_sender(pool, sender)
+    assert row is not None
+    assert row["id"] == newest
+    assert row["status"] == "needs_review"
+
+
+@_requires_db
+async def test_find_recent_terminal_draft_ignores_drafts_older_than_a_day(pool):
+    """'That entry is already pending review' is useful minutes later, noise a week later."""
+    from farm_agent.confirm.confirm_repo import (  # noqa: PLC0415
+        find_recent_terminal_draft_for_sender,
+    )
+
+    sender = f"+1999{uuid.uuid4().hex[:8]}"
+    await _insert_draft_with_updated_at(
+        pool, "committed", "NOW() - interval '30 hours'", sender_e164=sender)
+
+    assert await find_recent_terminal_draft_for_sender(pool, sender) is None
+
+
+@_requires_db
+async def test_find_recent_terminal_draft_ignores_a_live_draft(pool):
+    """An awaiting_farmer draft is not closed, and must never be described as such."""
+    from farm_agent.confirm.confirm_repo import (  # noqa: PLC0415
+        find_recent_terminal_draft_for_sender,
+    )
+
+    sender = f"+1999{uuid.uuid4().hex[:8]}"
+    await _insert_draft_with_updated_at(
+        pool, "awaiting_farmer", "NOW()", sender_e164=sender)
+
+    assert await find_recent_terminal_draft_for_sender(pool, sender) is None
+
+
+@_requires_db
+async def test_find_recent_terminal_draft_is_scoped_to_its_sender(pool):
+    from farm_agent.confirm.confirm_repo import (  # noqa: PLC0415
+        find_recent_terminal_draft_for_sender,
+    )
+
+    mine = f"+1999{uuid.uuid4().hex[:8]}"
+    theirs = f"+1999{uuid.uuid4().hex[:8]}"
+    await _insert_draft_with_updated_at(
+        pool, "needs_review", "NOW()", sender_e164=theirs)
+
+    assert await find_recent_terminal_draft_for_sender(pool, mine) is None

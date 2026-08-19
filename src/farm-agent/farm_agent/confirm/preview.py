@@ -107,6 +107,19 @@ _STATUS_WORD = {
 }
 
 
+def build_nothing_open() -> str:
+    """Answer to a control word when the sender has no draft at all (MUSHY-84).
+
+    A bare YES/NO/EDIT is never farm data, so it must not be extracted; but
+    silence after a farmer message is its own bug, so it gets an answer that
+    says plainly that there is nothing to act on.
+    """
+    return sanitize_farmer_text(
+        "Nothing is open right now, so there is nothing to confirm or change. "
+        "Send the details whenever you're ready and I'll pick it up."
+    )
+
+
 def build_quote_closed(draft_row: dict | None) -> str:
     """Polite ack for a quote-reply targeting an already-terminal draft.
 

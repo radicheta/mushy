@@ -402,6 +402,45 @@ async def find_active_drafts_for_sender(pool: AsyncConnectionPool, sender_e164: 
         return []
 
 
+_RECENT_TERMINAL_DRAFT_SQL = """
+SELECT *
+  FROM signal_draft
+ WHERE sender_e164=%s
+   AND status IN ('needs_review', 'committed', 'discarded', 'expired', 'confirmed')
+   AND updated_at > NOW() - interval '24 hours'
+ ORDER BY updated_at DESC
+ LIMIT 1
+"""
+
+
+async def find_recent_terminal_draft_for_sender(
+    pool: AsyncConnectionPool, sender_e164: str
+) -> dict | None:
+    """Most recent draft that has already closed for this sender, or None (MUSHY-84).
+
+    Only used to phrase an honest answer to a control word that has no live
+    draft to act on. The 24h window keeps the reply relevant: "that entry is
+    already pending review" is useful minutes later and noise a week later.
+
+    Returns None on error (NEVER raises, T-61-05).
+    """
+    try:
+        async with pool.connection() as conn:
+            cursor = await conn.execute(_RECENT_TERMINAL_DRAFT_SQL, (sender_e164,))
+            row = await cursor.fetchone()
+            if row is None:
+                return None
+            col_names = [desc[0] for desc in cursor.description] if cursor.description else []
+            return dict(zip(col_names, row, strict=False))
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            "[confirm_repo] find_recent_terminal_draft_for_sender failed sender=%s: %s",
+            mask_number(sender_e164),
+            e,
+        )
+        return None
+
+
 async def find_draft_by_quoted_msg_ts(pool: AsyncConnectionPool, quote_msg_ts: int) -> dict | None:
     """Resolve the signal_draft joined to the signal_outbound row at quote_msg_ts.
 

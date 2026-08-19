@@ -49,10 +49,16 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 
 import farm_agent.confirm.confirm_repo as _real_repo
 from farm_agent.confirm.dispatch import FALL_THROUGH_SENTINEL, route_confirm_reply
-from farm_agent.confirm.preview import build_numbered_ask_back, build_quote_closed
+from farm_agent.confirm.dispatch import _parse_yes_no_edit
+from farm_agent.confirm.preview import (
+    build_nothing_open,
+    build_numbered_ask_back,
+    build_quote_closed,
+)
 from farm_agent.signal_io import router as _router
 from farm_agent.tenancy.tenant import mask_number
 
@@ -73,6 +79,25 @@ def _coerce_quote_ts(raw) -> int | None:
     if not math.isfinite(n):
         return None
     return int(n)
+
+
+# MUSHY-84: a control word carries no farm data, so it must never be extracted.
+# The test is deliberately stricter than _parse_yes_no_edit, which matches on the
+# FIRST TOKEN only: "fixed the fan in FC1" starts with an _EDIT_TOKENS word and is
+# a real log entry. Only a message that is nothing but a control word, or one
+# explicitly prefixed "EDIT:", is treated as confirm-thread traffic.
+_EDIT_PREFIX_RE = re.compile(r"^edit\s*:", re.IGNORECASE)
+
+
+def _is_bare_control_word(text: str) -> bool:
+    trimmed = (text or "").strip()
+    if not trimmed:
+        return False
+    if _EDIT_PREFIX_RE.match(trimmed):
+        return True
+    if len(trimmed.split()) > 1:
+        return False
+    return _parse_yes_no_edit(trimmed) is not None
 
 
 def create_confirm_reply_router(
@@ -186,6 +211,36 @@ def create_confirm_reply_router(
             draft_row = active_drafts[0] if active_drafts else None
 
         if draft_row is None:
+            # MUSHY-84: nothing live to route to. A control word still must not
+            # reach the extractor -- on Node a bare NO became a phantom draft
+            # with asset_ref <UNKNOWN> that then asked the farmer a question
+            # about itself, while the real draft stayed open and the farmer was
+            # told "Discarded". Answer honestly instead. Free text falls through
+            # to capture as normal, because a farmer logging new work must never
+            # be answered with "that conversation is closed".
+            if _is_bare_control_word(text):
+                closed_row = None
+                try:
+                    closed_row = await repo.find_recent_terminal_draft_for_sender(pool, source)
+                except Exception as e:  # noqa: BLE001
+                    _log.warning("[confirm] recent-terminal lookup failed: %s", e)
+                body = build_quote_closed(closed_row) if closed_row else build_nothing_open()
+                _log.info(
+                    "[confirm] control word with no live draft: answered closed (draft=%s)",
+                    (closed_row or {}).get("id"),
+                )
+                try:
+                    await signal_client.send(
+                        body,
+                        to=source,
+                        related_draft_id=(closed_row or {}).get("id"),
+                        intent="quote_closed",
+                    )
+                except Exception as e:  # noqa: BLE001
+                    _log.warning("[confirm] closed-conversation reply failed: %s", e)
+                await _record_reply(envelope)
+                return True
+
             # No quote-pinned draft and no active draft -- nothing to route.
             return False
 

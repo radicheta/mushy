@@ -37,6 +37,7 @@ class FakeRepo:
         self.calls: list[tuple] = []
         self.quoted_draft: dict | None = None
         self.active_drafts: list[dict] = []
+        self.recent_terminal_draft: dict | None = None
         self.confirm_rowcount = 1
         self.discard_rowcount = 1
 
@@ -47,6 +48,10 @@ class FakeRepo:
     async def find_active_drafts_for_sender(self, pool, sender_e164):
         self.calls.append(("find_active_drafts_for_sender", sender_e164))
         return self.active_drafts
+
+    async def find_recent_terminal_draft_for_sender(self, pool, sender_e164):
+        self.calls.append(("find_recent_terminal_draft_for_sender", sender_e164))
+        return self.recent_terminal_draft
 
     async def confirm_draft(self, pool, draft_id):
         self.calls.append(("confirm_draft", draft_id))
@@ -220,10 +225,23 @@ async def test_quote_from_a_different_sender_is_not_routed():
 
     consumed = await dispatch(_envelope(farmer_b, "YES", quote={"id": 999}))
 
-    assert consumed is False, "farmer B quoting farmer A's draft must NOT be routed"
     assert not repo.called("confirm_draft"), "farmer A's draft must not be confirmed by farmer B's reply"
-    assert capture.record_calls == [], "an un-routed spoofed quote falls through untouched"
-    assert capture.handle_calls == [_envelope(farmer_b, "YES", quote={"id": 999})]
+
+    # MUSHY-84 changed what happens AFTER the guard fires, not the guard itself.
+    # This used to fall through to capture; a bare YES would then be extracted
+    # into a phantom draft for farmer B. It is now answered as a control word
+    # with no live draft. The security property is unchanged and is what the
+    # assertions below pin: farmer A's draft is neither mutated nor described.
+    assert consumed is True
+    assert capture.handle_calls == [], "a bare YES must not be extracted into a draft"
+    assert len(signal.sends) == 1
+    assert signal.sends[0]["related_draft_id"] is None, (
+        "the reply must not name farmer A's draft"
+    )
+    assert "draft-A" not in signal.sends[0]["body"]
+    assert repo.calls[-1] == ("find_recent_terminal_draft_for_sender", farmer_b), (
+        "the closed-conversation lookup must be scoped to the replying farmer"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -361,3 +379,132 @@ async def test_no_text_falls_through():
     assert repo.calls == [], "no-text envelopes must short-circuit before touching the DB"
     assert capture.record_calls == []
     assert capture.handle_calls == [env]
+
+
+# ---------------------------------------------------------------------------
+# MUSHY-84: a control word must never reach the extractor.
+#
+# Verified present on Python, not just Node: find_active_drafts_for_sender
+# matches only awaiting_farmer / recent commit_failed, so once a draft moves to
+# needs_review the farmer's next message finds nothing to route to and falls
+# through to extraction. Live on Node that turned a bare NO into a phantom
+# observation draft (asset_ref <UNKNOWN>, every confidence 0) which then asked
+# the farmer a question about itself, while the real draft stayed open and the
+# farmer got told "Discarded" -- an acknowledgement of something that never
+# happened.
+#
+# Scope is deliberately narrow: ONLY a message that is nothing but a control
+# word is intercepted. Free text still reaches extraction, because the farmer
+# writing new farm data must never be answered with "that conversation is
+# closed" -- see the phrase-vs-token test below.
+# ---------------------------------------------------------------------------
+
+
+async def test_bare_no_after_draft_left_awaiting_never_reaches_capture():
+    """The exact 2026-08-18 shape: draft has gone needs_review, farmer sends NO."""
+    repo = FakeRepo()
+    repo.active_drafts = []  # needs_review is not "active"
+    repo.recent_terminal_draft = _draft(status="needs_review")
+    signal = FakeSignalClient()
+    capture = FakeCaptureDouble()
+    _router, dispatch = _make_router(repo, signal, capture)
+
+    consumed = await dispatch(_envelope("+59891840001", "NO"))
+
+    assert consumed is True
+    assert capture.handle_calls == [], (
+        "a bare NO reached the capture pipeline -- it will be extracted into a "
+        "phantom draft and the farmer will be asked to double-check an asset_ref "
+        "for a draft that should never have existed (MUSHY-84)"
+    )
+    assert len(signal.sends) == 1, "the farmer must get an honest answer, not silence"
+
+
+async def test_closed_conversation_answer_is_honest_not_a_false_ack():
+    """The farmer must not be told something was discarded when nothing was."""
+    repo = FakeRepo()
+    repo.active_drafts = []
+    repo.recent_terminal_draft = _draft(status="needs_review")
+    signal = FakeSignalClient()
+    capture = FakeCaptureDouble()
+    _router, dispatch = _make_router(repo, signal, capture)
+
+    await dispatch(_envelope("+59891840001", "NO"))
+
+    body = signal.sends[0]["body"].lower()
+    assert "discard" not in body, (
+        f"replied {signal.sends[0]['body']!r} -- claiming a discard that did not "
+        "happen is the false-acknowledgement half of MUSHY-84"
+    )
+    assert repo.called("discard_draft") is False, "nothing must actually be discarded"
+
+
+async def test_free_text_still_reaches_capture():
+    """A new capture must never be swallowed as a stale control word.
+
+    'fix' is in _EDIT_TOKENS and _parse_yes_no_edit looks only at the first
+    token, so a first-token match alone would eat real farm data.
+    """
+    repo = FakeRepo()
+    repo.active_drafts = []
+    repo.recent_terminal_draft = _draft(status="needs_review")
+    signal = FakeSignalClient()
+    capture = FakeCaptureDouble()
+    _router, dispatch = _make_router(repo, signal, capture)
+
+    consumed = await dispatch(
+        _envelope("+59891840001", "fixed the fan in FC1 and topped up the humidifier")
+    )
+
+    assert consumed is False
+    assert len(capture.handle_calls) == 1, (
+        "free text was swallowed as a control word -- the farmer's log entry is lost"
+    )
+
+
+async def test_bare_control_word_with_no_prior_draft_is_still_not_extracted():
+    """'NO' out of nowhere is not farm data either, and must not become a draft."""
+    repo = FakeRepo()
+    repo.active_drafts = []
+    repo.recent_terminal_draft = None
+    signal = FakeSignalClient()
+    capture = FakeCaptureDouble()
+    _router, dispatch = _make_router(repo, signal, capture)
+
+    consumed = await dispatch(_envelope("+59891840001", "NO"))
+
+    assert consumed is True
+    assert capture.handle_calls == []
+    assert len(signal.sends) == 1, "silence after a farmer message is its own bug"
+
+
+async def test_explicit_edit_prefix_to_a_closed_draft_is_answered_not_extracted():
+    """'EDIT: ...' is unambiguous intent to amend, even with nothing open."""
+    repo = FakeRepo()
+    repo.active_drafts = []
+    repo.recent_terminal_draft = _draft(status="needs_review")
+    signal = FakeSignalClient()
+    capture = FakeCaptureDouble()
+    _router, dispatch = _make_router(repo, signal, capture)
+
+    consumed = await dispatch(
+        _envelope("+59891840001", "EDIT: 2 source is 250530_KOS_7, not 250530_KOY_7")
+    )
+
+    assert consumed is True
+    assert capture.handle_calls == []
+
+
+async def test_live_draft_still_wins_over_the_closed_path():
+    """The interception must not shadow a draft that is genuinely open."""
+    repo = FakeRepo()
+    draft = _draft()
+    repo.active_drafts = [draft]
+    repo.recent_terminal_draft = _draft(draft_id="older", status="needs_review")
+    signal = FakeSignalClient()
+    capture = FakeCaptureDouble()
+    _router, dispatch = _make_router(repo, signal, capture)
+
+    await dispatch(_envelope(draft["sender_e164"], "YES"))
+
+    assert repo.called("confirm_draft"), "an open draft must still be confirmed normally"
