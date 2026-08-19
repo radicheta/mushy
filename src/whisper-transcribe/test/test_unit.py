@@ -1,6 +1,9 @@
 """Unit tests for whisper-transcribe (no GPU; runs in CI).
 
-Strategy: monkey-patch main.get_model to return a stub that yields fake segments.
+Strategy: replace main._make_worker with an in-process fake that returns
+canned segments. MUSHY-33 moved the model out of this process into a spawned
+child, so the injection seam is the worker handle, not get_model.
+
 ALLOWED_ROOT is reset per-test via env + importlib.reload(main).
 """
 import importlib
@@ -10,39 +13,54 @@ import pytest
 from fastapi.testclient import TestClient
 
 
+class _FakeWorker:
+    """Stands in for the spawned model child."""
+
+    def __init__(self, fail_on_start=False):
+        self._fail_on_start = fail_on_start
+        self._alive = False
+
+    def start(self):
+        if self._fail_on_start:
+            raise RuntimeError("CUDA failed with error no CUDA-capable device is detected")
+        self._alive = True
+
+    def alive(self):
+        return self._alive
+
+    def call(self, payload, timeout_s=None):
+        if payload.get("probe"):
+            return {"ok": True, "probe": True}
+        return {"ok": True, "text": "stub", "language": "en", "language_probability": 0.99}
+
+    def stop(self):
+        self._alive = False
+
+
 @pytest.fixture
 def client(monkeypatch, tmp_path):
     os.environ["ALLOWED_ROOT"] = str(tmp_path)
     import main
     importlib.reload(main)
-
-    def fake_model():
-        class Seg:
-            text = "stub"
-
-        class Info:
-            language = "en"
-            language_probability = 0.99
-
-        class M:
-            def transcribe(self, p, **kwargs):
-                return ([Seg()], Info())
-
-        return M()
-
-    monkeypatch.setattr(main, "get_model", fake_model)
-    # TestClient must be entered as a context manager for FastAPI startup events
-    # to fire (Plan 09: deep /health relies on a startup probe).
-    with TestClient(main.app) as tc:
-        yield tc, tmp_path
+    monkeypatch.setattr(main, "_make_worker", lambda: _FakeWorker())
+    # No lifespan: the startup probe runs in a daemon thread, and a test that
+    # asserts on probe state must drive it synchronously rather than race it.
+    yield TestClient(main.app), tmp_path
 
 
-def test_health_ok_when_probe_succeeds(client):
-    c, _ = client
-    r = c.get("/health")
+def test_health_ok_when_probe_succeeds(monkeypatch, tmp_path):
+    os.environ["ALLOWED_ROOT"] = str(tmp_path)
+    import main
+    importlib.reload(main)
+    monkeypatch.setattr(main, "_make_worker", lambda: _FakeWorker())
+
+    assert main._probe_once() is True
+
+    r = TestClient(main.app).get("/health")
     assert r.status_code == 200
     body = r.json()
     assert body["ok"] is True
+    # Still warm right after the probe; the idle reaper takes it down later.
     assert body["model_loaded"] is True
 
 
@@ -52,17 +70,15 @@ def test_health_503_when_cuda_fails(monkeypatch, tmp_path):
     os.environ["ALLOWED_ROOT"] = str(tmp_path)
     import main
     importlib.reload(main)
+    monkeypatch.setattr(main, "_make_worker", lambda: _FakeWorker(fail_on_start=True))
 
-    def boom():
-        raise RuntimeError("CUDA failed with error no CUDA-capable device is detected")
+    assert main._probe_once() is False
 
-    monkeypatch.setattr(main, "_probe_model", boom)
-    with TestClient(main.app) as c:
-        r = c.get("/health")
-        assert r.status_code == 503
-        body = r.json()
-        assert body["ok"] is False
-        assert "CUDA" in body["reason"]
+    r = TestClient(main.app).get("/health")
+    assert r.status_code == 503
+    body = r.json()
+    assert body["ok"] is False
+    assert "CUDA" in body["reason"]
 
 
 def test_404_on_missing(client):

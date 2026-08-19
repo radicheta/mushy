@@ -85,8 +85,12 @@ services:
     restart: unless-stopped
 
   # Phase 25: dedicated GPU transcription sibling for the alerter.
-  # Lazy-loads faster-whisper medium fp16 (~3GB VRAM held warm). V12 mitigation:
-  # rejects audio_paths that don't resolve under /data/signal-capture (also RO mount).
+  # MUSHY-33: the model runs in a worker SUBPROCESS spawned on demand and reaped
+  # after WHISPER_IDLE_UNLOAD_S idle, so VRAM returns to zero between voice notes
+  # instead of holding ~2GB of a shared 6GB RTX 2060 around the clock. First
+  # request after idle pays a ~30-60s cold load, well inside the caller's 200s.
+  # V12 mitigation: rejects audio_paths that don't resolve under
+  # /data/signal-capture (also RO mount).
   whisper-transcribe:
     build:
       context: ./src/whisper-transcribe
@@ -103,6 +107,8 @@ services:
       - WHISPER_MODEL=medium
       - WHISPER_DEVICE=cuda
       - WHISPER_COMPUTE_TYPE=float16
+      # MUSHY-33: seconds of no jobs before the worker exits and frees the GPU.
+      - WHISPER_IDLE_UNLOAD_S=${WHISPER_IDLE_UNLOAD_S:-600}
       - ALLOWED_ROOT=/data/signal-capture
       - HF_HOME=/cache/huggingface   # Plan 09: persist model cache across rebuilds
       # Model-load failure alert (2026-06-21): host-networked, so signal-cli is on
