@@ -98,6 +98,40 @@ Without `NTFY_URL` the watchdog still runs, still reports, and still exits
 non-zero; it just logs `NTFY_URL unset; not notifying` instead of pushing. That
 is a deliberate fail-visible default rather than a silent no-op.
 
+## What gets pushed, and when (MUSHY-99)
+
+Pushes are on **change**, not on every run:
+
+| situation | push |
+|---|---|
+| a capability enters BROKEN or UNKNOWN | yes, immediately |
+| a *further* capability breaks | yes, immediately |
+| the same fault set, unchanged | no |
+| the same fault set, `WATCHDOG_REMINDER_H` hours later (default 6) | yes, titled `still` |
+| everything recovers | yes, once, naming what recovered |
+
+The amplifier this exists to remove: on the watchdog's first live night the
+heartbeat check false-alarmed, and because `notify()` had no memory that became
+**68 identical high-priority pushes between midnight and morning**. The bug was
+fixed in `d80dede`; a 15-minute cadence with no de-duplication would have
+produced 96 pushes a day for the next standing fault too, and persistent faults
+are the normal case here. A channel that buzzes every 15 minutes gets silenced,
+and then the watchdog is worth nothing on the day it finds something new.
+
+Memory lives in `/var/lib/mushy-watchdog/state.json` (systemd `StateDirectory`),
+holding just the current failure set and when it was last announced.
+
+Two rules, both tested, both the same rule in different clothes -- **the
+de-duplicator must never cause the silence it exists to prevent**:
+
+- A missing, corrupt or unwritable state file degrades to the old
+  push-every-run behaviour, never to quiet.
+- A push that was not delivered does not stamp the clock, so the next run
+  retries instead of buying six hours of quiet.
+
+Running by hand without `--notify` does not touch the state file, so a
+spot-check cannot eat a real alert.
+
 ## Two layers, and what each covers
 
 - **This timer, on elder-plops** -- catches a capability that has stopped

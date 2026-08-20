@@ -13,6 +13,11 @@ ExecStart=/usr/local/bin/farm-watchdog --notify
 # watches IS Signal, so alerting through it would be circular. Provision as
 # root-only (mode 600) -- the topic URL is a shared secret.
 EnvironmentFile=-/etc/mushy-watchdog/env
+# Memory of what has already been reported, so a standing fault is pushed once
+# and then nagged slowly instead of 96 times a day (MUSHY-99). systemd creates
+# /var/lib/mushy-watchdog. Losing it costs one duplicate alert, never silence.
+StateDirectory=mushy-watchdog
+Environment=WATCHDOG_STATE_FILE=/var/lib/mushy-watchdog/state.json
 # Exit 1 (something BROKEN) and 2 (something UNKNOWN) are both real outcomes
 # that have already been reported by --notify, so do not spam the journal with
 # unit failures on top.

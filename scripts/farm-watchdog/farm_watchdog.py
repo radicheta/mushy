@@ -59,6 +59,10 @@ WHISPER_URL = os.environ.get("WHISPER_HEALTH_URL", "http://127.0.0.1:8090/health
 
 TIMESCALE_CONTAINER = os.environ.get("TIMESCALE_CONTAINER", "mushy-timescale-1")
 
+STATE_FILE = Path(os.environ.get(
+    "WATCHDOG_STATE_FILE", "/var/lib/mushy-watchdog/state.json"))
+REMINDER_S = float(os.environ.get("WATCHDOG_REMINDER_H", "6")) * 3600
+
 
 # ---------------------------------------------------------------------------
 # Fact gathering. Every one of these returns None rather than raising, so a
@@ -205,19 +209,45 @@ def run_checks() -> dict:
     return summary
 
 
-def notify(summary: dict) -> bool:
-    """Push failures out of band. Returns True if something was sent."""
-    if summary["state"] == checks.OK:
-        return False
+def load_state(path: Path):
+    """The previous run's failure set, or None if we have no usable memory.
+
+    Unreadable, absent and corrupt all return None, which
+    `checks.decide_notification` treats as "we cannot prove the farmer was
+    already told" and therefore notifies. A de-duplicator must never cause the
+    silence it exists to prevent (MUSHY-98's rule, same shape).
+    """
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return None
+
+
+def save_state(path: Path, state: dict) -> None:
+    """Atomically. A half-written state file must never be readable as memory."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(state))
+        tmp.replace(path)
+    except Exception as e:
+        print(f"[watchdog] could not save state: {type(e).__name__}: {e}", file=sys.stderr)
+
+
+def push(payload: dict) -> bool:
+    """POST one notification. True only means ntfy accepted it.
+
+    NOT that a human was told: ntfy creates topics on demand, so a push to a
+    mistyped topic returns success too. The phone is the only proof.
+    """
     url = os.environ.get("NTFY_URL", "").strip()
     if not url:
         print("[watchdog] NTFY_URL unset; not notifying", file=sys.stderr)
         return False
-    body = checks.alert_text(summary).encode("utf-8")
-    req = urllib.request.Request(url, data=body, headers={
-        "Title": f"mushy: {len(summary['broken'])} capability(ies) broken",
-        "Priority": "high" if summary["broken"] else "default",
-        "Tags": "warning",
+    req = urllib.request.Request(url, data=payload["body"].encode("utf-8"), headers={
+        "Title": payload["title"],
+        "Priority": payload["priority"],
+        "Tags": payload["tags"],
     })
     try:
         urllib.request.urlopen(req, timeout=TIMEOUT)
@@ -225,6 +255,35 @@ def notify(summary: dict) -> bool:
     except Exception as e:
         print(f"[watchdog] notify failed: {type(e).__name__}: {e}", file=sys.stderr)
         return False
+
+
+def notify(summary: dict, state_file: Path = STATE_FILE) -> bool:
+    """Push only what is NEW: a fault appearing, or the all-clear (MUSHY-99).
+
+    A standing fault is re-pushed at most once every WATCHDOG_REMINDER_H hours.
+    Persistent faults are the normal case here, so pushing on every run at a
+    15-minute cadence means 96 identical alerts a day, and a channel that buzzes
+    every 15 minutes gets silenced. Correct and unmutable is still unusable.
+    """
+    now = datetime.now(timezone.utc).timestamp()
+    decision = checks.decide_notification(
+        summary, load_state(state_file), now, reminder_after_s=REMINDER_S)
+
+    if not decision["notify"]:
+        save_state(state_file, decision["state"])
+        return False
+
+    sent = push(checks.notification_payload(
+        summary, decision["reason"], decision["recovered_from"]))
+
+    new_state = dict(decision["state"])
+    if not sent:
+        # An undelivered push must not buy six hours of quiet. Leaving the
+        # timestamp empty makes the next run treat this as still un-told and
+        # retry, which is the fail-loud direction.
+        new_state["notified_at"] = None
+    save_state(state_file, new_state)
+    return sent
 
 
 def main() -> int:

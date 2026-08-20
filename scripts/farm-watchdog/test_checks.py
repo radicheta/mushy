@@ -253,3 +253,127 @@ class TestAnUnreadableSourceIsNeverAFalseAlarm:
 
     def test_readable_defaults_to_true(self):
         assert checks.check_heartbeat_recent(3600)["state"] == checks.OK
+
+
+# ---------------------------------------------------------------------------
+# MUSHY-99: alert on change, not on every run
+# ---------------------------------------------------------------------------
+
+def _summary(**states):
+    """A summary with one check per keyword, e.g. _summary(whisper=checks.BROKEN)."""
+    return checks.summarise([checks.verdict(n, s, "detail") for n, s in states.items()])
+
+
+def _prior(failures, notified_at=1000.0):
+    return {"failures": failures, "notified_at": notified_at}
+
+
+class TestNotifyOnChange:
+    """The amplifier behind the 2026-08-20 night of buzzing.
+
+    The heartbeat check's false alarm was one bug; `notify()` having no memory
+    turned it into 68 identical high-priority pushes between midnight and
+    morning. A channel that buzzes every 15 minutes gets silenced, and then the
+    watchdog is worth nothing on the day it finds something new.
+    """
+
+    def test_a_new_fault_notifies_immediately(self):
+        d = checks.decide_notification(_summary(whisper=checks.BROKEN), _prior({}), now=2000.0)
+        assert d["notify"] is True
+        assert d["reason"] == "entered"
+
+    def test_the_same_standing_fault_does_not_notify_again(self):
+        """96 identical pushes a day is what this ticket exists to stop."""
+        prior = _prior({"whisper": checks.BROKEN})
+        d = checks.decide_notification(_summary(whisper=checks.BROKEN), prior, now=1900.0)
+        assert d["notify"] is False
+        assert d["reason"] is None
+
+    def test_a_standing_fault_is_repeated_after_the_reminder_interval(self):
+        """Quiet must not become forgotten: a real fault still nags, slowly."""
+        prior = _prior({"whisper": checks.BROKEN}, notified_at=1000.0)
+        d = checks.decide_notification(
+            _summary(whisper=checks.BROKEN), prior, now=1000.0 + 6 * 3600,
+            reminder_after_s=6 * 3600)
+        assert d["notify"] is True
+        assert d["reason"] == "reminder"
+
+    def test_a_second_fault_notifies_even_inside_the_quiet_window(self):
+        """A NEW capability breaking is news, whatever else is already broken."""
+        prior = _prior({"whisper": checks.BROKEN}, notified_at=1000.0)
+        d = checks.decide_notification(
+            _summary(whisper=checks.BROKEN, farmos_prod=checks.BROKEN), prior, now=1060.0)
+        assert d["notify"] is True
+        assert d["reason"] == "entered"
+
+    def test_a_fault_changing_category_notifies(self):
+        """broken -> unknown is a different fault, not the same one persisting."""
+        prior = _prior({"signal_registration": checks.BROKEN})
+        d = checks.decide_notification(
+            _summary(signal_registration=checks.UNKNOWN), prior, now=1060.0)
+        assert d["notify"] is True
+        assert d["reason"] == "entered"
+
+    def test_recovery_notifies_once(self):
+        prior = _prior({"whisper": checks.BROKEN})
+        d = checks.decide_notification(_summary(whisper=checks.OK), prior, now=1060.0)
+        assert d["notify"] is True
+        assert d["reason"] == "recovered"
+
+    def test_a_healthy_farm_stays_silent(self):
+        d = checks.decide_notification(_summary(whisper=checks.OK), _prior({}), now=99999.0)
+        assert d["notify"] is False
+
+    def test_the_new_state_carries_the_current_failures(self):
+        d = checks.decide_notification(_summary(whisper=checks.BROKEN), _prior({}), now=2000.0)
+        assert d["state"]["failures"] == {"whisper": checks.BROKEN}
+        assert d["state"]["notified_at"] == 2000.0
+
+    def test_a_suppressed_run_keeps_the_original_notify_time(self):
+        """Otherwise the reminder clock resets every 15 minutes and never fires."""
+        prior = _prior({"whisper": checks.BROKEN}, notified_at=1000.0)
+        d = checks.decide_notification(_summary(whisper=checks.BROKEN), prior, now=1900.0)
+        assert d["state"]["notified_at"] == 1000.0
+
+
+class TestSilenceIsNeverAssumed:
+    """Same rule as MUSHY-98's duplicate guard: a de-duplicator must never
+    cause the failure it exists to prevent. If we cannot prove the farmer was
+    already told, tell them.
+    """
+
+    def test_no_prior_state_notifies(self):
+        d = checks.decide_notification(_summary(whisper=checks.BROKEN), None, now=2000.0)
+        assert d["notify"] is True
+
+    def test_an_unusable_prior_state_notifies(self):
+        """A corrupt or half-written state file must not buy silence."""
+        d = checks.decide_notification(_summary(whisper=checks.BROKEN), "garbage", now=2000.0)
+        assert d["notify"] is True
+
+    def test_a_missing_notify_time_notifies(self):
+        prior = {"failures": {"whisper": checks.BROKEN}, "notified_at": None}
+        d = checks.decide_notification(_summary(whisper=checks.BROKEN), prior, now=2000.0)
+        assert d["notify"] is True
+
+
+class TestNotificationPayload:
+    def test_a_broken_capability_is_high_priority(self):
+        p = checks.notification_payload(_summary(whisper=checks.BROKEN), "entered", {})
+        assert p["priority"] == "high"
+        assert "whisper" in p["body"]
+
+    def test_an_unknown_only_run_is_not_high_priority(self):
+        """"I could not see" must not shout as loudly as "it is broken"."""
+        p = checks.notification_payload(_summary(whisper=checks.UNKNOWN), "entered", {})
+        assert p["priority"] != "high"
+
+    def test_a_reminder_says_it_is_still_broken(self):
+        p = checks.notification_payload(_summary(whisper=checks.BROKEN), "reminder", {})
+        assert "still" in p["title"].lower()
+
+    def test_recovery_names_what_recovered(self):
+        p = checks.notification_payload(
+            _summary(whisper=checks.OK), "recovered", {"whisper": checks.BROKEN})
+        assert "whisper" in p["body"]
+        assert p["priority"] != "high"

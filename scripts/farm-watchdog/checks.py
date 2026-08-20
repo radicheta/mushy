@@ -248,3 +248,87 @@ def alert_text(summary: dict) -> str:
         if r["state"] == UNKNOWN:
             lines.append(f"UNKNOWN {r['check']}: {r['detail']}")
     return "\n".join(lines) or "all capabilities ok"
+
+
+# ---------------------------------------------------------------------------
+# MUSHY-99 -- alert on change, not on every run
+#
+# The 2026-08-20 night of buzzing was two faults, not one. The heartbeat check
+# asking the wrong question was the bug; `notify()` having no memory of what it
+# had already said was the amplifier that turned it into 68 identical
+# high-priority pushes before morning. Fixing only the bug leaves the amplifier
+# in place for the next one, and persistent faults are the normal case here.
+#
+# So: push when a capability ENTERS broken or unknown, push once when it
+# recovers, and otherwise re-push a standing fault at most once every few
+# hours. Comparing the whole failure set (not just the overall state) is what
+# makes "a second capability broke while the first was still broken" news.
+# ---------------------------------------------------------------------------
+
+REMINDER_AFTER_S = 6 * 3600
+
+
+def failing(summary: dict) -> dict:
+    """{check_name: state} for every capability that is not ok."""
+    return {r["check"]: r["state"] for r in summary["checks"] if r["state"] != OK}
+
+
+def decide_notification(summary, prior, now, reminder_after_s=REMINDER_AFTER_S) -> dict:
+    """Should this run push, and why?
+
+    `prior` is the state written by the previous run, or None. Anything that is
+    not a usable state dict is treated as no prior state at all: an absent,
+    half-written or corrupt file must never buy silence. Same rule as MUSHY-98's
+    duplicate guard -- a de-duplicator that fails closed causes exactly the
+    silence it exists to prevent.
+    """
+    current = failing(summary)
+
+    previous, notified_at = {}, None
+    if isinstance(prior, dict):
+        if isinstance(prior.get("failures"), dict):
+            previous = prior["failures"]
+        if isinstance(prior.get("notified_at"), (int, float)):
+            notified_at = float(prior["notified_at"])
+
+    if current != previous:
+        reason = "entered" if current else "recovered"
+    elif current and (notified_at is None or now - notified_at >= reminder_after_s):
+        reason = "reminder"
+    else:
+        reason = None
+
+    return {
+        "notify": reason is not None,
+        "reason": reason,
+        "recovered_from": previous,
+        # A suppressed run must NOT touch notified_at, or the reminder clock
+        # restarts every 15 minutes and the slow nag never fires.
+        "state": {
+            "failures": current,
+            "notified_at": now if reason else notified_at,
+        },
+    }
+
+
+def notification_payload(summary: dict, reason: str, recovered_from: dict) -> dict:
+    """Title, priority and body for one push."""
+    if reason == "recovered":
+        names = ", ".join(sorted(recovered_from)) or "everything"
+        return {
+            "title": "mushy: recovered",
+            "priority": "default",
+            "tags": "white_check_mark",
+            "body": f"recovered: {names}\nall capabilities ok",
+        }
+
+    broken = summary["broken"]
+    n = len(broken) or len(summary["unknown"])
+    word = "broken" if broken else "unreadable"
+    still = "still " if reason == "reminder" else ""
+    return {
+        "title": f"mushy: {still}{n} capability(ies) {word}",
+        "priority": "high" if broken else "default",
+        "tags": "warning",
+        "body": alert_text(summary),
+    }
