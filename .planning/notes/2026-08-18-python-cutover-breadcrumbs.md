@@ -837,3 +837,72 @@ The farmOS probes hit `/user/login`, not `/`. Bare `/` on prod :8082 returns
 **403** for an anonymous request -- normal farmOS behaviour, but it reads as an
 outage if you curl the root. That path choice is itself the BONE-10 lesson:
 probe something that only answers when the capability actually works.
+
+---
+
+## Update -- 2026-08-20, MUSHY-99: the watchdog stops repeating itself
+
+`97c630c`. Committed and pushed, **not deployed** -- the deploy needs root and
+this session has no passwordless sudo. Commands are in the commit message and on
+the ticket. Note the `.service` file changed this time, so the unit must be
+reinstalled and `daemon-reload`ed, unlike yesterday's redeploy.
+
+First, closing yesterday's loop: the `d80dede` heartbeat fix **is** live.
+`/usr/local/bin/farm-watchdog` and `checks.py` are byte-identical to the repo,
+and the timer shows the changeover exactly -- 11:26 was the last run on the old
+copy (`[FAIL] heartbeat_today`, BROKEN), 11:28 on the new one reads
+`[ok] heartbeat_recent: 15.4h ago`, 12/12, OK. The nightly false alarm is gone
+in production and not just in git.
+
+What is left is the amplifier. `notify()` had no memory, so every non-OK run
+pushed: at a 15-minute cadence a standing fault is **96 identical high-priority
+pushes a day**, which is how one wrong check became 68 pushes in a night. That
+outlives the bug, because standing faults are the normal case here -- with
+MUSHY-54 still open the heartbeat check will correctly sit BROKEN for days at a
+stretch. Correct and unmutable is still unusable.
+
+Pushes now go on **change**: entering BROKEN/UNKNOWN, a *further* capability
+breaking, once on full recovery, otherwise at most every `WATCHDOG_REMINDER_H`
+hours (default 6) titled "still". The comparison is over the whole failure set
+rather than the overall verdict -- that is what makes "a second thing broke
+while the first was still broken" news instead of a repeat.
+
+### The rule, which is MUSHY-98's rule again
+
+**A de-duplicator must never cause the silence it exists to prevent.** Two ways
+it could have here, both closed and both tested:
+
+- a missing, corrupt or unwritable state file degrades to the old
+  push-every-run behaviour, never to quiet;
+- an *undelivered* push does not stamp the clock, so a single ntfy blip cannot
+  buy six hours of silence -- the next run retries.
+
+### Tests written after the code, so they were mutation-checked
+
+`test_notify.py` drives the real `notify()` against a real file on disk, because
+decide/push/persist is the same shape of join MUSHY-90 and MUSHY-97 slipped
+through. Those six passed the moment they were written, which proves nothing on
+its own, so each guard was reverted in turn and confirmed to fail: unconditional
+notify breaks the once-across-two-runs test, stamping the clock on a failed push
+breaks the retry test, and a raising `save_state` breaks the unwritable-path
+test. 67 passed overall.
+
+### Verified live, against a local sink
+
+Five runs against the real farm across a forced farmOS outage and its recovery:
+**2 pushes** (fault, then all-clear) where the old code would have sent 3 and
+never announced the recovery. Exit codes unchanged. `WATCHDOG_REMINDER_H=0`
+re-pushes as expected, titled "still".
+
+The sink was a throwaway HTTP server on 127.0.0.1, deliberately **not** the real
+topic: a test push there is a false alarm on the farmer's phone. Related, worth
+knowing when spot-checking -- running by hand without `--notify` does not touch
+the state file, so a manual check cannot eat a real alert.
+
+### Where this leaves things
+
+Both watchdog defects from its first live night are fixed. MUSHY-43's only
+remaining item is the signal-cli pin bump cadence. The next thing that would
+actually reduce silent risk is **MUSHY-54** (the heartbeat firing on ~12% of
+days), which is now the fault the watchdog will be reporting honestly and
+quietly until someone fixes it.
