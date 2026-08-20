@@ -797,3 +797,43 @@ Until 1 and 2, the watchdog runs, reports and exits non-zero, and logs
 This timer on elder-plops catches a capability that stopped working while the
 host is fine. The VPS heartbeat receiver catches elder-plops going away
 entirely. A watchdog cannot report its own host's death.
+
+---
+
+## Update -- 2026-08-19 23:40, MUSHY-43: the watchdog is live and alerting
+
+Provisioned and installed on elder-plops. The "still owed" items 1 and 2 above
+are **done**; item 3 (signal-cli pin cadence) is still open, so the ticket stays
+In Progress.
+
+- `/etc/mushy-watchdog/env` (root, 0600) holds `NTFY_URL`, copied VPS -> host
+  over ssh through `tee` so the value never touched a terminal. It is the SAME
+  topic the VPS heartbeat receiver already pushes to -- one place to look when
+  something breaks, not two.
+- `/usr/local/bin/farm-watchdog` + `checks.py` beside it (it imports from its own
+  directory), `mushy-farm-watchdog.timer` enabled, **15-minute cadence**.
+- Runs as root on **system python, stdlib only, no venv** -- which is what
+  systemd actually uses, so that is what it was verified against.
+
+### Delivery is proven end to end, on the phone
+
+Pointed `FARMOS_PROD_URL` at a dead port so a check had to fail: `[FAIL]
+farmos_prod`, `overall: BROKEN`, exit 1, push **received on the ntfy app**.
+Deliberately not Signal -- the most important thing this watches IS Signal, so
+alerting through it would be circular.
+
+The phone is the only proof that counts here, and the reason is the same trap
+this ticket exists to close: **ntfy creates topics on demand**, so a push to a
+mistyped topic returns success too. "urlopen did not raise" means the POST was
+accepted, NOT that a human was told. A green POST is exactly as misleading as a
+green healthcheck on a network-detached container.
+
+Unforced run through systemd on its own timer, no overrides: **12/12 ok,
+`overall: OK`**.
+
+### Gotcha for whoever spot-checks by hand
+
+The farmOS probes hit `/user/login`, not `/`. Bare `/` on prod :8082 returns
+**403** for an anonymous request -- normal farmOS behaviour, but it reads as an
+outage if you curl the root. That path choice is itself the BONE-10 lesson:
+probe something that only answers when the capability actually works.

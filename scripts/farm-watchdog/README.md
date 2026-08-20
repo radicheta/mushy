@@ -69,23 +69,30 @@ sudo systemctl enable --now mushy-farm-watchdog.timer
 `farm_watchdog.py` imports `checks.py` from its own directory, which is why both
 land in `/usr/local/bin`.
 
-## Alert delivery -- the one step that needs a decision
+## Alert delivery -- ntfy, provisioned 2026-08-19
 
-Detection is done and works standalone. **Delivery needs a topic provisioned**,
-and deliberately not over Signal, because the single most important thing this
-watches *is* Signal.
+Delivery goes over [ntfy.sh](https://ntfy.sh), deliberately **not** Signal:
+the single most important thing this watches *is* Signal, so alerting through
+it would be circular.
 
-The VPS heartbeat receiver already pushes to [ntfy.sh](https://ntfy.sh) as its
-Tier 2 channel (`vps/heartbeat-receiver/index.js`), off-box and off-Signal, and
-that channel survived every outage in the table above. Reuse the same topic:
+The topic is the one the VPS heartbeat receiver already pushes to
+(`vps/heartbeat-receiver/index.js`) -- off-box, off-Signal, and it survived
+every outage in the table above. It was copied from the receiver's own env file
+on the VPS (`/etc/mushy-heartbeat/`, root:mushy 640) straight into
+`/etc/mushy-watchdog/env` over ssh, piped through `tee` so the value never
+reached a terminal or a transcript. Directory `0700`, file `0600`, root-only.
+The topic URL is a shared secret; keep it out of git.
+
+Verified end to end on 2026-08-19 by pointing one check at a dead port so it had
+to fail, and confirming the push landed on the phone:
 
 ```bash
-sudo install -d -m 0700 /etc/mushy-watchdog
-printf 'NTFY_URL=https://ntfy.sh/<the-existing-topic>\n' | sudo tee /etc/mushy-watchdog/env >/dev/null
-sudo chmod 600 /etc/mushy-watchdog/env
+sudo FARMOS_PROD_URL=http://10.68.155.50:9999/ /usr/local/bin/farm-watchdog --notify
 ```
 
-The topic URL is a shared secret. Keep it out of git.
+The phone is the only acceptable proof here. ntfy creates topics on demand, so
+a push to a *mistyped* topic also returns success -- "the POST was accepted"
+does not mean "a human was told".
 
 Without `NTFY_URL` the watchdog still runs, still reports, and still exits
 non-zero; it just logs `NTFY_URL unset; not notifying` instead of pushing. That
