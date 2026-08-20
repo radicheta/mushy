@@ -906,3 +906,73 @@ remaining item is the signal-cli pin bump cadence. The next thing that would
 actually reduce silent risk is **MUSHY-54** (the heartbeat firing on ~12% of
 days), which is now the fault the watchdog will be reporting honestly and
 quietly until someone fixes it.
+
+---
+
+## Update -- 2026-08-20, MUSHY-54: already fixed in prod, and nobody knew
+
+`27c0531`, tests only. No production change was needed, which is the finding.
+
+The ticket's own memory said "the fix landed in the Python port only; **prod
+runs Node**, so this stays live until the Phase 65 cutover". The cutover
+happened on 2026-08-18. That note has been stale for two days, and it was the
+reason MUSHY-54 still read as a live silent-failure risk. Worth generalising:
+after a cutover, sweep the notes that say "this is only fixed on the other
+stack" -- they invert silently, and a stale one costs more than a missing one.
+
+Verified in the running code rather than inferred:
+
+- **Root cause 1 (the two-stage split) is gone.** `chamber/state.py:696` uses
+  `local.hour >= config.heartbeat_hour`, matching `chamber/heartbeat.py:82`.
+  That is the MUSHY-44 item 4 sanctioned delta from `js:662`.
+- **Root cause 2 (globals shadow env) cannot fire.** `chamber/service.py` hands
+  `self._config` to both `state.transition` (line 59) and `heartbeat_loop`
+  (line 167). In Node the scheduler read `getEffective().heartbeatHour` while
+  the reducer read bootstrap env; here there is no second source to disagree
+  with.
+
+### What was actually missing
+
+A test at the **join**. Both stages have their own `>=` unit test, and both of
+those passed every single day of the outage, because the bug only ever existed
+in the seam between them -- the same shape as MUSHY-90 and MUSHY-97. Six tests
+in `test_service_wiring.py` now drive a real scheduler tick into the real
+reducer through the real dispatch and assert a body reached the farmer: on the
+hour, an hour late, six hours late, not before the hour, once per day under
+repeated ticks, and an early Tier-C hour leaving the day unspent.
+
+**Mutation-checked, and the check earned its keep.** Reverting the reducer to
+Node's `hour ==` fails the two late-tick tests. Giving the scheduler a
+globals-shadowed hour of 8 fails the Tier-C test -- but only after a rewrite:
+my first version of that test **passed under its own mutation**, because it
+asserted on the reducer when the scheduler is the side that reads the shadowed
+hour. Tests written against working code prove nothing until you watch them
+fail, and that one proved it.
+
+### Measured, and why the ticket stays open
+
+Last 30 days, matching on body rather than intent (the trap this ticket
+documented): 6 heartbeats -- 07-30, 08-05, 08-07, 08-08, 08-18, 08-19. Only
+**08-19** is the Python agent's, and only that recent because MUSHY-97 had to
+land first for a heartbeat to be possible at all. 08-18 17:10 was Node's last.
+
+One day of evidence is not a fixed ticket. It is now *monitored* rather than
+silent, which is the real change: the watchdog's `heartbeat_recent` check goes
+BROKEN above 25h, and after MUSHY-99 it will say so once instead of 96 times a
+day. Close it after about a week of unbroken sends.
+
+### Filed on the way past
+
+**MUSHY-100** (low): `EffectiveConfig.heartbeat_hour` (`state.py:199`) is
+computed from Tier-C globals and then read by nobody, so the override is
+silently ignored. That is the safe direction and it is exactly what kills root
+cause 2, but it is a knob that looks live and is not -- same class as MUSHY-44
+quirk 3. Either resolve the hour once and hand the same value to both stages, or
+delete the field.
+
+### Suite
+
+1274 passed, 4 skipped against a throwaway postgres:14 on `:5434` (started and
+removed for the run). Without a DB it is 1214 passed / 64 skipped -- worth
+knowing before reading a bare `pytest -q` as green, and MUSHY-47 is the ticket
+for that gap in CI.
