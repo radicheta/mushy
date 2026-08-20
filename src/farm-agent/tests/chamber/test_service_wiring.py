@@ -5,6 +5,7 @@ SC1 (bridge disconnect -> pi-offline alert) is proven here against a real FSM an
 a fake SignalClient. The live send to a real phone remains a manual leg.
 """
 
+import asyncio
 import pytest
 
 from farm_agent.chamber import service, state
@@ -338,3 +339,118 @@ async def test_mission_control_only_frames_are_still_ignored(svc):
     ):
         await s._on_ws_message(frame)
     assert s.state.current_rh is None
+
+
+# ---------------------------------------------------------------------------
+# MUSHY-54 -- the two-stage split, guarded at the JOIN
+#
+# The heartbeat reached the farmer on ~12% of days because its two stages
+# disagreed about the hour: heartbeat.js:54 dispatched at `hour >=
+# heartbeat_hour` and consumed the day on dispatch, while state.js:662 only
+# emitted at `hour === heartbeat_hour`. Any dispatch outside the exact hour was
+# dropped AFTER the day was already spent -- no error, no retry, and
+# `[heartbeat] fired` in the log meaning "dispatched", not "sent".
+#
+# Both sides are unit-tested for `>=` separately, and both passed throughout the
+# outage. Only the join tells the truth, so these drive the real scheduler tick
+# into the real reducer through the real dispatch and assert a body reached the
+# farmer.
+# ---------------------------------------------------------------------------
+
+from farm_agent.chamber import heartbeat  # noqa: E402
+
+HOUR = 3_600_000
+UTC_17 = 1_700_067_600_000     # 2026-11-15 17:00:00Z, on the heartbeat hour
+
+
+def _served(clock_ms, chamber_config):
+    """A service with telemetry in hand, wired exactly as start() wires it."""
+    cfg = chamber_config(TZ="UTC", ALERT_HEARTBEAT_HOUR="17")
+    client = FakeSignalClient()
+    s = service.ChamberService(
+        config=cfg, signal_client=client, http=None, clock=lambda: clock_ms[0]
+    )
+    s.state = state.initial_state(clock_ms[0])
+    s.state.current_rh = 0.91
+    s.state.current_temp = 19.4
+    s.state.current_co2 = 812
+    s.state.last_telemetry_at_ms = clock_ms[0]
+    return s, client
+
+
+async def _tick(s, hb_state, clock_ms):
+    heartbeat.tick(
+        state=hb_state, config=s._config, now_ms=clock_ms[0],
+        get_summary=s.get_summary, dispatch=s._dispatch_heartbeat,
+    )
+    for _ in range(4):          # let _dispatch_heartbeat's task actually run
+        await asyncio.sleep(0)
+
+
+async def test_a_scheduler_tick_reaches_the_farmer(chamber_config):
+    """The baseline: on the hour, a dispatch becomes a real message."""
+    clock = [UTC_17]
+    s, client = _served(clock, chamber_config)
+    await _tick(s, heartbeat.HeartbeatState(), clock)
+    assert len(client.sent) == 1
+    assert "[HEARTBEAT]" in client.sent[0]
+
+
+async def test_a_tick_an_hour_late_still_reaches_the_farmer(chamber_config):
+    """MUSHY-54 itself: the scheduler fires at `hour >=`, so the reducer must
+    too. With `==` on the reducer side the day is consumed and nothing sends."""
+    clock = [UTC_17 + HOUR]
+    s, client = _served(clock, chamber_config)
+    await _tick(s, heartbeat.HeartbeatState(), clock)
+    assert len(client.sent) == 1, "a late tick must not be silently dropped"
+
+
+async def test_a_tick_six_hours_late_still_reaches_the_farmer(chamber_config):
+    """A restart late in the evening is the common way this happened."""
+    clock = [UTC_17 + 6 * HOUR]
+    s, client = _served(clock, chamber_config)
+    await _tick(s, heartbeat.HeartbeatState(), clock)
+    assert len(client.sent) == 1
+
+
+async def test_a_tick_before_the_hour_sends_nothing(chamber_config):
+    """The fix must not turn into 'send whenever'."""
+    clock = [UTC_17 - HOUR]
+    s, client = _served(clock, chamber_config)
+    await _tick(s, heartbeat.HeartbeatState(), clock)
+    assert client.sent == []
+
+
+async def test_repeated_ticks_send_one_heartbeat_a_day(chamber_config):
+    """Both stages consume the day, so neither may double-send."""
+    clock = [UTC_17]
+    s, client = _served(clock, chamber_config)
+    hb = heartbeat.HeartbeatState()
+    for _ in range(4):
+        await _tick(s, hb, clock)
+        clock[0] += 900_000
+    assert len(client.sent) == 1
+
+
+async def test_a_tier_c_hour_cannot_make_the_scheduler_burn_the_day(chamber_config):
+    """Root cause 2: the scheduler read the globals-shadowed effective config
+    (`getEffective().heartbeatHour`) while the reducer read bootstrap env. A
+    `globals.heartbeat_hour` LOWER than env -- 8 is exactly what
+    fc_controller.py declares as its default -- makes the scheduler dispatch and
+    consume the day at 08:00 while the reducer still waits for 17. The heartbeat
+    is then lost every single day, which is the leading explanation for the
+    07-14..07-18 losses.
+
+    Both stages take the same config object now. The proof is behavioural: an
+    early tick must leave the day UNSPENT, so the real hour still sends."""
+    clock = [UTC_17 - 9 * HOUR]        # 08:00, the globals hour
+    s, client = _served(clock, chamber_config)
+    s.state.alerter_globals = {"heartbeat_hour": 8}
+    hb = heartbeat.HeartbeatState()
+
+    await _tick(s, hb, clock)
+    assert client.sent == [], "08:00 is not the heartbeat hour"
+
+    clock[0] = UTC_17                  # the real hour, same local day
+    await _tick(s, hb, clock)
+    assert len(client.sent) == 1, "the early tick must not have spent the day"
