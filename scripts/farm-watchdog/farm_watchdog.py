@@ -7,7 +7,7 @@ Answers one question per capability, from outside the thing being checked:
   is farmOS actually serving              (3 days of HTTP 500 behind a healthy container)
   can a voice note become a transcript    (5.5 weeks of NULL transcripts)
   is chamber telemetry arriving           (the alerter was deaf 1.5 days)
-  did today's heartbeat reach the farmer  (same)
+  is the daily heartbeat still current      (same)
   are confirmed farm records written      (a 9-block session lost 17 days)
   is anything crash-looping or detached   (both, announced for 3 days, unread)
 
@@ -40,14 +40,12 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 import checks  # noqa: E402
 
 BOT_NUMBER = os.environ.get("MUSHY_BOT_NUMBER", "+59891840205")
-FARM_TZ = os.environ.get("TZ") or "America/Montevideo"
 TIMEOUT = float(os.environ.get("WATCHDOG_TIMEOUT_S", "8"))
 
 SIGNAL_URL = os.environ.get("SIGNAL_CLI_URL", "http://127.0.0.1:8085")
@@ -179,13 +177,12 @@ def run_checks() -> dict:
     _, age = psql("select extract(epoch from now() - max(time)) from telemetry;")
     results.append(checks.check_telemetry_fresh(float(age) if age else None))
 
-    today = datetime.now(ZoneInfo(FARM_TZ)).strftime("%Y-%m-%d")
-    readable, day = psql(
-        "select to_char(sent_at at time zone '" + FARM_TZ + "', 'YYYY-MM-DD') "
-        "from signal_outbound where intent = 'heartbeat' or body like '[HEARTBEAT]%' "
-        "order by sent_at desc limit 1;"
+    readable, hb_age = psql(
+        "select extract(epoch from now() - max(sent_at)) from signal_outbound "
+        "where intent = 'heartbeat' or body like '[HEARTBEAT]%';"
     )
-    results.append(checks.check_heartbeat_today(day, today, readable=readable))
+    results.append(checks.check_heartbeat_recent(
+        float(hb_age) if hb_age else None, readable=readable))
 
     _, degraded = psql(
         "select count(*) from signal_capture where degraded is true "

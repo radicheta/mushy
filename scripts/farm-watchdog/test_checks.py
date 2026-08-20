@@ -88,22 +88,48 @@ class TestTelemetryFreshness:
         assert checks.check_telemetry_fresh(None)["state"] == checks.UNKNOWN
 
 
-class TestHeartbeatToday:
-    def test_sent_today_is_ok(self):
-        assert checks.check_heartbeat_today("2026-08-19", "2026-08-19")["state"] == checks.OK
+class TestHeartbeatRecent:
+    """The heartbeat is due once a day, but not at midnight.
+
+    The check this replaces asked "was one sent on today's calendar date". The
+    farm's heartbeat_hour is 17:00 local, so from local midnight until 17:00
+    the honest answer was "not yet" and the watchdog said BROKEN -- 68 pushes
+    a night, every night. Age since the last heartbeat carries no such
+    assumption, and needs no second copy of the alerter's schedule.
+    """
+
+    H = 3600
+
+    def test_a_heartbeat_earlier_today_is_ok(self):
+        assert checks.check_heartbeat_recent(3 * self.H)["state"] == checks.OK
+
+    def test_the_nightly_false_alarm(self):
+        """00:35 local, heartbeat sent 17:00 yesterday: 7.5h old, not a fault.
+
+        This is the regression. Calendar-day comparison called this BROKEN
+        because the date had rolled over.
+        """
+        r = checks.check_heartbeat_recent(7.5 * self.H)
+        assert r["state"] == checks.OK
 
     def test_the_mushy97_deafness(self):
         """The alerter held a healthy socket and produced nothing for 1.5 days."""
-        r = checks.check_heartbeat_today("2026-08-17", "2026-08-19")
+        r = checks.check_heartbeat_recent(36 * self.H)
         assert r["state"] == checks.BROKEN
-        assert "2026-08-17" in r["detail"]
+        assert "36" in r["detail"]
+
+    def test_the_boundary_is_inclusive(self):
+        assert checks.check_heartbeat_recent(25 * self.H)["state"] == checks.OK
+        assert checks.check_heartbeat_recent(25 * self.H + 1)["state"] == checks.BROKEN
+
+    def test_a_missed_heartbeat_is_caught_an_hour_after_it_was_due(self):
+        """Grace is one hour: a heartbeat skipped at 17:00 is BROKEN by 18:00,
+        not silent until the next midnight."""
+        assert checks.check_heartbeat_recent(24 * self.H)["state"] == checks.OK
+        assert checks.check_heartbeat_recent(26 * self.H)["state"] == checks.BROKEN
 
     def test_never_sent_is_broken(self):
-        assert checks.check_heartbeat_today(None, "2026-08-19")["state"] == checks.BROKEN
-
-    def test_a_clock_skew_into_tomorrow_is_not_a_fault(self):
-        """Comparing >= rather than == so a late-night boundary does not page."""
-        assert checks.check_heartbeat_today("2026-08-20", "2026-08-19")["state"] == checks.OK
+        assert checks.check_heartbeat_recent(None)["state"] == checks.BROKEN
 
 
 class TestDegradedCaptures:
@@ -193,7 +219,7 @@ class TestSummary:
     (checks.check_http, ("x", None)),
     (checks.check_whisper, (None, None)),
     (checks.check_telemetry_fresh, (None,)),
-    (checks.check_heartbeat_today, (None, "2026-08-19")),
+    (checks.check_heartbeat_recent, (None,)),
     (checks.check_degraded_captures, (None,)),
     (checks.check_parked_drafts, (None,)),
     (checks.check_restarting, (None,)),
@@ -208,7 +234,7 @@ def test_no_check_ever_returns_ok_on_missing_data(fn, args):
 class TestAnUnreadableSourceIsNeverAFalseAlarm:
     """Found by negative-testing the live watchdog, not by reading the code.
 
-    With the database unreachable, heartbeat_today reported BROKEN "no
+    With the database unreachable, the heartbeat check reported BROKEN "no
     heartbeat has ever been sent" -- a false alarm, and precisely the
     conflation this ticket exists to stop. A watchdog that cries wolf when its
     own probe breaks trains the operator to ignore it, which is how you end up
@@ -216,14 +242,14 @@ class TestAnUnreadableSourceIsNeverAFalseAlarm:
     """
 
     def test_unreadable_history_is_unknown(self):
-        r = checks.check_heartbeat_today(None, "2026-08-19", readable=False)
+        r = checks.check_heartbeat_recent(None, readable=False)
         assert r["state"] == checks.UNKNOWN
         assert "could not read" in r["detail"]
 
     def test_readable_and_never_sent_is_still_broken(self):
         """The real failure must survive the fix for the false alarm."""
-        r = checks.check_heartbeat_today(None, "2026-08-19", readable=True)
+        r = checks.check_heartbeat_recent(None, readable=True)
         assert r["state"] == checks.BROKEN
 
     def test_readable_defaults_to_true(self):
-        assert checks.check_heartbeat_today("2026-08-19", "2026-08-19")["state"] == checks.OK
+        assert checks.check_heartbeat_recent(3600)["state"] == checks.OK

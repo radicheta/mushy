@@ -106,28 +106,36 @@ def check_telemetry_fresh(age_sec, max_age_sec: int = 600) -> dict:
     )
 
 
-def check_heartbeat_today(last_heartbeat_day, today: str, readable: bool = True) -> dict:
+def check_heartbeat_recent(age_sec, max_age_h: int = 25, readable: bool = True) -> dict:
     """The farm's daily report actually reached the farmer.
 
     This is the capability proxy for "the alerter can hear the chamber". A deaf
     alerter (MUSHY-97) holds a healthy socket, reports healthy, and quietly
     produces nothing -- the heartbeat is the only externally visible thing it
-    must produce every day. 24h resolution is coarse, but the failure it catches
-    ran undetected for a day and a half.
+    must produce every day.
+
+    Measured as age, not as "was one sent on today's date". The heartbeat is due
+    at heartbeat_hour (17:00 local), so a calendar-day comparison called every
+    night BROKEN from midnight until 17:00 -- 68 false pushes a night, which is
+    how a watchdog gets muted. Age also keeps the alerter's schedule in one
+    place: nothing here has to know what the hour is, and nothing drifts when it
+    changes. 25h is a day plus an hour of grace for restarts and jitter, so a
+    genuinely skipped heartbeat is BROKEN an hour after it was due.
     """
     if not readable:
         # "the database did not answer" is not "the farmer got no heartbeat".
         # Conflating those two is the exact failure this ticket exists to stop,
         # and an unreadable DB reported as BROKEN is a false alarm that trains
         # the operator to ignore the watchdog.
-        return verdict("heartbeat_today", UNKNOWN, "could not read send history")
-    if last_heartbeat_day is None:
-        return verdict("heartbeat_today", BROKEN, "no heartbeat has ever been sent")
-    if last_heartbeat_day >= today:
-        return verdict("heartbeat_today", OK, last_heartbeat_day)
+        return verdict("heartbeat_recent", UNKNOWN, "could not read send history")
+    if age_sec is None:
+        return verdict("heartbeat_recent", BROKEN, "no heartbeat has ever been sent")
+    hours = age_sec / 3600
+    if hours <= max_age_h:
+        return verdict("heartbeat_recent", OK, f"{hours:.1f}h ago")
     return verdict(
-        "heartbeat_today", BROKEN,
-        f"last heartbeat was {last_heartbeat_day}, expected {today}",
+        "heartbeat_recent", BROKEN,
+        f"last heartbeat was {hours:.1f}h ago (limit {max_age_h}h)",
     )
 
 

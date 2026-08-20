@@ -35,7 +35,7 @@ whole subject of this ticket.
 | `bridge`, `mission_control` | are they answering a real path? | BONE-10 |
 | `whisper` | reachable? (`model_loaded:false` is NORMAL when idle) | MUSHY-33 |
 | `telemetry_fresh` | is chamber telemetry landing? | fc1 outages |
-| `heartbeat_today` | did today's report reach the farmer? | MUSHY-97 |
+| `heartbeat_recent` | is the daily report still current (<25h)? | MUSHY-97 |
 | `voice_notes_transcribing` | any capture stored degraded in 24h? | 5.5-week whisper outage |
 | `no_parked_records` | confirmed records all written? | MUSHY-75 |
 | `no_restart_loops` | anything crash-looping? | 3 days of a dependent shouting |
