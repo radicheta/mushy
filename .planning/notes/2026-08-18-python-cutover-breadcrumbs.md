@@ -976,3 +976,74 @@ delete the field.
 removed for the run). Without a DB it is 1214 passed / 64 skipped -- worth
 knowing before reading a bare `pytest -q` as green, and MUSHY-47 is the ticket
 for that gap in CI.
+
+---
+
+## Update -- 2026-08-20, MUSHY-87: a capture can be replayed instead of re-typed
+
+`0c86d94`, pushed. `scripts/replay_capture.py` + `farm_agent/capture/replay.py`.
+
+This is the north-star ticket in miniature: before it, the only way to correct a
+mis-extracted session was to ask the farmer to re-photograph and re-record a
+session they had already logged. Now the stored `signal_capture` rows go back
+through the real pipeline, oldest first.
+
+**It needed zero production change**, which is the part worth keeping. Both
+sharp edges resolve at seams the pipeline already injects:
+
+- The date anchor was already right. `_capture_date_iso` prefers
+  `captured_at_ms` over the clock (MUSHY-83), so building the ctx from the
+  stored row is the whole fix.
+- The draft-id collision resolves through the `extraction_db=` kwarg.
+  `replay_scoped_db` is a proxy that delegates everything and mints
+  `sha256(sorted_ids + "#replay:<run-id>")`. All three production call sites go
+  through `db.compute_draft_id`, so one wrapper covers single, multi and batch.
+
+### The defect that came in through the other door
+
+The ticket names one destructive path (PK collision) and the replay-scoped id
+closes it. There is a second, unticketed: a capture replayed inside the
+30-minute idle gap is still *in-flight* for that sender, so the pipeline would
+have **appended to the very draft the replay supersedes**. Same destructive
+outcome, different route.
+
+The proxy now hides in-flight drafts it did not mint itself. Not "hide
+everything" -- that would break the continuity a multi-capture replay exists to
+preserve -- so the guard is mutation-checked in both directions: pass-through
+fails the isolation test, always-hide fails the continuity test.
+
+Generalising: when you close a destructive path by changing an identifier, check
+every *other* reader of that identity. The id stopped colliding; the lookup
+keyed on sender did not care.
+
+### Half the ticket was already obsolete
+
+`send-preview.js` needs no Python twin. The ticket says the pipeline "ends at
+`handoff_to_phase_39`" -- true of Node, but MUSHY-76's D-1 made
+`send_confirm_prompt` live, so Python dispatches the first preview itself. Same
+shape as MUSHY-54 two hours earlier: a ticket written against the old stack,
+still read as current after the cutover.
+
+### What is NOT verified
+
+`--apply` has never run against prod. The dry run is verified live inside
+`mushy-alerter-py-1` against two real captures (correct ordering, nothing
+written or sent), but a real re-extraction costs an API call and, more to the
+point, writes a real `awaiting_farmer` row -- which becomes that sender's
+in-flight draft. The farmer's *next* capture can then append to a replay. That
+is inherent to the feature; it means the first `--apply` should be supervised
+and not while Don Santiago is mid-conversation with the bot.
+
+### Gotcha -- the image has no `scripts/`
+
+The Dockerfile copied `farm_agent/` only, so operator tooling had to be
+`docker cp`'d in every time. It now copies `scripts/` too, effective at the next
+rebuild. Until then, the tool needs both files copied in -- and the module has
+to land in `/app/farm_agent/capture/`, because `farm_agent` resolves to `/app`
+in the container, not to site-packages.
+
+### Still owed from yesterday, unchanged
+
+MUSHY-99's watchdog deploy needs root and has not happened: `97c630c` is in git,
+not on the timer. The `.service` file changed, so that one needs a reinstall and
+`daemon-reload`, not just a file copy. Commands are on the ticket.
