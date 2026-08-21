@@ -530,3 +530,81 @@ async def test_pipeline_falls_back_to_the_clock_when_capture_timestamp_missing()
 async def test_pipeline_ignores_an_unusable_capture_timestamp():
     anchor = await _anchor_seen(dict(CTX, captured_at_ms="not-a-number"))
     assert anchor.startswith("1970-01-01"), anchor
+
+
+# ---------------------------------------------------------------------------
+# MUSHY-86: the ref check reaches the farmer through the real pipeline
+# ---------------------------------------------------------------------------
+
+
+async def test_confirm_prompt_flags_a_source_block_that_is_not_in_farmos():
+    """Seam test: extraction -> check -> preview -> the body the farmer receives."""
+    from farm_agent.farmos import assets
+
+    assets._clear_cache()
+
+    async def get(path):
+        return {"ok": True, "body": {"data": []}}  # nothing resolves
+
+    db = FakeDb()
+    p = create_extraction_pipeline(
+        pool=None, extractor=_extractor({
+            "ok": True, "drafts": [{"draft": CLEAN, "per_field_confidence": {}}],
+            "draft": CLEAN, "per_field_confidence": {}, "continuity_decision": "start_new",
+            "usage": None,
+        }), config=_config(),
+        extraction_db=db, outbound_dispatcher={"dispatch": FakeDispatcher().dispatch},
+        clock=lambda: 1_000_000,
+        farmos_client={"get": get},
+    )
+
+    await p["enqueue"](CTX)
+
+    _, _, extras = db.updates[-1]
+    assert "New in farmOS, will be created: b1" in extras["farmer_facing_preview"]
+    assets._clear_cache()
+
+
+async def test_an_unreachable_farmos_does_not_claim_the_block_is_new():
+    """The outage case, end to end: 'could not check', never 'will be created'."""
+    from farm_agent.farmos import assets
+
+    assets._clear_cache()
+
+    async def get(path):
+        return {"ok": False, "status": 500}
+
+    db = FakeDb()
+    p = create_extraction_pipeline(
+        pool=None, extractor=_extractor({
+            "ok": True, "drafts": [{"draft": CLEAN, "per_field_confidence": {}}],
+            "draft": CLEAN, "per_field_confidence": {}, "continuity_decision": "start_new",
+            "usage": None,
+        }), config=_config(),
+        extraction_db=db, outbound_dispatcher={"dispatch": FakeDispatcher().dispatch},
+        clock=lambda: 1_000_000,
+        farmos_client={"get": get},
+    )
+
+    await p["enqueue"](CTX)
+
+    _, _, extras = db.updates[-1]
+    body = extras["farmer_facing_preview"]
+    assert "Could not check farmOS: b1" in body
+    assert "will be created" not in body
+    assets._clear_cache()
+
+
+async def test_without_a_farmos_client_the_preview_is_unchanged():
+    """The check is additive: no client wired means the old body, not a crash."""
+    db = FakeDb()
+    p = _pipeline(db, _extractor({
+        "ok": True, "drafts": [{"draft": CLEAN, "per_field_confidence": {}}],
+        "draft": CLEAN, "per_field_confidence": {}, "continuity_decision": "start_new",
+        "usage": None,
+    }))
+
+    await p["enqueue"](CTX)
+
+    _, _, extras = db.updates[-1]
+    assert "farmOS" not in extras["farmer_facing_preview"]

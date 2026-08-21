@@ -70,6 +70,7 @@ from farm_agent.extraction import state_machine as _state_machine_module
 from farm_agent.extraction.batch_mode import run_batch_mode, run_multi_confirm
 from farm_agent.extraction.starting_seq import handle_starting_seq_ask_back as _do_starting_seq_ask_back
 from farm_agent.extraction.starting_seq import handle_starting_seq_reply as _do_starting_seq_reply
+from farm_agent.farmos.ref_check import check_asset_refs, collect_asset_refs
 from farm_agent.tenancy.tenant import mask_number
 
 logger = logging.getLogger(__name__)
@@ -246,6 +247,7 @@ def create_extraction_pipeline(
     outbound_dispatcher=None,
     clock=None,
     log: logging.Logger | None = None,
+    farmos_client=None,
 ) -> dict:
     db = extraction_db if extraction_db is not None else _extraction_db_module
     sm = state_machine if state_machine is not None else _state_machine_module
@@ -309,6 +311,22 @@ def create_extraction_pipeline(
             await _dispatch(effect, row)
         except Exception as e:  # noqa: BLE001 -- fail-soft, never fail enqueue
             _log.warning("[extraction] dispatch %s failed: %s", effect, e)
+
+    async def _check_refs(draft: dict | None) -> dict | None:
+        """Resolve the draft's proposed asset refs. Never raises, never blocks.
+
+        No client wired means no check and an unchanged preview -- additive, so
+        a deployment that has not wired farmOS degrades to the old behaviour
+        rather than to a crash on the farmer's confirm path.
+        """
+        if farmos_client is None:
+            return None
+        try:
+            refs = collect_asset_refs(draft)
+            return await check_asset_refs(farmos_client, refs) if refs else None
+        except Exception as e:  # noqa: BLE001 -- a failed check never breaks a preview
+            _log.warning("[extraction] asset-ref check failed: %s", e)
+            return None
 
     async def enqueue(capture_ctx: dict) -> dict:
         try:
@@ -525,12 +543,17 @@ def create_extraction_pipeline(
             if needs_preview:
                 try:
                     required = sm.REQUIRED_FIELDS.get((draft or {}).get("type"), [])
+                    # MUSHY-86: nothing between extraction and the confirm prompt
+                    # used to consult farmOS, so a misread label reached the farmer
+                    # as a confident row and a YES minted a near-duplicate.
+                    ref_checks = await _check_refs(draft)
                     if "send_confirm_prompt" in transition.side_effects:
                         preview = pb.build_confirm_prompt(
                             draft=draft,
                             per_field_confidence=extract_result.get("per_field_confidence") or {},
                             threshold=config.extraction_confidence_threshold,
                             required_fields=required,
+                            asset_ref_checks=ref_checks,
                         )
                     else:
                         preview = pb.build_preview(
@@ -538,6 +561,7 @@ def create_extraction_pipeline(
                             per_field_confidence=extract_result.get("per_field_confidence") or {},
                             threshold=config.extraction_confidence_threshold,
                             required_fields=required,
+                            asset_ref_checks=ref_checks,
                         )
                     extras["farmer_facing_preview"] = preview
                 except Exception as e:  # noqa: BLE001

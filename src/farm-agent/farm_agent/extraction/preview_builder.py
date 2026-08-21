@@ -30,6 +30,8 @@ from __future__ import annotations
 import math
 import re
 
+from farm_agent.farmos.ref_check import render_ref_check_note
+
 # Top-question phrasing keyed by `{draft_type}.{field_name}`. Missing-field
 # templates use the .miss suffix; low-confidence templates use .low. Fall back
 # to a generic confirm prompt when no template matches.
@@ -182,6 +184,7 @@ def build_preview(
     per_field_confidence: dict | None,
     threshold: float,
     required_fields: list[str],
+    asset_ref_checks: dict | None = None,
 ) -> str:
     """Returns a multi-line farmer-facing string:
       line 1: top question (the single most-blocking ambiguity)
@@ -198,7 +201,7 @@ def build_preview(
     # CRITICAL: this branch NEVER reads or renders draft["conflicts"] -- OCR-vs-
     # Whisper conflicts are forensics-only and must never surface to the farmer.
     if draft and draft.get("type") == "seeding_session":
-        return render_seeding_session(draft)
+        return render_seeding_session(draft, asset_ref_checks=asset_ref_checks)
 
     if draft is None:
         draft = {}
@@ -263,11 +266,18 @@ def build_preview(
         if not has_state and not has_notes:
             lines.append("state_or_notes: [?]")
 
+    # MUSHY-86: a proposed asset that does not resolve in farmOS reaches the
+    # farmer flagged, so a YES is an informed mint rather than a silent one.
+    ref_note = render_ref_check_note(asset_ref_checks)
+    if ref_note:
+        lines.append("")
+        lines.append(ref_note)
+
     out = f"{top_q}\n\n" + "\n".join(lines)
     return sanitize_farmer_text(out)
 
 
-def render_seeding_session(draft: dict) -> str:
+def render_seeding_session(draft: dict, *, asset_ref_checks: dict | None = None) -> str:
     """Phase 48-03 production renderer.
 
     Output shape (em-dash policy applied):
@@ -332,6 +342,10 @@ def render_seeding_session(draft: dict) -> str:
     if notes is not None and str(notes).strip() != "":
         lines.append("")
         lines.append(f"note: {notes}")
+    ref_note = render_ref_check_note(asset_ref_checks)
+    if ref_note:
+        lines.append("")
+        lines.append(ref_note)
     lines.append("")
     lines.append("YES to commit | NO to cancel | EDIT to change")
 
@@ -433,6 +447,7 @@ def build_confirm_prompt(
     per_field_confidence: dict | None,
     required_fields: list[str],
     threshold: float,
+    asset_ref_checks: dict | None = None,
 ) -> str:
     """Farmer-facing confirm prompt for a cleanly-extracted draft (D-1).
 
@@ -445,6 +460,7 @@ def build_confirm_prompt(
         per_field_confidence=per_field_confidence,
         threshold=threshold,
         required_fields=required_fields,
+        asset_ref_checks=asset_ref_checks,
     )
     cleaned = re.sub(r"\s*\[\?\]", "", str(body))
     return sanitize_farmer_text(cleaned + REPLY_SUFFIX)

@@ -202,3 +202,84 @@ def test_fmt_num_matches_the_chamber_implementation():
              2.5, 0.05, 1234.567, "not a number", "12.34"]
     for c in cases:
         assert extraction_fmt_num(c) == chamber_fmt_num(c), f"drift on {c!r}"
+
+
+# ---------------------------------------------------------------------------
+# MUSHY-86: asset-ref existence surfaced in the preview
+# ---------------------------------------------------------------------------
+
+
+def test_flat_preview_warns_that_a_proposed_asset_does_not_exist():
+    """An unresolvable asset_ref reaches the farmer flagged, not as a plain row."""
+    from farm_agent.extraction.preview_builder import build_preview
+
+    out = build_preview(
+        draft={"type": "observation", "asset_ref": "260530_KOY_7", "notes": "pinning"},
+        per_field_confidence={},
+        threshold=0.7,
+        required_fields=["asset_ref", "event_timestamp"],
+        asset_ref_checks={
+            "260530_KOY_7": {"status": "new", "near_misses": ["260530_KOS_7"]}
+        },
+    )
+
+    assert "New in farmOS, will be created: 260530_KOY_7 (did you mean 260530_KOS_7?)" in out
+
+
+def test_flat_preview_is_unchanged_when_every_ref_resolves():
+    """The check must be invisible when it finds nothing wrong."""
+    from farm_agent.extraction.preview_builder import build_preview
+
+    kwargs = dict(
+        draft={"type": "observation", "asset_ref": "260530_KOS_7", "notes": "pinning"},
+        per_field_confidence={},
+        threshold=0.7,
+        required_fields=["asset_ref", "event_timestamp"],
+    )
+
+    assert build_preview(**kwargs) == build_preview(
+        **kwargs, asset_ref_checks={"260530_KOS_7": {"status": "exists", "near_misses": []}}
+    )
+
+
+def test_session_preview_warns_above_the_commit_footer():
+    """The 2026-08-18 misread was a session parent, so the table renderer needs it too."""
+    from farm_agent.extraction.preview_builder import render_seeding_session
+
+    out = render_seeding_session(
+        {
+            "type": "seeding_session",
+            "event_date": "2026-05-30",
+            "groups": [{
+                "parent": {"value": "260530_KOY_7", "confidence": 0.9, "sources": ["audio"]},
+                "species": {"value": "KOY", "confidence": 0.9, "sources": ["audio"]},
+                "qty": {"value": 4, "confidence": 0.9, "sources": ["audio"]},
+                "child_block_names": {
+                    "value": ["260601_KOY_1"], "confidence": 0.9, "sources": ["audio"],
+                },
+            }],
+        },
+        asset_ref_checks={
+            "260530_KOY_7": {"status": "new", "near_misses": ["260530_KOS_7"]}
+        },
+    )
+
+    assert "did you mean 260530_KOS_7?" in out
+    assert out.index("did you mean") < out.index("YES to commit")
+
+
+def test_confirm_prompt_carries_the_ref_warning_through():
+    """The clean-extraction path is where the 2026-08-18 KOY row reached the farmer."""
+    from farm_agent.extraction.preview_builder import build_confirm_prompt
+
+    out = build_confirm_prompt(
+        draft={"type": "observation", "asset_ref": "260530_KOY_7", "notes": "pinning"},
+        per_field_confidence={},
+        threshold=0.7,
+        required_fields=["asset_ref", "event_timestamp"],
+        asset_ref_checks={
+            "260530_KOY_7": {"status": "new", "near_misses": ["260530_KOS_7"]}
+        },
+    )
+
+    assert "did you mean 260530_KOS_7?" in out

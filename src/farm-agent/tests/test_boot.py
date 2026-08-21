@@ -658,3 +658,44 @@ async def test_boot_applies_the_farm_timezone(monkeypatch, caplog):
                 pass
 
     assert farm_time._tz_name == "Asia/Tokyo"
+
+
+# ---------------------------------------------------------------------------
+# MUSHY-86: boot hands the extraction pipeline a farmOS client to check refs with
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_boot_gives_the_extraction_pipeline_a_farmos_client(monkeypatch, caplog):
+    """Without this the ref check is dead code: built, tested, never called."""
+    if not _db_reachable():
+        pytest.skip("no test DB reachable -- start postgres:14 on port 5434")
+
+    from tests.conftest import TEST_ENV  # noqa: PLC0415
+    for k, v in TEST_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("FARMOS_INTEGRATION", "1")
+
+    import farm_agent.boot as boot  # noqa: PLC0415
+
+    seen = {}
+    real = boot.create_extraction_pipeline
+
+    def spy(**kwargs):
+        seen.update(kwargs)
+        return real(**kwargs)
+
+    monkeypatch.setattr(boot, "create_extraction_pipeline", spy)
+
+    task = asyncio.create_task(boot.main())
+    try:
+        await asyncio.wait_for(asyncio.shield(task), timeout=5.0)
+    except (asyncio.TimeoutError, asyncio.CancelledError, Exception):
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    assert seen.get("farmos_client") is not None, (
+        "extraction pipeline built without a farmOS client -- MUSHY-86 cannot fire"
+    )

@@ -136,10 +136,21 @@ async def main() -> None:
         # identical message is not sent twice. Reads the rows MUSHY-90 armed.
         get_last_sent_body=lambda draft_id: outbound_repo.last_body_for_draft(pool, draft_id),
     )
+    # MUSHY-86: built here rather than at the commit watchdog below, because the
+    # extraction pipeline needs it too -- a proposed asset ref is checked against
+    # farmOS before the confirm prompt is built, not after the farmer says YES.
+    # One client, shared by both.
+    farmos_client = None
+    if config.farmos_integration:
+        farmos_client = create_farmos_client(
+            config.farmos_url, config.farmos_username, config.farmos_password, http
+        )
+
     extraction_pipeline = create_extraction_pipeline(
         pool=pool, extractor=extractor, config=config,
         outbound_dispatcher=extraction_outbound,
         log=log,
+        farmos_client=farmos_client,
     )
 
     pipeline = create_capture_pipeline(
@@ -203,9 +214,6 @@ async def main() -> None:
     # T-56-06-01: farmos_url, username, password are NEVER logged here.
     commit_watchdog_task = None
     if config.farmos_integration:
-        farmos_client = create_farmos_client(
-            config.farmos_url, config.farmos_username, config.farmos_password, http
-        )
         # MUSHY-38: the commit drain MUST get the shared SignalClient. Its three
         # terminal outcomes (committed / commit_failed / fidelity hold) all happen
         # long after the farmer's YES was acked, so without a client every one of
