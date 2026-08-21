@@ -11,14 +11,14 @@
 - ✅ **v1.5.0.1 Resilience hotfix from 2026-05-02 incident** — Phases 27.1 + 27.2 (shipped 2026-05-07 via wg0 architectural detour; 27.3 + 27.4 MOOTED). See `.planning/milestones/v1.5.0.1-ROADMAP.md`.
 - ✅ **v1.5 Analog Humidity Control & Condensation/Evaporation Forcing** — Phases 27–31 (shipped 2026-05-09; ALRT-10 calendar-deferred). See `.planning/milestones/v1.5-ROADMAP.md`.
 - ✅ **v1.6 VPS Hub + Outage/Recovery Stack** — Phases 32–35 + 999.43.1 (shipped 2026-05-10/11; scaffolding deferred). See `.planning/milestones/v1.6-ROADMAP.md`.
-- 🚧 **v1.7 Multimodal Signal → FarmOS Events** — Phases 36–43 (effectively shipped 2026-05-16; Phase 42 calendar-deferred — biological lifecycle)
+- 🚧 **v1.7 Multimodal Signal → FarmOS Events** — Phases 36–43 (effectively shipped 2026-05-16; Phase 42 calendar-deferred — biological lifecycle). NOTE 2026-08-21: that deferral was stated as 4–8 weeks on 2026-05-13 and is now ~14 weeks old. Either the pilot ran and nobody recorded it, or it did not; worth a decision rather than a standing 🚧.
 - ✅ **v1.8 Event-gate + Durable `signal_outbound` (tenant-aware)** — Phases 44–46 (shipped 2026-05-23; OSS-Foray Option α — every PR ships tenant_id-aware from day one)
 - ✅ **v1.9 Inoc-Session Correctness** — Phases 47–50 (shipped 2026-05-23; INOC-01..07 + QUOT-01..06 hermetic-attested; live-fire & May-22 reprocess operator-deferred via runbooks)
 - ✅ **v1.10 Order-Independent Writes (upsert-by-stable-identity)** — Phase 51 (shipped 2026-05-24; UPSERT-01..07 all verified; live-fire on dev farmOS: 16 assets patched / 0 created, 11 logs patched / 0 created, zero duplicates). See `.planning/milestones/v1.10-ROADMAP.md`.
-- 📋 **v1.10.1 Session-Entity Adoption (asset--group)** — Phase 52 (planned 2026-05-24; reverses Phase 48 "no session entity" interim now that farmos team enabled `farm_group` on dev+prod, commit `1857037`; session = `asset--group`, membership = `activity` log with `is_group_assignment=true`).
+- ✅ **v1.10.1 Session-Entity Adoption (asset--group)** — Phase 52 (shipped 2026-05-24, 5/5 plans; the `asset--group` + membership-log path is live in the Python agent as `farm_agent/farmos/group_assets.py`, called from `commit_seeding_session.py`; reverses Phase 48 "no session entity" interim now that farmos team enabled `farm_group` on dev+prod, commit `1857037`; session = `asset--group`, membership = `activity` log with `is_group_assignment=true`).
 - ✅ **v1.11 2025-Notebook Backfill** — Phases 53–55B (shipped 2026-06-14; runs the mushdatadump 2025 paper-log corpus through the now-unblocked extraction+upsert pipeline; gated on Phase 38 batch-mode fix + year-context shim).
-- 📋 **v1.12 Farm-Agent Python Port** — Phases 56–65 (planned 2026-06-15; big-bang Python rewrite of the live Node alerter stack — Signal I/O, multimodal extractor, draft state machine, farmOS commit path; cutover gated on ≥95% parity against live corpus).
-- 🚧 **999.33 Digital Twin + FC-1 Steady Humidity Hold** — tracked in Plane, not as numbered phases (MUSHY-52 twin, MUSHY-56 steady hold). ACTIVE LINE since 2026-07-27; v1.12 paused mid-Phase-63. Absolute-moisture chamber model + control-law validation landed on main 2026-08-09 (`c7fd8d4`). See `.planning/STATE.md` "Current State" and `.planning/phases/999.33-digital-twin-chamber-sim/`.
+- ✅ **v1.12 Farm-Agent Python Port** — Phases 56–65 (shipped 2026-08-18; big-bang Python rewrite of the live Node alerter stack — Signal I/O, multimodal extractor, draft state machine, farmOS commit path). The cutover was improvised in ~12 minutes rather than run from the Phase 65 runbook, and the ≥95% parity gate this milestone declared as its precondition never ran: Phases 64 and 65 were cancelled 2026-08-19 once Node was retired and there was nothing left to score against. No milestone audit — delivered, not formally closed.
+- 🚧 **999.33 Digital Twin + FC-1 Steady Humidity Hold** — tracked in Plane, not as numbered phases (MUSHY-52 twin, MUSHY-56 steady hold). ACTIVE LINE 2026-07-27 to 2026-08-17; since the 2026-08-18 cutover it shares the line with post-cutover farm-agent work. Absolute-moisture chamber model + control-law validation landed on main 2026-08-09 (`c7fd8d4`). See `.planning/STATE.md` "Current State" and `.planning/phases/999.33-digital-twin-chamber-sim/`.
 - 📋 **v1.13 Auto-Commit Narrowing** — Phases TBD (planned 2026-05-24; carves per-shape auto-commit lanes gated on ≥99% historical YES rate + n≥50, with UNDO + auto-demotion; structurally depends on v1.11 generating the confirm corpus).
 
 ## Phases
@@ -170,7 +170,7 @@ Honors locked schema (B5 SEQ per-session per 2026-05-22 clarification in farmos 
 
 </details>
 
-## v1.10.1 Session-Entity Adoption (Phase 52) — PLANNED 2026-05-24
+## ✅ v1.10.1 Session-Entity Adoption (Phase 52) — SHIPPED 2026-05-24 (5/5 plans)
 
 **Driver:** farmOS team enabled the `farm_group` module on dev (`:18080`) and prod (`:8082`) farmOS — committed as `1857037` on the farmos repo. This reverses today's Phase 48 interim, where the seeding-session commit handler had to be stripped of its session-asset preflight after the original `asset--fungi` lock got HTTP-422'd by `fungi_type NOT NULL`. See `/mnt/slime-kingdom/shared/farmos/.planning/notes/2026-05-24-farm-group-enabled-reply-to-mushy.md` for the smoke evidence and the API-shape correction (there is no `log--group` bundle — canonical pattern is `log--activity` with `is_group_assignment: true`).
 
@@ -232,7 +232,7 @@ Carried forward: full 73-page corpus run (parked, GA2/Cycle-2), live F2 reconcil
 rollback (CR-01), no 55B-SECURITY.md.
 </details>
 
-## v1.12 Farm-Agent Python Port (Phases 56–65) — PLANNED 2026-06-15
+## ✅ v1.12 Farm-Agent Python Port (Phases 56–65) — SHIPPED 2026-08-18 (64/65 cancelled)
 
 **Goal:** Rewrite the live ~16k-LOC Node alerter/extraction stack (`src/agents/alerter/`) as a Python (asyncio) stack — Signal I/O, multimodal extractor, draft state machine, and farmOS commit path — validated against the live corpus and cut over in a single big-bang switch, with clean Foray-ready module seams. Absorbs the Phase-50 wire-level quote-rendering bugs. Fixes the TZ-Toronto legacy bug (America/Montevideo). Sets up the Foray v2.0 OSS surface.
 
@@ -791,49 +791,11 @@ Plans:
 
 ## Progress
 
-| Phase | Milestone | Plans Complete | Status | Completed |
-|-------|-----------|----------------|--------|-----------|
-| 1. Pi Integration & Environment | v1.0 | 5/5 | Complete | 2026-03-29 |
-| 2. Safety Hardening | v1.0 | 4/4 | Complete | 2026-03-30 |
-| 3. Closed-Loop Control | v1.0 | 3/3 | Complete | 2026-04-04 |
-| 4. Observability & Integration | v1.0 | 2/2 | Complete | 2026-04-04 |
-| 5. Production Deployment | v1.0 | 2/2 | Complete | 2026-04-11 |
-| 6. WireGuard / Tailscale ROS routing | v1.0 | 3/3 | Complete | 2026-03-29 |
-| 7. Historical Data & OpenMCT time-series | v1.0 | 2/2 | Complete | 2026-04-07 |
-| 8. Pi Camera Feed in Mission Control | v1.0 | 4/4 | Complete | 2026-04-09 |
-| 9. Connectivity & Boot Stability | v1.1 | 4/4 | Complete | 2026-04-11 |
-| 10. Bridge QoS & MJPEG Delivery | v1.1 | 2/2 | Complete | 2026-04-12 |
-| 11. Compose v2 Upgrade | v1.2 | 1/1 | Complete | 2026-04-13 |
-| 12. Subscriber-Aware Camera | v1.2 | 2/2 | Complete | 2026-04-13 |
-| 13. FarmOS Daily Report | v1.2 | 4/4 | Complete    | 2026-04-13 |
-| 14. fc_camera idle-mode stall hotfix | v1.2.1 | 5/5 | Complete    | 2026-04-18 |
-| 15. Sensor warm-up grace period | v1.2.1 | 3/3 | Complete    | 2026-04-18 |
-| 16. System health panel | v1.2.1 | 3/3 | Complete    | 2026-04-18 |
-| 17. Alert engine + Signal | v1.3 | 5/5 | Complete (ALRT-07 → 999.15) | 2026-04-18 |
-| 18. Farmer dashboard API (UI delegated to farmOS team) | v1.3 | 1/1 | Complete — `/farmer/summary` live on bridge; farmOS UI owned by Zoy-side | 2026-04-19 |
-| 19. FarmOS admin actions | v1.3 | — | Deferred to v1.5 — gated on Zoy/farm-team | — |
-| 20. Alert cooldown tuning | v1.3 | — | Absorbed into Phase 29 (ALRT-08/09) — shipped 2026-05-08 | 2026-05-08 |
-| 21. Camera history continuous persistence | v1.4 | 4/4 | Complete    | 2026-04-19 |
-| 22. Timeline scrubber + farmer story view | v1.4 | 4/4 | Complete — data-surface shipped on elder-plops; farmOS owns UI (Zoy-side) | 2026-04-19 |
-| 23. Time-lapse composition (ffmpeg) | v1.4 | 3/3 | Complete    | 2026-04-27 |
-| 24. ML vision events via ComfyUI | v1.4 | — | Depends on 21; pre-gate: ComfyUI-as-prod hardening | — |
-| 25. Bidirectional Signal — farmer↔robot capture channel | v1.4 | 5/5 | Complete — 7/7 farmer UATs PASS 2026-04-28; SEED-002 carries farmOS event writer | 2026-04-28 |
-| 26. Dual sensor publishing + offline alarms (SHT30/SCD41) | v1.4 | 3/3 | Complete — UAT-8 PASS 2026-04-29 (farmer-eyeballed slot-1/slot-2 overlay, SCD41 clipping confirmed) | 2026-04-29 |
-| 27. PID + time-proportional duty-cycle primitive | v1.5 | 5/5 | Complete    | 2026-05-02 |
-| 27.1. Edge buffering — fc1 telemetry replay-on-reconnect | v1.5.0.1 | 4/4 | Complete — shipped via wg0 detour 2026-05-03 (BUF-04 attestation pending natural dropout) | 2026-05-03 |
-| 27.2. fc-core systemd unit hardening | v1.5.0.1 | 1/1 | Complete (PARTIAL — cold-reboot SYS-04 PASS 2026-05-07; wg0-down-at-boot scenario deferred to 999.28) | 2026-05-07 |
-| 27.3. Telemetry sampling-rate reduction | v1.5.0.1 | — | MOOTED 2026-05-03 by transport switch | — |
-| 27.4. Repo netplan drift reconciliation | v1.5.0.1 | — | MOOTED 2026-05-03 in planned form (fc1 no longer on farm-4G); re-promote when fc1 returns to farm | — |
-| 999.1. Edge buffering | backlog | — | Promoted to Phase 27.1 (v1.5.0.1) on 2026-05-02; shipped 2026-05-03 | — |
-| 28. Mode primitive + baselines + runtime config delivery | v1.5 | 7/7 | Complete    | 2026-05-08 |
-| 29. Alerter mode awareness + cooldown tuning | v1.5 | 7/7 | Complete    | 2026-05-08 |
-| 30. Time-of-day mode scheduling | v1.5 | 3/3 | Complete (smoke PASSED, farmer attestation pending review of 30-03-SMOKE.md) | 2026-05-09 |
-| 31. Experimental forcing modes (condensation/evaporation) | v1.5 | 4/4 | Complete (UAT partial — bridge path PROVEN; Signal E2E blocked on signal-cli primary re-reg) | 2026-05-09 |
-| 32. VPS multi-purpose hub (WireGuard MVP) | v1.6 | 1/1 | Complete — farmer #1 reaching MC via VPS hub LIVE; fc1 + elder-plops + farmer1/2/3 peers configured; gumbald deferred (operator skip) | 2026-05-10 |
-| 33. VPS heartbeat receiver + outage-alert relay | v1.6 | scaffold + deploy | Complete — Tier 1 E2E PROVEN (VPS detects 3min silence → bridge → signal-cli → operator phone) | 2026-05-11 |
-| 999.43.1. ntfy.sh Tier 2 out-of-band alert channel | v1.6 | promoted | Complete — Tier 2 E2E PROVEN (induced Tier 1 fail → ntfy push delivered to operator phone). Closes the actual 11h-blind incident class. | 2026-05-11 |
-| 34. VPS uptime-kuma outside-in monitoring | v1.6 | infra + seed | Complete — admin live, ntfy channel wired (same topic as 999.43.1), 4 monitors UP (fc1+elder-plops pings, MC HTTP, Bridge keyword); seed driven via uptime-kuma-api lib | 2026-05-11 |
-| 35. VPS Tier A backup (small irreplaceable bits) | v1.6 | ship | Complete — `.env` files + fc1 runtime knobs + VPS heartbeat secrets nightly age-encrypted to VPS at 03:30. ~20KB/day. **Known SPOF: decrypt key is `~/.ssh/id_ed25519` on elder-plops, not backed up offline (operator-acknowledged, deferred).** 999.45 (Tier B + borg) still open for vfx-studio offsite. | 2026-05-11 |
+> **Removed 2026-08-21.** This table was a global per-phase status roll-up that
+> stopped at Phase 35 (2026-05-11) and had been wrong for three months -- it still
+> carried the Tier-A backup SPOF as an open deferral six weeks after it was fixed.
+> It duplicated the per-milestone Progress Tables and Phase Summary Checklists
+> above, which are maintained. Use those. Live status is Plane (MUSHY-*).
 
 ### Phase 32: VPS multi-purpose hub (WireGuard MVP)
 

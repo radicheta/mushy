@@ -1,5 +1,63 @@
 # Milestones
 
+## v1.12 Farm-Agent Python Port (Shipped: 2026-08-18)
+
+**Phases:** 56, 57, 58, 59, 60, 61, 62, 63, 64.1 (9 phases, 45 plans, all complete)
+**Cancelled:** 64 (parity gate), 65 (cutover runbook) -- see "How it actually shipped"
+**Git range:** `035c7cf` (Phase 56 foundation, landed on main 2026-07-27 via MUSHY-46) -> the
+2026-08-18 cutover; branch work began 2026-06-15.
+
+### Delivered
+
+The whole ~16k-LOC Node alerter/extraction stack rewritten as a Python asyncio daemon and put
+in front of the farmer: signal-cli JSON-RPC I/O with durable rate-capped outbound, capture and
+off-loop Whisper transcription, the rule+Haiku event gate, the multimodal extractor with
+provenance and B5 minting, the YES/NO/EDIT confirm FSM with a race-safe watchdog, and the
+farmOS write path with the origin guard landing before any write could run.
+
+### How it actually shipped, which is not how it was planned
+
+This milestone declared a hard constraint -- ">=95% field match on an isolated :5434 DB before
+cutover" -- and that gate never ran. On 2026-08-18 the swap was done by hand in about twelve
+minutes, not from the Phase 65 runbook, with no rollback drill. It worked, and Python has
+served Signal alone since; Phases 64 and 65 were cancelled the next day because with Node
+retired there was nothing left to score parity against.
+
+Recorded plainly because the milestone's own precondition was skipped, and because the
+2026-08-18 cutover rehearsal had already made the argument for skipping it: it found three
+port defects that a fixture-parity gate would have missed entirely, all of which needed a real
+signal-cli, a real device and real attachments. A parity gate is necessary but is not evidence
+that a port can carry live traffic.
+
+### What the first days in production found
+
+The cutover was the test, and it billed accordingly. Defects found and fixed only because real
+farmer traffic hit the Python stack: MUSHY-83 (undated pages resolving to the wrong year),
+MUSHY-88 (a slow signal-cli poll costing the farmer a message), MUSHY-89 (a delivery receipt
+re-triggering its own ask-back), MUSHY-90 (sends not recorded in `signal_outbound`),
+MUSHY-91 (the same ask-back sent twice), MUSHY-92 (EDIT missed on punctuation),
+MUSHY-97 (the chamber alerter deaf to bridge frames for 1.5 days), MUSHY-98 (three defects on
+the very first heartbeat it ever delivered).
+
+Three of those -- MUSHY-90, MUSHY-97, MUSHY-86 -- were the same shape: code built, tested, and
+never wired to a caller. That is the port's characteristic failure mode and worth carrying
+forward.
+
+### Known deferred items at close
+
+- No milestone audit was run. This is delivered, not formally closed.
+- Real-model accuracy was never measured for either the event gate (MUSHY-22) or extraction
+  (MUSHY-23); the harnesses exist and are unrun.
+- Phases 57, 62 and 63 never went through the code-review gate (MUSHY-49).
+- The Node source is still in the tree though nothing runs it (MUSHY-101).
+
+### Archive
+
+- Full roadmap: `.planning/ROADMAP.md`, "v1.12" section (no separate milestone file was cut).
+- Phase paper trail: `.planning/phases/56-*` through `63-*` -- 45 SUMMARYs, one per plan.
+
+---
+
 ## v1.11 Extraction prereqs + 2025-paper backfill (Shipped: 2026-06-14)
 
 **Phases:** 53, 54, 54.1, 55, 55B (5 phases, 19 plans, all complete)

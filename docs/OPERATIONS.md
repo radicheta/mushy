@@ -1,33 +1,50 @@
 # FC-1 Fruiting Chamber — Operations Guide
 
+> Verified against the running system on 2026-08-21 (fc1 addresses, systemd
+> Restart policy, live topic list, fruiting setpoints). The previous revision
+> pointed recovery at a Tailscale address that no longer resolves and quoted an
+> 80% ±5% setpoint that had not been true since May.
+
 ## Overview
 
-FC-1 is a closed-loop humidity control system for a mushroom fruiting chamber, running on a Raspberry Pi 4 (Ubuntu 24.04 LTS). It continuously reads humidity and temperature from an SHT30 sensor (I2C address 0x44, SDA pin 3, SCL pin 5) and CO2 from an SCD41 sensor (I2C address 0x62), then drives a solid state relay (SSR-10A on GPIO27, pin 13) to switch the 220V AC power strip that powers the humidifier and fans. The control goal is 80% humidity ±5%, giving a 75–85% operational band. The system runs as a systemd service (`fc-core`) with automatic restart on failure and publishes all telemetry to a local ROS2 bus, which the OpenMCT dashboard consumes over WireGuard VPN.
+FC-1 is a closed-loop humidity control system for a mushroom fruiting chamber, running on a Raspberry Pi 4 (Ubuntu 24.04 LTS). It continuously reads humidity and temperature from an SHT30 sensor (I2C address 0x44, SDA pin 3, SCL pin 5) and CO2 from an SCD41 sensor (I2C address 0x62), then drives a solid state relay (SSR-10A on GPIO27, pin 13) to switch the 220V AC power strip that powers the humidifier and fans. In fruiting mode the control goal is 90% humidity with a band of 88.5–91.5% (farmer-set 2026-06-27, lowered from 96%). Duty is time-proportional under a PID with a quadratic feather, not bang-bang. The system runs as a systemd service (`fc-core`) with automatic restart on failure and publishes all telemetry to a local ROS2 bus, which the OpenMCT dashboard consumes over WireGuard VPN.
 
 ## Architecture
 
 ```
-FC-1 Pi (100.96.239.75 Tailscale / 10.68.155.53 LAN fallback)
-+-- fc-core.service (systemd, Restart=on-failure, RestartSec=5)
+FC-1 Pi (10.68.155.56 farm LAN / 172.16.10.5 wg0 / 10.66.0.11 wg-hub)
++-- fc-core.service (systemd, Restart=always, RestartSec=5)
 |   +-- fc_sensors     -> SHT30 (I2C 0x44) + SCD41 (I2C 0x62)
 |   +-- fc_controller  -> GPIO27 (SSR-10A -> humidifier power strip)
 |   +-- fc_display
-+-- CycloneDDS (unicast via /etc/cyclonedds.xml over wg0)
++-- CycloneDDS (unicast via /etc/cyclonedds.xml over wg0 -- NOT tailscale;
+|   tailscaled is not running on fc1 and the 100.x path is dead)
 +-- Config: ~/mushroom_farm_ws/src/chambers/fc-core/config/fc_config.yaml
 
 elder-plops (172.16.10.3 VPN)
-+-- OpenMCT    (docker: mushy_openmct_1, port 8080)
-+-- rosbridge  (docker: mushy_bridge_1)
++-- OpenMCT    (docker: mushy-openmct-1, port 8080)
++-- bridge     (docker: mushy-bridge-1)
++-- alerter-py (docker: mushy-alerter-py-1 -- Signal alerts + farmer record-keeping)
 ```
 
 ### ROS2 Topics
 
 | Topic | Type | QoS | Description |
 |-------|------|-----|-------------|
-| /fc/humidity | sensor_msgs/RelativeHumidity | default | SHT30 humidity (0.0–1.0) |
-| /fc/temperature | sensor_msgs/Temperature | default | SHT30 temperature (°C) |
-| /fc/co2 | std_msgs/Float32 | default | SCD41 CO2 (ppm) |
-| /fc/actuators/humidifier | std_msgs/Bool | TRANSIENT_LOCAL/RELIABLE | Humidifier SSR state |
+| /fc1/humidity | sensor_msgs/RelativeHumidity | default | SHT30 humidity (0.0–1.0) |
+| /fc1/humidity_2 | sensor_msgs/RelativeHumidity | default | SCD41 humidity (second sensor) |
+| /fc1/temperature | sensor_msgs/Temperature | default | SHT30 temperature (°C) |
+| /fc1/temperature_2 | sensor_msgs/Temperature | default | SCD41 temperature |
+| /fc1/co2 | std_msgs/Float32 | default | SCD41 CO2 (ppm) |
+| /fc1/actuators/humidifier | std_msgs/Bool | TRANSIENT_LOCAL/RELIABLE | Humidifier SSR state |
+| /fc1/actuators/humidifier_duty | std_msgs/Float32 | default | Commanded duty 0.0–1.0 |
+| /fc1/control/pid_output | std_msgs/Float32 | default | Raw PID output before clamping |
+| /fc1/control/current_mode | std_msgs/String | TRANSIENT_LOCAL | Active mode (fruiting, etc.) |
+| /fc1/control/humidity_target | std_msgs/Float32 | default | Effective target for the active mode |
+| /fc1/sensor_health | std_msgs/String | default | Per-sensor liveness |
+
+Run `ssh fc1 ros2-cmd topic list` for the current set -- the wrapper injects the
+DDS env, which a bare `ros2` over SSH does not have.
 
 ## Configuration
 
@@ -42,13 +59,18 @@ All runtime parameters live in `src/chambers/fc-core/config/fc_config.yaml`. Cur
 | humidifier_pin | 27 | GPIO number | SSR relay for humidifier |
 | light_pin | 18 | GPIO number | Light control pin |
 | target_temp | 23.0 | °C | Temperature setpoint |
-| target_humidity | 0.80 | 0.0–1.0 | Humidity setpoint (80%) |
-| humidity_tolerance | 0.05 | 0.0–1.0 | Deadband (±5%) |
+| target_humidity | 0.96 | 0.0–1.0 | Legacy top-level setpoint. OVERRIDDEN by the active mode -- see below. |
+| humidity_tolerance | 0.005 | 0.0–1.0 | Band half-width (±0.5%), narrowed from 1.5% on 2026-06-21 |
+| modes.fruiting.target_humidity | 0.90 | 0.0–1.0 | **The setpoint that actually runs**, farmer-set 2026-06-27 |
+| modes.fruiting.band_low / band_high | 0.885 / 0.915 | 0.0–1.0 | Operating band |
+| pid_integrator_decay_tau | 300.0 | seconds | In-band integrator decay. MUST be a float in overrides -- an int crashes the controller on restart. |
 | sensor_stale_timeout | 10.0 | seconds | Stale data triggers safe state (OFF) |
 | sensor_read_interval | 2.0 | seconds | Time between sensor reads |
 | control_interval | 1.0 | seconds | Time between control updates |
 
-> **Note:** To change configuration, edit `fc_config.yaml` in the repo, commit to the `fc1/prod` branch, and run `deploy.sh` (or let the `fc-update` systemd oneshot pull it on the next boot). Never edit config directly on the Pi — the Pi's `mushy-repo/` clone is a fast-forward-only checkout of `fc1/prod` and will be reset on every deploy.
+> **Note:** Humidity target and tolerance are ROS2 *runtime* parameters -- they can be
+> set live with `ros2 param set` for a calibration session, then committed. Everything
+> else follows the deploy path below. To change configuration, edit `fc_config.yaml` in the repo, commit to the `fc1/prod` branch, and run `deploy.sh` (or let the `fc-update` systemd oneshot pull it on the next boot). Never edit config directly on the Pi — the Pi's `mushy-repo/` clone is a fast-forward-only checkout of `fc1/prod` and will be reset on every deploy.
 
 ## Deploy Procedure
 
@@ -107,6 +129,16 @@ ssh fc1 'sudo i2cdetect -y 1'
 ```
 Device should appear at address `0x44`. If missing, check SHT30 wiring: SDA → pin 3, SCL → pin 5, VCC → pin 4, GND → pin 6.
 
+**Two failure modes that do not look like failures:**
+
+- **SCD41 silent wedge.** The CO2 sensor can stop producing new readings while the
+  bus still answers -- it died silently for ~26h once before anyone noticed. A
+  service restart reinitialises it. Check `/fc1/sensor_health` and compare CO2
+  timestamps rather than trusting that a value is present.
+- **SHT30 heater getter lies.** The library's `.heater` property does not reflect
+  the device. Read the status register and mask `0x2000` if you need to know
+  whether the heater is on.
+
 ### 5.3 Humidifier not activating
 
 **Symptom:** Humidity is below the setpoint but the humidifier is not running
@@ -133,23 +165,40 @@ cd /path/to/mushy && docker compose up -d openmct bridge
 ```bash
 docker ps | grep mushy
 ```
-Both `mushy_openmct_1` and `mushy_bridge_1` containers should be listed as running.
+Both `mushy-openmct-1` and `mushy-bridge-1` should be listed as running. Note that
+"healthy" is not proof of reachability -- containers have come up network-detached
+while reporting healthy (BONE-10). If the dashboard is still blank, check that the
+container is actually attached to its network.
 
 ### 5.5 Pi unreachable via SSH
 
 **Symptom:** `ssh fc1` times out or refuses connection
 
-**Check Tailscale connectivity** (primary path):
+**Check wg0** (primary path -- this is what telemetry rides):
 ```bash
-ping 100.96.239.75   # or: tailscale ping fc1
+ping 172.16.10.5     # or: ssh ubuntu@172.16.10.5
 ```
 
-**Check LAN connectivity** (only reachable from the farm LAN):
+**Check the farm LAN** (only reachable from the farm LAN):
 ```bash
-ping 10.68.155.53
+ping 10.68.155.56
 ```
 
-If the Pi is powered but unreachable on both paths, physical access is required — check power supply and 4G hotspot at the chamber location.
+**Check wg-hub** (heartbeat only, via the VPS):
+```bash
+ping 10.66.0.11
+```
+
+Tailscale is NOT a path any more -- `tailscaled` is not running on fc1 and the old
+`100.96.239.75` address is dead. Do not spend outage time on it.
+
+Before concluding the Pi is down, separate "offline" from "uncontrolled": a WAN drop
+leaves the chamber controlling itself perfectly well, and fc1 loses WAN when the door
+is closed in the rain. The heartbeat tells you the host is alive; telemetry silence
+alone does not mean the chamber is unmanaged. fc_buffer replays up to 24h of telemetry
+on reconnect, so a gap is not lost data unless it exceeds the ring.
+
+If the Pi is powered but unreachable on all three paths, physical access is required — check power supply and 4G hotspot at the chamber location.
 
 ## Monitoring
 
@@ -161,8 +210,8 @@ If the Pi is powered but unreachable on both paths, physical access is required 
 ## Known Limitations
 
 - **Single chamber only (FC-1)** — multi-chamber support is a future phase.
-- **No alerts or notifications** — monitoring requires manual dashboard checks or SSH log review. An alert/notification system is a future phase capability.
-- **No remote configuration UI** — all config changes require editing `fc_config.yaml` in the repo and running `deploy.sh`. A runtime config UI via the OpenMCT command channel is a future phase capability.
+- ~~No alerts or notifications~~ — obsolete. The chamber alerter sends Signal alerts to the farmer, a daily heartbeat proves it is alive, and `scripts/farm-watchdog/` checks twelve farm capabilities every 15 minutes and pushes to ntfy when one changes state.
+- **No remote configuration UI** — there is no UI, though humidity target and tolerance are live ROS2 params and can be changed without a deploy. A config UI via the Mission Control command channel is a future phase capability.
 - **Pi 4 only** — not tested on Pi 5 or other single-board computers.
 - **GPIO library deprecation path** — RPi.GPIO 0.7.1 works on Pi 4 / Ubuntu 24.04 LTS (kernel 6.8.0-raspi). RPi.GPIO is deprecated upstream; migration to `rpi-lgpio` may be required for future Pi hardware or OS versions.
-- **Tailscale required for remote access** — fc1 is at the farm on 4G; SSH uses the Tailscale IP (`100.96.239.75`, host alias `fc1-ts`). The LAN IP (`10.68.155.53`) only reachable from the farm LAN.
+- **fc1 is behind CGNAT** — it is at the farm on 4G with no inbound route, so all remote access goes through WireGuard: `wg0` (172.16.10.5) for SSH and telemetry, `wg-hub` (10.66.0.11) via the VPS for heartbeat. Tailscale was the original path and is gone.
