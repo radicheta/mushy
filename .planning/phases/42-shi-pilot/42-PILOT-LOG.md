@@ -1,5 +1,10 @@
 # Phase 42 PILOT-LOG -- SHI-on-Sawdust Pilot
 
+> **DEPRECATED 2026-08-21. Do not fill this in.** The pilot never started and
+> will not. Production use of the agent replaced it; see `42-VERIFICATION.md`
+> for what that does and does not still prove. Kept as a record that this was
+> scaffolded and deliberately abandoned, not lost.
+
 **Append-only journal.** Do not edit prior entries. New events are added at
 the bottom of this file, one commit per event with message format:
 

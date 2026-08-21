@@ -11,7 +11,7 @@
 - ✅ **v1.5.0.1 Resilience hotfix from 2026-05-02 incident** — Phases 27.1 + 27.2 (shipped 2026-05-07 via wg0 architectural detour; 27.3 + 27.4 MOOTED). See `.planning/milestones/v1.5.0.1-ROADMAP.md`.
 - ✅ **v1.5 Analog Humidity Control & Condensation/Evaporation Forcing** — Phases 27–31 (shipped 2026-05-09; ALRT-10 calendar-deferred). See `.planning/milestones/v1.5-ROADMAP.md`.
 - ✅ **v1.6 VPS Hub + Outage/Recovery Stack** — Phases 32–35 + 999.43.1 (shipped 2026-05-10/11; scaffolding deferred). See `.planning/milestones/v1.6-ROADMAP.md`.
-- 🚧 **v1.7 Multimodal Signal → FarmOS Events** — Phases 36–43 (effectively shipped 2026-05-16; Phase 42 calendar-deferred — biological lifecycle). NOTE 2026-08-21: that deferral was stated as 4–8 weeks on 2026-05-13 and is now ~14 weeks old. Either the pilot ran and nobody recorded it, or it did not; worth a decision rather than a standing 🚧.
+- ✅ **v1.7 Multimodal Signal → FarmOS Events** — Phases 36–43 (shipped 2026-05-16; Phase 42 DEPRECATED 2026-08-21, see below). The 🚧 stood for 14 weeks on a Phase 42 pilot that never started; production use replaced it.
 - ✅ **v1.8 Event-gate + Durable `signal_outbound` (tenant-aware)** — Phases 44–46 (shipped 2026-05-23; OSS-Foray Option α — every PR ships tenant_id-aware from day one)
 - ✅ **v1.9 Inoc-Session Correctness** — Phases 47–50 (shipped 2026-05-23; INOC-01..07 + QUOT-01..06 hermetic-attested; live-fire & May-22 reprocess operator-deferred via runbooks)
 - ✅ **v1.10 Order-Independent Writes (upsert-by-stable-identity)** — Phase 51 (shipped 2026-05-24; UPSERT-01..07 all verified; live-fire on dev farmOS: 16 assets patched / 0 created, 11 logs patched / 0 created, zero duplicates). See `.planning/milestones/v1.10-ROADMAP.md`.
@@ -140,7 +140,7 @@ Full retroactive snapshot: `.planning/milestones/v1.6-ROADMAP.md`. Companion 202
 - [x] **Phase 39: Farmer Confirmation Loop** — confirm-before-write; idempotent commit; EDIT loop; draft timeout (shipped 2026-05-13; 127 unit + 11 integration PASS; live-farmer UAT deferred to 39-RUNBOOK.md)
 - [x] **Phase 40: FarmOS Write Path** — API client; asset + log creation; QR binding; photo upload; audit log (code-complete 2026-05-13; 92/92 unit PASS; live dev-farmOS integration + prod-fixture SHIP GATE deferred to operator per 40-RUNBOOK.md)
 - [x] **Phase 41: Ingestion Harness** — synthetic corpus; paper-log replay; audio replay; cross-stream consistency (shipped 2026-05-13; 37 PASS + 5 operator-deferred live; mushdatadump-prod hand-labels + audio + paired-sessions in 41-RUNBOOK.md)
-- [~] **Phase 42: SHI-on-Sawdust Pilot** — SCAFFOLDING SHIPPED 2026-05-13 (3 tools + 23 tests + RUNBOOK + PILOT-LOG + VERIFICATION); actual pilot run calendar-deferred 4-8 weeks per 42-VERIFICATION.md (status: human_needed). Operator drives PILOT-01..06 against real mushroom lifecycle.
+- [~] **Phase 42: SHI-on-Sawdust Pilot** — **DEPRECATED 2026-08-21.** Scaffolding shipped 2026-05-13 (3 tools + 23 tests + RUNBOOK + PILOT-LOG + VERIFICATION); the pilot itself never started -- `42-PILOT-LOG.md` has one commit and every field still reads `[pending operator]`. Superseded by production: the farm has been logging real sessions through the agent since, which is a broader test than one scripted block. Prod has not reached a harvest yet, so the bag -> harvest batch -> block -> sterilization batch lineage walk (PILOT-04/05/06) remains unproven -- deliberately left to prove itself when a real harvest lands. Not ticketed, by decision.
 - [x] **Phase 43: Phase 38↔40 Schema Normalizer + Chain Integration Tests** — router-side normalizer (Option A) + 5-log_type extractor→commit chain tests (Option C) per `.planning/notes/2026-05-16-schema-audit.md`. Filed 2026-05-16 as carryover from 2026-05-15 lion's-mane `commit_failed` regression. Ungated by farmer-facing acks per locked decision 2026-05-17. SHIPPED 2026-05-16 — 700 tests green; Test 2 is the named regression guard; SCHEMA-04 attested.
 
 </details>
@@ -787,7 +787,26 @@ Plans:
   5. Archive_spent activity log written on the block; lineage walk bag to harvest batch to block to sterilization batch returns clean with no broken refs
   6. Operator reconstructs the full lifecycle from farmOS logs alone without referring to Signal history
 
-**Plans:** 3 plans scaffolded 2026-05-13 (42-01..03 + RUNBOOK + PILOT-LOG + VERIFICATION). Status: human_needed — actual pilot run calendar-deferred 4-8 weeks against real mushroom lifecycle. See `.planning/phases/42-shi-pilot/42-VERIFICATION.md`.
+**Status: DEPRECATED 2026-08-21.** The pilot was the end-to-end acceptance test for
+the record-keeping system, on a real biological clock. It never ran: 3 plans were
+scaffolded 2026-05-13 (42-01..03 + RUNBOOK + PILOT-LOG + VERIFICATION) and
+`42-PILOT-LOG.md` still holds nothing but `[pending operator]`.
+
+Deprecated rather than deferred again, because the thing it was built to prove is
+now being proved continuously by real use. Criteria 1 through 3 -- sterilization,
+inoculation with QR-bound block assets, stage transitions -- happen in prod every
+time the farmer logs a session. A scripted single-block run would be a narrower test
+than the traffic already flowing.
+
+What is genuinely still unproven: prod has not reached a harvest, so criteria 4, 5
+and 6 -- the harvest batch, archive_spent, and the four-hop lineage walk back to the
+sterilization batch -- have never been exercised end to end. Left deliberately
+untracked. It will be proved by the first real harvest reaching farmOS, or it will
+fail there and be fixed then.
+
+Note the three verification tools (`tools/farmos-lineage.js`,
+`farmos-current-stage.js`, `farmos-pilot-reconstruct.js`) are Node and are now
+orphaned -- they belong to the retired stack. Folded into MUSHY-101.
 
 ## Progress
 

@@ -1,10 +1,41 @@
 ---
 phase: 42-shi-pilot
-status: human_needed
-verified_at: pending
+status: deprecated
+verified_at: never
+deprecated_at: 2026-08-21
 ---
 
 # Phase 42 Verification
+
+**Phase status: DEPRECATED 2026-08-21. The pilot never ran and will not run.**
+
+`42-PILOT-LOG.md` has a single commit -- the scaffold -- and every field in it
+still reads `[pending operator]`. No block was ever sterilized for this.
+
+Deprecated rather than deferred a third time, on the operator's call. The pilot
+existed to prove the Signal-to-farmOS record-keeping path before it could be
+trusted; that path has been carrying real farmer traffic in production since,
+which is a broader test than one scripted block would have been. PILOT-01 to
+PILOT-03 (sterilization, QR-bound block assets, stage transitions) happen in prod
+whenever the farmer logs a session.
+
+PILOT-04, PILOT-05 and PILOT-06 remain genuinely unproven: production has not
+reached a harvest, so the harvest batch, archive_spent, and the four-hop lineage
+walk (bag -> harvest batch -> block -> sterilization batch) have never been
+exercised end to end. This is a known, accepted gap and is deliberately not
+ticketed. It gets proved by the first real harvest reaching farmOS, or it breaks
+there and is fixed there.
+
+The three verification tools this phase built (`tools/farmos-lineage.js`,
+`farmos-current-stage.js`, `farmos-pilot-reconstruct.js`) are Node, belong to the
+retired stack, and are now orphaned. Their disposal folds into MUSHY-101. If the
+lineage walk is ever wanted against prod, `farmos-lineage.js` is the one worth
+porting -- it is the only piece here that checks something production does not
+check for itself.
+
+---
+
+## Original verification record (2026-05-13), retained
 
 **Phase status:** scaffolded (autonomous run); pilot pending operator on
 real-world calendar.
