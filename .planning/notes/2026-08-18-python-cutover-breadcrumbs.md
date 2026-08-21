@@ -1047,3 +1047,57 @@ in the container, not to site-packages.
 MUSHY-99's watchdog deploy needs root and has not happened: `97c630c` is in git,
 not on the timer. The `.service` file changed, so that one needs a reinstall and
 `daemon-reload`, not just a file copy. Commands are on the ticket.
+
+---
+
+## Update -- 2026-08-21, MUSHY-99 deployed (by Don Santiago) and MUSHY-86 built
+
+**MUSHY-99 is live.** Installed 00:31 -03; the unit was genuinely reinstalled
+(the installed `.service` carries `StateDirectory=mushy-watchdog`), systemd
+created `/var/lib/mushy-watchdog/state.json`, and the 00:33 run reported 12/12
+ok. The de-dup path itself has not fired in prod -- the state file is empty
+because nothing is broken -- so this is deployed-and-green, not
+deployed-and-exercised. MUSHY-43's signal-cli pin cadence is the only thing left
+in that arc.
+
+Incidental, and good news for MUSHY-54: `heartbeat_recent: 7.3h ago` on that run
+is a second consecutive day of heartbeats.
+
+## MUSHY-86: something finally checks the asset name before the farmer does
+
+`a8ccb07`. `farm_agent/farmos/ref_check.py`, called before the preview is built.
+
+The 2026-08-18 KOY/KOS misread was not an extraction problem you can fix with a
+better prompt. Both KOY and KOS are curated strains, so the strain resolver had
+nothing to say; the failure is at the **asset-instance** level, and nothing
+between extraction and the confirm prompt had ever consulted farmOS. One lookup
+settles it. Now every ref-carrying shape is resolved: `asset_ref`,
+`source_block_refs`, `groups[].parent` and seeding's `parent_batch_name`.
+
+### Three outcomes, because two would lie
+
+`exists` / `new` / **`unchecked`**. The third is the whole design. "Did not
+resolve" and "could not ask" are the same boolean and completely different
+facts, and collapsing them means a farmOS outage renders as "this asset is new
+and will be created" -- a confident lie, on the farmer's confirm path, during
+the exact failure BONE-10 already cost three days to. `find_asset_by_name`
+already distinguished them (`{"found": False, "error": ...}` vs plain
+`{"found": False}`), so the guard was free; it just had to be respected.
+
+Mutation-checked in both directions, which is what makes it a guard and not a
+comment.
+
+### The wiring was the risk, again
+
+The check was 90% done and 100% dead: `create_extraction_pipeline` had no farmOS
+client, and `boot.py` built one *after* the pipeline, down at the commit
+watchdog. Built, tested, never called -- MUSHY-90 and MUSHY-97's shape for the
+third time. The boot test that asserts the pipeline actually receives a client
+is the one test in this commit worth keeping if you had to throw the rest away.
+
+### Not verified, and where the guesses are
+
+Not live: needs `docker compose up -d --build alerter-py`. And the near-miss
+ranking (edit distance <= 2, top 3, swept over the same date prefix) is
+calibrated on exactly one real example. The first real sweep should be
+eyeballed before trusting the candidate list.
