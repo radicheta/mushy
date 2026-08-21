@@ -3,16 +3,22 @@ gsd_state_version: 1.0
 milestone: 999.33
 milestone_name: Digital Twin / FC-1 Steady Humidity Hold
 status: executing
-last_updated: "2026-08-17T03:00:00.000Z"
-last_activity: 2026-08-18 -- MUSHY-78 capture durability landed; MUSHY-76 closed; MUSHY-79 triaged; fc1 back online
-paused_milestone: v1.12
-paused_milestone_name: Farm-Agent Python Port
-paused_progress:
-  total_phases: 10
-  completed_phases: 7
-  total_plans: 61
-  completed_plans: 45
-  percent: 74
+last_updated: "2026-08-21T14:45:00.000Z"
+last_activity: 2026-08-21 -- backlog triage against the running system; MUSHY-99 and MUSHY-87 closed, MUSHY-86 built but not deployed
+# v1.12 is NOT paused. It cut over to production on 2026-08-18 and the Python
+# agent has served Signal alone since. The old `paused_progress: 74%` block was
+# a 2026-08-17 snapshot that outlived its facts: it called the milestone
+# "paused mid-Phase-63" when Phase 63 had finished on 2026-07-25 (8/8 plans),
+# and it counted Phases 64-65 as outstanding when both were CANCELLED on
+# 2026-08-19 as overtaken by the cutover (MUSHY-3/4/5).
+prior_milestone: v1.12
+prior_milestone_name: Farm-Agent Python Port
+prior_milestone_status: in production since 2026-08-18 (improvised cutover, no formal milestone audit)
+prior_milestone_progress:
+  phases_attempted: 9        # 56, 57, 58, 59, 60, 61, 62, 63, 64.1
+  phases_complete: 9
+  phases_cancelled: 2        # 64 parity gate, 65 cutover runbook -- decided against, not outstanding
+  plans_complete: 45         # SUMMARY count across 56-63: 6+4+4+4+4+3+12+8
 ---
 
 # Project State
@@ -26,10 +32,17 @@ paused_progress:
 
 ## Current State (2026-08-17)
 
-**Active line: the FC-1 control arc, not the Python port.** Since 2026-07-27 all
-committed work has been the digital twin (MUSHY-52) and the steady-hold
-investigation (MUSHY-56). v1.12 is PAUSED mid-Phase-63, exactly where the section
-below leaves it.
+**Two active lines.** The FC-1 control arc -- the digital twin (MUSHY-52) and the
+steady-hold investigation (MUSHY-56) -- carried every commit from 2026-07-27 to
+2026-08-17. Since the 2026-08-18 cutover the farm agent has been the busier of
+the two: MUSHY-83/88/89/90/91/92/94/95/97/98/75/99/87/86 all landed after it.
+
+**v1.12 is not paused; it is in production.** The cutover ran on 2026-08-18 --
+improvised in about 12 minutes, not executed from the Phase 65 runbook -- and
+`alerter-py` has served Signal alone since. Node is retired. Phases 64 (parity
+gate) and 65 (cutover runbook) were CANCELLED on 2026-08-19 as overtaken:
+scoring parity against a stack nobody runs answers no live question. There is no
+milestone audit for v1.12, so it is delivered rather than formally closed.
 
 **Landed on main (merge `c7fd8d4`, 2026-08-09):**
 
@@ -83,7 +96,7 @@ reboot landmine. `renderOverlay` now forces a decimal on integral doubles.
 **Committed but NOT deployed** — the running bridge container still has the old
 serializer until `docker compose up -d --build bridge`.
 
-## Phase 63 Execution (2026-07-25) — 8/8 PLANS SHIPPED, NOT YET VERIFIED — PAUSED
+## Phase 63 Execution (2026-07-25) — 8/8 PLANS SHIPPED — COMPLETE
 
 Branch `feat/phase-63-chamber-alerter`, 27 commits since the plan-rewrite pointer
 `1246faf`, tree clean. Full suite
@@ -125,7 +138,7 @@ single shared SignalClient/ReceiveLoop (D-05).
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** A working, production-ready humidity control loop that's better than the current timer solution and ready to ship to growers.
-**Current focus:** Phase 63 — chamber alerter
+**Current focus:** FC-1 steady humidity hold (999.33 / MUSHY-56) and post-cutover farm-agent defects. Phase 63 completed 2026-07-25; the chamber alerter is live (MUSHY-97).
 
 > **⚡ 2026-06-22 PRIORITY NOTE — Phase 999.33 (Digital Twin / chamber sim) BUMPED (farmer-requested):** "the more we deal with this the more we want the digital twin." Do lightweight Python ODE — shape (a) — before the next live control-tuning round. Driver: today's blind live-chamber feather calibration (humidifier feather + Mode C reserve, commit `30534ff` on `fc1/prod`) shipped a setpoint bug live + left a stack of experiments blocked on live-chamber exposure (slew limiter, temp feedforward, halve `decay_tau`, re-anchor feather on band_low). See ROADMAP §999.33 + memory `project_humidifier_feather_deployed_2026_06_22`. Promote via `gsd-review-backlog` / `gsd-plan-phase 999.33` when ready.
 

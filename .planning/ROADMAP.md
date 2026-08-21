@@ -241,7 +241,7 @@ rollback (CR-01), no 55B-SECURITY.md.
 **Hard constraints:**
 
 - Origin guard lands in Phase 62 BEFORE any write path runs (shared-Timescale prod-leak prevention).
-- Parity gate (Phase 64) must pass at >=95% field match on isolated :5434 DB before cutover.
+- ~~Parity gate (Phase 64) must pass at >=95% field match on isolated :5434 DB before cutover.~~ NOT HONOURED: the 2026-08-18 cutover was improvised without the gate; Phases 64 and 65 were cancelled the next day. Recorded here because it was a stated hard constraint, and it was skipped.
 - v1.11 CSV fidelity hard gate and v1.10 upsert-by-stable-identity preserved byte-identical.
 - Validation runs use throwaway isolated DB only (never shared prod Timescale).
 
@@ -254,25 +254,26 @@ rollback (CR-01), no 55B-SECURITY.md.
 - [x] **Phase 60: Extraction Pipeline** - multimodal tool-use, retry/SeedingSession/provenance, B5 minting (completed 2026-06-26)
 - [x] **Phase 61: Confirm Loop** - YES/NO/EDIT FSM parity, strain-confirm, race-safe watchdog (completed 2026-06-28)
 - [x] **Phase 62: farmOS Write Path** - httpx client, field-scoped image route, stable-identity upsert, strain/fidelity guard, origin guard (FIRST in this phase) (completed 2026-06-29)
-- [ ] **Phase 63: Chamber Alerter** - ROS-bridge WS alerts, TZ Montevideo fix (mushy-private chamber/ package)
-- [ ] **Phase 64.1: Extraction Write Path** - the missing seam between the extractor and the confirm loop; the Python agent could not create a `signal_draft` at all (MUSHY-76). Ports Node's extraction-db / FSM / preview-builder / outbound / pipeline / batch-mode / starting-seq layer, plus `confirm/preview` and a real edit handler, and wires the capture and confirm-reply seams into boot. Inserted out of sequence because Phase 64's parity gate cannot replay a corpus through a write path that does not exist.
-- [ ] **Phase 64: Parity Gate** - golden-corpus >=95% field match on isolated :5434, intentional-delta enumeration, FSM+payload parity
-- [ ] **Phase 65: Cutover** - stop-start runbook, <2min rollback drill, post-cutover observation window
+- [x] **Phase 63: Chamber Alerter** - ROS-bridge WS alerts, TZ Montevideo fix (mushy-private chamber/ package) (completed 2026-07-25; 8/8 plans, suite 842 passed / 0 failed)
+- [x] **Phase 64.1: Extraction Write Path** - (completed 2026-08-18, MUSHY-76; this is the write path the live agent runs on) the missing seam between the extractor and the confirm loop; the Python agent could not create a `signal_draft` at all (MUSHY-76). Ports Node's extraction-db / FSM / preview-builder / outbound / pipeline / batch-mode / starting-seq layer, plus `confirm/preview` and a real edit handler, and wires the capture and confirm-reply seams into boot. Inserted out of sequence because Phase 64's parity gate cannot replay a corpus through a write path that does not exist.
+- [~] **Phase 64: Parity Gate** - CANCELLED 2026-08-19 (MUSHY-4). The cutover happened without the gate and Node is retired, so there is nothing left to score parity against. Not outstanding work; work decided against.
+- [~] **Phase 65: Cutover** - CANCELLED 2026-08-19 (MUSHY-5) as OVERTAKEN, not abandoned: the cutover ran on 2026-08-18, improvised in ~12 minutes rather than executed from this runbook. Python has served Signal alone since.
 
 ### Progress Table (v1.12)
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 56. Foundation | 6/6 | Complete   | 2026-06-15 |
-| 57. Signal I/O | 3/4 | In Progress|  |
+| 57. Signal I/O | 4/4 | Complete   | 2026-06-22 |
 | 58. Capture + Transcription | 4/4 | Complete   | 2026-06-23 |
 | 59. Event Gate | 4/4 | Complete   | 2026-06-24 |
 | 60. Extraction Pipeline | 4/4 | Complete   | 2026-06-26 |
 | 61. Confirm Loop | 3/3 | Complete   | 2026-06-28 |
 | 62. farmOS Write Path | 12/12 | Complete    | 2026-06-29 |
-| 63. Chamber Alerter | 0/TBD | Not started | - |
-| 64. Parity Gate | 0/TBD | Not started | - |
-| 65. Cutover | 0/TBD | Not started | - |
+| 63. Chamber Alerter | 8/8 | Complete   | 2026-07-25 |
+| 64.1 Extraction Write Path | n/a | Complete   | 2026-08-18 |
+| 64. Parity Gate | - | Cancelled (MUSHY-4) | 2026-08-19 |
+| 65. Cutover | - | Cancelled (MUSHY-5); cutover ran improvised | 2026-08-18 |
 
 ## Phase Details (v1.12)
 
