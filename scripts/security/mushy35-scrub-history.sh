@@ -33,17 +33,23 @@ FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch --force \
 
 echo
 echo ">>> VERIFY — the next line must be empty:"
-LEFT=$(git log --all --oneline -- "$P1" "$P2")
+# NOT --all: that includes refs/original (filter-branch's own backup of the
+# pre-rewrite history) and refs/remotes (still pointing at un-rewritten origin).
+# Both legitimately still contain the secrets at this point, so --all reports a
+# false failure on a perfectly good rewrite. Only live branches and tags matter.
+LEFT=$(git log --branches --tags --oneline -- "$P1" "$P2")
 if [ -n "$LEFT" ]; then
   echo "$LEFT"
   echo "FAIL: secrets still referenced. Do NOT push. Restore from the backup mirror." >&2
   exit 1
 fi
-echo "    (empty) — no commit on any branch or tag references either path"
+echo "    (empty) — no commit on any live branch or tag references either path"
+echo "    note: refs/original and refs/remotes still hold the old history until the"
+echo "          push below clears them. That is expected, not a failure."
 
 echo
 echo ">>> blob check: are the objects still reachable from any ref?"
-if git rev-list --objects --all | grep -qE " ($P1|$P2)$"; then
+if git rev-list --objects --branches --tags | grep -qE " ($P1|$P2)$"; then
   echo "FAIL: blob still reachable. Do NOT push." >&2
   exit 1
 fi
