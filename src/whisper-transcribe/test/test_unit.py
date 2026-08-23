@@ -98,3 +98,38 @@ def test_400_on_dotdot(client):
     bad = str(root / ".." / ".." / "etc" / "passwd")
     r = c.post("/transcribe", json={"audio_path": bad})
     assert r.status_code == 400
+
+
+def test_health_goes_503_after_a_live_transcription_failure(monkeypatch, tmp_path):
+    """The 2026-08-23 shape: the probe passed at boot, then the GPU vanished.
+
+    _probe_ok used to latch True forever, so /health kept answering 200 through
+    an outage where every transcription 503'd, and the container stayed
+    `healthy`. A live failure must retract the probe's verdict.
+    """
+    os.environ["ALLOWED_ROOT"] = str(tmp_path)
+    import main
+    importlib.reload(main)
+
+    # Boot healthy, exactly as the real service does.
+    monkeypatch.setattr(main, "_make_worker", lambda: _FakeWorker())
+    assert main._probe_once() is True
+    c = TestClient(main.app)
+    assert c.get("/health").status_code == 200
+
+    # The GPU disappears mid-life: the worker is gone and cannot be restarted.
+    # Silence the retry loop -- restarting it is a separate behaviour, and left
+    # live it would race this assertion by re-probing against the fake.
+    monkeypatch.setattr(main, "_warm_load_loop", lambda: None)
+    with main._worker_lock:
+        main._worker = None
+    monkeypatch.setattr(main, "_make_worker", lambda: _FakeWorker(fail_on_start=True))
+
+    audio = tmp_path / "note.wav"
+    audio.write_bytes(b"not really audio")
+    r = c.post("/transcribe", json={"audio_path": str(audio)})
+    assert r.status_code == 503
+
+    r = c.get("/health")
+    assert r.status_code == 503, "health still green while transcription is broken"
+    assert "CUDA" in r.json()["reason"]

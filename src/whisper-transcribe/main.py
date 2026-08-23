@@ -76,6 +76,7 @@ _worker_lock = threading.RLock()      # serializes GPU access AND worker lifecyc
 _last_job_at = 0.0
 _probe_ok = False                     # set true after a synthetic transcription succeeds
 _probe_reason = "probe not yet run"   # surfaced in 503 body until first probe completes
+_warm_load_thread = None              # the retry/alert loop; restarted by _invalidate_probe
 
 
 # ---------------------------------------------------------------------------
@@ -299,6 +300,7 @@ def transcribe(req: TranscribeReq):
     except Exception as e:  # noqa: BLE001
         # Loud, not empty. An empty transcript is indistinguishable from a
         # farmer who said nothing, which is how this service fails silently.
+        _invalidate_probe(f"{type(e).__name__}: {e}")
         raise HTTPException(503, f"transcription failed: {type(e).__name__}: {e}")
     return {
         "text": res.get("text", ""),
@@ -306,6 +308,32 @@ def transcribe(req: TranscribeReq):
         "language": res.get("language"),
         "language_probability": float(res.get("language_probability") or 0.0),
     }
+
+
+def _invalidate_probe(reason: str):
+    """A live transcription failure retracts the startup probe's verdict.
+
+    `_probe_ok` latched True on the first successful probe and had no path back
+    to False, so a GPU that disappeared mid-life (2026-08-23: NVML went "Unknown
+    Error" inside the container while the host driver was fine) left /health
+    answering 200 while every transcription 503'd. The container reported
+    `healthy` for the whole outage, and the only thing that noticed was a farmer
+    sending a voice note -- which is the same "still running, still looks alive"
+    failure this service's own alerting exists to prevent.
+
+    Clearing the flag makes /health honest immediately, and restarting the
+    warm-load loop reuses the alert and the slow-retry self-heal that already
+    live there rather than growing a second recovery path.
+    """
+    global _probe_ok, _probe_reason, _warm_load_thread
+    with _worker_lock:
+        _probe_ok = False
+        _probe_reason = reason[:200]
+        if _warm_load_thread is None or not _warm_load_thread.is_alive():
+            _warm_load_thread = threading.Thread(
+                target=_warm_load_loop, name="whisper-warm-load", daemon=True
+            )
+            _warm_load_thread.start()
 
 
 def _probe_once():
@@ -372,7 +400,11 @@ def _warm_load_loop():  # pragma: no cover - timing loop
 @app.on_event("startup")
 def _startup_probe():
     """Kick off the resilient warm-load, plus the idle reaper that frees VRAM."""
-    threading.Thread(target=_warm_load_loop, name="whisper-warm-load", daemon=True).start()
+    global _warm_load_thread
+    _warm_load_thread = threading.Thread(
+        target=_warm_load_loop, name="whisper-warm-load", daemon=True
+    )
+    _warm_load_thread.start()
     threading.Thread(target=_reaper_loop, name="whisper-reaper", daemon=True).start()
 
 
