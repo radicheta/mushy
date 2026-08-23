@@ -99,7 +99,7 @@ Scope is narrow and clean: only three commits touch the two paths
 (`d3c81c9`, `789a699`, `2d13277`) and neither secret appears in any other blob,
 so a `filter-repo` scrub is surgical.
 
-### Secret 2 (OpenVPN tls-auth) -- IT IS OURS. Legacy farm VPN.
+### Secret 2 (OpenVPN tls-auth) -- RESOLVED 2026-08-23 by deleting the server
 
 Identified 2026-08-23. The leaked key is byte-identical to the key configured on
 pfSense for the **"Musguito VPN"** server instance:
@@ -219,7 +219,12 @@ ready to run as-is.
     ~/mushy-prescrub-backup-20260823-162033/mushy-mirror.git        (full mirror)
     pfSense: /conf/config.xml.pre-mushy35-20260823-161755
 
-**1. Delete the Musguito VPN server on pfSense** (disabled, superseded by wg0):
+**1. Delete the Musguito VPN server on pfSense** -- **DONE 2026-08-23.** Operator ran
+the script; output `deleting vpnid=1 desc=Musguito VPN port=1199
+tunnel=172.16.10.0/24` then `WROTE`. Verified after: 0 `<openvpn-server>` blocks
+remain, the leaked key hash appears 0 times anywhere in `config.xml`, nothing
+listens on 1199, the studio client2 (PID 70793) is still running untouched, and
+wg0 is up at 172.16.10.1 with fc1 handshaking. Kept for the record:
 
 ```bash
 ssh admin@10.68.155.1
@@ -290,7 +295,7 @@ deletion beats rotation there.
 
 - [ ] Rotate WiFi PSK on mossrock-lab AP + update clients -- **BLOCKED: fc1 unreachable**
 - [ ] Establish a non-wifi path to fc1 -- **prerequisite for the above**
-- [ ] Musguito VPN (OURS): delete the disabled server instance, or rotate its tls-auth key
-- [ ] Remove `client.ovpn` from the tree (fragment; arrived via the `2d13277` artifact dump)
+- [x] Musguito VPN (OURS): **server instance DELETED 2026-08-23** -- key has no service left to protect
+- [x] Remove `client.ovpn` from the tree -- done in `85fc778` (local; push pending)
 - [ ] Detrack netplan + `.example` templates + `.gitignore` + out-of-band supply path
 - [ ] History scrub + force-push -- **needs explicit approval** (rewrites public history)
