@@ -1,0 +1,20 @@
+network:
+  version: 2
+  wifis:
+    wlan0:
+      dhcp4: true
+      dhcp6: false
+      optional: true
+      access-points:
+        "mossrock-west":
+          auth:
+            key-management: none
+        # 4G MiFi at the farm chamber — preferred when in range.
+        # PSK is a wpa_passphrase hash (64-char hex), not plaintext.
+        "mossrock-lab":
+          password: "REPLACE_ME_WPA_PSK_HASH"
+        # Fallback: open mossrock-starlink at main infra (~40m from chamber).
+        # Used when mossrock-lab is not in range.
+        "mossrock-starlink":
+          auth:
+            key-management: none
