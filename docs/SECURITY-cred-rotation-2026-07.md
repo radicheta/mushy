@@ -205,6 +205,87 @@ filename is invisible to the sync.
 A reflashed fc1 therefore needs the real netplan installed by hand, out of band,
 before it can reach the network.
 
+### BLOCKED -- needs the operator to run these (2026-08-23)
+
+Three actions were attempted and refused by the Claude Code auto-mode permission
+classifier (router writes, history rewrite, and pushes). Nothing was partially
+applied -- each was refused before execution. Verified afterwards: pfSense still
+holds the original key, and the repo history is untouched. Commands below are
+ready to run as-is.
+
+**Backups taken before any of this (keep until the scrub is confirmed):**
+
+    ~/mushy-prescrub-backup-20260823-162033/mushy-all-refs.bundle   (14M, "complete history")
+    ~/mushy-prescrub-backup-20260823-162033/mushy-mirror.git        (full mirror)
+    pfSense: /conf/config.xml.pre-mushy35-20260823-161755
+
+**1. Delete the Musguito VPN server on pfSense** (disabled, superseded by wg0):
+
+```bash
+ssh admin@10.68.155.1
+php -r '
+require_once("config.inc"); require_once("util.inc");
+global $config; $srv = &$config["openvpn"]["openvpn-server"];
+$idx=null; foreach ($srv as $i=>$s) if ((string)($s["vpnid"]??"")==="1") { $idx=$i; break; }
+if ($idx===null) { echo "ABORT: vpnid 1 not found\n"; exit(1); }
+if (!isset($srv[$idx]["disable"])) { echo "ABORT: server is ENABLED\n"; exit(1); }
+if (($srv[$idx]["tunnel_network"]??"") !== "172.16.10.0/24") { echo "ABORT: unexpected tunnel_network\n"; exit(1); }
+unset($srv[$idx]); $srv = array_values($srv);
+write_config("MUSHY-35: delete disabled legacy Musguito VPN (leaked tls-auth key; superseded by wg0)");
+echo "WROTE\n";'
+```
+
+The three guards abort unless it is vpnid 1, disabled, and on 172.16.10.0/24.
+Leaves `CN = Mossrock Private Network CA` and the server cert orphaned in the
+cert manager -- harmless, delete separately if you want the tidy-up. Do not touch
+the OpenVPN **client** (`client2`, PID 70793) -- that is the VFX studio's.
+
+**2. Push the detrack commit** (`85fc778`, already committed locally):
+
+```bash
+git -C /mnt/slime-kingdom/opt/mushy push origin main
+```
+
+**3. Scrub history.** `git-filter-repo` could not be installed (no `ensurepip`,
+no network), so this uses native `filter-branch`. Local branches for all 16
+remote branches were already created, so a single pass covers everything on
+GitHub:
+
+```bash
+cd /mnt/slime-kingdom/opt/mushy
+FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch --force \
+  --index-filter 'git rm --cached --ignore-unmatch -q client.ovpn scripts/pi-deploy/etc/netplan/60-wifi.yaml' \
+  --tag-name-filter cat -- --branches --tags
+
+# verify NOTHING remains, across every rewritten ref:
+git log --all --oneline -- client.ovpn scripts/pi-deploy/etc/netplan/60-wifi.yaml   # must be empty
+
+# drop the rewrite backups and repack
+rm -rf .git/refs/original && git reflog expire --expire=now --all && git gc --prune=now --aggressive
+
+git push --force origin --all && git push --force origin --tags
+```
+
+**After the force-push -- three follow-ups that are easy to forget:**
+
+- **fc1 holds a clone** at `/home/ubuntu/mushroom_farm_ws/mushy-repo` and deploys
+  from the `fc1/prod` branch, which is one of the rewritten refs. Its next pull
+  will conflict. fc1 is reachable now (`ssh ubuntu@172.16.10.5`); re-point it with
+  a fresh clone or `git fetch && git reset --hard origin/fc1/prod`. Do this while
+  fc1 is up -- do not leave it for a moment when the chamber is unreachable.
+- **The worktree** at `.claude/worktrees/cv-condensation` (branch
+  `worktree-cv-condensation`, clean at `20fd3ef`) will point at a pre-rewrite
+  commit and needs resetting.
+- **GitHub keeps rewritten commits reachable by direct SHA** until it GCs. The
+  values are already public, so rotation is what actually fixes this -- but ask
+  GitHub Support to purge the stale refs if you want them gone promptly.
+
+**Ordering caveat, stated plainly:** scrubbing the WiFi PSK without rotating it
+only removes it from public view; it does not un-disclose it. The PSK is
+compromised and stays compromised until the AP passphrase changes. Same for the
+tls-auth key -- deleting the server removes the thing it protected, which is why
+deletion beats rotation there.
+
 ### Checklist
 
 - [ ] Rotate WiFi PSK on mossrock-lab AP + update clients -- **BLOCKED: fc1 unreachable**
