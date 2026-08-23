@@ -176,6 +176,25 @@ network (`key_mgmt=NONE`) -- no link-layer encryption. The traffic that matters
 (DDS telemetry) rides encrypted inside wg0, so this is not an active breach, but
 fc1's uplink is currently unauthenticated. Worth its own ticket.
 
+**STATUS 2026-08-23: DORMANT, NOT FIXED. Rotate AT power-on, not after.**
+
+Verified 2026-08-23: the mossrock-lab AP is not broadcasting. fc1's scan sees
+only `mossrock-west`, and nothing answers on 192.168.1.1 / 192.168.0.1 /
+192.168.8.1 / 192.168.100.1. There is no remote path to the MiFi admin page, so
+the PSK **cannot be rotated while the AP is powered down**.
+
+That is not the same as safe. The leaked PSK is a key to a network that does not
+currently exist. It becomes live again the moment that AP powers on still
+carrying the old passphrase. **The dangerous moment is power-on**, so the new
+passphrase must be set as part of bringing it back up -- not as a follow-up task
+afterwards.
+
+Do NOT try to mitigate this by deleting the `mossrock-lab` stanza from fc1's
+netplan. The leaked PSK lets a *stranger* associate to that AP; whether fc1 also
+associates changes nothing about the attack. Removing it only costs fc1 a
+fallback link, and fc1 currently has exactly one visible AP (`mossrock-west`,
+open -- see MUSHY-102). The AP is the only lever that matters.
+
 **Rotation procedure, when the lab AP comes back up:**
 
 1. Set the new passphrase on the mossrock-lab 4G MiFi admin page.
