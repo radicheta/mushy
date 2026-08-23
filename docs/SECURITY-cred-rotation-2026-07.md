@@ -85,8 +85,11 @@ paths on github.com).
 
 ## Status
 
-**Re-verified 2026-08-23. Nothing has been rotated. Both secrets remain live and
-publicly readable.**
+**As of 2026-08-23:** Secret 2 is resolved (the service it protected was deleted).
+Secret 1 is **still disclosed and still unrotated** -- dormant only because its AP
+is powered down. The repo tracks neither value any more and history is scrubbed on
+every branch and tag, but both survive in GitHub's `refs/pull/*`, which no push can
+reach. Detail per secret below; open items in the checklist at the end.
 
 ### Escalation: the repo is PUBLIC
 
@@ -349,12 +352,34 @@ who asks for the PR refs explicitly, and visible in each PR's "Files changed" ta
 are disclosed, and only changing them makes them harmless. See Secret 1 above --
 the mossrock-lab PSK is still live and still needs rotating.
 
+
+### Post-scrub verification -- 2026-08-23, second pass
+
+Re-checked after the force-push. Everything that was flagged as a follow-up is
+now confirmed, except the two things only the operator or GitHub can do.
+
+| Check | Result |
+|---|---|
+| `client.ovpn` tracked? | no -- absent from `git ls-files` and from disk |
+| netplan tracked? | no -- only `60-wifi.yaml.example` is tracked; the real file is on disk, gitignored |
+| `.gitignore` entries | present (`client.ovpn`, `scripts/pi-deploy/etc/netplan/60-wifi.yaml`) |
+| local `main` vs `origin/main` | 0/0 -- the detrack commit is pushed |
+| local history | `git log --branches --tags -- <both paths>` empty; no `.git/refs/original` |
+| fc1's clone (`/home/ubuntu/mushroom_farm_ws/mushy-repo`) | fetched clean, `fc1/prod` 0/0 vs origin, working tree clean, no secret in its history -- **no re-clone needed** |
+| worktree `cv-condensation` | 0/0 vs `origin/worktree-cv-condensation` -- **no reset needed** |
+| GitHub, fresh `--mirror` clone | branches + tags clean; `refs/pull/1/head` and `refs/pull/2/head` **still carry both secrets** |
+
+The two `refs/pull` entries still name `2d13277a`, so the GitHub Support request
+below is genuinely the last remaining step on the repo side. Both post-scrub
+follow-ups that were expected to cause trouble (fc1's clone and the worktree
+pointing at pre-rewrite commits) turned out to have resolved themselves -- both
+had already fetched the rewritten refs.
+
 ### Checklist
 
-- [ ] Rotate WiFi PSK on mossrock-lab AP + update clients -- **BLOCKED: fc1 unreachable**
-- [ ] Establish a non-wifi path to fc1 -- **prerequisite for the above**
+- [ ] Rotate WiFi PSK on mossrock-lab AP + update clients -- **BLOCKED: the AP is powered down and has no remote admin path. Rotate AT power-on, see Secret 1.**
 - [x] Musguito VPN (OURS): **server instance DELETED 2026-08-23** -- key has no service left to protect
-- [x] Remove `client.ovpn` from the tree -- done in `85fc778` (local; push pending)
-- [ ] Detrack netplan + `.example` templates + `.gitignore` + out-of-band supply path
+- [x] Remove `client.ovpn` from the tree -- done in `85fc778`, pushed
+- [x] Detrack netplan + `.example` templates + `.gitignore` + out-of-band supply path -- verified 2026-08-23 (see "Post-scrub verification")
 - [x] History scrub + force-push -- **DONE 2026-08-23**, 16 branches + 9 tags; branches/tags verified clean from a fresh mirror clone
 - [ ] **GitHub Support: purge `refs/pull/1/head` and `refs/pull/2/head`** -- the only place the secrets survive on GitHub; cannot be fixed by pushing
