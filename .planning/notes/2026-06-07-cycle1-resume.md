@@ -8,7 +8,7 @@
 - `.planning/backfill/` gitignored: ✅
 - Alerter suite: 1364 pass / 9 skipped / 0 fail (with `--forceExit`)
 - ANTHROPIC_API_KEY: in `/mnt/slime-kingdom/opt/mushy/.env`
-- FARMOS_PASSWORD: `rocky` (from `/mnt/slime-kingdom/shared/farmos/.env`)
+- FARMOS_PASSWORD: `REDACTED-ROTATED-2026-08-23` (from `/mnt/slime-kingdom/shared/farmos/.env`)
 - Dry-run: exit 0, 5 pages selected (IMG_3775–3779), gap skip working
 
 ## To resume: spin throwaway DB + real run
@@ -28,7 +28,7 @@ export ANTHROPIC_API_KEY=$(grep ANTHROPIC_API_KEY /mnt/slime-kingdom/opt/mushy/.
 cd /mnt/slime-kingdom/opt/mushy/src/agents/alerter && \
   FARMOS_URL=http://10.68.155.50:18080 \
   FARMOS_USERNAME=mushy-bot \
-  FARMOS_PASSWORD=rocky \
+  FARMOS_PASSWORD=REDACTED-ROTATED-2026-08-23 \
   DATABASE_URL="$DATABASE_URL" \
   ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
   node scripts/backfill-notebook.js \

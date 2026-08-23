@@ -25,7 +25,7 @@ key_files:
     - .planning/notes/2026-05-24-phase-51-live-fire-result.json
   modified: []
 decisions:
-  - "Ran against dev :18080 with Vikki/rocky from /mnt/slime-kingdom/shared/farmos/.env (the documented dev creds; tenant secrets.env carries prod creds for :8082 and would have aimed at prod by mistake)"
+  - "Ran against dev :18080 with Vikki/REDACTED-ROTATED-2026-08-23 from /mnt/slime-kingdom/shared/farmos/.env (the documented dev creds; tenant secrets.env carries prod creds for :8082 and would have aimed at prod by mistake)"
   - "STUB_UUIDS require()'d the prod-write-receipt-uuids.json archive; the archive turned out to be the raw result dump rather than a name→uuid map, so name lookups return undefined and the fallback (lookup parent on dev by name) handles the dev-vs-prod UUID divergence — actually correct behavior, since dev stub UUIDs differ from prod"
   - "Tally key dispatch on whether the audit event carries asset_ids vs log_ids (commit-seeding-session emits one or the other, not both, per call site)"
 metrics:
@@ -98,7 +98,7 @@ None — Tasks executed exactly as planned.
 
 ## Authentication Gates
 
-None — dev credentials were available in `/mnt/slime-kingdom/shared/farmos/.env` (Vikki / rocky) and did not require farmer interaction. The orchestrator's notes anticipated this might require human credential provisioning; the env-file lookup resolved it before the checkpoint was reached.
+None — dev credentials were available in `/mnt/slime-kingdom/shared/farmos/.env` (Vikki / REDACTED-ROTATED-2026-08-23) and did not require farmer interaction. The orchestrator's notes anticipated this might require human credential provisioning; the env-file lookup resolved it before the checkpoint was reached.
 
 ## Known Stubs
 

@@ -8,7 +8,7 @@
 
 Phase 13 creates a new Docker container (`farmos_agent`) that runs a ROS2 lifecycle node on elder-plops. The node fires once per day at 06:00, queries TimescaleDB for the previous 24 hours of telemetry, fetches the latest camera frame from the bridge, provisions the FC-1 structure asset in FarmOS if it does not exist, and posts a `log--observation` with attached JPEG and markdown summary.
 
-FarmOS 3.x is live at `localhost:8082` with the Simple OAuth module installed but the "Simple Auth Password Grant" sub-module disabled. The existing farmos project (same instance) uses session-cookie auth via `POST /user/login?_format=json` + CSRF token — this is already proven and the credential set (`Vikki` / `rocky`) is in `/mnt/slime-kingdom/shared/farmos/.env`. D-01 in CONTEXT.md specifies OAuth2 client credentials, but that path requires creating an OAuth consumer in the FarmOS admin UI before the service can run. Both paths work; the session-cookie path has zero setup cost and is already validated in production.
+FarmOS 3.x is live at `localhost:8082` with the Simple OAuth module installed but the "Simple Auth Password Grant" sub-module disabled. The existing farmos project (same instance) uses session-cookie auth via `POST /user/login?_format=json` + CSRF token — this is already proven and the credential set (`Vikki` / `REDACTED-ROTATED-2026-08-23`) is in `/mnt/slime-kingdom/shared/farmos/.env`. D-01 in CONTEXT.md specifies OAuth2 client credentials, but that path requires creating an OAuth consumer in the FarmOS admin UI before the service can run. Both paths work; the session-cookie path has zero setup cost and is already validated in production.
 
 The TimescaleDB aggregation query is verified working — `AVG/MIN/MAX GROUP BY topic` over a date-bounded window returns clean results. Snapshots from Phase 12 are already landing at `/data/snapshots/fc1/YYYY-MM-DD/*.jpg` inside the bridge container (host-mounted at `/data/snapshots`). The bridge already exposes `/camera/snapshot` returning the latest `latestFrame` buffer as JPEG (200 OK confirmed live).
 
@@ -319,7 +319,7 @@ D-01 locks "OAuth2 client credentials". However:
 
 - **Simple Auth Password Grant** module is **disabled** in the live FarmOS instance [VERIFIED: admin/modules page]
 - OAuth2 client credentials (`grant_type=client_credentials`) returns `{"error":"invalid_client"}` [VERIFIED: tested live]
-- **Session-cookie auth** (`user/login` + CSRF) works perfectly and is already in production use by the farmos logger [VERIFIED: tested live with Vikki/rocky credentials]
+- **Session-cookie auth** (`user/login` + CSRF) works perfectly and is already in production use by the farmos logger [VERIFIED: tested live with Vikki/REDACTED-ROTATED-2026-08-23 credentials]
 
 **The plan must include a Wave 0 task to create an OAuth2 consumer in the FarmOS admin UI** (or choose to use session-cookie auth instead). This is a prerequisite for D-01 compliance. The planner should surface this choice clearly:
 

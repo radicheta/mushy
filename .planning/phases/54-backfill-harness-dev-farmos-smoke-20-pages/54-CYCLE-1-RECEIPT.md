@@ -29,5 +29,5 @@ All 10 failures are understood and acceptable:
 
 ## Pre-Cycle-2 notes
 
-- `mushy-bot` farmOS password was out of sync (reset to `rocky` via drush 2026-06-07).
+- `mushy-bot` farmOS password was out of sync (reset to `REDACTED-ROTATED-2026-08-23` via drush 2026-06-07).
 - Resume runbook needs `SIGNAL_SENDER` and `TIMESCALE_PASSWORD` added to env export block.

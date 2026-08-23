@@ -19,7 +19,7 @@ Created on prod-farmOS (`farmos-www-1`):
 ```
 FARMOS_URL=http://10.68.155.50:8082   (prod, was dev)
 FARMOS_USERNAME=mushy-bot              (was Vikki)
-FARMOS_PASSWORD=<redacted, in .env>    (was rocky)
+FARMOS_PASSWORD=<redacted, in .env>    (was REDACTED-ROTATED-2026-08-23)
 ```
 
 Verified `mushy-bot` can `POST /user/login` and `GET /api/asset/fungi`
