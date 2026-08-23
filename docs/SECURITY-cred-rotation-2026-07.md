@@ -291,6 +291,45 @@ compromised and stays compromised until the AP passphrase changes. Same for the
 tls-auth key -- deleting the server removes the thing it protected, which is why
 deletion beats rotation there.
 
+### Scrub DONE 2026-08-23 -- but `refs/pull/*` still carry both secrets
+
+The rewrite ran over 1842 commits and was force-pushed: 16 branches and 9 tags
+updated. Verified from a **fresh `--mirror` clone of GitHub**, not from the local
+repo:
+
+    all branches + tags  : CLEAN -- neither commit nor blob reachable
+    refs/pull/1/head     : STILL CARRIES BOTH  (PR #1, MERGED 2026-05-24)
+    refs/pull/2/head     : STILL CARRIES BOTH  (PR #2, CLOSED 2026-08-09)
+
+`2d13277`, `d3c81c9` and `789a699` survive on GitHub through those two pull-request
+refs and nothing else.
+
+**You cannot fix this by pushing.** `refs/pull/*` is GitHub-managed and read-only;
+force-push does not touch it, and closing or deleting the PR does not remove the
+ref. Only **GitHub Support** can purge them. This is the standard last-mile gap of
+any filter-branch/filter-repo/BFG scrub on a repo that has ever had a PR, and it
+is routinely missed because the local repo and a plain `git clone` both look
+clean -- a normal clone does not fetch `refs/pull/*`.
+
+Reproduce the finding any time with:
+
+```bash
+git clone --mirror git@github.com:radicheta/mushy.git /tmp/verify && cd /tmp/verify
+git log --branches --tags --oneline -- client.ovpn scripts/pi-deploy/etc/netplan/60-wifi.yaml   # empty = branches/tags clean
+git log --all --oneline -- client.ovpn scripts/pi-deploy/etc/netplan/60-wifi.yaml               # non-empty = refs/pull still hold it
+git for-each-ref --contains 2d13277a --format='%(refname)'                                      # names the surviving refs
+```
+
+**Ask GitHub Support** (https://support.github.com) to purge the stale objects and
+the `refs/pull` entries for `radicheta/mushy`, naming commits `2d13277`, `d3c81c9`,
+`789a699` and PRs #1 and #2. Until they do, both values remain fetchable by anyone
+who asks for the PR refs explicitly, and visible in each PR's "Files changed" tab.
+
+**This is the argument for rotation, not against it.** A scrub that cannot reach
+`refs/pull` proves the point the ordering rule was making all along: the values
+are disclosed, and only changing them makes them harmless. See Secret 1 above --
+the mossrock-lab PSK is still live and still needs rotating.
+
 ### Checklist
 
 - [ ] Rotate WiFi PSK on mossrock-lab AP + update clients -- **BLOCKED: fc1 unreachable**
@@ -298,4 +337,5 @@ deletion beats rotation there.
 - [x] Musguito VPN (OURS): **server instance DELETED 2026-08-23** -- key has no service left to protect
 - [x] Remove `client.ovpn` from the tree -- done in `85fc778` (local; push pending)
 - [ ] Detrack netplan + `.example` templates + `.gitignore` + out-of-band supply path
-- [ ] History scrub + force-push -- **needs explicit approval** (rewrites public history)
+- [x] History scrub + force-push -- **DONE 2026-08-23**, 16 branches + 9 tags; branches/tags verified clean from a fresh mirror clone
+- [ ] **GitHub Support: purge `refs/pull/1/head` and `refs/pull/2/head`** -- the only place the secrets survive on GitHub; cannot be fixed by pushing
