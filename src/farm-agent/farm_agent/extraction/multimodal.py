@@ -6,7 +6,7 @@ Port of src/agents/alerter/src/extraction/multimodal.js.
 
 Responsibilities:
   - mime_from_path: extension -> MIME type
-  - downscale_if_needed: enforce 5MB and 1.15MP ceiling; RGBA/LA/P -> RGB before JPEG save
+  - downscale_if_needed: enforce 5MB and the MAX_PIXELS ceiling; RGBA/LA/P -> RGB before JPEG save
   - read_image_to_base64: file -> base64 content block; fail-open on any error
   - build_content_blocks: assemble Anthropic content blocks (text, transcript, images)
 
@@ -28,7 +28,14 @@ from PIL import Image
 logger = logging.getLogger(__name__)
 
 MAX_BYTES = 5 * 1024 * 1024  # 5MB Anthropic image ceiling
-MAX_PIXELS = 1_150_000  # 1.15MP recommended cap
+# Pixel cap before downscale. The old 1.15MP cap was a cost guard sized for large
+# phone photos, but it shredded faint-pencil paper logs: a 1600x900 (1.44MP)
+# notebook scan got resized + re-JPEG'd at q85, destroying handwriting legibility
+# (260530 inoc misread, 2026-05-30). Anthropic accepts well above this. Ported from
+# Node df1bdb09, which never reached the Python stack (MUSHY-32).
+# ponytail: module constant, not an env knob -- FND-02 forbids direct env reads outside the
+# tenant loaders. Promote to a tenant knob if this ever needs per-farm tuning.
+MAX_PIXELS = 4_000_000
 
 
 def mime_from_path(p: str) -> str:
@@ -42,7 +49,7 @@ def mime_from_path(p: str) -> str:
 
 
 def downscale_if_needed(buf: bytes, media_type: str) -> tuple[bytes, str]:
-    """Enforce 5MB and 1.15MP ceiling. Re-encodes to JPEG when downscaling.
+    """Enforce 5MB and the MAX_PIXELS ceiling. Re-encodes to JPEG when downscaling.
 
     RGBA/LA/P images are converted to RGB before JPEG save (PIL cannot save
     RGBA/LA/P as JPEG — T-60-02-02).

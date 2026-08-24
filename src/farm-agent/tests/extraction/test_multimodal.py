@@ -2,8 +2,9 @@
 
 Covers:
   - mime_from_path: jpg/jpeg/PNG/tiff extension detection
-  - downscale_if_needed: real paper-log.jpg fixture (1.44MP > 1.15MP -> JPEG, smaller buffer)
-  - downscale_if_needed: in-memory 100x100 RGBA PNG -> JPEG (RGBA convert, no exception)
+  - downscale_if_needed: real paper-log.jpg fixture (1.44MP) passes through untouched at the default cap
+  - downscale_if_needed: a lowered MAX_PIXELS forces the downscale path
+  - downscale_if_needed: in-memory RGBA PNG -> JPEG (RGBA convert, no exception)
   - downscale_if_needed: small under-threshold JPEG -> unchanged buffer + media_type
   - read_image_to_base64: nonexistent path -> {ok: False}, no exception raised
   - build_content_blocks: text-only, transcript-only, images, combined
@@ -48,39 +49,46 @@ def test_mime_from_path_unknown():
 # downscale_if_needed
 # ---------------------------------------------------------------------------
 
-def test_downscale_real_paper_log():
-    """900x1600 = 1.44MP > 1.15MP -> must downscale, return image/jpeg, pixel count within cap."""
-    from farm_agent.extraction.multimodal import downscale_if_needed, MAX_PIXELS
+def test_downscale_real_paper_log_untouched_at_default_cap():
+    """900x1600 = 1.44MP is under the 4MP default cap -> paper log must NOT be re-encoded.
+
+    Regression: the old 1.15MP cap shredded faint-pencil handwriting on notebook
+    scans and caused the 260530 inoc misread. Ported from Node df1bdb09.
+    """
+    from farm_agent.extraction.multimodal import downscale_if_needed
+    img_path = FIXTURE_DIR / "paper-log.jpg"
+    original_buf = img_path.read_bytes()
+    out_buf, out_mime = downscale_if_needed(original_buf, "image/jpeg")
+    assert out_buf == original_buf
+    assert out_mime == "image/jpeg"
+
+
+def test_downscale_lowered_cap_forces_downscale(monkeypatch):
+    """Lowering MAX_PIXELS re-enables the cap, proving the downscale path still works."""
+    from farm_agent.extraction import multimodal
+    from farm_agent.extraction.multimodal import downscale_if_needed
+    monkeypatch.setattr(multimodal, "MAX_PIXELS", 1_150_000)
     img_path = FIXTURE_DIR / "paper-log.jpg"
     original_buf = img_path.read_bytes()
     out_buf, out_mime = downscale_if_needed(original_buf, "image/jpeg")
     assert out_mime == "image/jpeg"
-    # Verify it's a valid JPEG within the pixel cap (the fixture is highly compressed
-    # so the re-encoded output may be larger in bytes, but pixels must be reduced)
-    out_img = Image.open(io.BytesIO(out_buf))
-    w, h = out_img.size
-    assert w * h <= MAX_PIXELS
-    # Original was 900x1600=1.44MP, output must have fewer pixels
+    w, h = Image.open(io.BytesIO(out_buf)).size
+    assert w * h <= 1_150_000
     assert w * h < 900 * 1600
 
 
-def test_downscale_rgba_png_no_exception():
-    """100x100 RGBA PNG is small but RGBA mode must be converted before JPEG save."""
-    from farm_agent.extraction.multimodal import downscale_if_needed, MAX_BYTES, MAX_PIXELS
-    # Create a 100x100 RGBA PNG that exceeds MAX_PIXELS if we set it tiny for testing.
-    # Since 100x100=10000 < 1.15MP and likely < 5MB, it won't downscale normally.
-    # We need to force the RGBA path: create a large RGBA image (> 1.15MP).
-    # 1200x1000 = 1.2MP > 1.15MP
+def test_downscale_rgba_png_no_exception(monkeypatch):
+    """A large RGBA PNG must be converted to RGB before the JPEG save."""
+    from farm_agent.extraction import multimodal
+    from farm_agent.extraction.multimodal import downscale_if_needed
+    monkeypatch.setattr(multimodal, "MAX_PIXELS", 1_150_000)
+    # 1200x1000 = 1.2MP > the overridden cap, so the downscale path runs.
     img = Image.new("RGBA", (1200, 1000), color=(128, 64, 32, 200))
     buf = io.BytesIO()
     img.save(buf, format="PNG")
-    rgba_buf = buf.getvalue()
-    out_buf, out_mime = downscale_if_needed(rgba_buf, "image/png")
-    # Must succeed (no exception) and return JPEG
+    out_buf, out_mime = downscale_if_needed(buf.getvalue(), "image/png")
     assert out_mime == "image/jpeg"
-    # Verify the output is a valid JPEG (no RGBA save error)
-    out_img = Image.open(io.BytesIO(out_buf))
-    assert out_img.mode == "RGB"
+    assert Image.open(io.BytesIO(out_buf)).mode == "RGB"
 
 
 def test_downscale_small_jpeg_unchanged():
