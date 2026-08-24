@@ -245,13 +245,23 @@ async function initDb() {
         `);
         // Phase 999.1 Plan 01: pre-flight dedupe scan + idempotent UNIQUE constraint.
         // Backfill in Plan 03 uses ON CONFLICT (topic, time) DO NOTHING which requires this constraint.
-        const dupes = await migration.findTopicTimeDuplicates(pool, 5);
-        if (dupes.length > 0) {
-            console.error('[db] BLOCKING: telemetry has duplicate (topic, time) rows; cannot add UNIQUE. First few:', dupes);
-            throw new Error('telemetry duplicates present — manual dedupe required before UNIQUE migration');
+        // MUSHY-113: only when the constraint is NOT yet there. The scan is a full
+        // GROUP BY over the whole telemetry hypertable -- 155s on 91M rows / 21GB --
+        // and it was running on every boot, which is where the bridge's ~140s of
+        // post-restart silence came from. Once the constraint exists the database
+        // itself makes duplicates impossible, so both the scan and the ALTER are
+        // no-ops. On a fresh DB the table is empty and the scan is instant.
+        if (await migration.telemetryUniqueConstraintExists(pool)) {
+            console.log('[db] telemetry_topic_time_unique constraint already present — skipping dedupe scan');
+        } else {
+            const dupes = await migration.findTopicTimeDuplicates(pool, 5);
+            if (dupes.length > 0) {
+                console.error('[db] BLOCKING: telemetry has duplicate (topic, time) rows; cannot add UNIQUE. First few:', dupes);
+                throw new Error('telemetry duplicates present — manual dedupe required before UNIQUE migration');
+            }
+            await migration.applyTelemetryUniqueConstraint(pool);
+            console.log('[db] telemetry_topic_time_unique constraint ensured');
         }
-        await migration.applyTelemetryUniqueConstraint(pool);
-        console.log('[db] telemetry_topic_time_unique constraint ensured');
         await pool.query(`
             CREATE TABLE IF NOT EXISTS snapshots (
                 captured_at TIMESTAMPTZ NOT NULL,

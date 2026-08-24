@@ -21,6 +21,17 @@ async function findTopicTimeDuplicates(pool, limit = 5) {
     return r.rows;
 }
 
+// MUSHY-113: once the constraint exists, duplicates are impossible, so the
+// pre-flight dedupe scan below it is provably pointless -- and on a 91M-row,
+// 21GB hypertable that scan is a 155-second full GROUP BY on every bridge boot.
+// Cheap catalog lookup so the caller can skip both it and the ALTER.
+async function telemetryUniqueConstraintExists(pool) {
+    const r = await pool.query(
+        "SELECT 1 FROM pg_constraint WHERE conname = 'telemetry_topic_time_unique'"
+    );
+    return r.rows.length > 0;
+}
+
 async function applyTelemetryUniqueConstraint(pool) {
     // Idempotent — safe to run on every bridge boot. ALTER TABLE ADD CONSTRAINT
     // is NOT idempotent on its own; the DO $$ ... IF NOT EXISTS ... END $$
@@ -41,5 +52,6 @@ async function applyTelemetryUniqueConstraint(pool) {
 
 module.exports = {
     findTopicTimeDuplicates,
+    telemetryUniqueConstraintExists,
     applyTelemetryUniqueConstraint
 };
