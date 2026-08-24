@@ -2,11 +2,15 @@
 # Builds fc_msgs from source (custom interface package, not on apt), then runs
 # the fc_core suite against the mounted sources.
 #
-# Tests run ONE FILE PER PROCESS. This is not a style choice: test_camera.py
-# installs a mock 'sensor_msgs' into sys.modules at collection time and never
-# restores it, so every module collected after it fails to import real message
-# types. Single-process whole-directory collection is therefore broken in this
-# repo. Isolating per file reproduces what colcon test effectively does.
+# Runs the whole test directory in ONE pytest process. This used to be
+# impossible: test_camera.py installed mock 'rclpy' and 'sensor_msgs' modules
+# into sys.modules at import time, and because pytest imports every test module
+# during collection before running any of them, every module collected after it
+# got the stubs instead of the real message types. The workaround was one file
+# per process, which was slower and hid genuine cross-file interactions.
+#
+# Fixed under MUSHY-66: the stubs are built at import but installed only in
+# test_camera's setUpModule, and removed again in tearDownModule.
 set -eo pipefail   # NOT -u: ROS setup.bash references unbound vars
 
 source /opt/ros/jazzy/setup.bash
@@ -23,17 +27,4 @@ source /ws/install/setup.bash
 cd /ws/src/fc-core
 export PYTHONPATH="/ws/src/fc-core:${PYTHONPATH}"
 
-total_pass=0; total_fail=0; failed_files=()
-for f in fc_core/test/test_*.py; do
-    out=$(python3 -m pytest "$f" -q -p no:cacheprovider "$@" 2>&1 | tail -1) || true
-    p=$(grep -oE '[0-9]+ passed' <<<"$out" | grep -oE '[0-9]+' || echo 0)
-    fl=$(grep -oE '[0-9]+ (failed|error)' <<<"$out" | grep -oE '[0-9]+' | head -1 || echo 0)
-    total_pass=$((total_pass + p)); total_fail=$((total_fail + fl))
-    status="ok"; [ "$fl" != "0" ] && { status="FAIL"; failed_files+=("$f"); }
-    printf '%-46s %-6s %s\n' "$f" "$status" "$out"
-done
-
-echo "-----------------------------------------------------------"
-echo "TOTAL: ${total_pass} passed, ${total_fail} failed/errored"
-[ ${#failed_files[@]} -gt 0 ] && printf 'failing files: %s\n' "${failed_files[*]}"
-exit 0
+exec python3 -m pytest fc_core/test/ -p no:cacheprovider "$@"

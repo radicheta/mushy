@@ -116,7 +116,13 @@ def _make_rclpy_mock():
 
 
 def _inject_sensor_msgs():
-    """Inject a minimal sensor_msgs.msg.CompressedImage stub."""
+    """Provide sensor_msgs.msg.CompressedImage, preferring the real module.
+
+    The stub's CompressedImage gives `header` a MagicMock, which these tests rely
+    on; the real message type would need a genuine Header. That is fine because
+    the stub is no longer global -- see the _PENDING_STUBS note below, it is
+    installed only for the duration of this module's tests.
+    """
     sensor_msgs_mod = types.ModuleType('sensor_msgs')
     msg_mod = types.ModuleType('sensor_msgs.msg')
 
@@ -129,26 +135,53 @@ def _inject_sensor_msgs():
     msg_mod.CompressedImage = CompressedImage
     sensor_msgs_mod.msg = msg_mod
 
-    sys.modules['sensor_msgs'] = sensor_msgs_mod
-    sys.modules['sensor_msgs.msg'] = msg_mod
+    _PENDING_STUBS['sensor_msgs'] = sensor_msgs_mod
+    _PENDING_STUBS['sensor_msgs.msg'] = msg_mod
 
     return CompressedImage
 
 
-def _setup_mocks():
-    """Install rclpy and sensor_msgs stubs into sys.modules."""
-    rclpy_mod, FakeNode, FakeParameter = _make_rclpy_mock()
-    CompressedImage = _inject_sensor_msgs()
+# MUSHY-66: stubs are BUILT at import but INSTALLED only in setUpModule.
+#
+# pytest imports every test module during collection, before running any of them.
+# Installing these into sys.modules at import time therefore poisoned the module
+# table for the whole session: test_controller.py, collected next alphabetically,
+# got the stub instead of real rclpy/sensor_msgs and whole-directory collection
+# died. That is why the suite had to run one file per process, which hid genuine
+# cross-file interactions.
+#
+# Building the fakes touches nothing global, so it stays at import. Only the
+# sys.modules mutation is deferred, and it is undone in tearDownModule.
+_PENDING_STUBS: dict = {}
 
-    sys.modules['rclpy'] = rclpy_mod
-    sys.modules['rclpy.node'] = rclpy_mod.node
-    sys.modules['rclpy.time'] = rclpy_mod.time
-    sys.modules['rclpy.parameter'] = rclpy_mod.parameter
+_RCLPY_MOD, FakeNode, FakeParameter = _make_rclpy_mock()
+CompressedImage = _inject_sensor_msgs()
 
-    return FakeNode, FakeParameter, CompressedImage
+_PENDING_STUBS['rclpy'] = _RCLPY_MOD
+_PENDING_STUBS['rclpy.node'] = _RCLPY_MOD.node
+_PENDING_STUBS['rclpy.time'] = _RCLPY_MOD.time
+_PENDING_STUBS['rclpy.parameter'] = _RCLPY_MOD.parameter
+
+_SAVED_MODULES: dict = {}
 
 
-FakeNode, FakeParameter, CompressedImage = _setup_mocks()
+def setUpModule():
+    """Install the rclpy/sensor_msgs stubs for the duration of this module only."""
+    global _SAVED_MODULES
+    _SAVED_MODULES = {name: sys.modules.get(name) for name in _PENDING_STUBS}
+    sys.modules.update(_PENDING_STUBS)
+
+
+def tearDownModule():
+    """Restore whatever was in sys.modules before, so nothing leaks onward."""
+    for name, previous in _SAVED_MODULES.items():
+        if previous is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = previous
+    # fc_camera was imported against the stubs; drop it so a later importer
+    # gets a clean one built against the real modules.
+    sys.modules.pop('fc_core.fc_camera', None)
 
 
 def _load_fc_camera():
