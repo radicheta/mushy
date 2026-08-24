@@ -145,6 +145,25 @@ def render_strain_ask_back(seen_code: str, nearest: str | None) -> str:
     ])
 
 
+def build_multi_strain_reask(codes: list[str]) -> str:
+    """Tell the farmer a correction could not be attributed (MUSHY-108).
+
+    The reply parser understands YES or a bare code -- it has no way to say
+    "change POY, leave KOY" -- so a session carrying more than one strain
+    cannot route a single-code correction. Say that plainly instead of picking
+    one and acking a change that did not happen.
+
+    ASCII-only, no em-dashes (use --), no emoji. Only offers YES, because YES
+    is the only other thing the parser actually accepts here.
+    """
+    listed = ", ".join(str(c).upper().strip() for c in (codes or []))
+    return "\n".join([
+        f"This session has more than one strain: {listed}.",
+        "One code cannot tell me which to change, so I changed nothing.",
+        "Reply YES to keep them as read.",
+    ])
+
+
 # ---------------------------------------------------------------------------
 # Reply parser
 # ---------------------------------------------------------------------------
@@ -245,3 +264,57 @@ def collect_strain_codes(draft: object) -> list[str]:
             if isinstance(v, str) and v.strip():
                 codes.append(v.upper().strip())
     return list(dict.fromkeys(codes))  # DISTINCT, insertion-ordered: one batched ask
+
+
+def apply_strain_correction(draft: object, new_code: str) -> dict:
+    """Rewrite every place a strain code lives on the draft (MUSHY-108).
+
+    Flat shapes carry the code at the top level; a seeding_session carries it
+    ONLY at groups[].species.value, and the commit path reads it from there --
+    so writing species_code on a grouped draft is structurally inert, and the
+    stale per-group code is what reaches farmOS.
+
+    A correction reply names one code but not which of several it replaces, so
+    a grouped draft carrying more than one distinct strain is genuinely
+    ambiguous. Rather than guess, say so and let the caller keep the draft
+    held: acking a correction that did not take effect is the silent
+    misattribution this whole loop exists to prevent.
+
+    Returns:
+      {"ok": True, "draft": dict, "groups_changed": int}
+      {"ok": False, "reason": "multi_strain_session", "codes": [str, ...]}
+    """
+    out = dict(draft or {}) if isinstance(draft, dict) else {}
+    groups = out.get("groups")
+    has_groups = isinstance(groups, list) and any(isinstance(g, dict) for g in groups)
+
+    if has_groups:
+        codes = collect_strain_codes(out)
+        if len(codes) > 1:
+            return {"ok": False, "reason": "multi_strain_session", "codes": codes}
+        new_groups = []
+        changed = 0
+        for g in groups:
+            if not isinstance(g, dict):
+                new_groups.append(g)
+                continue
+            species = g.get("species")
+            if isinstance(species, dict) and isinstance(species.get("value"), str):
+                g = {**g, "species": {**species, "value": new_code}}
+                changed += 1
+            new_groups.append(g)
+        out["groups"] = new_groups
+    else:
+        changed = 0
+
+    # Top level too. species_code wins the read precedence in both
+    # collect_strain_codes and the commit path, so it is what must be right;
+    # the other spellings are rewritten only so no stale code is left behind
+    # to contradict it on a receipt.
+    for key in ("species", "strain", "fungi_type"):
+        if isinstance(out.get(key), str):
+            out[key] = new_code
+    if not has_groups or isinstance(out.get("species_code"), str):
+        out["species_code"] = new_code
+
+    return {"ok": True, "draft": out, "groups_changed": changed}

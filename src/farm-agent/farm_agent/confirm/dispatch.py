@@ -61,6 +61,8 @@ from farm_agent.confirm.state_machine import (
     transition,
 )
 from farm_agent.confirm.strain_ask_back import (
+    apply_strain_correction,
+    build_multi_strain_reask,
     get_curated_set as _get_curated_set,
     parse_strain_ask_back_reply,
     render_strain_ask_back,
@@ -166,10 +168,32 @@ async def _handle_strain_intercept(
         resolved = resolve_strain(code, curated)
 
         if resolved.get("known"):
-            # Known code -> rewrite draft_json.species_code inline then confirm
-            draft_json = dict(draft_row.get("draft_json") or {})
-            draft_json["species_code"] = resolved["code"]
-            # Persist the updated species_code
+            # Known code -> rewrite the strain everywhere it lives, then confirm.
+            # MUSHY-108: writing only draft_json["species_code"] is structurally
+            # inert on a seeding_session, where codes live at
+            # groups[].species.value and the commit path reads them from there.
+            # The correction was acked, the draft confirmed, and the stale
+            # per-group code was what reached farmOS.
+            remap = apply_strain_correction(draft_row.get("draft_json"), resolved["code"])
+            if not remap.get("ok"):
+                # More than one distinct strain on the session: the reply names a
+                # code but not which one it replaces. Re-ask rather than guess --
+                # never ack a correction that did not take effect.
+                codes = remap.get("codes") or []
+                await _ack_send(
+                    signal_client,
+                    build_multi_strain_reask(codes),
+                    to=to,
+                    related_draft_id=draft_id,
+                    intent="strain_ask_back",
+                )
+                log.warning(
+                    "[dispatch] strain intercept: strain_correction_multigroup_ambiguous "
+                    "draft_id=%s codes=%s -- draft stays held",
+                    draft_id, codes,
+                )
+                return {"action": "re_asked", "reason": "multi_strain_session", "codes": codes}
+            draft_json = remap["draft"]
             await repo.update_draft_after_edit(pool, draft_id, {"draft_json": draft_json})
             res = await repo.confirm_draft(pool, draft_id)
             if res.get("rowcount") == 1:

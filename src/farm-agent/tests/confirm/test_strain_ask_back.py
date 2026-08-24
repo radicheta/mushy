@@ -598,3 +598,101 @@ async def test_wr02_discard_ack_not_sent_on_rowcount_0():
         f"WR-02: 'OK, discarded.' must NOT be sent when rowcount==0 (race lost). "
         f"Got sends: {fake_signal.sends}"
     )
+
+
+# ---------------------------------------------------------------------------
+# MUSHY-108: a strain correction on a seeding session actually changes the strain
+# ---------------------------------------------------------------------------
+
+
+def _make_session_row(codes, draft_id: str = "draft-session"):
+    """A seeding_session draft: strain codes live ONLY at groups[].species.value."""
+    row = _make_draft_row(draft_id=draft_id)
+    row["draft_json"] = {
+        "type": "seeding_session",
+        "groups": [{"species": {"value": c}, "qty": i + 1} for i, c in enumerate(codes)],
+    }
+    return row
+
+
+@pytest.mark.asyncio
+async def test_a_correction_on_a_seeding_session_rewrites_the_per_group_code():
+    """The bug: species_code was written, groups[] was not, and the commit path
+    reads groups[] -- so the stale code reached farmOS behind a confirm ack."""
+    from farm_agent.confirm.dispatch import route_confirm_reply  # noqa: PLC0415
+
+    fake_repo, fake_signal = FakeConfirmRepoForDispatch(), FakeSignalClient()
+    draft = _make_session_row(["POY", "POY"])
+
+    result = await route_confirm_reply(
+        object(), fake_signal, _make_config(), draft, "koy", repo=fake_repo
+    )
+
+    assert result["action"] == "correction_confirmed"
+    written = fake_repo.update_calls[-1]["fields"]["draft_json"]
+    assert [g["species"]["value"] for g in written["groups"]] == ["KOY", "KOY"]
+    assert fake_repo.confirm_calls, "draft was never confirmed"
+
+
+@pytest.mark.asyncio
+async def test_a_correction_does_not_mutate_the_draft_row_in_place():
+    """The remap must build a new draft: mutating the row in place would make a
+    failed persist look like it succeeded to everything downstream."""
+    from farm_agent.confirm.dispatch import route_confirm_reply  # noqa: PLC0415
+
+    fake_repo, fake_signal = FakeConfirmRepoForDispatch(), FakeSignalClient()
+    draft = _make_session_row(["POY"])
+    original = draft["draft_json"]
+
+    await route_confirm_reply(object(), fake_signal, _make_config(), draft, "koy", repo=fake_repo)
+
+    assert original["groups"][0]["species"]["value"] == "POY"
+
+
+@pytest.mark.asyncio
+async def test_a_multi_strain_session_is_re_asked_never_silently_confirmed():
+    """Two distinct strains: one code cannot say which to change. Re-ask and
+    keep the draft held rather than ack a correction that did not take effect."""
+    from farm_agent.confirm.dispatch import route_confirm_reply  # noqa: PLC0415
+
+    fake_repo, fake_signal = FakeConfirmRepoForDispatch(), FakeSignalClient()
+    draft = _make_session_row(["POY", "MAI"])
+
+    result = await route_confirm_reply(
+        object(), fake_signal, _make_config(), draft, "koy", repo=fake_repo
+    )
+
+    assert result["action"] == "re_asked"
+    assert result["reason"] == "multi_strain_session"
+    assert not fake_repo.confirm_calls, "an unattributable correction must NOT confirm"
+    assert not fake_repo.update_calls, "an unattributable correction must NOT rewrite the draft"
+    body = fake_signal.sends[-1]["body"]
+    assert "POY" in body and "MAI" in body
+    assert body.isascii(), f"farmer-facing text must be ASCII: {body!r}"
+
+
+@pytest.mark.asyncio
+async def test_a_flat_draft_correction_still_rewrites_the_top_level_code():
+    """The pre-existing flat-shape behaviour must survive the grouped fix."""
+    from farm_agent.confirm.dispatch import route_confirm_reply  # noqa: PLC0415
+
+    fake_repo, fake_signal = FakeConfirmRepoForDispatch(), FakeSignalClient()
+    draft = _make_draft_row(species_code="POY")
+
+    result = await route_confirm_reply(
+        object(), fake_signal, _make_config(), draft, "koy", repo=fake_repo
+    )
+
+    assert result["action"] == "correction_confirmed"
+    assert fake_repo.update_calls[-1]["fields"]["draft_json"]["species_code"] == "KOY"
+
+
+def test_apply_strain_correction_leaves_no_stale_spelling_behind():
+    """species_code wins the read precedence, but a stale sibling key would
+    contradict it on a receipt."""
+    from farm_agent.confirm.strain_ask_back import apply_strain_correction  # noqa: PLC0415
+
+    res = apply_strain_correction({"species_code": "POY", "strain": "POY"}, "KOY")
+
+    assert res["ok"]
+    assert res["draft"] == {"species_code": "KOY", "strain": "KOY"}
