@@ -797,6 +797,18 @@ async function emitDerived(ts) {
     await insertTelemetry('fc.water_vapor', derived.water_vapor, ts, tsNs);
 }
 
+// MUSHY-112: bind the socket BEFORE rclnodejs.init(), not inside its .then().
+// rclnodejs.init() blocks on DDS discovery for ~160s, and with listen() inside
+// the .then() nothing answered on 8081 for that whole window -- farm-agent saw
+// ConnectionRefused and the chamber alerter had no frame source for ~3min after
+// every restart. The HTTP/WS server has no real dependency on ROS: rosReady and
+// dbReady already gate the routes that need them (503), /health reports both
+// truthfully, and the ros-using routes read rosNode lazily at request time. A
+// refused connection is indistinguishable from a dead bridge; {ros:false} is not.
+server.listen(8081, () => {
+    console.log('[bridge] HTTP + WebSocket server on port 8081 (ROS not ready yet)');
+});
+
 // Main startup sequence
 rclnodejs.init().then(async () => {
     const node = new rclnodejs.Node('mission_control_bridge');
@@ -1161,11 +1173,6 @@ rclnodejs.init().then(async () => {
         retention.runPrune(prunerArgs()).catch(e => console.error('[retention] startup tick failed:', e.message));
     }, 60 * 1000);
     console.log('[retention] scheduled — retain ' + RETENTION_DAYS + ' days, grace ' + RETENTION_GRACE_DAYS + ' days');
-
-    // Start HTTP + WebSocket server
-    server.listen(8081, () => {
-        console.log('[bridge] HTTP + WebSocket server on port 8081');
-    });
 
     rosReady = true;
     node.spin();
