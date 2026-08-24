@@ -84,6 +84,54 @@ _warm_load_thread = None              # the retry/alert loop; restarted by _inva
 # ---------------------------------------------------------------------------
 
 
+_NO_SPEECH_SIGNATURE = "max() arg is an empty sequence"
+
+
+def _transcribe_once(model, audio_path):
+    """Transcribe one file, returning the worker reply dict.
+
+    MUSHY-93: with vad_filter=True, faster-whisper 1.0.3 raises
+    `ValueError: max() arg is an empty sequence` from inside transcribe() when
+    voice-activity detection strips every segment -- i.e. when the audio has no
+    speech at all. That is "nobody spoke", not "the transcriber is broken", but
+    it arrived as an exception and surfaced to the caller as a 503.
+
+    It matters beyond the smoke fixture: a farmer voice note that is silence,
+    wind, or a misfired recording takes exactly this path, and a failed
+    transcribe makes the capture pipeline treat the note as degraded.
+
+    So no-speech returns ok with an empty transcript and an explicit
+    `no_speech` flag, letting the caller tell "said nothing" apart from
+    "transcription failed". The match is deliberately narrow -- any other
+    ValueError still propagates, because a genuinely broken transcriber must
+    stay loud (see _invalidate_probe / MUSHY-104).
+    """
+    try:
+        segments, info = model.transcribe(
+            audio_path,
+            vad_filter=True,
+            condition_on_previous_text=False,
+        )
+        text = " ".join(s.text.strip() for s in segments).strip()
+    except ValueError as e:
+        if _NO_SPEECH_SIGNATURE not in str(e):
+            raise
+        return {
+            "ok": True,
+            "text": "",
+            "language": None,
+            "language_probability": 0.0,
+            "no_speech": True,
+        }
+    return {
+        "ok": True,
+        "text": text,
+        "language": info.language,
+        "language_probability": float(info.language_probability),
+        "no_speech": not text,
+    }
+
+
 def _worker_main(conn, model_name, device, compute_type):  # pragma: no cover - child process
     """Entry point of the spawned child. Owns the model and the CUDA context.
 
@@ -114,18 +162,7 @@ def _worker_main(conn, model_name, device, compute_type):  # pragma: no cover - 
                 list(segments)  # force the lazy iterator
                 conn.send({"ok": True, "probe": True})
                 continue
-            segments, info = model.transcribe(
-                msg["audio_path"],
-                vad_filter=True,
-                condition_on_previous_text=False,
-            )
-            text = " ".join(s.text.strip() for s in segments).strip()
-            conn.send({
-                "ok": True,
-                "text": text,
-                "language": info.language,
-                "language_probability": float(info.language_probability),
-            })
+            conn.send(_transcribe_once(model, msg["audio_path"]))
         except BaseException as e:  # noqa: BLE001
             conn.send({"ok": False, "error": f"{type(e).__name__}: {e}"})
 
@@ -307,6 +344,9 @@ def transcribe(req: TranscribeReq):
         "duration_ms": int((time.time() - t0) * 1000),
         "language": res.get("language"),
         "language_probability": float(res.get("language_probability") or 0.0),
+        # MUSHY-93: lets the caller distinguish "the farmer said nothing" from
+        # "transcription broke", which a bare empty string cannot express.
+        "no_speech": bool(res.get("no_speech", False)),
     }
 
 

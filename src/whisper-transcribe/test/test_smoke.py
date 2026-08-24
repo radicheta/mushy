@@ -37,7 +37,19 @@ def test_smoke_30s_clip():
     )
     assert r.status_code == 200, r.text
     j = r.json()
-    # text may be empty for pure-tone fixtures; assert key exists
     assert "text" in j
     assert j["duration_ms"] < 60000, f"duration_ms={j['duration_ms']} exceeds 60s budget"
-    assert j["language"]
+
+    # MUSHY-93: sample-30s.wav is a PURE TONE, so VAD strips every segment and
+    # this exercises the no-speech path, not real transcription. That used to
+    # raise inside faster-whisper and come back as a 503, which is why this test
+    # could never pass. It must now be a clean empty transcript.
+    #
+    # Consequence worth remembering: passing this proves the service is up and
+    # the no-speech contract holds -- it does NOT prove speech is transcribed
+    # correctly. Only a real speech fixture would prove that.
+    if j.get("no_speech"):
+        assert j["text"] == "", f"no_speech but text={j['text']!r}"
+        assert j["language"] is None
+    else:
+        assert j["language"]

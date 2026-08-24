@@ -133,3 +133,65 @@ def test_health_goes_503_after_a_live_transcription_failure(monkeypatch, tmp_pat
     r = c.get("/health")
     assert r.status_code == 503, "health still green while transcription is broken"
     assert "CUDA" in r.json()["reason"]
+
+
+# ---------------------------------------------------------------------------
+# MUSHY-93: no-speech audio is an empty transcript, not a failure
+# ---------------------------------------------------------------------------
+
+
+class _FakeSegment:
+    def __init__(self, text):
+        self.text = text
+
+
+class _FakeInfo:
+    language = "es"
+    language_probability = 0.91
+
+
+class _NoSpeechModel:
+    """faster-whisper 1.0.3 with vad_filter=True and no speech in the audio."""
+
+    def transcribe(self, *_a, **_kw):
+        raise ValueError("max() arg is an empty sequence")
+
+
+class _BrokenModel:
+    """A ValueError that is NOT the no-speech signature must stay an error."""
+
+    def transcribe(self, *_a, **_kw):
+        raise ValueError("invalid compute type")
+
+
+class _SpeechModel:
+    def transcribe(self, *_a, **_kw):
+        return iter([_FakeSegment(" hola "), _FakeSegment("mundo ")]), _FakeInfo()
+
+
+def test_no_speech_returns_empty_transcript_not_an_error():
+    import main
+
+    res = main._transcribe_once(_NoSpeechModel(), "/tmp/silent.wav")
+
+    assert res["ok"] is True, "no-speech must not be reported as a failure"
+    assert res["text"] == ""
+    assert res["no_speech"] is True
+
+
+def test_other_value_errors_still_propagate():
+    import main
+
+    with pytest.raises(ValueError, match="invalid compute type"):
+        main._transcribe_once(_BrokenModel(), "/tmp/x.wav")
+
+
+def test_real_speech_is_unchanged_and_not_flagged_no_speech():
+    import main
+
+    res = main._transcribe_once(_SpeechModel(), "/tmp/voice.wav")
+
+    assert res["ok"] is True
+    assert res["text"] == "hola mundo"
+    assert res["no_speech"] is False
+    assert res["language"] == "es"
