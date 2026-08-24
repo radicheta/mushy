@@ -811,14 +811,27 @@ def test_scheduler_empty_schedule_no_op(ros_context):
 
 
 def test_scheduler_gap_keeps_current_mode(ros_context):
-    """Plan 30-01 D-08 — gap → keep current mode + single debounced WARN."""
+    """Plan 30-01 D-08 — gap → keep current mode + single debounced WARN.
+
+    MUSHY-107: the clock is pinned on the CLASS, before construction. The D-09
+    startup-alignment tick fires inside __init__ (fc_controller.py:443), so an
+    instance-attribute seam assigned afterwards comes too late to control it --
+    the startup tick would evaluate against real wall-clock time. That made this
+    test fail two different ways depending on the hour it ran: outside the
+    window the startup tick consumed the gap-debounce and the test saw zero
+    WARNs, and between 00:00 and 06:00 it genuinely swapped the mode to pinning.
+    Pinning the class method makes every tick, startup included, deterministic.
+    """
     schedule = '[{"start":"00:00","end":"06:00","mode":"pinning"}]'
     overrides = list(_fruiting_v0_overrides())
     overrides.append(
         Parameter('schedule_windows', Parameter.Type.STRING, schedule)
     )
     warn_calls = []
-    with patch.object(FruitingChamberController, 'get_logger') as mock_get:
+    with patch.object(FruitingChamberController, 'get_logger') as mock_get, \
+            patch.object(
+                FruitingChamberController, '_default_now_hhmm',
+                lambda self: '10:00'):
         logger_mock = MagicMock()
         logger_mock.warn = lambda m: warn_calls.append(m)
         logger_mock.warning = lambda m: warn_calls.append(m)
@@ -828,18 +841,60 @@ def test_scheduler_gap_keeps_current_mode(ros_context):
         mock_get.return_value = logger_mock
         node = FruitingChamberController(parameter_overrides=overrides)
         try:
-            # Suppress any startup warns to isolate scheduler-emitted ones.
-            initial_warns = list(warn_calls)
-            node._now_hhmm = lambda: '10:00'
             node._scheduler_tick()
-            node._scheduler_tick()  # second tick must NOT re-emit (debounced)
+            node._scheduler_tick()  # further ticks must NOT re-emit (debounced)
             assert node.get_parameter('active_mode').value == 'fruiting'
-            new_warns = warn_calls[len(initial_warns):]
-            scheduler_warns = [w for w in new_warns if 'scheduler' in w]
+            # Counted from construction: the startup tick is itself a gap tick,
+            # so exactly one WARN must cover startup plus both explicit ticks.
+            scheduler_warns = [w for w in warn_calls if 'scheduler' in w]
             assert len(scheduler_warns) == 1, (
                 f'expected exactly one scheduler WARN (gap debounce); '
                 f'got {scheduler_warns}'
             )
+        finally:
+            node.destroy_node()
+
+
+def test_scheduler_startup_alignment_enters_window_mode_on_boot(ros_context):
+    """Plan 30-01 D-09 — a reboot mid-window comes up in that window's mode.
+
+    MUSHY-107: D-09 is the reason the scheduler ticks inside __init__ at all,
+    and it had no test, because the wall-clock seam made one impossible to
+    write. Booting with active_mode=fruiting at a pinned 03:00 must land in
+    pinning without waiting for the 30s timer.
+    """
+    schedule = '[{"start":"00:00","end":"06:00","mode":"pinning"}]'
+    overrides = list(_fruiting_v0_overrides())
+    overrides.append(
+        Parameter('schedule_windows', Parameter.Type.STRING, schedule)
+    )
+    with patch.object(
+        FruitingChamberController, '_default_now_hhmm', lambda self: '03:00'
+    ):
+        node = FruitingChamberController(parameter_overrides=overrides)
+        try:
+            assert node.get_parameter('active_mode').value == 'pinning'
+        finally:
+            node.destroy_node()
+
+
+def test_scheduler_startup_alignment_leaves_mode_alone_in_a_gap(ros_context):
+    """MUSHY-107 — the mirror of D-09: booting in a gap must not swap the mode.
+
+    Guards the failure the old test accidentally exercised between 00:00 and
+    06:00 -- a startup tick that swaps when it should hold.
+    """
+    schedule = '[{"start":"00:00","end":"06:00","mode":"pinning"}]'
+    overrides = list(_fruiting_v0_overrides())
+    overrides.append(
+        Parameter('schedule_windows', Parameter.Type.STRING, schedule)
+    )
+    with patch.object(
+        FruitingChamberController, '_default_now_hhmm', lambda self: '10:00'
+    ):
+        node = FruitingChamberController(parameter_overrides=overrides)
+        try:
+            assert node.get_parameter('active_mode').value == 'fruiting'
         finally:
             node.destroy_node()
 
