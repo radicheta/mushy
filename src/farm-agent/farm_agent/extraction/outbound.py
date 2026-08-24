@@ -188,6 +188,11 @@ def create_outbound_dispatcher(
     async def _send_seeding_session_filled_preview(draft_row: dict) -> dict:
         return await _send_farmer_preview(draft_row, "seeding_session_filled_preview")
 
+    async def _send_strain_ask_back(draft_row: dict) -> dict:
+        # MUSHY-109: preview is pre-rendered by the strain gate, so this routes
+        # through the shared farmer path unchanged -- it only earns its own tag.
+        return await _send_farmer_preview(draft_row, "strain_ask_back")
+
     async def _send_batch_review_summary(batch: dict) -> dict:
         # batch = {sender_e164, draft_ids: [{id, type, status}, ...], reply_target_kind,
         #          group_id, source_capture_ids}
@@ -272,6 +277,8 @@ def create_outbound_dispatcher(
                     return await _send_starting_seq_askback(row)
                 case "send_seeding_session_filled_preview":
                     return await _send_seeding_session_filled_preview(row)
+                case "send_strain_ask_back":
+                    return await _send_strain_ask_back(row)
                 case "send_needs_review_ping":
                     return await _send_needs_review_ping(row)
                 case "send_batch_review_summary":

@@ -189,3 +189,59 @@ def parse_strain_ask_back_reply(text: str) -> dict:
 
     # Path 4: unknown
     return {"kind": "unknown"}
+
+
+# ---------------------------------------------------------------------------
+# Curated-set resolution + draft code collection (MUSHY-109)
+# ---------------------------------------------------------------------------
+
+
+def get_curated_set(config: object) -> list[str]:
+    """Return the curated strain code list from config, falling back to CURATED_14.
+
+    `strains` is the attribute the tenant loader actually populates
+    (tenancy/tenant.py:240, fed from strains.yaml STRAIN_CODES); the two
+    upper/lower spellings are kept for configs that pass the raw key through.
+    """
+    raw = (
+        getattr(config, "strains", None)
+        or getattr(config, "STRAIN_CODES", None)
+        or getattr(config, "strain_codes", None)
+    )
+    if raw and isinstance(raw, (list, tuple)):
+        return list(raw)
+    return CURATED_14
+
+
+def collect_strain_codes(draft: object) -> list[str]:
+    """Collect distinct strain codes from any draft shape.
+
+    Port of pipeline.js collectStrainCodes(draft).
+
+    Flat shapes (SeedingLog / observation / harvest): top-level
+    species_code / species / strain / fungi_type.
+    seeding_session: per-group groups[].species.value -- the ONLY place codes
+    live on that shape.
+
+    Mirrors the commit-side read precedence, so the gate sees exactly the codes
+    a commit would send to farmOS.
+    """
+    codes: list[str] = []
+    if not isinstance(draft, dict):
+        return codes
+    flat = (
+        draft.get("species_code")
+        or draft.get("species")
+        or draft.get("strain")
+        or draft.get("fungi_type")
+    )
+    if isinstance(flat, str) and flat.strip():
+        codes.append(flat.upper().strip())
+    groups = draft.get("groups")
+    if isinstance(groups, list):
+        for g in groups:
+            v = (g or {}).get("species", {}) if isinstance(g, dict) else None
+            v = v.get("value") if isinstance(v, dict) else None
+            if isinstance(v, str) and v.strip():
+                codes.append(v.upper().strip())
+    return list(dict.fromkeys(codes))  # DISTINCT, insertion-ordered: one batched ask

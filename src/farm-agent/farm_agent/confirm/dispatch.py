@@ -61,7 +61,7 @@ from farm_agent.confirm.state_machine import (
     transition,
 )
 from farm_agent.confirm.strain_ask_back import (
-    CURATED_14,
+    get_curated_set as _get_curated_set,
     parse_strain_ask_back_reply,
     render_strain_ask_back,
     resolve_strain,
@@ -73,19 +73,6 @@ log = logging.getLogger(__name__)
 
 # Sentinel returned when a strain reply falls through to the capture pipeline
 FALL_THROUGH_SENTINEL = {"action": "fall_through"}
-
-# ---------------------------------------------------------------------------
-# Internal: _get_curated_set -- resolve from config.STRAIN_CODES or default
-# ---------------------------------------------------------------------------
-
-
-def _get_curated_set(config: object) -> list[str]:
-    """Return the curated strain code list from config, falling back to CURATED_14."""
-    raw = getattr(config, "STRAIN_CODES", None) or getattr(config, "strain_codes", None)
-    if raw and isinstance(raw, (list, tuple)) and raw:
-        return list(raw)
-    return CURATED_14
-
 
 # ---------------------------------------------------------------------------
 # Internal: _ack_send -- attempt ack, log WARNING on failure (no-silent-failure)

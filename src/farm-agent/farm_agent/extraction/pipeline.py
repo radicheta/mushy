@@ -63,6 +63,12 @@ import logging
 import re
 from datetime import datetime, timezone
 
+from farm_agent.confirm.strain_ask_back import (
+    collect_strain_codes,
+    get_curated_set,
+    nearest_known,
+    render_strain_ask_back,
+)
 from farm_agent.extraction import extraction_db as _extraction_db_module
 from farm_agent.extraction import multimodal
 from farm_agent.extraction import preview_builder as _preview_builder_module
@@ -70,6 +76,7 @@ from farm_agent.extraction import state_machine as _state_machine_module
 from farm_agent.extraction.batch_mode import run_batch_mode, run_multi_confirm
 from farm_agent.extraction.starting_seq import handle_starting_seq_ask_back as _do_starting_seq_ask_back
 from farm_agent.extraction.starting_seq import handle_starting_seq_reply as _do_starting_seq_reply
+from farm_agent.farmos.fungi_type_cache import get_fungi_type_uuid
 from farm_agent.farmos.ref_check import check_asset_refs, collect_asset_refs
 from farm_agent.tenancy.tenant import mask_number
 
@@ -328,6 +335,86 @@ def create_extraction_pipeline(
             _log.warning("[extraction] asset-ref check failed: %s", e)
             return None
 
+    async def _maybe_hold_for_strain_confirm(
+        draft, draft_id, capture_ctx, source_capture_ids, prior_askback_turns
+    ) -> dict | None:
+        """Hold a draft whose strain farmOS does not know, and ask the farmer once.
+
+        MUSHY-109. Port of pipeline.js maybeHoldForStrainConfirm(). Detection was
+        the half of the strain-confirm feature that never crossed to Python, so
+        the reply-side intercept in confirm/dispatch.py was unreachable and an
+        unknown code committed unquestioned -- the exact shape of the POY-read-as-KOY
+        misattribution.
+
+        Returns None to pass through, or an enqueue result dict when it holds.
+        Gates ONLY on the clean fungi_type_not_found: a missing taxonomy or an
+        HTTP error is our outage, not the farmer's problem, and must never nag.
+        """
+        if farmos_client is None:
+            _log.warning(
+                "[extraction] strain gate skipped: no farmOS client (no credentials)"
+            )
+            return None
+        codes = collect_strain_codes(draft)
+        if not codes:
+            return None
+
+        curated = get_curated_set(config)
+        unknowns = []
+        for code in codes:
+            try:
+                r = await get_fungi_type_uuid(farmos_client, code)
+            except Exception as e:  # noqa: BLE001 -- infra error: pass through, do not ask
+                _log.warning("[extraction] get_fungi_type_uuid threw for code=%s: %s", code, e)
+                continue
+            if not r.get("ok") and r.get("reason") == "fungi_type_not_found":
+                unknowns.append((code, nearest_known(code, curated)))
+
+        if not unknowns:
+            return None
+
+        # ONE batched ask for every unknown code on the draft, not one per code.
+        preview = "\n\n".join(render_strain_ask_back(c, n) for c, n in unknowns)
+
+        upd = await db.update_draft_status(
+            pool,
+            draft_id,
+            sm.DraftStatus.AWAITING_FARMER,
+            {
+                "farmer_facing_preview": preview,
+                # The join key confirm/dispatch.py:597 routes on.
+                "needs_review_reason": "strain_unknown_pending_confirm",
+            },
+        )
+        if not upd.get("ok"):
+            _log.warning("[extraction] strain hold status update failed: %s", upd.get("reason"))
+            return {"ok": False, "reason": upd.get("reason")}
+
+        draft_row = {
+            "id": draft_id,
+            "sender_e164": capture_ctx.get("sender"),
+            "farmos_person": capture_ctx.get("farmos_person"),
+            "status": sm.DraftStatus.AWAITING_FARMER,
+            "draft_json": draft,
+            "farmer_facing_preview": preview,
+            "reply_target_kind": capture_ctx.get("reply_target_kind"),
+            "group_id": capture_ctx.get("group_id"),
+            "source_capture_ids": source_capture_ids,
+            "askback_turns": prior_askback_turns,
+        }
+        await _dispatch_effect("send_strain_ask_back", draft_row)
+
+        _log.info(
+            "[extraction] strain hold draft=%s unknown_codes=%s",
+            draft_id, [c for c, _ in unknowns],
+        )
+        return {
+            "ok": True,
+            "draft_id": draft_id,
+            "status": sm.DraftStatus.AWAITING_FARMER,
+            "side_effects": ["send_strain_ask_back"],
+        }
+
     async def enqueue(capture_ctx: dict) -> dict:
         try:
             now_ms = _clock()
@@ -518,6 +605,19 @@ def create_extraction_pipeline(
                 if askback_result.get("ok"):
                     askback_result["continuity"] = continuity
                 return askback_result
+
+            # 5c. strain gate (MUSHY-109): an unknown code holds the draft and asks
+            # the farmer before anything reaches farmOS. Scope matches the retired
+            # Node gate -- the single-draft conversational path only. run_batch_mode
+            # is deliberately excluded: it forces start_new and never asks the farmer
+            # back by design, so a hold there would contradict its contract.
+            strain_hold = await _maybe_hold_for_strain_confirm(
+                draft, draft_id, capture_ctx, source_capture_ids, prior_askback_turns
+            )
+            if strain_hold is not None:
+                if strain_hold.get("ok"):
+                    strain_hold["continuity"] = continuity
+                return strain_hold
 
             # 6. state-machine transition
             transition = sm.transition(

@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta, timezone
 
 from farm_agent.extraction.pipeline import create_extraction_pipeline
+from farm_agent.extraction.state_machine import DraftStatus
 
 _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
@@ -608,3 +609,133 @@ async def test_without_a_farmos_client_the_preview_is_unchanged():
 
     _, _, extras = db.updates[-1]
     assert "farmOS" not in extras["farmer_facing_preview"]
+
+
+# ---------------------------------------------------------------------------
+# MUSHY-109: an unknown strain holds the draft and asks before it reaches farmOS
+# ---------------------------------------------------------------------------
+
+SEEDING = {"type": "SeedingLog", "species_code": "POY", "qty": 10,
+           "event_timestamp": "2026-05-22T10:00:00Z"}
+
+SESSION = {
+    "type": "seeding_session",
+    "event_timestamp": "2026-05-22T10:00:00Z",
+    "groups": [
+        {"species": {"value": "KOY"}, "qty": 4},
+        {"species": {"value": "poy"}, "qty": 2},   # lowercase -> same code as below
+        {"species": {"value": "POY"}, "qty": 1},   # duplicate: ONE ask, not two
+    ],
+}
+
+
+def _strain_pipeline(db, draft, get, dispatcher=None, config=None):
+    return create_extraction_pipeline(
+        pool=None,
+        extractor=_extractor({
+            "ok": True, "drafts": [{"draft": draft, "per_field_confidence": {}}],
+            "draft": draft, "per_field_confidence": {}, "continuity_decision": "start_new",
+            "usage": None,
+        }),
+        config=config or _config(),
+        extraction_db=db,
+        outbound_dispatcher={"dispatch": (dispatcher or FakeDispatcher()).dispatch},
+        clock=lambda: 1_000_000,
+        farmos_client={"get": get},
+    )
+
+
+def _fungi_get(known_names):
+    """farmOS double: resolves only the names in known_names, 404-empty otherwise."""
+    async def get(path):
+        if any(path.endswith("=" + n) for n in known_names):
+            return {"ok": True, "body": {"data": [{"id": "uuid-1"}]}}
+        return {"ok": True, "body": {"data": []}}  # -> fungi_type_not_found
+    return get
+
+
+async def test_an_unknown_strain_holds_the_draft_and_asks_the_farmer():
+    from farm_agent.farmos import fungi_type_cache
+    fungi_type_cache._clear()
+
+    db, disp = FakeDb(), FakeDispatcher()
+    p = _strain_pipeline(db, SEEDING, _fungi_get([]), disp)
+
+    res = await p["enqueue"](CTX)
+
+    assert res["ok"] and res["status"] == DraftStatus.AWAITING_FARMER
+    _, status, extras = db.updates[-1]
+    assert status == DraftStatus.AWAITING_FARMER
+    # The join key confirm/dispatch.py routes the farmer's reply on.
+    assert extras["needs_review_reason"] == "strain_unknown_pending_confirm"
+    assert "POY" in extras["farmer_facing_preview"]
+    assert [e for e, _ in disp.calls] == ["send_strain_ask_back"]
+    fungi_type_cache._clear()
+
+
+async def test_a_known_strain_is_never_held():
+    from farm_agent.farmos import fungi_type_cache
+    fungi_type_cache._clear()
+
+    db, disp = FakeDb(), FakeDispatcher()
+    p = _strain_pipeline(db, SEEDING, _fungi_get(["POY"]), disp)
+
+    await p["enqueue"](CTX)
+
+    _, _, extras = db.updates[-1]
+    assert extras.get("needs_review_reason") != "strain_unknown_pending_confirm"
+    assert "send_strain_ask_back" not in [e for e, _ in disp.calls]
+    fungi_type_cache._clear()
+
+
+async def test_a_farmos_outage_passes_through_instead_of_nagging():
+    """taxonomy_missing / HTTP error is our problem, not the farmer's."""
+    from farm_agent.farmos import fungi_type_cache
+    fungi_type_cache._clear()
+
+    async def get(path):
+        return {"ok": False, "status": 500}
+
+    db, disp = FakeDb(), FakeDispatcher()
+    p = _strain_pipeline(db, SEEDING, get, disp)
+
+    await p["enqueue"](CTX)
+
+    _, _, extras = db.updates[-1]
+    assert extras.get("needs_review_reason") != "strain_unknown_pending_confirm"
+    assert "send_strain_ask_back" not in [e for e, _ in disp.calls]
+    fungi_type_cache._clear()
+
+
+async def test_a_seeding_session_asks_once_for_each_distinct_unknown_code():
+    """Codes live per-group on this shape, and duplicates get ONE batched ask."""
+    from farm_agent.farmos import fungi_type_cache
+    fungi_type_cache._clear()
+
+    db, disp = FakeDb(), FakeDispatcher()
+    p = _strain_pipeline(db, SESSION, _fungi_get(["KOY"]), disp)
+
+    res = await p["enqueue"](CTX)
+
+    assert res["status"] == DraftStatus.AWAITING_FARMER
+    _, _, extras = db.updates[-1]
+    body = extras["farmer_facing_preview"]
+    assert body.count("Saw strain 'POY'") == 1
+    assert "Saw strain 'KOY'" not in body  # the known code is never asked about
+    assert len(disp.calls) == 1
+    fungi_type_cache._clear()
+
+
+async def test_without_a_farmos_client_the_gate_is_skipped():
+    """Additive: an unwired deployment degrades to the old behaviour, not a crash."""
+    db, disp = FakeDb(), FakeDispatcher()
+    p = _pipeline(db, _extractor({
+        "ok": True, "drafts": [{"draft": SEEDING, "per_field_confidence": {}}],
+        "draft": SEEDING, "per_field_confidence": {}, "continuity_decision": "start_new",
+        "usage": None,
+    }), dispatcher=disp)
+
+    await p["enqueue"](CTX)
+
+    _, _, extras = db.updates[-1]
+    assert extras.get("needs_review_reason") != "strain_unknown_pending_confirm"
