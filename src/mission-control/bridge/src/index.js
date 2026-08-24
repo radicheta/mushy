@@ -33,6 +33,21 @@ const pool = new Pool({
     port: 5432
 });
 
+// MUSHY-110: an IDLE pooled client that errors has no query to reject, so pg
+// surfaces it as an 'error' event on the pool -- and an unhandled 'error' on an
+// EventEmitter terminates the process. Without this handler a Timescale restart
+// (or failover, or pg_terminate_backend, or an idle timeout) kills the bridge:
+// that is what happened on the 2026-08-24 reboot, 'terminating connection due to
+// administrator command'. Docker restarted us, but the bridge needs ~4 minutes to
+// come back to listening, and the chamber alerter has no frame source for all of
+// it. Log and let the pool discard the dead client; the next query checks out a
+// fresh one. Deliberately does NOT touch dbReady -- that flag is set once at
+// startup and never re-armed, so clearing it here would turn a transient blip
+// into a permanent 503 on every DB route.
+pool.on('error', (err) => {
+    console.error('[db] idle client error (pool will discard it):', err.message);
+});
+
 // Track DB availability — live WS continues even if DB is down
 let dbReady = false;
 
