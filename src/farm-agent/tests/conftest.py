@@ -54,6 +54,44 @@ TEST_ENV = {
 }
 
 
+def pytest_configure(config):
+    """MUSHY-47: fail fast when the DB lane is required but no test DB is up.
+
+    Seven test modules each define their own `_db_reachable()` + `skipif`, and the
+    `pool` fixture skips as well. So a run with no test DB reports something like
+    "1250 passed, 65 skipped" and reads as green while 61 DB-backed tests never
+    executed -- the skip count is a lie about coverage, and the failures it hides
+    become permanently deferrable.
+
+    Checking once here covers every one of those skip paths, including any added
+    later, instead of patching seven modules that will drift apart again. Opt in
+    with REQUIRE_TEST_DB=1; scripts/test-with-db.sh does that for you.
+    """
+    if os.environ.get("REQUIRE_TEST_DB") != "1":
+        return
+    import socket  # noqa: PLC0415
+
+    host, port = _test_db_endpoint()
+    try:
+        with socket.create_connection((host, port), timeout=2):
+            pass
+    except OSError:
+        raise pytest.UsageError(
+            f"REQUIRE_TEST_DB=1 but no test DB is reachable at {host}:{port}. "
+            "Run scripts/test-with-db.sh, or unset REQUIRE_TEST_DB to allow the "
+            "DB-backed tests to skip."
+        ) from None
+
+
+def _test_db_endpoint() -> tuple[str, int]:
+    """Split TEST_ENV's TIMESCALE_HOST into (host, port), defaulting to :5434."""
+    host_raw = TEST_ENV.get("TIMESCALE_HOST", "localhost:5434")
+    if ":" in host_raw:
+        host, port_str = host_raw.rsplit(":", 1)
+        return host, int(port_str)
+    return host_raw, 5434
+
+
 @pytest.fixture
 def tenant_config():
     """TenantConfig built from TEST_ENV (throwaway :5434 postgres, placeholder secrets).
