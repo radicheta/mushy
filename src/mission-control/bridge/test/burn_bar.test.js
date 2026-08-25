@@ -79,5 +79,13 @@ describe('burnBar', () => {
         const out = await Jimp.read(outBuf);
         expect(out.bitmap.width).toBe(320);
         expect(out.bitmap.height).toBe(240);
+
+        // Same bottom-bar check as the 640px case, so the sub-640 font path is
+        // actually exercised and not just "did not throw".
+        const { intToRGBA } = require('jimp');
+        const top = intToRGBA(out.getPixelColor(10, 10));
+        const bottom = intToRGBA(out.getPixelColor(160, 235));
+        expect(top.g).toBeGreaterThan(200);
+        expect(bottom.g).toBeLessThan(top.g);
     });
 });
