@@ -64,6 +64,13 @@
                                       # once a pulse's worth accrues; mean duty is preserved and no pulse
                                       # shorter than min_pulse is ever emitted. Below the floor this is
                                       # worth 143 cycles/day vs 179 and 3.97% delivered vs 3.73%.
+    # D-12 cap horizon at the 480s window: _duty_history is sized ceil(300/window),
+    # so maxlen collapses to 1 and the cap forecasts over n+1 = 16 min, not 8.
+    # Mode C crash recovery therefore runs up to 14.4 min continuous relay ON
+    # (was 5.4) and recovers slower in mean terms (78.7% vs 87.9% over the first
+    # hour). ACCEPTED 2026-08-26 as a fair price for the steady-state wear and
+    # efficiency gains -- decision, not oversight. Do not "fix" this without
+    # revisiting that call. See MUSHY-116.
     max_duty_5min_avg: 0.90           # D-12 — rolling 5-min duty cap (raised 0.40→0.90 2026-05-02 after blackout-recovery RH stuck at 79% with PID demanding duty=1.0; see 999.x backlog re: cap-aware recovery mode)
     duty_topic_timeout_seconds: 5.0   # defensive OFF if duty subscription silent
 
