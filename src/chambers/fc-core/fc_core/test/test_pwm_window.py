@@ -123,3 +123,39 @@ def test_deployed_window_caps_relay_cycles_and_holds_ripple():
     assert sim.relay_cycles <= day / cfg.window_s
     off_leg_min = (cfg.window_s - max(sim.pulse_lengths)) / 60.0
     assert off_leg_min * 0.15 < 1.5, 'worst-case ripple must stay inside the band'
+
+
+def test_thirty_second_floor_without_banking_is_a_cliff_at_equilibrium():
+    """MUSHY-116: why min_pulse 30 and accumulate_subthreshold are coupled.
+
+    fc1's measured requirement is ~5% delivered duty. At a 480s window with
+    ~6s pipe transit that needs a 30s pulse -- exactly the 30s floor. So the
+    floor lands ON the operating point: a hair below it, the whole window is
+    discarded and delivery is zero, not merely reduced. That discontinuity is
+    a limit-cycle generator. Banking removes it.
+    """
+    cfg = dict(window_s=480.0, min_pulse_s=30.0, max_duty_5min_avg=0.90)
+    just_below = 0.062          # 29.8s commanded -- under the 30s floor
+
+    naive = _mean_delivered(PwmSimulator(PwmConfig(accumulate=False, **cfg)),
+                            just_below, 86400)
+    banked = _mean_delivered(PwmSimulator(PwmConfig(accumulate=True, **cfg)),
+                             just_below, 86400)
+
+    assert naive == pytest.approx(0.0, abs=1e-9), 'unbanked floor swallows the window whole'
+    assert banked > 0.03, 'banking must keep delivery continuous below the floor'
+
+
+def test_deployed_floor_beats_the_old_one_on_both_wear_and_efficiency():
+    """The 10 -> 30 change only pays off with banking; check both claims."""
+    def run(min_pulse, accumulate):
+        sim = PwmSimulator(PwmConfig(window_s=480.0, min_pulse_s=min_pulse,
+                                     max_duty_5min_avg=0.90, accumulate=accumulate))
+        total = sum(sim.step(0.05, 1.0) for _ in range(86400))
+        return sim.relay_cycles, total / 86400
+
+    old_cycles, old_delivered = run(10.0, False)     # what fc1 runs today
+    new_cycles, new_delivered = run(30.0, True)      # deployed config
+
+    assert new_cycles < old_cycles, 'fewer, longer pulses'
+    assert new_delivered > old_delivered, 'less of each pulse lost to pipe transit'

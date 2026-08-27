@@ -49,7 +49,21 @@
                                       # (worst ~1.0) inside the +/-1.5 %RH fruiting band.
                                       # Side effect: min-pulse duty floor falls 10/120=8.3% -> 10/480=2.1%,
                                       # so the feather's gentle-trim region is now directly expressible.
-    min_pulse_seconds: 10.0           # D-11 LOCKED — empirical fog-visibility floor
+    min_pulse_seconds: 30.0           # D-11 unlocked 2026-08-26 (MUSHY-116): 10->30.
+                                      # The 10s figure was the farmer's fog-visibility floor, but it was
+                                      # measured THROUGH the ~6s pipe dead time: a 10s pulse is only 40%
+                                      # efficient at the outlet (~4s of vapour). A 30s pulse is 80%.
+                                      # REQUIRES accumulate_subthreshold below. At the 480s window the
+                                      # 30s floor is a 6.25% duty floor, and the chamber's equilibrium
+                                      # command is also 6.25% — without banking, delivery is a CLIFF at
+                                      # exactly the operating point (6.25%->4.97%, 6.24%->0.00%), which
+                                      # manufactures a limit cycle. With banking the curve is continuous.
+    accumulate_subthreshold: true     # MUSHY-116 — REQUIRED by min_pulse_seconds: 30 above, do not
+                                      # disable one without the other. Banks commanded duty too small to
+                                      # express as a legal pulse and spends it as one full-length pulse
+                                      # once a pulse's worth accrues; mean duty is preserved and no pulse
+                                      # shorter than min_pulse is ever emitted. Below the floor this is
+                                      # worth 143 cycles/day vs 179 and 3.97% delivered vs 3.73%.
     max_duty_5min_avg: 0.90           # D-12 — rolling 5-min duty cap (raised 0.40→0.90 2026-05-02 after blackout-recovery RH stuck at 79% with PID demanding duty=1.0; see 999.x backlog re: cap-aware recovery mode)
     duty_topic_timeout_seconds: 5.0   # defensive OFF if duty subscription silent
 
