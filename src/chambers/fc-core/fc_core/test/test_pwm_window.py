@@ -103,3 +103,23 @@ def test_accumulation_discards_nothing():
     sim = PwmSimulator(cfg)
     _mean_delivered(sim, 0.05, 14400)
     assert sim.commanded_but_discarded_s == 0.0
+
+
+def test_deployed_window_caps_relay_cycles_and_holds_ripple():
+    """MUSHY-116: fc_config.yaml pwm_window_seconds 120 -> 480.
+
+    Cycles/day are set by window length, not demand: one ON edge per window
+    that carries a pulse. 480s caps the relay at 180/day (was 720). The cost
+    is a longer OFF leg; at ~20 pct duty that is 6.4 min, and fc1's measured
+    off-state decay of 0.15 %RH/min worst case keeps the ripple inside the
+    +/-1.5 %RH fruiting band.
+    """
+    day = 86400
+    cfg = PwmConfig(window_s=480.0, min_pulse_s=10.0, max_duty_5min_avg=0.90)
+    sim = PwmSimulator(cfg)
+    for _ in range(day):
+        sim.step(0.20, dt_s=1.0)
+
+    assert sim.relay_cycles <= day / cfg.window_s
+    off_leg_min = (cfg.window_s - max(sim.pulse_lengths)) / 60.0
+    assert off_leg_min * 0.15 < 1.5, 'worst-case ripple must stay inside the band'

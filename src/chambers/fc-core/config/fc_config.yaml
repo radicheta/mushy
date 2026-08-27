@@ -42,7 +42,13 @@
     pid_setpoint_ramp_seconds: 30.0  # D-07
     bypass_threshold: 0.05            # D-10 — Mode C entry; 2.5%→5% 2026-06-21 (calibration): reserve full-ON open-loop for genuine crashes (RH < ~90.5%), let the feathered PID own normal dips
     # Slow-PWM (fc_pwm_driver — Phase 27)
-    pwm_window_seconds: 120.0         # D-08 LOCKED
+    pwm_window_seconds: 480.0         # D-08 unlocked 2026-08-26 (MUSHY-116): 120->480.
+                                      # 720 windows/day -> 180, so relay edges drop ~400/day -> <=180.
+                                      # Measured chamber RH decay with the humidifier off is 0.07 %RH/min
+                                      # (worst 0.15) so the 6.4 min OFF leg at ~20% duty ripples ~0.5 %RH
+                                      # (worst ~1.0) inside the +/-1.5 %RH fruiting band.
+                                      # Side effect: min-pulse duty floor falls 10/120=8.3% -> 10/480=2.1%,
+                                      # so the feather's gentle-trim region is now directly expressible.
     min_pulse_seconds: 10.0           # D-11 LOCKED — empirical fog-visibility floor
     max_duty_5min_avg: 0.90           # D-12 — rolling 5-min duty cap (raised 0.40→0.90 2026-05-02 after blackout-recovery RH stuck at 79% with PID demanding duty=1.0; see 999.x backlog re: cap-aware recovery mode)
     duty_topic_timeout_seconds: 5.0   # defensive OFF if duty subscription silent
