@@ -23,7 +23,7 @@ _EMPTY: dict = {"file_ids": [], "skipped": [], "failed": []}
 
 
 async def upload_draft_attachments(
-    client: dict, draft: dict, ctx: dict | None, asset_ids: list
+    client: dict, draft: dict, ctx: dict | None, asset_ids: list, bundle: str = "fungi"
 ) -> dict:
     """Upload a draft's captured photos to the first target asset's image field.
 
@@ -33,6 +33,10 @@ async def upload_draft_attachments(
 
     The field-scoped binary route is the only one used. The legacy file route
     415s on this farmOS.
+
+    MUSHY-133: bundle is the resolved asset's own bundle. Hardcoding fungi here
+    would POST an animal's photo to /api/asset/fungi/<animal-uuid>/image, which
+    is a 404 on a uuid that bundle does not own.
     """
     capture_ids = draft.get("source_capture_ids")
     capture_ids = capture_ids if isinstance(capture_ids, list) else []
@@ -48,5 +52,5 @@ async def upload_draft_attachments(
         return dict(_EMPTY)
 
     return await upload_field_attachments(
-        client, "/api/asset/fungi", asset_ids[0], "image", paths
+        client, f"/api/asset/{bundle}", asset_ids[0], "image", paths
     )

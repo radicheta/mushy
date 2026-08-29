@@ -29,7 +29,7 @@ import logging
 import re
 import urllib.parse
 
-from farm_agent.farmos.assets import find_asset_by_name
+from farm_agent.farmos.assets import find_asset_any_bundle
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +157,9 @@ async def check_asset_refs(client: dict, refs: list[str]) -> dict:
     out: dict = {}
     for ref in refs:
         try:
-            found = await find_asset_by_name(client, ref)
+            # MUSHY-133: any bundle. Fungi-only meant the farmer was told
+            # "New in farmOS, will be created: Kimba" about asset--animal id 1.
+            found = await find_asset_any_bundle(client, ref)
         except Exception as e:  # noqa: BLE001 -- a check failure is not a miss
             logger.warning("[ref_check] lookup threw for %s: %s", ref, e)
             out[ref] = {"status": "unchecked", "near_misses": []}

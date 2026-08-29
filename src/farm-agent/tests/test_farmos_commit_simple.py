@@ -556,7 +556,7 @@ class TestCommitActivityMintsAbsentBlock:
     async def test_an_unreachable_lookup_never_mints(self):
         """A lookup that could not reach farmOS is not a miss (qr.py D-06).
         Treating it as one would duplicate a block that is already there."""
-        import farm_agent.farmos.commits.commit_activity as mod
+        import farm_agent.farmos.commits.targets as mod
         client = make_mock_client()
         broken = AsyncMock(return_value={"found": False, "error": "http_network", "path": "id_tag"})
         with pytest.MonkeyPatch.context() as mp:
@@ -568,7 +568,7 @@ class TestCommitActivityMintsAbsentBlock:
 
     async def test_a_500_on_lookup_carries_its_status_through(self):
         """So the watchdog can tell a retryable 500 from a terminal 403."""
-        import farm_agent.farmos.commits.commit_activity as mod
+        import farm_agent.farmos.commits.targets as mod
         client = make_mock_client()
         broken = AsyncMock(return_value={"found": False, "error": "http_500", "path": "id_tag"})
         with pytest.MonkeyPatch.context() as mp:
@@ -672,3 +672,105 @@ class TestCommitActivityUploadsPhotos:
         assert r["ok"] is True
         assert len(client["_created"]["assets"]) == 1
         assert r["file_ids"], "the photo should attach to the freshly minted block"
+
+
+# ---------------------------------------------------------------------------
+# Non-fungi asset resolution (MUSHY-133)
+# ---------------------------------------------------------------------------
+
+class TestResolvesNonFungiAssets:
+    """Every lookup was hardcoded to /api/asset/fungi, so the agent could not
+    see the other 34 assets on the farm.
+
+    Observed 2026-08-29: the farmer photographed Kimba, the farm dog. She is
+    asset--animal drupal id 1, active, one of the oldest assets in the record.
+    The observation failed with observation_requires_target as though she did
+    not exist, and ref_check would have offered to create her.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clear_name_cache(self):
+        assets_mod._NAME_CACHE.clear()
+        yield
+        assets_mod._NAME_CACHE.clear()
+
+    @pytest.fixture
+    def kimba_client(self):
+        """A mock client that owns Kimba in the animal bundle only."""
+        client = make_mock_client()
+        inner = client["get"]
+
+        async def get(path):
+            if "/api/asset/animal" in path and "Kimba" in path:
+                return _ok_resp(200, {"data": [{
+                    "id": "976f7384-39e4-4396-866e-71aa70c2e398",
+                    "type": "asset--animal",
+                    "attributes": {"name": "Kimba"},
+                }]})
+            if "/api/asset/" in path and "/api/asset/fungi" not in path:
+                return _ok_resp(200, {"data": []})
+            return await inner(path)
+
+        client["get"] = get
+        return client
+
+    async def test_an_observation_about_the_farm_dog_commits(self, kimba_client):
+        r = await commit_observation(kimba_client, {
+            "id": "d-kimba", "log_type": "observation",
+            "draft_json": {"qr_codes": ["Kimba"], "notes": "Resting on pavement.",
+                           "timestamp": 1700000000},
+        })
+        assert r["ok"] is True, r
+        assets = kimba_client["_created"]["logs"][0]["payload"]["data"]["relationships"]["asset"]["data"]
+        assert assets[0]["id"] == "976f7384-39e4-4396-866e-71aa70c2e398"
+
+    async def test_a_fungi_block_still_resolves_first(self):
+        """The common path must not regress: fungi is checked before anything else."""
+        client = make_mock_client(known_assets_by_qr={"Q1": "asset-1"})
+        r = await commit_observation(client, {
+            "id": "d1", "log_type": "observation",
+            "draft_json": {"qr_codes": ["Q1"], "notes": "n", "timestamp": 1700000000},
+        })
+        assert r["ok"] is True
+        assets = client["_created"]["logs"][0]["payload"]["data"]["relationships"]["asset"]["data"]
+        assert assets[0]["id"] == "asset-1"
+
+    async def test_a_genuinely_unknown_ref_still_fails(self):
+        client = make_mock_client()
+        r = await commit_observation(client, {
+            "id": "d1", "log_type": "observation",
+            "draft_json": {"qr_codes": ["NoSuchThing"], "notes": "n", "timestamp": 1700000000},
+        })
+        assert r["ok"] is False
+        assert r["reason"] == "observation_requires_target"
+
+    async def test_an_activity_resolves_the_dog_instead_of_minting_a_duplicate(self, kimba_client):
+        """The dangerous case: a non-fungi asset whose name parses as a block
+        name would have been minted as a duplicate fungi asset shadowing it."""
+        r = await commit_activity(kimba_client, {
+            "id": "d1", "log_type": "activity",
+            "draft_json": {"activity_subtype": "relocate", "qr_codes": ["Kimba"],
+                           "timestamp": 1700000000},
+        })
+        assert r["ok"] is True
+        assert kimba_client["_created"]["assets"] == [], "must not mint over an existing asset"
+
+    async def test_a_photo_uploads_to_the_assets_own_bundle(self, kimba_client, tmp_path):
+        """Hardcoding fungi would POST an animal's photo to
+        /api/asset/fungi/<animal-uuid>/image, a 404 on a uuid fungi never owned."""
+        jpg = tmp_path / "k.jpg"
+        jpg.write_bytes(b"\xff\xd8\xff\xe0 jpeg")
+        seen = {}
+        inner = kimba_client["post_binary"]
+
+        async def post_binary(url, data, filename=None, opts=None):
+            seen["url"] = url
+            return await inner(url, data, filename=filename, opts=opts)
+
+        kimba_client["post_binary"] = post_binary
+        r = await commit_observation(kimba_client, {
+            "id": "d1", "log_type": "observation", "source_capture_ids": ["c1"],
+            "draft_json": {"qr_codes": ["Kimba"], "notes": "n", "timestamp": 1700000000},
+        }, {"capturePathsFor": AsyncMock(return_value=[str(jpg)])})
+        assert r["ok"] is True
+        assert "/api/asset/animal/" in seen.get("url", ""), seen

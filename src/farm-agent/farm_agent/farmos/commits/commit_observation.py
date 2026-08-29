@@ -27,8 +27,8 @@ import time
 from farm_agent.farmos.farm_time import ymd
 
 from farm_agent.farmos.commits.attachments import upload_draft_attachments
+from farm_agent.farmos.commits.targets import resolve_asset_targets
 from farm_agent.farmos.logs import create_log
-from farm_agent.farmos.qr import resolve_qr
 
 log = logging.getLogger(__name__)
 
@@ -80,17 +80,25 @@ async def commit_observation(client: dict, draft: dict, ctx: dict | None = None)
     qr_codes = dj.get("qr_codes") if isinstance(dj.get("qr_codes"), list) else []
     timestamp = dj["timestamp"] if isinstance(dj.get("timestamp"), (int, float)) else time.time()
 
-    asset_ids = []
-    for qr in qr_codes:
-        r = await resolve_qr(client, qr)
-        if r.get("found") and r.get("asset_id"):
-            asset_ids.append(r["asset_id"])
+    # MUSHY-133: resolves across every asset bundle, not just fungi. The farm
+    # dog is asset--animal; observing her used to fail as though she did not
+    # exist.
+    res = await resolve_asset_targets(client, qr_codes)
+    if not res.get("ok"):
+        return {
+            "ok": False,
+            "reason": res.get("reason"),
+            "http_status": res.get("http_status"),
+        }
+    targets = res["targets"]
+    asset_ids = [t[0] for t in targets]
 
     if not asset_ids:
         return {"ok": False, "reason": "observation_requires_target"}
 
-    # Photo upload: shared with commit_activity since MUSHY-131.
-    up_res = await upload_draft_attachments(client, draft, ctx, asset_ids)
+    # Photo upload: shared with commit_activity since MUSHY-131. The photo hangs
+    # off the first resolved asset, in that asset's own bundle (MUSHY-133).
+    up_res = await upload_draft_attachments(client, draft, ctx, asset_ids, targets[0][1])
 
     attachments_failed = up_res.get("failed") or []
     attachments_skipped = up_res.get("skipped") or []

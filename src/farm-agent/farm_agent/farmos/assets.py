@@ -114,6 +114,62 @@ async def find_asset_by_name(client: dict, name: str) -> dict:
     return {"found": False}
 
 
+# MUSHY-133: every lookup in this module was hardcoded to the fungi bundle, so
+# the agent could not see the other 34 assets on the farm. Kimba the farm dog is
+# asset--animal id 1; an observation naming her failed as though she did not
+# exist, and ref_check offered to "create" her.
+#
+# Fungi first so the common path costs one request and keeps the name cache.
+# Creation stays fungi-only on purpose: this list is for RESOLUTION.
+RESOLVABLE_BUNDLES = ("fungi", "animal", "plant", "structure", "group", "land", "equipment", "water")
+
+
+async def find_asset_any_bundle(client: dict, name: str) -> dict:
+    """Resolve name -> (asset_id, bundle) across every asset bundle.
+
+    Deliberately NOT a widening of find_asset_by_name. That one feeds
+    upsert_fungi_asset's create-or-patch decision, and if it started returning
+    an animal that happens to share a block's name, the upsert would PATCH the
+    animal as a fungi asset. Resolution and creation need different scopes.
+
+    Only the fungi step touches the LRU name cache, for the same reason: a
+    cached non-fungi id would leak into the upsert path through the cache.
+
+    A transport failure on ANY bundle is returned as an error rather than a
+    miss, matching find_asset_by_name. "I could not look" is not "not there".
+
+    Returns:
+      {"found": True, "asset_id": str, "bundle": str}
+      {"found": False}
+      {"found": False, "error": "http_<status|network>"}
+    """
+    fungi = await find_asset_by_name(client, name)
+    if fungi.get("found"):
+        return {"found": True, "asset_id": fungi["asset_id"], "bundle": "fungi"}
+    if fungi.get("error"):
+        return fungi
+
+    enc = urllib.parse.quote(name, safe="")
+    for bundle in RESOLVABLE_BUNDLES:
+        if bundle == "fungi":
+            continue
+        r = await client["get"](f"/api/asset/{bundle}?filter[name][value]={enc}")
+        if not r["ok"]:
+            status = r.get("status")
+            # A bundle this farmOS does not expose is a 404 on the collection,
+            # which is a fact about the schema, not a failed lookup. Keep going.
+            if status == 404:
+                continue
+            return {
+                "found": False,
+                "error": "http_" + (str(status) if status else "network"),
+            }
+        arr = (r.get("body") or {}).get("data")
+        if isinstance(arr, list) and arr:
+            return {"found": True, "asset_id": arr[0]["id"], "bundle": bundle}
+    return {"found": False}
+
+
 async def _build_asset_body(client: dict, opts: dict) -> dict:
     """Internal payload builder shared by create_fungi_asset and upsert_fungi_asset.
 

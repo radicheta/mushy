@@ -23,8 +23,8 @@ from farm_agent.farmos.farm_time import ymd
 
 from farm_agent.farmos import assets
 from farm_agent.farmos.commits.attachments import upload_draft_attachments
+from farm_agent.farmos.commits.targets import resolve_asset_targets
 from farm_agent.farmos.logs import create_log
-from farm_agent.farmos.qr import resolve_qr
 from farm_agent.farmos.ref_check import strain_code_from_ref
 
 log = logging.getLogger(__name__)
@@ -33,17 +33,6 @@ log = logging.getLogger(__name__)
 def _ymd(unix_sec: float) -> str:
     """Format unix seconds as YYYY-MM-DD (UTC). Mirrors _ymd() from commit-activity.js."""
     return ymd(unix_sec)
-
-
-def _status_from_lookup_error(error: str) -> int | None:
-    """The HTTP status inside a qr.py error string ("http_404", "http_network").
-
-    Carried through so _is_transient can tell a 500 from a 403 on the far side.
-    A lookup that never got a status keeps http_status None and is recognised
-    by its "network" reason instead.
-    """
-    digits = (error or "").rsplit("_", 1)[-1]
-    return int(digits) if digits.isdigit() else None
 
 
 async def commit_activity(client: dict, draft: dict, ctx: dict | None = None) -> dict:
@@ -59,28 +48,25 @@ async def commit_activity(client: dict, draft: dict, ctx: dict | None = None) ->
     timestamp = dj["timestamp"] if isinstance(dj.get("timestamp"), (int, float)) else (time.time())
     subtype = dj.get("activity_subtype") or "activity"
 
-    asset_ids = []
-    absent: list[str] = []
-    for qr in qr_codes:
-        r = await resolve_qr(client, qr)
-        if r.get("found") and r.get("asset_id"):
-            asset_ids.append(r["asset_id"])
-        elif r.get("error"):
-            # A lookup that could not reach farmOS is NOT a miss (qr.py D-06).
-            # Minting on it would create a duplicate of a block that is already
-            # there, so the whole commit stops and stays retryable instead.
-            return {
-                "ok": False,
-                "reason": r["error"],
-                "http_status": _status_from_lookup_error(r["error"]),
-            }
-        else:
-            absent.append(qr)
+    # MUSHY-133: resolves across every asset bundle before considering a mint.
+    # Without this an activity naming a non-fungi asset would be "absent" and,
+    # if its name happened to look like a block name, minted as a DUPLICATE
+    # fungi asset shadowing the real one.
+    res = await resolve_asset_targets(client, qr_codes)
+    if not res.get("ok"):
+        return {
+            "ok": False,
+            "reason": res.get("reason"),
+            "http_status": res.get("http_status"),
+        }
+    targets = res["targets"]
+    asset_ids = [t[0] for t in targets]
+    absent = res["absent"]
 
-    # MUSHY-126: farmOS confirmed these refs are absent, and the farmer already
-    # approved a confirmation that said "New in farmOS, will be created". Before
-    # this the handler resolved only, so an activity on a block that farmOS had
-    # never heard of could never commit at all.
+    # MUSHY-126: farmOS confirmed these refs are absent from every bundle, and
+    # the farmer already approved a confirmation that said "New in farmOS, will
+    # be created". Before this the handler resolved only, so an activity on a
+    # block that farmOS had never heard of could never commit at all.
     #
     # Same gate as commit_seeding: the strain has to come from the ref itself,
     # and create_missing_fungi_type stays off unless ctx turns it on, so an
@@ -105,6 +91,7 @@ async def commit_activity(client: dict, draft: dict, ctx: dict | None = None) ->
                 "http_status": block_res.get("http_status"),
             }
         asset_ids.append(block_res["asset_id"])
+        targets.append((block_res["asset_id"], "fungi"))
 
     if not asset_ids:
         return {"ok": False, "reason": "no_target_asset_for_activity"}
@@ -112,7 +99,7 @@ async def commit_activity(client: dict, draft: dict, ctx: dict | None = None) ->
     # MUSHY-131: a photo sent with an activity used to be captured, written to
     # disk, referenced by the draft, and then dropped here without a word. Kept
     # best-effort: a photo that will not upload must not unwind a correct log.
-    up_res = await upload_draft_attachments(client, draft, ctx, asset_ids)
+    up_res = await upload_draft_attachments(client, draft, ctx, asset_ids, targets[0][1] if targets else "fungi")
     attachments_failed = up_res.get("failed") or []
     attachments_skipped = up_res.get("skipped") or []
     file_ids = up_res.get("file_ids") or []
