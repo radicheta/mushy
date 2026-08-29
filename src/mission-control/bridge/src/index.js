@@ -792,6 +792,7 @@ async function insertTelemetry(topic, value, tsMs, _tsNs) {
 // temperature and humidity subscriptions so it refreshes whenever either
 // input moves. No-op until both inputs have been seen. Uses the caller's
 // timestamp (the sample that triggered the update) for DB alignment.
+let lastDerivedTs = null;   // ts of the last persisted vpd/water_vapor pair
 async function emitDerived(ts) {
     if (!latestTelemetry.temperature || !latestTelemetry.humidity) return;
     const derived = fc_derived.computeDerived(
@@ -803,6 +804,15 @@ async function emitDerived(ts) {
     latestTelemetry.vpd = { value: derived.vpd, timestamp: ts };
     latestTelemetry.water_vapor = { value: derived.water_vapor, timestamp: ts };
     broadcast({ vpd: derived.vpd, water_vapor: derived.water_vapor, timestamp: ts });
+    // MUSHY-118: temperature and humidity arrive together, so the second caller
+    // of the pair recomputes from the same inputs and used to store the answer
+    // again a few ms later -- half of every fc.vpd / fc.water_vapor row was that
+    // re-stamp. Broadcast still fires on both (a duplicate frame is harmless);
+    // only the write is skipped. Guarded on TIME, not on value: fc.vpd is a
+    // sampled 1Hz series, and a value guard would silently drop real samples
+    // whenever the sensor repeats a reading, turning "unchanged" into a gap.
+    if (lastDerivedTs !== null && Math.abs(ts - lastDerivedTs) < 250) return;
+    lastDerivedTs = ts;
     await insertTelemetry('fc.vpd', derived.vpd, ts, tsNs);
     await insertTelemetry('fc.water_vapor', derived.water_vapor, ts, tsNs);
 }
