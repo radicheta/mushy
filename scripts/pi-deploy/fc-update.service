@@ -7,12 +7,24 @@ Before=fc-core.service
 [Service]
 Type=oneshot
 User=ubuntu
+# Sync to the branch instead of pulling: fc1/prod gets force-pushed, and
+# --ff-only then fails every boot, silently leaving fc1 on old code (MUSHY-117,
+# and the mechanism behind the 2026-06-22 "came up on OLD code" incident).
+# reset --hard is gated on a clean tree so a hand-fix on the Pi is never
+# discarded unattended -- it is kept, and loudly reported.
 ExecStart=/bin/bash -c '\
   cd /home/ubuntu/mushroom_farm_ws/mushy-repo && \
-  git pull --ff-only origin fc1/prod 2>&1 || echo "git pull failed — running on current code"; \
+  if [ -n "$(git status --porcelain)" ]; then \
+    echo "WORKING TREE DIRTY — keeping local changes, NOT syncing to fc1/prod:"; \
+    git status --short; \
+  else \
+    git fetch -q origin && git reset -q --hard origin/fc1/prod \
+      && echo "synced to $(git rev-parse --short HEAD)" \
+      || echo "git sync failed — running on current code"; \
+  fi; \
   cd /home/ubuntu/mushroom_farm_ws && \
   source /opt/ros/jazzy/setup.bash && \
-  colcon build --packages-select fc_core 2>&1 || echo "build failed — running on last good build"'
+  colcon build --packages-select fc_msgs fc_core 2>&1 || echo "build failed — running on last good build"'
 TimeoutStartSec=120
 
 [Install]
