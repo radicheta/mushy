@@ -475,3 +475,103 @@ def test_no_legacy_file_file_route_in_commits():
         cwd="/mnt/slime-kingdom/opt/mushy/src/farm-agent",
     )
     assert result.stdout.strip() == "", f"Legacy /api/file/file route found: {result.stdout}"
+
+
+# ---------------------------------------------------------------------------
+# commit_activity: minting an absent block (MUSHY-126)
+# ---------------------------------------------------------------------------
+
+class TestCommitActivityMintsAbsentBlock:
+    """The confirmation says "New in farmOS, will be created". This is the code
+    that has to keep that promise.
+
+    Draft 91a9c622b3 (2026-08-29): a relocate onto 260519_WIN_4, a block farmOS
+    had never heard of. The handler resolved only, so the commit could never
+    succeed no matter how many times it was retried.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clear_name_cache(self):
+        """assets._NAME_CACHE is module-level and nothing else in this suite
+        clears it, so a block minted by one test is "found" by the next."""
+        assets_mod._NAME_CACHE.clear()
+        yield
+        assets_mod._NAME_CACHE.clear()
+
+    _DRAFT = {
+        "id": "d-mushy126", "log_type": "activity",
+        "draft_json": {
+            "activity_subtype": "relocate",
+            "qr_codes": ["260519_WIN_4"],
+            "notes": "Moved into FC1.",
+            "timestamp": 1700000000,
+        },
+    }
+
+    async def test_absent_block_is_created_and_logged(self):
+        client = make_mock_client()
+        r = await commit_activity(client, self._DRAFT)
+        assert r["ok"] is True, r
+        created = client["_created"]["assets"]
+        assert len(created) == 1, "the absent block should have been minted"
+        assert created[0]["payload"]["data"]["attributes"]["name"] == "260519_WIN_4"
+        assert len(client["_created"]["logs"]) == 1
+
+    async def test_strain_comes_from_the_block_name(self):
+        """260519_WIN_4 carries its own fungi_type. Nothing else on the draft does."""
+        client = make_mock_client()
+        await commit_activity(client, self._DRAFT)
+        rels = client["_created"]["assets"][0]["payload"]["data"]["relationships"]
+        assert rels["fungi_type"]["data"][0]["id"] == "ft-win"
+
+    async def test_an_existing_block_is_still_never_minted(self):
+        client = make_mock_client(known_assets_by_name={"260519_WIN_4": "asset-existing"})
+        r = await commit_activity(client, self._DRAFT)
+        assert r["ok"] is True
+        assert client["_created"]["assets"] == [], "resolved refs must not be re-created"
+
+    async def test_a_ref_that_is_not_a_block_name_is_not_invented(self):
+        """A bare QR sticker says nothing about strain. Guessing one would put a
+        junk asset in the farm record, so this still fails honestly."""
+        client = make_mock_client()
+        r = await commit_activity(client, {
+            "id": "d1", "log_type": "activity",
+            "draft_json": {"activity_subtype": "water", "qr_codes": ["Q-UNKNOWN"], "timestamp": 1700000000},
+        })
+        assert r["ok"] is False
+        assert r["reason"] == "no_target_asset_for_activity"
+        assert client["_created"]["assets"] == []
+
+    async def test_an_unknown_strain_fails_instead_of_minting_a_taxonomy_term(self):
+        """create_missing_fungi_type is off by default, and stays off here."""
+        client = make_mock_client()
+        r = await commit_activity(client, {
+            "id": "d1", "log_type": "activity",
+            "draft_json": {"activity_subtype": "relocate", "qr_codes": ["260519_ZZZ_4"], "timestamp": 1700000000},
+        })
+        assert r["ok"] is False
+        assert r["reason"] == "fungi_type_not_found"
+        assert client["_created"]["assets"] == []
+
+    async def test_an_unreachable_lookup_never_mints(self):
+        """A lookup that could not reach farmOS is not a miss (qr.py D-06).
+        Treating it as one would duplicate a block that is already there."""
+        import farm_agent.farmos.commits.commit_activity as mod
+        client = make_mock_client()
+        broken = AsyncMock(return_value={"found": False, "error": "http_network", "path": "id_tag"})
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(mod, "resolve_qr", broken)
+            r = await commit_activity(client, self._DRAFT)
+        assert r["ok"] is False
+        assert r["reason"] == "http_network"
+        assert client["_created"]["assets"] == [], "must not mint on an unanswered lookup"
+
+    async def test_a_500_on_lookup_carries_its_status_through(self):
+        """So the watchdog can tell a retryable 500 from a terminal 403."""
+        import farm_agent.farmos.commits.commit_activity as mod
+        client = make_mock_client()
+        broken = AsyncMock(return_value={"found": False, "error": "http_500", "path": "id_tag"})
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(mod, "resolve_qr", broken)
+            r = await commit_activity(client, self._DRAFT)
+        assert r["http_status"] == 500

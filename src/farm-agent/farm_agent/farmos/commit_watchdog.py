@@ -45,8 +45,13 @@ from farm_agent.farmos.fidelity_gate import check_fidelity, load_fidelity_csv
 
 log = logging.getLogger(__name__)
 
-# Regex for transient reason strings (port of commit-watchdog.js _isTransient lines 12-13)
-_TRANSIENT_PATTERN = re.compile(r"timeout|abort|econnreset|econnrefused", re.IGNORECASE)
+# Regex for transient reason strings (port of commit-watchdog.js _isTransient lines 12-13).
+# MUSHY-126 widened it to the two other ways a dead transport names itself:
+# "http_network" is what logs.py/assets.py emit when the request got no status
+# at all, and "fetch failed" is the Node-era wording still present in old rows.
+_TRANSIENT_PATTERN = re.compile(
+    r"timeout|abort|econnreset|econnrefused|network|fetch failed", re.IGNORECASE
+)
 
 
 def _is_transient(result: dict | None) -> bool:
@@ -55,20 +60,28 @@ def _is_transient(result: dict | None) -> bool:
     Port of commit-watchdog.js _isTransient() lines 8-14.
 
     Transient when:
-      - result is None/falsy (network abort before response)
-      - http_status is None (no response received)
+      - result is None/falsy (nothing came back at all)
+      - reason names a transport failure (_TRANSIENT_PATTERN)
       - http_status >= 500 (server error)
-      - reason matches timeout|abort|econnreset|econnrefused (network/abort pattern)
+
+    MUSHY-126: "http_status is None" USED to mean transient on its own, on the
+    reading that no status means no response. But a handler that fails its own
+    pre-flight check never makes an HTTP call, so it has no status either, and
+    every one of those was reported to the farmer as "the server was
+    unreachable. Nothing is wrong with your entry." That is the exact lie
+    MUSHY-75 set out to remove, reintroduced from the other side.
+
+    So the question is now asked the other way round. Transport failures name
+    themselves through one formatter ("http_" + status-or-network), a closed
+    set the pattern covers. Anything else carrying a named reason is a local
+    decision the code made, which is terminal and DOES need the farmer to edit.
     """
     if not result:
         return True
+    if _TRANSIENT_PATTERN.search(str(result.get("reason") or "")):
+        return True
     http_status = result.get("http_status")
-    if http_status is None:
-        return True
-    if http_status >= 500:
-        return True
-    reason = str(result.get("reason") or "")
-    return bool(_TRANSIENT_PATTERN.search(reason))
+    return http_status is not None and http_status >= 500
 
 
 # MUSHY-75: farmOS reason codes are internal. A farmer reading

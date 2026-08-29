@@ -29,6 +29,13 @@ import logging
 
 log = logging.getLogger("farm_agent.farmos.commit_recovery")
 
+# Draft ids already reported as having no recoverable identity (MUSHY-126).
+# The watchdog re-lists every parked draft each tick, and a draft this check
+# rejects will be rejected identically forever, so without this the same line
+# lands in the log every 30 seconds for as long as the row exists. Process-local
+# on purpose: a restart is exactly when an operator wants to see it again.
+_REPORTED_UNRECOVERABLE: set = set()
+
 
 def expected_block_names(row: dict | None) -> list[str]:
     """The farmOS asset names this draft would create, or [] if it has none.
@@ -94,11 +101,13 @@ async def recover_transport_parked(pool, find_asset_by_name, db, signal_client) 
         draft_id = (row or {}).get("id")
         names = expected_block_names(row)
         if not names:
-            log.info(
-                "[commit_recovery] draft_id=%s log_type=%s has no stable farmOS "
-                "identity; left parked for a human",
-                draft_id, (row or {}).get("log_type"),
-            )
+            if draft_id not in _REPORTED_UNRECOVERABLE:
+                _REPORTED_UNRECOVERABLE.add(draft_id)
+                log.info(
+                    "[commit_recovery] draft_id=%s log_type=%s has no stable farmOS "
+                    "identity; left parked for a human (logged once per process)",
+                    draft_id, (row or {}).get("log_type"),
+                )
             continue
 
         try:

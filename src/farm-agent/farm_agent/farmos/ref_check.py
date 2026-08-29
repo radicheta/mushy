@@ -40,6 +40,18 @@ _MAX_NEAR_MISSES = 3
 _MAX_EDIT_DISTANCE = 2
 
 
+def strain_code_from_ref(ref: str | None) -> str | None:
+    """The strain code embedded in a block name, or None if it is not one.
+
+    MUSHY-126: a commit that has to mint a block needs its fungi_type, and for
+    a ref the farmer wrote by hand the name IS the only place that says it.
+    Returns None rather than guessing for anything that does not parse as a
+    block name, which keeps "mint it" gated on a ref we actually understand.
+    """
+    match = _BLOCK_NAME_RE.match(ref or "")
+    return match.group(2) if match else None
+
+
 def _ref_values(draft: dict) -> list:
     """Every asset ref this draft shape can carry, in reading order."""
     draft_type = draft.get("type")

@@ -122,3 +122,49 @@ class TestBothPaths:
     ])
     def test_is_ascii(self, result):
         build_failure_ack(result).encode("ascii")
+
+
+class TestLocalValidationIsNotATransportFailure:
+    """MUSHY-126: the same lie, arriving from the other side.
+
+    MUSHY-75 stopped a dead server being reported as bad data. But the fix keyed
+    transport off `http_status is None`, and a handler that fails its own
+    pre-flight check never makes an HTTP call, so it has no status either. Every
+    one of those was then reported as "the server was unreachable. Nothing is
+    wrong with your entry, so there is nothing to fix."
+
+    Draft 91a9c622b3 (2026-08-29): a relocate onto a block farmOS did not have.
+    The farmer was told there was nothing to fix, about an entry that could only
+    be fixed by editing it.
+    """
+
+    def test_the_incident_this_ticket_was_filed_for(self):
+        body = build_failure_ack({"ok": False, "http_status": None,
+                                  "reason": "no_target_asset_for_activity"})
+        assert "unreachable" not in body.lower(), (
+            f"farmOS answered fine; the handler decided this locally: {body!r}"
+        )
+        assert _has_edit_instruction(body)
+
+    def test_it_reaches_the_plain_words_table(self):
+        """The translation already existed. The transient branch shadowed it."""
+        body = build_failure_ack({"ok": False, "http_status": None,
+                                  "reason": "no_target_asset_for_activity"})
+        assert "which bag" in body.lower() or "which block" in body.lower()
+
+    @pytest.mark.parametrize("reason", [
+        "missing_strain", "missing_block_name", "fungi_type_not_found",
+        "ambiguous_qr_seeding", "log_identity_mismatch",
+    ])
+    def test_every_locally_decided_reason_is_terminal(self, reason):
+        """None of these are the network. All of them need the farmer."""
+        body = build_failure_ack({"ok": False, "http_status": None, "reason": reason})
+        assert "unreachable" not in body.lower(), f"{reason!r} is not a dead server"
+
+    @pytest.mark.parametrize("reason", ["http_network", "fetch failed", "timeout"])
+    def test_real_transport_still_reads_as_transport(self, reason):
+        """The formatter that names a dead transport is "http_" + status-or-network.
+        Those must keep the MUSHY-75 wording."""
+        body = build_failure_ack({"ok": False, "http_status": None, "reason": reason})
+        assert "unreachable" in body.lower()
+        assert not _has_edit_instruction(body)

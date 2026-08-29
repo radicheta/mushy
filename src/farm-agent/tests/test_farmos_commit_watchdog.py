@@ -126,9 +126,18 @@ def test_is_transient_none_result():
     assert _is_transient(None) is True
 
 
-def test_is_transient_http_status_none():
+def test_is_transient_http_status_none_with_a_transport_reason():
+    """MUSHY-126 rewrote this case. A missing status used to be transient on its
+    own, which swept up every handler that failed its own pre-flight check and
+    told the farmer their correct entry could not be reached. Now the reason has
+    to say it is the transport."""
     from farm_agent.farmos.commit_watchdog import _is_transient
-    assert _is_transient({"http_status": None, "reason": "server_error"}) is True
+    assert _is_transient({"http_status": None, "reason": "http_network"}) is True
+
+
+def test_is_transient_http_status_none_with_a_local_reason():
+    from farm_agent.farmos.commit_watchdog import _is_transient
+    assert _is_transient({"http_status": None, "reason": "no_target_asset_for_activity"}) is False
 
 
 def test_is_transient_http_status_500():

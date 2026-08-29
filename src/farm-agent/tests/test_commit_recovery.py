@@ -22,9 +22,12 @@ ASCII-only. No em-dashes.
 """
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from farm_agent.farmos.commit_recovery import (
+    _REPORTED_UNRECOVERABLE,
     already_in_farmos,
     expected_block_names,
     recover_transport_parked,
@@ -180,3 +183,48 @@ class TestRecoverTransportParked:
             async def find_transport_parked(self, pool):
                 raise RuntimeError("db gone")
         assert await recover_transport_parked(None, FakeClient().find, Broken(), None) == 0
+
+
+class TestUnrecoverableDraftIsReportedOnce:
+    """MUSHY-126: a draft this check rejects is rejected identically forever.
+
+    The watchdog re-lists every parked draft on a 30s tick, so draft 91a9c622b3
+    wrote the same "left parked for a human" line 2,880 times a day, for a row
+    whose answer could never change.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _fresh_report_set(self):
+        _REPORTED_UNRECOVERABLE.clear()
+        yield
+        _REPORTED_UNRECOVERABLE.clear()
+
+    @pytest.mark.asyncio
+    async def test_repeated_ticks_log_it_once(self, caplog):
+        db = FakeDb([{"id": "obs", "log_type": "activity", "draft_json": {"type": "activity"}}])
+        c = FakeClient(existing=[])
+        with caplog.at_level(logging.INFO, logger="farm_agent.farmos.commit_recovery"):
+            for _ in range(5):
+                await recover_transport_parked(None, c.find, db, None)
+        hits = [r for r in caplog.records if "no stable farmOS identity" in r.getMessage()]
+        assert len(hits) == 1, f"5 ticks produced {len(hits)} log lines"
+
+    @pytest.mark.asyncio
+    async def test_a_second_draft_still_gets_its_own_line(self):
+        """Suppressing per-draft must not suppress the next draft."""
+        db = FakeDb([
+            {"id": "a", "log_type": "activity", "draft_json": {"type": "activity"}},
+            {"id": "b", "log_type": "observation", "draft_json": {"type": "observation"}},
+        ])
+        c = FakeClient(existing=[])
+        await recover_transport_parked(None, c.find, db, None)
+        assert _REPORTED_UNRECOVERABLE == {"a", "b"}
+
+    @pytest.mark.asyncio
+    async def test_it_still_skips_the_draft_every_tick(self):
+        """Only the logging is suppressed. The draft must stay parked."""
+        db = FakeDb([{"id": "obs", "log_type": "activity", "draft_json": {"type": "activity"}}])
+        c = FakeClient(existing=[])
+        for _ in range(3):
+            assert await recover_transport_parked(None, c.find, db, None) == 0
+        assert db.requeued == []
