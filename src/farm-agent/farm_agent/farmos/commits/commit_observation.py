@@ -26,7 +26,7 @@ import logging
 import time
 from farm_agent.farmos.farm_time import ymd
 
-from farm_agent.farmos.files import upload_field_attachments
+from farm_agent.farmos.commits.attachments import upload_draft_attachments
 from farm_agent.farmos.logs import create_log
 from farm_agent.farmos.qr import resolve_qr
 
@@ -89,26 +89,8 @@ async def commit_observation(client: dict, draft: dict, ctx: dict | None = None)
     if not asset_ids:
         return {"ok": False, "reason": "observation_requires_target"}
 
-    # Gather attachment paths via ctx.capturePathsFor (best-effort).
-    capture_ids = draft.get("source_capture_ids")
-    capture_ids = capture_ids if isinstance(capture_ids, list) else []
-    paths: list[str] = []
-    if ctx and callable(ctx.get("capturePathsFor")) and capture_ids:
-        try:
-            paths = await ctx["capturePathsFor"](capture_ids)
-        except Exception:  # noqa: BLE001
-            paths = []
-
-    # Upload attachments to the first asset's image field (field-scoped route).
-    # The legacy file route is NOT used here (415 on this farmOS).
-    if paths:
-        # Use the first resolved asset as the attachment target.
-        target_uuid = asset_ids[0]
-        up_res = await upload_field_attachments(
-            client, "/api/asset/fungi", target_uuid, "image", paths
-        )
-    else:
-        up_res = {"file_ids": [], "skipped": [], "failed": []}
+    # Photo upload: shared with commit_activity since MUSHY-131.
+    up_res = await upload_draft_attachments(client, draft, ctx, asset_ids)
 
     attachments_failed = up_res.get("failed") or []
     attachments_skipped = up_res.get("skipped") or []

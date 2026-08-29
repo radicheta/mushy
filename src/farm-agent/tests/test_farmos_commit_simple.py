@@ -575,3 +575,100 @@ class TestCommitActivityMintsAbsentBlock:
             mp.setattr(mod, "resolve_qr", broken)
             r = await commit_activity(client, self._DRAFT)
         assert r["http_status"] == 500
+
+
+# ---------------------------------------------------------------------------
+# commit_activity: photo upload (MUSHY-131)
+# ---------------------------------------------------------------------------
+
+class TestCommitActivityUploadsPhotos:
+    """A photo sent with an activity used to be captured, stored, referenced by
+    the draft, and then dropped at commit without a word, while the farmer was
+    told "Saved to farmOS".
+
+    Observed 2026-08-29 on draft 0d322e92cd: capture 01M17MEKG6B5WVB6FWR2BA9GSK
+    was message_type=image with a 182KB jpg on disk, and log 308 landed with no
+    photo anywhere in farmOS.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clear_name_cache(self):
+        assets_mod._NAME_CACHE.clear()
+        yield
+        assets_mod._NAME_CACHE.clear()
+
+    def _draft(self, capture_ids=("cap-1",)):
+        return {
+            "id": "d-mushy131", "log_type": "activity",
+            "source_capture_ids": list(capture_ids),
+            "draft_json": {
+                "activity_subtype": "relocate",
+                "qr_codes": ["Q1"],
+                "notes": "Moved into FC1.",
+                "timestamp": 1700000000,
+            },
+        }
+
+    @pytest.fixture
+    def jpg(self):
+        """A real file on disk: upload_field_attachments reads the path, so a
+        made-up one is reported as skipped rather than uploaded."""
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+            f.write(b"\xff\xd8\xff\xe0 jpeg bytes")
+            path = f.name
+        yield path
+        os.unlink(path)
+
+    def _ctx(self, paths):
+        return {"capturePathsFor": AsyncMock(return_value=list(paths))}
+
+    async def test_the_photo_is_uploaded(self, jpg):
+        client = make_mock_client(known_assets_by_qr={"Q1": "asset-1"})
+        r = await commit_activity(client, self._draft(), self._ctx([jpg]))
+        assert r["ok"] is True
+        assert r["file_ids"], "the photo should have produced a file id"
+
+    async def test_the_log_references_the_uploaded_file(self, jpg):
+        """Without this the photo exists in farmOS but not on the log."""
+        client = make_mock_client(known_assets_by_qr={"Q1": "asset-1"})
+        r = await commit_activity(client, self._draft(), self._ctx([jpg]))
+        rels = client["_created"]["logs"][0]["payload"]["data"]["relationships"]
+        assert "file" in rels
+        assert [f["id"] for f in rels["file"]["data"]] == r["file_ids"]
+
+    async def test_a_draft_with_no_photo_still_commits(self):
+        client = make_mock_client(known_assets_by_qr={"Q1": "asset-1"})
+        r = await commit_activity(client, self._draft(capture_ids=()), self._ctx([]))
+        assert r["ok"] is True
+        assert r["file_ids"] == []
+
+    async def test_no_ctx_is_not_a_crash(self):
+        """The commit router may dispatch with ctx=None."""
+        client = make_mock_client(known_assets_by_qr={"Q1": "asset-1"})
+        r = await commit_activity(client, self._draft(), None)
+        assert r["ok"] is True
+
+    async def test_a_failed_upload_does_not_unwind_the_log(self, jpg):
+        """Best-effort is load-bearing: the log is correct even if the photo is not."""
+        client = make_mock_client(known_assets_by_qr={"Q1": "asset-1"}, post_binary_ok=False)
+        r = await commit_activity(client, self._draft(), self._ctx([jpg]))
+        assert r["ok"] is True, "a photo failure must not fail the activity"
+        assert r["attachments_failed"], "but it must be surfaced, not swallowed"
+        assert len(client["_created"]["logs"]) == 1
+
+    async def test_a_thrown_path_lookup_does_not_unwind_the_log(self):
+        client = make_mock_client(known_assets_by_qr={"Q1": "asset-1"})
+        ctx = {"capturePathsFor": AsyncMock(side_effect=RuntimeError("capture db down"))}
+        r = await commit_activity(client, self._draft(), ctx)
+        assert r["ok"] is True
+        assert r["file_ids"] == []
+
+    async def test_the_photo_hangs_off_the_minted_block(self, jpg):
+        """MUSHY-126 + MUSHY-131 together: mint the block, then attach to it."""
+        client = make_mock_client()
+        draft = self._draft()
+        draft["draft_json"]["qr_codes"] = ["260519_WIN_4"]
+        r = await commit_activity(client, draft, self._ctx([jpg]))
+        assert r["ok"] is True
+        assert len(client["_created"]["assets"]) == 1
+        assert r["file_ids"], "the photo should attach to the freshly minted block"

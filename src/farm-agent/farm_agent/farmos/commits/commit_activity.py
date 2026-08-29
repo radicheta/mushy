@@ -4,8 +4,9 @@ Faithful Python port of src/agents/alerter/src/farmos/commits/commit-activity.js
 (Phase 40 B7.2 / Phase 62-08).
 
 Resolves QR codes to existing asset ids, mints a block for a ref farmOS
-confirms is absent (MUSHY-126), then POSTs an activity log with
-activity_subtype as the leading token in the name.
+confirms is absent (MUSHY-126), uploads any photos the farmer sent
+(best-effort, MUSHY-131), then POSTs an activity log with activity_subtype as
+the leading token in the name.
 
 Returns the uniform commit envelope:
   {"ok": bool, "asset_ids": list, "log_ids": list, "file_ids": list,
@@ -15,13 +16,18 @@ ASCII-only. No em-dashes. Never-throws at the handler level.
 """
 from __future__ import annotations
 
+import logging
 import time
+
 from farm_agent.farmos.farm_time import ymd
 
 from farm_agent.farmos import assets
+from farm_agent.farmos.commits.attachments import upload_draft_attachments
 from farm_agent.farmos.logs import create_log
 from farm_agent.farmos.qr import resolve_qr
 from farm_agent.farmos.ref_check import strain_code_from_ref
+
+log = logging.getLogger(__name__)
 
 
 def _ymd(unix_sec: float) -> str:
@@ -103,20 +109,45 @@ async def commit_activity(client: dict, draft: dict, ctx: dict | None = None) ->
     if not asset_ids:
         return {"ok": False, "reason": "no_target_asset_for_activity"}
 
+    # MUSHY-131: a photo sent with an activity used to be captured, written to
+    # disk, referenced by the draft, and then dropped here without a word. Kept
+    # best-effort: a photo that will not upload must not unwind a correct log.
+    up_res = await upload_draft_attachments(client, draft, ctx, asset_ids)
+    attachments_failed = up_res.get("failed") or []
+    attachments_skipped = up_res.get("skipped") or []
+    file_ids = up_res.get("file_ids") or []
+
+    if attachments_failed:
+        log.warning(
+            "[commit_activity] %d attachment(s) failed draft=%s: %s",
+            len(attachments_failed), draft_id,
+            ", ".join(f.get("reason", "") for f in attachments_failed),
+        )
+
     name = subtype + " " + _ymd(timestamp)
     r = await create_log(client, "activity", {
         "name": name,
         "timestamp": timestamp,
         "asset_ids": asset_ids,
+        "file_ids": file_ids,
         "notes": dj.get("notes") or "",
         "draft_id": draft_id,
     })
     if not r.get("ok"):
-        return {"ok": False, "reason": r.get("reason"), "http_status": r.get("http_status")}
+        return {
+            "ok": False,
+            "reason": r.get("reason"),
+            "http_status": r.get("http_status"),
+            "file_ids": file_ids,
+            "attachments_failed": attachments_failed,
+            "attachments_skipped": attachments_skipped,
+        }
     return {
         "ok": True,
         "asset_ids": [],
         "log_ids": [r["log_id"]],
-        "file_ids": [],
+        "file_ids": file_ids,
+        "attachments_failed": attachments_failed,
+        "attachments_skipped": attachments_skipped,
         "http_status": r.get("http_status"),
     }
