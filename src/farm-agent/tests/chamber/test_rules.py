@@ -86,7 +86,7 @@ def _pi_args(**over):
         ws_connected=True,
         ros_connected=True,
         now_ms=10_000_000,
-        ws_last_connected_ms=None,
+        ws_disconnected_since_ms=None,
         ros_disconnected_since_ms=None,
         fc1_last_msg_ts=None,
     )
@@ -108,11 +108,11 @@ def test_pi_offline_ws_branch_uses_config_threshold(chamber_config):
     cfg = chamber_config(ALERT_PI_OFFLINE_MIN="5")
     now = 10_000_000
     assert rules.is_pi_offline(
-        **_pi_args(ws_connected=False, now_ms=now, ws_last_connected_ms=now - 6 * MIN),
+        **_pi_args(ws_connected=False, now_ms=now, ws_disconnected_since_ms=now - 6 * MIN),
         config=cfg,
     ) is True
     assert rules.is_pi_offline(
-        **_pi_args(ws_connected=False, now_ms=now, ws_last_connected_ms=now - 4 * MIN),
+        **_pi_args(ws_connected=False, now_ms=now, ws_disconnected_since_ms=now - 4 * MIN),
         config=cfg,
     ) is False
 

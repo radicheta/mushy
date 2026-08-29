@@ -48,14 +48,15 @@ def is_pi_offline(
     ws_connected: bool,
     ros_connected: bool | None,
     now_ms: int,
-    ws_last_connected_ms: int | None,
+    ws_disconnected_since_ms: int | None,
     ros_disconnected_since_ms: int | None,
     fc1_last_msg_ts: int | None,
     config,
 ) -> bool:
     """True when the chamber looks dark. Port of rules.js:47-69. Three OR-triggers:
 
-      1. WS disconnected for > pi_offline_min minutes
+      1. WS disconnected for > pi_offline_min minutes (measured from the
+         disconnect edge -- MUSHY-123)
       2. ROS disconnected for > pi_offline_min minutes
       3. fc1 publisher silent for > FC1_DARK_THRESHOLD_MS (Phase 46 D-03)
 
@@ -68,8 +69,8 @@ def is_pi_offline(
     """
     threshold_ms = config.pi_offline_min * 60_000
 
-    if not ws_connected and ws_last_connected_ms is not None:
-        if now_ms - ws_last_connected_ms > threshold_ms:
+    if not ws_connected and ws_disconnected_since_ms is not None:
+        if now_ms - ws_disconnected_since_ms > threshold_ms:
             return True
 
     # rules.js:54 tests `=== false` explicitly -- an unknown (None) ROS state is

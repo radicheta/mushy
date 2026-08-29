@@ -544,6 +544,30 @@ def test_pi_firing_suppresses_rh_evaluation(chamber_config):
     assert actions == []
 
 
+def test_brief_ws_reconnect_does_not_fire_pi(chamber_config):
+    """MUSHY-123 -- a 7-second bridge restart must not say the chamber went dark.
+
+    Trigger 1 used to measure now - ws_last_connected_ms, i.e. how long the
+    socket had been UP, so any drop after a long healthy run fired instantly.
+    """
+    cfg = _cfg(chamber_config, ALERT_PI_OFFLINE_MIN="5")
+    st = state.initial_state(BOOT)
+    up = BOOT + 90 * MIN
+    st, _ = state.transition(
+        st, {"type": "pi_liveness", "ws_connected": True, "ros_connected": True}, up, cfg
+    )
+    st, actions = state.transition(
+        st, {"type": "pi_liveness", "ws_connected": False, "ros_connected": True},
+        up + 7_000, cfg,
+    )
+    assert st.per_type["pi"].state == "OK"
+    assert actions == []
+
+    # ...but a real outage still fires once it outlasts the threshold.
+    st, actions = state.transition(st, {"type": "tick"}, up + 6 * MIN, cfg)
+    assert st.per_type["pi"].state == "FIRING"
+
+
 def test_startup_grace_suppresses_pi_for_60s(chamber_config):
     """js:514 -- a literal 60s, not mode_boot_grace_ms."""
     cfg = _cfg(chamber_config, ALERT_PI_OFFLINE_MIN="5")

@@ -109,6 +109,7 @@ class ChamberState:
     last_heartbeat_day: str | None = None
     ws_connected: bool | None = False
     ws_last_connected_ms: int | None = None
+    ws_disconnected_since_ms: int | None = None
     ros_connected: bool | None = False
     ros_disconnected_since_ms: int | None = None
     fc1_last_msg_ts: int | None = None
@@ -132,6 +133,9 @@ def initial_state(now_ms: int) -> ChamberState:
         booted_at_ms=now_ms,
         per_type={t: AlertEntry() for t in ALERT_TYPES},
         ws_last_connected_ms=now_ms,
+        # MUSHY-123: we boot DISCONNECTED, so the down-clock starts now. Keeps
+        # "socket never came up" firing after pi_offline_min, as it always has.
+        ws_disconnected_since_ms=now_ms,
         sht30_last_seen_ms=now_ms,
         scd41_last_seen_ms=now_ms,
     )
@@ -379,7 +383,7 @@ def _eval_pi(nxt, config, now_ms):
         ws_connected=nxt.ws_connected,
         ros_connected=nxt.ros_connected,
         now_ms=now_ms,
-        ws_last_connected_ms=nxt.ws_last_connected_ms,
+        ws_disconnected_since_ms=nxt.ws_disconnected_since_ms,
         ros_disconnected_since_ms=nxt.ros_disconnected_since_ms,
         fc1_last_msg_ts=nxt.fc1_last_msg_ts,
         config=effective,
@@ -614,6 +618,10 @@ def transition(prev: ChamberState, event: dict, now_ms: int, config):
         if ws_connected != nxt.ws_connected:
             if ws_connected:
                 nxt.ws_last_connected_ms = now_ms
+            # MUSHY-123: stamp the DISCONNECT edge, mirroring the ROS branch
+            # below. Measuring from ws_last_connected_ms measured how long the
+            # socket had been UP, so any drop fired PI OFFLINE instantly.
+            nxt.ws_disconnected_since_ms = None if ws_connected else now_ms
             nxt.ws_connected = ws_connected
         if ros_connected != nxt.ros_connected:
             nxt.ros_disconnected_since_ms = None if ros_connected else now_ms
