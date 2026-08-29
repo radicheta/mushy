@@ -23,6 +23,7 @@ T-58-02-03: never-throw try/except -- DB outage degrades to WARNING, pipeline co
 from __future__ import annotations
 
 import logging
+import re
 
 from psycopg_pool import AsyncConnectionPool
 
@@ -164,3 +165,46 @@ async def mark_expired_older_than(pool: AsyncConnectionPool, age_seconds: int) -
     except Exception as e:  # noqa: BLE001 -- fail-open; retention failure is non-critical
         logger.warning("[capture_repo] mark_expired_older_than failed: %s", e)
         return 0
+
+
+# MUSHY-131: the commit handlers have always asked ctx for the photo paths
+# belonging to a draft's captures, and nothing ever provided them, so every
+# photo was dropped in silence. This is that lookup.
+_IMAGE_EXTS = re.compile(r"\.(jpe?g|png|webp|heic|heif|gif)$", re.IGNORECASE)
+
+_PATHS_FOR_CAPTURES_SQL = """
+SELECT attachment_paths
+  FROM signal_capture
+ WHERE id = ANY(%s)
+"""
+
+
+async def image_paths_for_captures(pool: AsyncConnectionPool, capture_ids: list) -> list:
+    """Absolute paths of the IMAGE attachments on these captures.
+
+    Images only. A capture's attachment_paths can also hold the voice note that
+    produced the draft, and farmOS puts photos on the 'image' field, which
+    rejects audio. Uploading an m4a there would earn a 422 and a farmer-visible
+    "attachment failed" for something that was never meant to be a photo.
+
+    NEVER raises: this runs inside the commit watchdog tick, and a photo lookup
+    must not take down a commit that is otherwise fine. A DB failure degrades to
+    "no photos" plus a WARNING, which is the same outcome as before this existed.
+    """
+    if not capture_ids:
+        return []
+    try:
+        async with pool.connection() as conn:
+            cur = await conn.execute(_PATHS_FOR_CAPTURES_SQL, (list(capture_ids),))
+            rows = await cur.fetchall()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[capture_repo] photo path lookup failed: %s", e)
+        return []
+
+    paths = []
+    for row in rows or []:
+        value = row[0] if isinstance(row, (tuple, list)) else row.get("attachment_paths")
+        for p in value or []:
+            if isinstance(p, str) and _IMAGE_EXTS.search(p):
+                paths.append(p)
+    return paths
