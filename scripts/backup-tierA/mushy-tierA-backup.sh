@@ -56,7 +56,7 @@ fi
 mkdir -p "$WORK/payload/elder-plops" "$WORK/payload/fc1" "$WORK/payload/vps"
 
 # elder-plops .env files
-for src in /mnt/slime-kingdom/opt/mushy/.env /mnt/slime-kingdom/shared/farmos/.env; do
+for src in /mnt/slime-kingdom/opt/mushy/.env /mnt/slime-kingdom/shared/farmos/.env /mnt/slime-kingdom/opt/plane/.env; do
   if [ -r "$src" ]; then
     install -m 0600 "$src" "$WORK/payload/elder-plops/$(basename "$(dirname "$src")")-$(basename "$src")" \
       || fail "stage $src"
