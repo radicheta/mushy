@@ -29,6 +29,7 @@ import logging
 from farm_agent.farmos import assets, logs
 from farm_agent.farmos import group_assets, activity_logs
 from farm_agent.farmos.activity_logs import epoch_seconds_for_date
+from farm_agent.farmos.commits.attachments import upload_draft_attachments
 from farm_agent.farmos.files import upload_field_attachments
 
 log = logging.getLogger(__name__)
@@ -214,13 +215,27 @@ async def commit_seeding_session(
             )
             uploaded_file_ids = up_res.get("file_ids") or []
             attachments_failed = up_res.get("failed") or []
-            if attachments_failed:
-                log.warning(
-                    "[commit_seeding_session] %d attachment(s) failed to upload draft=%s: %s",
-                    len(attachments_failed),
-                    draft_id,
-                    ", ".join(f.get("reason", "") for f in attachments_failed),
-                )
+        else:
+            # MUSHY-131: session_page_paths is the notebook-backfill harness key
+            # (Phase 53/54 scanned pages). A photo the farmer sends over Signal
+            # arrives through the draft's captures instead, so that path found
+            # nothing and every live session photo was dropped in silence.
+            # The session group is the right home: the photo is of the session,
+            # not of any one child block.
+            up_res = await upload_draft_attachments(
+                client, draft, ctx, [session_group_id], "group",
+            )
+            uploaded_file_ids = up_res.get("file_ids") or []
+            attachments_failed = up_res.get("failed") or []
+
+        if attachments_failed:
+            log.warning(
+                "[commit_seeding_session] %d attachment(s) failed to upload draft=%s: %s",
+                len(attachments_failed),
+                draft_id,
+                ", ".join(f.get("reason", "") for f in attachments_failed),
+            )
+
 
         child_index = 0
         audit_logger = (ctx or {}).get("audit_logger") if ctx else None

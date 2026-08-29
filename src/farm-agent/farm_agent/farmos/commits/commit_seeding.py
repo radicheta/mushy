@@ -23,10 +23,14 @@ ASCII-only. No em-dashes. Never-throws at the handler level.
 """
 from __future__ import annotations
 
+import logging
 import time
 
 from farm_agent.farmos import assets, logs
+from farm_agent.farmos.commits.attachments import upload_draft_attachments
 from farm_agent.farmos import qr as qr_mod
+
+log = logging.getLogger(__name__)
 
 
 async def commit_seeding(client: dict, draft: dict, ctx: dict | None = None) -> dict:
@@ -108,10 +112,26 @@ async def commit_seeding(client: dict, draft: dict, ctx: dict | None = None) -> 
         note_parts.append("sterilization_batch: " + str(batch_name))
     notes = "\n".join(note_parts)
 
+    # MUSHY-131: the photo of the bag being inoculated. This handler had no
+    # attachment path at all, and seeding is the most common shape on the farm:
+    # 13 of the 21 recoverable dropped photos are seeding. Best-effort, so a
+    # photo that will not upload never unwinds a seeding that is otherwise
+    # correct.
+    up_res = await upload_draft_attachments(client, draft, ctx, [block_id], "fungi")
+    file_ids = up_res.get("file_ids") or []
+    attachments_failed = up_res.get("failed") or []
+    if attachments_failed:
+        log.warning(
+            "[commit_seeding] %d attachment(s) failed draft=%s: %s",
+            len(attachments_failed), draft_id,
+            ", ".join(f.get("reason", "") for f in attachments_failed),
+        )
+
     log_res = await logs.upsert_log(client, "seeding", {
         "name": "Inoc " + (dj.get("block_name") or str(block_id)),
         "timestamp": timestamp,
         "asset_ids": [block_id],
+        "file_ids": file_ids,
         "notes": notes,
         "draft_id": draft_id,
     })
@@ -127,6 +147,7 @@ async def commit_seeding(client: dict, draft: dict, ctx: dict | None = None) -> 
         "ok": True,
         "asset_ids": created_assets,
         "log_ids": [log_res["log_id"]],
-        "file_ids": [],
+        "file_ids": file_ids,
+        "attachments_failed": attachments_failed,
         "http_status": log_res.get("http_status"),
     }

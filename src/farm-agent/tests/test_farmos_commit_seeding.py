@@ -10,6 +10,7 @@ import re
 import urllib.parse
 
 import pytest
+from unittest.mock import AsyncMock
 
 from farm_agent.farmos import assets as assets_mod
 from farm_agent.farmos import fungi_type_cache, fungi_xing_cache
@@ -319,3 +320,66 @@ class TestCommitSeeding:
         r = await commit_seeding(client, d, {})
         assert r["ok"] is False
         assert r["reason"] == "missing_block_name"
+
+
+# ---------------------------------------------------------------------------
+# Seeding photo upload (MUSHY-131)
+# ---------------------------------------------------------------------------
+
+class TestSeedingUploadsPhotos:
+    """commit_seeding had no attachment path at all. Seeding is the most common
+    shape on the farm: 13 of the 21 recoverable dropped photos are seeding.
+    """
+
+    @pytest.fixture
+    def jpg(self, tmp_path):
+        p = tmp_path / "bag.jpg"
+        p.write_bytes(b"\xff\xd8\xff\xe0 jpeg bytes")
+        return str(p)
+
+    def _draft(self):
+        return {
+            "id": "d-seed-photo", "log_type": "seeding",
+            "source_capture_ids": ["cap-1"],
+            "draft_json": {
+                "block_name": "260519_WIN_7", "species_code": "WIN",
+                "qr_codes": [], "timestamp": 1700000000,
+            },
+        }
+
+    @pytest.mark.asyncio
+    async def test_the_bag_photo_is_uploaded_and_referenced(self, jpg):
+        client = make_seeding_mock_client()
+        # This mock had no post_binary at all, which is itself the finding:
+        # commit_seeding never uploaded anything, so nothing needed one.
+        client["post_binary"] = AsyncMock(
+            return_value={"ok": True, "status": 201,
+                          "body": {"data": [{"id": "file-uuid-1"}]}}
+        )
+        ctx = {"capturePathsFor": AsyncMock(return_value=[jpg])}
+        r = await commit_seeding(client, self._draft(), ctx)
+        assert r["ok"] is True, r
+        assert r["file_ids"], "the seeding photo should have produced a file id"
+
+    @pytest.mark.asyncio
+    async def test_a_seeding_with_no_photo_still_commits(self):
+        client = make_seeding_mock_client()
+        r = await commit_seeding(client, self._draft(), {"capturePathsFor": AsyncMock(return_value=[])})
+        assert r["ok"] is True
+        assert r["file_ids"] == []
+
+    @pytest.mark.asyncio
+    async def test_no_ctx_is_not_a_crash(self):
+        client = make_seeding_mock_client()
+        r = await commit_seeding(client, self._draft(), None)
+        assert r["ok"] is True
+
+    @pytest.mark.asyncio
+    async def test_a_failed_photo_does_not_unwind_the_seeding(self, jpg):
+        """Best-effort: the inoculation record matters more than the picture."""
+        client = make_seeding_mock_client()
+        client["post_binary"] = AsyncMock(return_value={"ok": False, "status": 500, "body": None})
+        ctx = {"capturePathsFor": AsyncMock(return_value=[jpg])}
+        r = await commit_seeding(client, self._draft(), ctx)
+        assert r["ok"] is True, "a photo failure must not fail the seeding"
+        assert r["attachments_failed"], "but it must be surfaced, not swallowed"
