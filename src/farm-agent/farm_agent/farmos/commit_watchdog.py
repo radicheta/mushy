@@ -38,6 +38,7 @@ import logging
 import re
 
 import farm_agent.farmos.commit_recovery as _recover
+from farm_agent.capture.capture_repo import image_paths_for_captures as _image_paths_for_captures
 import farm_agent.farmos.commit_db as _real_db
 import farm_agent.farmos.commits.commit_router as _real_router
 from farm_agent.farmos.assets import find_asset_by_name as _find_asset_by_name
@@ -211,6 +212,14 @@ async def tick_once(
         db = _real_db
     if router is None:
         router = _real_router
+
+    # MUSHY-131: the commit ctx. capturePathsFor resolves a draft's captured
+    # photos to absolute paths; the handlers have always asked for it and
+    # nothing ever supplied it. Images only (see capture_repo).
+    async def _capture_paths_for(capture_ids):
+        return await _image_paths_for_captures(pool, capture_ids)
+
+    ctx = {"capturePathsFor": _capture_paths_for}
     if lock is None:
         lock = asyncio.Lock()
     if csv_rows is None:
@@ -271,8 +280,12 @@ async def tick_once(
                         )
                     continue  # skip commit_router.commit
 
-                # Step 3c: commit to farmOS via router
-                result = await router.commit(farmos_client, locked_row)
+                # Step 3c: commit to farmOS via router.
+                # MUSHY-131: ctx carries the photo path lookup. Before this the
+                # call passed no ctx at all, so every handler's upload was gated
+                # on a capturePathsFor that no caller had ever provided, and no
+                # photo the farmer sent had ever reached farmOS.
+                result = await router.commit(farmos_client, locked_row, ctx)
 
                 if result.get("ok"):
                     # Step 3d (success): mark committed

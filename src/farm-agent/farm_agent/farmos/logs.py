@@ -104,7 +104,12 @@ def _build_log_body(log_type: str, opts: dict) -> dict:
         }
     }
     if file_ids:
-        payload["data"]["relationships"]["file"] = {
+        # MUSHY-131: 'image', NOT 'file'. farmOS answers 422 to a jpg on the
+        # file relationship, which would have failed the ENTIRE log creation,
+        # not just the photo. This never fired in prod only because ctx was
+        # None and file_ids was therefore always empty (commit_watchdog.py).
+        # Settled on dev 2026-08-29: file rel -> 422, image rel -> 201.
+        payload["data"]["relationships"]["image"] = {
             "data": [{"type": "file--file", "id": fid} for fid in file_ids]
         }
     return payload
@@ -285,12 +290,13 @@ async def upsert_log(client: dict, log_type: str, opts: dict) -> dict:
             "warnings": warnings,
         }
 
-    # Merge file.data: set-union by id.
+    # Merge the photo relationship: set-union by id.
+    # MUSHY-131: 'image', matching the create path. farmOS 422s a jpg on 'file'.
     existing_file_data = (
-        ((existing or {}).get("relationships") or {}).get("file", {}).get("data") or []
+        ((existing or {}).get("relationships") or {}).get("image", {}).get("data") or []
     )
     incoming_file_data = (
-        (incoming.get("relationships") or {}).get("file", {}).get("data") or []
+        (incoming.get("relationships") or {}).get("image", {}).get("data") or []
     )
     merged_files = _set_union_refs(existing_file_data, incoming_file_data)
     files_changed = len(merged_files) != len(existing_file_data)
@@ -336,7 +342,7 @@ async def upsert_log(client: dict, log_type: str, opts: dict) -> dict:
             },
             "relationships": {
                 "asset": {"data": existing_asset_data},
-                "file": {"data": merged_files},
+                "image": {"data": merged_files},
             },
         }
     }
@@ -363,7 +369,7 @@ async def upsert_log(client: dict, log_type: str, opts: dict) -> dict:
         refreshed = (re_get.get("body") or {}).get("data")
         refreshed_rev = ((refreshed or {}).get("attributes") or {}).get("drupal_internal__revision_id")
         refreshed_files = (
-            ((refreshed or {}).get("relationships") or {}).get("file", {}).get("data") or []
+            ((refreshed or {}).get("relationships") or {}).get("image", {}).get("data") or []
         )
         refreshed_notes = ((refreshed or {}).get("attributes") or {}).get("notes")
         remerge_files = _set_union_refs(refreshed_files, incoming_file_data)
@@ -375,7 +381,7 @@ async def upsert_log(client: dict, log_type: str, opts: dict) -> dict:
                 "attributes": {"notes": remerge_notes},
                 "relationships": {
                     "asset": {"data": existing_asset_data},
-                    "file": {"data": remerge_files},
+                    "image": {"data": remerge_files},
                 },
             }
         }

@@ -633,8 +633,8 @@ class TestCommitActivityUploadsPhotos:
         client = make_mock_client(known_assets_by_qr={"Q1": "asset-1"})
         r = await commit_activity(client, self._draft(), self._ctx([jpg]))
         rels = client["_created"]["logs"][0]["payload"]["data"]["relationships"]
-        assert "file" in rels
-        assert [f["id"] for f in rels["file"]["data"]] == r["file_ids"]
+        assert "image" in rels, "farmOS 422s a jpg on the 'file' relationship"
+        assert [f["id"] for f in rels["image"]["data"]] == r["file_ids"]
 
     async def test_a_draft_with_no_photo_still_commits(self):
         client = make_mock_client(known_assets_by_qr={"Q1": "asset-1"})

@@ -172,9 +172,9 @@ class TestCreateLog:
             },
         )
         _, body = client["post"].call_args.args
-        file_ids = [d["id"] for d in body["data"]["relationships"]["file"]["data"]]
+        file_ids = [d["id"] for d in body["data"]["relationships"]["image"]["data"]]
         assert file_ids == ["f1", "f2"]
-        assert all(d["type"] == "file--file" for d in body["data"]["relationships"]["file"]["data"])
+        assert all(d["type"] == "file--file" for d in body["data"]["relationships"]["image"]["data"])
 
     @pytest.mark.asyncio
     async def test_no_file_relationship_when_no_file_ids(self):
@@ -186,7 +186,7 @@ class TestCreateLog:
             {"name": "x", "timestamp": 1000, "asset_ids": ["a1"], "draft_id": "d"},
         )
         _, body = client["post"].call_args.args
-        assert "file" not in body["data"]["relationships"]
+        assert "image" not in body["data"]["relationships"]
 
     @pytest.mark.asyncio
     async def test_timestamp_floored(self):
@@ -350,7 +350,7 @@ class TestUpsertLog:
             },
             "relationships": {
                 "asset": {"data": [{"type": "asset--fungi", "id": "a1"}]},
-                "file": {"data": []},
+                "image": {"data": []},
             },
         }
         client = rich_mock(
@@ -378,9 +378,9 @@ class TestUpsertLog:
         client["patch"].assert_called_once()
         patch_path, patch_body = client["patch"].call_args.args[:2]
         assert patch_path == "/api/log/seeding/L1"
-        file_ids = sorted(d["id"] for d in patch_body["data"]["relationships"]["file"]["data"])
+        file_ids = sorted(d["id"] for d in patch_body["data"]["relationships"]["image"]["data"])
         assert file_ids == ["f1"]
-        assert patch_body["data"]["relationships"]["file"]["data"][0] == {"type": "file--file", "id": "f1"}
+        assert patch_body["data"]["relationships"]["image"]["data"][0] == {"type": "file--file", "id": "f1"}
 
     @pytest.mark.asyncio
     async def test_seeding_noop_no_new_fields(self):
@@ -398,7 +398,7 @@ class TestUpsertLog:
             },
             "relationships": {
                 "asset": {"data": [{"type": "asset--fungi", "id": "a1"}]},
-                "file": {"data": [{"type": "file--file", "id": "f1"}]},
+                "image": {"data": [{"type": "file--file", "id": "f1"}]},
             },
         }
         client = rich_mock(
@@ -442,7 +442,7 @@ class TestUpsertLog:
             },
             "relationships": {
                 "asset": {"data": [{"type": "asset--fungi", "id": "a1"}]},
-                "file": {"data": []},
+                "image": {"data": []},
             },
         }
         newer_body = dict(older_body, id=newer_id, attributes=dict(older_body["attributes"], created="2026-05-22T11:00:00+00:00"))
@@ -502,7 +502,7 @@ class TestUpsertLog:
                            "created": created, "drupal_internal__revision_id": 1},
             "relationships": {
                 "asset": {"data": [{"type": "asset--fungi", "id": "a1"}]},
-                "file": {"data": []},
+                "image": {"data": []},
             },
         }
         body_b = dict(body_a, id=id_b)
@@ -533,7 +533,7 @@ class TestUpsertLog:
             },
             "relationships": {
                 "asset": {"data": [{"type": "asset--fungi", "id": "a1"}]},
-                "file": {"data": []},
+                "image": {"data": []},
             },
         }
         client = rich_mock(
@@ -563,7 +563,7 @@ class TestUpsertLog:
             "relationships": {
                 "asset": {"data": [{"type": "asset--fungi", "id": "a1"},
                                    {"type": "asset--fungi", "id": "a2"}]},
-                "file": {"data": []},
+                "image": {"data": []},
             },
         }
         client = rich_mock(
@@ -647,7 +647,7 @@ class TestUpsertLog:
             },
             "relationships": {
                 "asset": {"data": [{"type": "asset--fungi", "id": "a1"}]},
-                "file": {"data": []},
+                "image": {"data": []},
             },
         }
         client = rich_mock(

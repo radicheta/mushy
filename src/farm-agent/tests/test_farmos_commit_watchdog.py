@@ -102,7 +102,7 @@ class FakeRouter:
         self.calls: list[dict] = []
 
     async def commit(self, client, draft, ctx=None) -> dict:
-        self.calls.append({"draft": draft})
+        self.calls.append({"draft": draft, "ctx": ctx})
         return self.result
 
 
@@ -542,3 +542,50 @@ async def test_loop_tick_exception_logs_warning_continues(caplog):
         for r in caplog.records
         if r.levelno >= logging.WARNING
     ), f"Expected WARNING not found in: {[r.getMessage() for r in caplog.records]}"
+
+
+
+# ---------------------------------------------------------------------------
+# tick_once: the commit ctx (MUSHY-131)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_tick_passes_a_ctx_with_capture_paths():
+    """The watchdog called router.commit(client, row) with no ctx at all, so
+    every handler's photo upload was gated on a capturePathsFor that nothing
+    ever provided. No photo the farmer sent reached farmOS, and because "no
+    paths" is not an error, nothing was ever logged about it.
+    """
+    from farm_agent.farmos.commit_watchdog import tick_once
+
+    row = {"id": "draft-ctx", "block_name": "", "draft_json": {}, "commit_attempt_count": 0}
+    db = FakeCommitDb(candidates=[row])
+    router = FakeRouter()
+
+    await tick_once(None, {}, FakeConfig(), db=db, router=router, csv_rows=[])
+
+    assert len(router.calls) == 1
+    ctx = router.calls[0]["ctx"]
+    assert ctx is not None, "ctx=None is the bug; the upload can never run"
+    assert callable(ctx.get("capturePathsFor")), (
+        "handlers gate the upload on exactly this key being callable"
+    )
+
+
+@pytest.mark.asyncio
+async def test_capture_path_lookup_failure_does_not_break_the_commit():
+    """A dead capture DB must cost the photo, never the log."""
+    from farm_agent.farmos.commit_watchdog import tick_once
+
+    class ExplodingPool:
+        def connection(self):
+            raise RuntimeError("capture db down")
+
+    row = {"id": "draft-ctx2", "block_name": "", "draft_json": {}, "commit_attempt_count": 0}
+    db = FakeCommitDb(candidates=[row])
+    router = FakeRouter()
+
+    await tick_once(ExplodingPool(), {}, FakeConfig(), db=db, router=router, csv_rows=[])
+
+    paths = await router.calls[0]["ctx"]["capturePathsFor"](["cap-1"])
+    assert paths == [], "a failed lookup degrades to no photos, not an exception"
