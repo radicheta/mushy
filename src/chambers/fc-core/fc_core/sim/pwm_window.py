@@ -27,6 +27,17 @@ from dataclasses import dataclass, field
 from typing import List
 
 
+def pipe_delivery(pulse_elapsed_s: float, transit_s: float, dt_s: float) -> float:
+    """Fraction of this tick that delivers vapour at the outlet, given how long
+    the relay has been closed. Vapour only emerges after the pipe is wet."""
+    if pulse_elapsed_s >= transit_s:
+        return 1.0
+    remaining = transit_s - pulse_elapsed_s
+    if remaining < dt_s:
+        return (dt_s - remaining) / dt_s
+    return 0.0
+
+
 @dataclass
 class PwmConfig:
     window_s: float = 120.0             # fc_pwm_driver pwm_window_seconds
@@ -108,13 +119,7 @@ class PwmSimulator:
 
         delivered = 0.0
         if want_high:
-            # Vapour only emerges after the pipe is wet.
-            if self._pulse_elapsed >= self.cfg.pipe_transit_s:
-                delivered = 1.0
-            else:
-                remaining = self.cfg.pipe_transit_s - self._pulse_elapsed
-                if remaining < dt_s:
-                    delivered = (dt_s - remaining) / dt_s
+            delivered = pipe_delivery(self._pulse_elapsed, self.cfg.pipe_transit_s, dt_s)
             self._pulse_elapsed += dt_s
 
         self._elapsed += dt_s
