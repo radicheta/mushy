@@ -10,6 +10,31 @@ BRANCH="${BRANCH:-fc1/prod}"
 
 echo "=== Deploying fc_core to ${PI_HOST} (branch: ${BRANCH}) ==="
 
+# Step 0: Report drift between the repo's unit files and the live ones.
+# deploy.sh deploys CODE, not units: it syncs the checkout, builds, and restarts.
+# Nothing here installs a .service file, so editing scripts/pi-deploy/*.service
+# and running a deploy reports success while changing nothing on the Pi. That
+# silence is the bug -- MUSHY-117's fix needed a manual scp nobody would guess.
+#
+# This only WARNS. It deliberately does not install: fc-system-sync.service
+# installs netplan and /etc/cyclonedds.xml, so auto-syncing units would rewrite
+# the chamber's network and DDS transport as a side effect of a code deploy.
+# Installing a unit stays a deliberate, separately-reviewed act.
+echo "[0/3] Checking systemd unit drift (informational)..."
+for unit in fc-core.service fc-update.service fc-system-sync.service; do
+  live=$(ssh "${PI_USER}@${PI_HOST}" "cat /etc/systemd/system/${unit} 2>/dev/null" || true)
+  if [ -z "${live}" ]; then
+    echo "  ${unit}: not installed on the Pi"
+  elif [ "${live}" = "$(cat "$(dirname "$0")/${unit}")" ]; then
+    echo "  ${unit}: in sync"
+  else
+    echo "  ${unit}: *** DRIFTED *** repo and Pi differ -- this deploy will NOT reconcile it."
+    echo "      diff:    ssh ${PI_USER}@${PI_HOST} cat /etc/systemd/system/${unit} | diff - scripts/pi-deploy/${unit}"
+    echo "      install: scp scripts/pi-deploy/${unit} ... && sudo install -m 644 ... && sudo systemctl daemon-reload"
+  fi
+done
+echo
+
 # Step 1: Make the checkout MATCH the branch.
 # Not `git pull`: fc1/prod gets force-pushed (main->prod syncs rewrite it), and
 # a pull is then a non-fast-forward merge that conflicts in fc_controller.py,

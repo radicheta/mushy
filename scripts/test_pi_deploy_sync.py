@@ -35,7 +35,19 @@ def test_syncs_and_guards_dirty_tree():
             f'{name} resets --hard without checking for local changes first'
 
 
+def test_deploy_reports_unit_drift():
+    """deploy.sh installs no systemd units, so it must at least SAY so.
+
+    Editing scripts/pi-deploy/*.service and deploying otherwise reports
+    success while changing nothing on the Pi -- a silent no-op.
+    """
+    text = code('deploy.sh')
+    assert 'DRIFTED' in text and '/etc/systemd/system/' in text, \
+        'deploy.sh does not check the repo unit files against the live ones'
+
+
 if __name__ == '__main__':
     test_no_git_pull()
     test_syncs_and_guards_dirty_tree()
+    test_deploy_reports_unit_drift()
     print('OK: deploy path syncs to the branch and guards a dirty tree')
