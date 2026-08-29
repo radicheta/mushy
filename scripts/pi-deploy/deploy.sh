@@ -10,29 +10,63 @@ BRANCH="${BRANCH:-fc1/prod}"
 
 echo "=== Deploying fc_core to ${PI_HOST} (branch: ${BRANCH}) ==="
 
-# Step 0: Report drift between the repo's unit files and the live ones.
-# deploy.sh deploys CODE, not units: it syncs the checkout, builds, and restarts.
-# Nothing here installs a .service file, so editing scripts/pi-deploy/*.service
-# and running a deploy reports success while changing nothing on the Pi. That
-# silence is the bug -- MUSHY-117's fix needed a manual scp nobody would guess.
+# Step 0: Reconcile the repo's unit files onto the Pi.
+# deploy.sh used to deploy CODE but not units: it synced the checkout, built,
+# and restarted. Nothing installed a .service file, so editing
+# scripts/pi-deploy/*.service and running a deploy reported success while
+# changing nothing on the Pi, and you found out at the next boot. That silence
+# was the bug -- MUSHY-117's fix needed a manual scp nobody would guess, and
+# fc-system-sync.service was left 36 lines stale for months (MUSHY-119).
 #
-# This only WARNS. It deliberately does not install: fc-system-sync.service
-# installs netplan and /etc/cyclonedds.xml, so auto-syncing units would rewrite
-# the chamber's network and DDS transport as a side effect of a code deploy.
-# Installing a unit stays a deliberate, separately-reviewed act.
-echo "[0/3] Checking systemd unit drift (informational)..."
+# Installing a unit FILE executes nothing: it is a write plus daemon-reload.
+# fc-core.service takes effect at step 3's restart; the other two take effect at
+# the next boot. fc-system-sync in particular only acts on a real difference --
+# every file it stages is cmp-guarded -- so a unit landing here cannot rewrite
+# netplan or /etc/cyclonedds.xml as a side effect of shipping Python. Nothing is
+# restarted here, deliberately: restarting fc-system-sync is what would run
+# netplan generate and wpa_cli reconfigure on the box whose only link is wifi.
+#
+# Units are read from origin/${BRANCH}, NOT from the local working tree: step 1
+# deploys that branch, and a checkout sitting on main would otherwise install
+# main's units next to fc1/prod's code -- the same "reports one thing, does
+# another" failure this step exists to kill.
+echo "[0/3] Reconciling systemd units (from origin/${BRANCH})..."
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+git -C "${REPO_ROOT}" fetch -q origin
+UNITS_CHANGED=0
+STAGE="$(mktemp -d)"
+trap 'rm -rf "${STAGE}"' EXIT
 for unit in fc-core.service fc-update.service fc-system-sync.service; do
-  live=$(ssh "${PI_USER}@${PI_HOST}" "cat /etc/systemd/system/${unit} 2>/dev/null" || true)
-  if [ -z "${live}" ]; then
-    echo "  ${unit}: not installed on the Pi"
-  elif [ "${live}" = "$(cat "$(dirname "$0")/${unit}")" ]; then
-    echo "  ${unit}: in sync"
-  else
-    echo "  ${unit}: *** DRIFTED *** repo and Pi differ -- this deploy will NOT reconcile it."
-    echo "      diff:    ssh ${PI_USER}@${PI_HOST} cat /etc/systemd/system/${unit} | diff - scripts/pi-deploy/${unit}"
-    echo "      install: scp scripts/pi-deploy/${unit} ... && sudo install -m 644 ... && sudo systemctl daemon-reload"
+  if ! git -C "${REPO_ROOT}" show "origin/${BRANCH}:scripts/pi-deploy/${unit}" > "${STAGE}/${unit}" 2>/dev/null; then
+    echo "  ${unit}: not present on origin/${BRANCH} -- skipping"
+    continue
   fi
+  live=$(ssh "${PI_USER}@${PI_HOST}" "cat /etc/systemd/system/${unit} 2>/dev/null" || true)
+  if [ "${live}" = "$(cat "${STAGE}/${unit}")" ]; then
+    echo "  ${unit}: in sync"
+    continue
+  fi
+  if [ -z "${live}" ]; then
+    echo "  ${unit}: not installed on the Pi -- installing"
+  else
+    echo "  ${unit}: drifted -- installing origin/${BRANCH}'s copy (backup kept on the Pi)"
+  fi
+  scp -q "${STAGE}/${unit}" "${PI_USER}@${PI_HOST}:/tmp/${unit}"
+  ssh "${PI_USER}@${PI_HOST}" "
+    set -e
+    if [ -f /etc/systemd/system/${unit} ]; then
+      sudo cp -a /etc/systemd/system/${unit} /root/${unit}.bak-\$(date +%Y%m%d-%H%M%S)
+    fi
+    sudo install -m 644 -o root -g root /tmp/${unit} /etc/systemd/system/${unit}
+    rm -f /tmp/${unit}
+  "
+  UNITS_CHANGED=1
 done
+if [ "${UNITS_CHANGED}" = "1" ]; then
+  ssh "${PI_USER}@${PI_HOST}" "sudo systemctl daemon-reload"
+  echo "  daemon-reload done. fc-core picks its unit up at step 3;"
+  echo "  fc-update / fc-system-sync take effect at the next boot."
+fi
 echo
 
 # Step 1: Make the checkout MATCH the branch.

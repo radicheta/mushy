@@ -35,19 +35,42 @@ def test_syncs_and_guards_dirty_tree():
             f'{name} resets --hard without checking for local changes first'
 
 
-def test_deploy_reports_unit_drift():
-    """deploy.sh installs no systemd units, so it must at least SAY so.
+def test_deploy_reconciles_units():
+    """deploy.sh must INSTALL the repo's units, not just report on them.
 
-    Editing scripts/pi-deploy/*.service and deploying otherwise reports
-    success while changing nothing on the Pi -- a silent no-op.
+    MUSHY-119: it used to deploy code but not units, so editing
+    scripts/pi-deploy/*.service and deploying reported success while changing
+    nothing on the Pi -- you found out at the next boot. fc-system-sync.service
+    sat 36 lines stale that way.
     """
     text = code('deploy.sh')
-    assert 'DRIFTED' in text and '/etc/systemd/system/' in text, \
-        'deploy.sh does not check the repo unit files against the live ones'
+    assert '/etc/systemd/system/' in text, \
+        'deploy.sh does not look at the live unit files at all'
+    assert 'install -m 644' in text, \
+        'deploy.sh checks unit drift but never installs -- back to a silent no-op'
+    assert 'daemon-reload' in text, \
+        'deploy.sh installs units without telling systemd to re-read them'
+    assert '.bak-' in text, \
+        'deploy.sh overwrites a live unit with no backup on the Pi'
+
+
+def test_deploy_never_restarts_fc_system_sync():
+    """Installing the unit file is safe; RUNNING it is not.
+
+    fc-system-sync stages netplan and /etc/cyclonedds.xml and can call
+    `netplan generate` / `wpa_cli reconfigure` -- on the box whose only link is
+    wifi + wg0. A code deploy must never trigger that; it takes effect at the
+    next boot, under someone's supervision.
+    """
+    text = code('deploy.sh')
+    for forbidden in ('restart fc-system-sync', 'start fc-system-sync'):
+        assert forbidden not in text, \
+            f'deploy.sh runs `{forbidden}` -- that reconfigures the network mid-deploy'
 
 
 if __name__ == '__main__':
     test_no_git_pull()
     test_syncs_and_guards_dirty_tree()
-    test_deploy_reports_unit_drift()
-    print('OK: deploy path syncs to the branch and guards a dirty tree')
+    test_deploy_reconciles_units()
+    test_deploy_never_restarts_fc_system_sync()
+    print('OK: deploy path syncs to the branch, guards a dirty tree, reconciles units')
