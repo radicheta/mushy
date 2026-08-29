@@ -41,36 +41,26 @@
     pid_integrator_decay_tau: 300.0  # 999.49 — in-band I decay; 1200→300 2026-05-12 to break ~20min limit cycle (decay tau was resonating with chamber thermal response)
     pid_setpoint_ramp_seconds: 30.0  # D-07
     bypass_threshold: 0.05            # D-10 — Mode C entry; 2.5%→5% 2026-06-21 (calibration): reserve full-ON open-loop for genuine crashes (RH < ~90.5%), let the feathered PID own normal dips
-    # Slow-PWM (fc_pwm_driver — Phase 27)
-    pwm_window_seconds: 480.0         # D-08 unlocked 2026-08-26 (MUSHY-116): 120->480.
-                                      # 720 windows/day -> 180, so relay edges drop ~400/day -> <=180.
-                                      # Measured chamber RH decay with the humidifier off is 0.07 %RH/min
-                                      # (worst 0.15) so the 6.4 min OFF leg at ~20% duty ripples ~0.5 %RH
-                                      # (worst ~1.0) inside the +/-1.5 %RH fruiting band.
-                                      # Side effect: min-pulse duty floor falls 10/120=8.3% -> 10/480=2.1%,
-                                      # so the feather's gentle-trim region is now directly expressible.
-    min_pulse_seconds: 30.0           # D-11 unlocked 2026-08-26 (MUSHY-116): 10->30.
-                                      # The 10s figure was the farmer's fog-visibility floor, but it was
-                                      # measured THROUGH the ~6s pipe dead time: a 10s pulse is only 40%
-                                      # efficient at the outlet (~4s of vapour). A 30s pulse is 80%.
-                                      # REQUIRES accumulate_subthreshold below. At the 480s window the
-                                      # 30s floor is a 6.25% duty floor, and the chamber's equilibrium
-                                      # command is also 6.25% — without banking, delivery is a CLIFF at
-                                      # exactly the operating point (6.25%->4.97%, 6.24%->0.00%), which
-                                      # manufactures a limit cycle. With banking the curve is continuous.
-    accumulate_subthreshold: true     # MUSHY-116 — REQUIRED by min_pulse_seconds: 30 above, do not
-                                      # disable one without the other. Banks commanded duty too small to
-                                      # express as a legal pulse and spends it as one full-length pulse
-                                      # once a pulse's worth accrues; mean duty is preserved and no pulse
-                                      # shorter than min_pulse is ever emitted. Below the floor this is
-                                      # worth 143 cycles/day vs 179 and 3.97% delivered vs 3.73%.
-    # D-12 cap horizon at the 480s window: _duty_history is sized ceil(300/window),
-    # so maxlen collapses to 1 and the cap forecasts over n+1 = 16 min, not 8.
-    # Mode C crash recovery therefore runs up to 14.4 min continuous relay ON
-    # (was 5.4) and recovers slower in mean terms (78.7% vs 87.9% over the first
-    # hour). ACCEPTED 2026-08-26 as a fair price for the steady-state wear and
-    # efficiency gains -- decision, not oversight. Do not "fix" this without
-    # revisiting that call. See MUSHY-116.
+    # Relay driver (fc_pwm_driver -- sigma-delta since MUSHY-129, 2026-08-29)
+    pwm_window_seconds: 480.0         # Steady-state period T. D-08 unlocked 2026-08-26 (MUSHY-116): 120->480.
+                                      # The driver no longer samples duty once per window (that left it deaf
+                                      # to a demand step for up to 8 min, MUSHY-129); it integrates duty every
+                                      # tick and fires a pulse the moment min_pulse_seconds of demand has
+                                      # accrued, then spends the rest of the pulse as debt the OFF leg repays.
+                                      # Hysteresis H(d) = max(min_pulse, T*d*(1-d)) reproduces the T-second
+                                      # window exactly in steady state: 720 windows/day -> 180, relay edges
+                                      # <= 180/day, 6.4 min OFF leg at ~20% duty ripples ~0.5 %RH (worst
+                                      # ~1.0) inside the +/-1.5 %RH fruiting band. Demand below the floor is
+                                      # banked, not discarded: 2.1% duty is one 30s pulse every 25 min.
+    min_pulse_seconds: 30.0           # D-11 unlocked 2026-08-26 (MUSHY-116): 10->30. The 10s figure was the
+                                      # farmer's fog-visibility floor measured THROUGH the ~6s pipe dead time:
+                                      # a 10s pulse is only 40% efficient at the outlet, a 30s pulse is 80%.
+                                      # Also the fire threshold: a pulse starts once 30s of demand is banked.
+    cap_horizon_seconds: 960.0        # D-12 horizon. 960 = 2*T, NOT the 5 min the cap's name suggests: at a
+                                      # 480s window the old driver's history held one entry and forecast over
+                                      # n+1 = 2 windows, and MUSHY-116 accepted the resulting 14.4 min
+                                      # continuous ON in crash recovery. Kept equal so MUSHY-129 changes one
+                                      # variable. Tightening it is a separate decision.
     max_duty_5min_avg: 0.90           # D-12 — rolling 5-min duty cap (raised 0.40→0.90 2026-05-02 after blackout-recovery RH stuck at 79% with PID demanding duty=1.0; see 999.x backlog re: cap-aware recovery mode)
     duty_topic_timeout_seconds: 5.0   # defensive OFF if duty subscription silent
 

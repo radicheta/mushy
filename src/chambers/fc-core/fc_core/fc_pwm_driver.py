@@ -10,18 +10,33 @@ from std_msgs.msg import Bool, Float32
 
 class SlowPwmDriver(Node):
     """
-    Time-proportional slow-PWM actuator driver for the humidifier relay.
+    Sigma-delta (pulse-frequency) actuator driver for the humidifier relay.
 
     Subscribes to ``fc1/actuators/humidifier_duty`` (Float32, 0.0-1.0) and
-    translates the duty cycle into relay ON/OFF edges within a fixed
-    ``pwm_window_seconds`` window.  Publishes relay state changes to
-    ``fc1/actuators/humidifier`` (Bool) on edges only.
+    integrates it every tick into a bank of demand-seconds. Publishes relay
+    state changes to ``fc1/actuators/humidifier`` (Bool) on edges only.
 
-    Protective rules applied at window-lock time:
+        bank += duty * dt                                every tick
+        OFF -> ON  when bank >= min_pulse_seconds        one legal pulse accrued
+        ON:  bank -= dt;  OFF when bank <= min_pulse - H(duty)
+        H(d) = max(min_pulse_seconds, pwm_window_seconds * d * (1 - d))
 
-    - Min-pulse round-down (D-11): on_sec < min_pulse_seconds -> 0s
-    - Rolling 5-min duty cap (D-12): duty averaged over 5-min history <= max_duty_5min_avg
-    - Defensive OFF (D-13): if duty topic is silent > duty_topic_timeout_seconds -> force OFF
+    The bank swings across a band of width H, so in steady state this IS the
+    old ``pwm_window_seconds`` time-proportional window (same pulse length,
+    period, edges/day and ripple) and, below the floor, the MUSHY-116 bank.
+    The difference is phase: the window sampled duty once per window and
+    ignored it for the rest (up to 8 min of deafness at 480s -- MUSHY-129),
+    whereas here a pulse fires as soon as ``min_pulse`` of demand exists and
+    the rest of the pulse is spent as debt the OFF leg repays. The OFF
+    threshold tracks CURRENT demand, so a demand collapse ends a pulse at
+    the floor instead of running out a stale commitment.
+
+    Protective rules:
+
+    - Min pulse (D-11): no pulse shorter than min_pulse_seconds, ever.
+    - Duty cap (D-12): ON-seconds in the trailing cap_horizon_seconds
+      <= max_duty_5min_avg * cap_horizon_seconds, checked at fire and mid-pulse.
+    - Defensive OFF (D-13): duty topic silent > duty_topic_timeout_seconds -> OFF.
     """
 
     def __init__(self):
@@ -33,16 +48,12 @@ class SlowPwmDriver(Node):
             namespace='',
             parameters=[
                 ('humidifier_pin', 27),
-                ('pwm_window_seconds', 120.0),
+                ('pwm_window_seconds', 120.0),     # steady-state period T
                 ('min_pulse_seconds', 10.0),
                 ('max_duty_5min_avg', 0.40),
+                ('cap_horizon_seconds', 300.0),
                 ('actuator_simulation_mode', True),
                 ('duty_topic_timeout_seconds', 5.0),
-                # Sub-threshold pulse accumulation (2026-08-09). Default OFF:
-                # this changes actuator behaviour, so it stays opt-in until
-                # validated on the live chamber. See fc_core/sim/ and the
-                # sweep in .planning/notes/2026-08-09-pid-limit-cycle/.
-                ('accumulate_subthreshold', False),
             ]
         )
 
@@ -83,16 +94,13 @@ class SlowPwmDriver(Node):
 
         # Internal state
         self._latest_duty = 0.0
-        self._subthreshold_bank_s = 0.0   # banked demand for accumulate_subthreshold
         self._last_duty_msg_ts = None
-        self._window_start_ts = self.get_clock().now()
-        self._window_on_seconds = 0.0        # locked at window-start
-        # 999.31 fix: deque appends once per window rollover (not per 1Hz tick),
-        # so maxlen must scale to pwm_window_seconds to actually cover ≥5 min.
-        # Previous `maxlen=300` was a 10-hour window, not 5 min.
-        # ceil so coverage is always ≥ 300s (e.g. window=120s → 3 entries = 360s).
-        _window_sec = self.get_parameter('pwm_window_seconds').value
-        self._duty_history = deque(maxlen=max(1, math.ceil(300.0 / _window_sec)))
+        self._last_tick_ts = None
+        self._bank_s = 0.0
+        # D-12: one entry per tick (seconds ON), running sum kept alongside.
+        horizon = self.get_parameter('cap_horizon_seconds').value
+        self._on_history = deque(maxlen=max(1, math.ceil(horizon)))
+        self._on_sum = 0.0
         self._current_state = False
 
         # 1Hz tick
@@ -103,11 +111,29 @@ class SlowPwmDriver(Node):
         self._latest_duty = max(0.0, min(1.0, msg.data))
         self._last_duty_msg_ts = self.get_clock().now()
 
-    def _tick(self):
-        """1Hz tick: manage window rollover and relay state."""
-        now = self.get_clock().now()
-        elapsed = (now - self._window_start_ts).nanoseconds / 1e9
+    def _hysteresis(self, duty):
         window = self.get_parameter('pwm_window_seconds').value
+        return max(self.get_parameter('min_pulse_seconds').value, window * duty * (1.0 - duty))
+
+    def _cap_allows(self, extra_s):
+        cap = self.get_parameter('max_duty_5min_avg').value
+        horizon = self.get_parameter('cap_horizon_seconds').value
+        return self._on_sum + extra_s <= cap * horizon
+
+    def _record_on(self, on_s):
+        if len(self._on_history) == self._on_history.maxlen:
+            self._on_sum -= self._on_history[0]
+        self._on_history.append(on_s)
+        self._on_sum += on_s
+
+    def _tick(self):
+        """1Hz tick: integrate demand, drive the relay."""
+        now = self.get_clock().now()
+        dt = 1.0
+        if self._last_tick_ts is not None:
+            # A stalled timer must not bank minutes of demand in one go.
+            dt = max(0.0, min(5.0, (now - self._last_tick_ts).nanoseconds / 1e9))
+        self._last_tick_ts = now
 
         # Defensive OFF (D-13): duty topic silent → force relay OFF
         if self._last_duty_msg_ts is None:
@@ -118,54 +144,25 @@ class SlowPwmDriver(Node):
             self._set_relay(False)
             return
 
-        if elapsed >= window:
-            # New window: lock in duty with protective rules
-            duty = self._latest_duty
+        duty = self._latest_duty
+        min_pulse = self.get_parameter('min_pulse_seconds').value
+        window = self.get_parameter('pwm_window_seconds').value
 
-            # Rolling 5-min cap (D-12)
-            cap = self.get_parameter('max_duty_5min_avg').value
-            if self._duty_history:
-                n = len(self._duty_history)
-                current_sum = sum(self._duty_history)
-                # Forecast: would adding this duty window push the running average over cap?
-                if (current_sum + duty) / (n + 1) > cap:
-                    # Back-solve: max duty so that (current_sum + duty) / (n+1) == cap
-                    duty = max(0.0, cap * (n + 1) - current_sum)
+        # Anti-windup: a bank held back by the cap must not become minutes of
+        # over-delivery once demand drops. Ceiling = largest swing (T/4 at d=0.5).
+        self._bank_s = min(self._bank_s + duty * dt, max(min_pulse, window / 4.0))
 
-            # Clamp duty to [0, 1] after cap adjustment
-            duty = max(0.0, min(1.0, duty))
+        if not self._current_state:
+            if self._bank_s >= min_pulse and self._cap_allows(min_pulse):
+                self._set_relay(True)
+        else:
+            self._bank_s -= dt
+            off_at = min_pulse - self._hysteresis(duty)
+            if self._bank_s <= off_at or not self._cap_allows(dt):
+                self._bank_s = max(self._bank_s, off_at)
+                self._set_relay(False)
 
-            on_sec = duty * window
-
-            # Min-pulse round-down (D-11): sub-threshold pulses → 0
-            min_pulse = self.get_parameter('min_pulse_seconds').value
-            if 0.0 < on_sec < min_pulse:
-                if self.get_parameter('accumulate_subthreshold').value:
-                    # Sub-threshold accumulation. min_pulse/window is a hard
-                    # floor on expressible duty (8.3% at 10s/120s, 16.7% at
-                    # 20s/120s) but FC-1's equilibrium demand is only ~10%, so
-                    # the controller's entire gentle-trim region was being
-                    # discarded — 22.3% of samples on 2026-08-08. Bank the
-                    # demand instead and spend it as one legal-length pulse
-                    # once a full pulse has accrued. Mean duty is preserved;
-                    # no pulse shorter than min_pulse is ever emitted.
-                    self._subthreshold_bank_s += on_sec
-                    if self._subthreshold_bank_s >= min_pulse:
-                        on_sec = min_pulse
-                        self._subthreshold_bank_s -= min_pulse
-                    else:
-                        on_sec = 0.0
-                else:
-                    on_sec = 0.0
-
-            self._window_on_seconds = on_sec
-            self._window_start_ts = now
-            self._duty_history.append(on_sec / window)
-            elapsed = 0.0
-
-        # Within window: relay HIGH for first on_sec, LOW thereafter
-        target_state = elapsed < self._window_on_seconds
-        self._set_relay(target_state)
+        self._record_on(dt if self._current_state else 0.0)
 
     def _set_relay(self, state):
         """Toggle relay and publish on edge only (publish-on-change)."""
