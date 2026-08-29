@@ -135,6 +135,14 @@ describe('pollOnce', () => {
             for (const ins of inserts) {
                 expect(ins.sql).toMatch(/ON CONFLICT \(topic, time\) DO NOTHING/);
             }
+            // MUSHY-118: replay must also skip a row the live path already wrote a
+            // few ms earlier under its own clock (headerless topics have no shared
+            // stamp, so ON CONFLICT alone cannot see those as the same row).
+            for (const ins of inserts) {
+                expect(ins.sql).toMatch(/WHERE NOT EXISTS/);
+                expect(ins.sql).toMatch(/topic = \$2 AND value = \$3/);
+                expect(ins.sql).toMatch(/interval '250 milliseconds'/);
+            }
             // First INSERT: tsMs = 1700000000000000000 / 1_000_000 = 1700000000000
             expect(inserts[0].params[0]).toBe(1700000000000);
             expect(inserts[0].params[1]).toBe('fc.humidity');

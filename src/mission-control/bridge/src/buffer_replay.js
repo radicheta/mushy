@@ -25,6 +25,23 @@ const DEFAULT_INTERVAL_MS = 30 * 1000;
 const HTTP_TIMEOUT_MS = 15 * 1000;
 const BATCH_LIMIT = 10000;
 
+// MUSHY-118: fc_buffer and the bridge are two independent writers of the same
+// event. For header-bearing messages both read msg.header.stamp, so they agree
+// on `time` and the telemetry_topic_time_unique constraint collapses them. For
+// headerless std_msgs (Bool/Float32 — humidifier, duty, humidity_target,
+// pid_output, co2) neither side has a publisher stamp: fc_buffer uses
+// time.time_ns() on fc1, index.js uses Date.now() on elder-plops. The two land
+// 1-5ms apart and every such row was stored twice, doubling the relay-edge
+// count MUSHY-116 is measured by. Replay arrives second, so it is the side that
+// skips a row already present at a near-identical time with the same value. The
+// live row survives, so a broken replay cannot silently erase the record.
+// ponytail: 250ms window, not a shared event id. Every buffered topic publishes
+// at <=1Hz, so genuine samples are >=1s apart and cannot be merged; a >250ms
+// fc1->bridge delay degrades to an occasional duplicate, never to data loss.
+// The real fix is a publisher-set timestamp (DDS source_timestamp or stamped
+// message types) — do that if the topic set ever exceeds 1Hz.
+const NEAR_DUP_MS = 250;
+
 function loadLastTs(stateFile) {
     try {
         const raw = fs.readFileSync(stateFile, 'utf8');
@@ -102,7 +119,13 @@ async function pollOnce({
             const tsMs = Math.floor(r.time_ns / 1_000_000);
             await client.query(
                 `INSERT INTO telemetry (time, topic, value)
-                 VALUES (to_timestamp($1::double precision / 1000), $2, $3)
+                 SELECT to_timestamp($1::double precision / 1000), $2, $3
+                 WHERE NOT EXISTS (
+                     SELECT 1 FROM telemetry
+                     WHERE topic = $2 AND value = $3
+                       AND time BETWEEN to_timestamp($1::double precision / 1000) - interval '${NEAR_DUP_MS} milliseconds'
+                                    AND to_timestamp($1::double precision / 1000) + interval '${NEAR_DUP_MS} milliseconds'
+                 )
                  ON CONFLICT (topic, time) DO NOTHING`,
                 [tsMs, r.topic, r.value]
             );
