@@ -54,9 +54,9 @@ step response gives F and dead time directly; the decay after it gives Q.
 **Trigger.** All of the following, evaluated each control tick:
 
 - active mode is `fruiting` or `pinning`
-- `band.midpoint <= rh <= band.band_high - 0.005`
+- `band.band_low <= rh <= band.band_high - 0.005`
 - `|dT/dt| < 0.3 C/h` from the existing `TempRateEstimator`
-- relay has been OFF for >= 15 min (from the driver's last edge)
+- commanded duty has been below 0.5 for >= 15 min (not in crash recovery); the relay may be pulsing at its standing duty
 - sensors fresh (the existing staleness guard is not tripped), not Mode C
 - >= `probe_interval_h` since the last probe (monotonic clock; a reboot
   resets the timer, which is fine)
@@ -68,6 +68,12 @@ after the command; that is why timing is taken from the stored relay
 edges (`fc.humidifier`), not from the command. After the pulse, normal
 control resumes; RH sits in the upper half of the band where
 `project_error_pct` returns 0, so the decay is a natural idle window.
+
+The probe is superposed on the driver's background pulse train; the fitter
+simulates the actual delivered duty from the stored relay edges, so that
+background is known input, not contamination. A well-tuned loop holds station
+just below the band midpoint with a continuous standing duty, which is why
+neither a midpoint nor a quiet-relay requirement is workable (Ruling 9).
 
 **Marker.** New topic `fc1/control/probe`, `std_msgs/Float32`,
 TRANSIENT_LOCAL, value 1.0 while the probe is commanded, 0.0 otherwise.
@@ -83,7 +89,7 @@ from `sim/control_loop.py:ControlLoop` exactly as it is from
 `fc_controller.py`, so the simulator runs the same probe logic as the Pi
 (section 6 depends on this). `fc_controller` only supplies the inputs
 (relay-idle time from the driver, staleness, mode) and publishes the
-marker.
+marker. The probe interval is measured from the end of the previous probe.
 
 **Knobs (yaml).** `probe_seconds` (default 150; a 36 s pulse measured
 0.13 %RH, so 150 s is ~0.5 %RH, above the 0.1 %RH sensor noise and inside
@@ -104,8 +110,12 @@ For each `fc.probe` rising edge in the last 14 days:
   to the observed RH with `scipy.optimize.least_squares` over
   (F, Q, dead_time_s, tau_s); C held at the current `surface_g_per_k`
   (it only acts on temperature ramps, which the trigger excludes)
-- reject the window if the temperature moved > 0.5 C or the relay fired
-  again inside the decay
+- Dead time is searched on a ~12-point log grid over [5, 900] s with (F, Q, tau)
+  fitted at each point, then all four are refined from the best grid point; a
+  direct 4-parameter fit cannot move the dead time because ChamberModel quantises
+  the delay to the sample interval (Ruling 8).
+- reject the window if the temperature moved > 0.5 C; further relay pulses inside
+  the decay are allowed and modelled
 
 Aggregate across probes: median per parameter, IQR as the spread. A fit is
 **valid** only if >= 5 windows survived and IQR/median < 0.5 for F and Q.
@@ -135,11 +145,14 @@ Guardrails, all checked before anything is pushed:
 
 - every value inside a plausibility range (F 1-50 g/h, Q 0.1-5 m3/h,
   dead_time 5-900 s, tau 60-3600 s, kp 0.001-2, ki 1e-6-0.01)
-- no value moved more than 2x since the last *accepted* fit
+- a value that moved more than 2x since the last *accepted* fit is CLAMPED to the
+  2x bound (ratchet) and reported; plausibility violations still refuse
 - fit is valid (section 2)
 
-If any check fails: write the report, exit non-zero, push nothing. The
-cron's failure is visible the same way other elder-plops timers are.
+If the fit is invalid or a plausibility check fails: write the report, exit 3, push nothing.
+A crash (no telemetry rows, DB unreachable) exits 1 so the timer unit shows failed instead of
+looking like a routine invalid fit. The cron's failure is visible the same way other
+elder-plops timers are.
 
 If all pass: `ssh fc1 ros2-cmd param set` each value (runtime params are
 already supported and persist until reboot), then edit `fc_config.yaml`
@@ -156,6 +169,12 @@ In order; each step gates the next.
    "relay OFF >= 15 min, then a single pulse" transitions standing in for
    probe markers. Output is a first real answer on theta = 50 vs 360 s and
    a shakedown of the Timescale path. Nothing is pushed.
+   Result 2026-08-30: 60 days of history, 40 candidate windows, 31 rejected for
+   temperature movement, 9 fitted; F 7.94 g/h (IQR 6.19), Q 1.01 m3/h (IQR 1.34),
+   dead time 33 s, tau 61 s; INVALID by the IQR gate, push refused. Inconclusive;
+   the first accepted fit waits for deployed probes. Hints only: F/Q ~ 7.9 is
+   consistent with today's standing duty, and dead time lands on the short side,
+   not 360 s.
 3. **Probes on, push off.** Deploy the controller change with
    `probe_interval_h: 12`. Watch two days of probes on Mission Control
    (marker, relay edges, RH response). Run the fitter by hand.
@@ -206,6 +225,10 @@ history as quasi-probes) is where model adequacy first gets tested.
 Add sensor quantisation (0.01 %RH) and noise (0.1 %RH) to B's output so
 the fit is not trivially exact.
 
+Result 2026-08-30: after 5 rounds, F +0.1%, Q +0.7%, dead time -16%, tau +2.3% vs B;
+in-band fraction 1.000 = oracle; kp 1.22x oracle; 3.7 probes/day, 0 aborted; test runs
+~4 min.
+
 ## 5. Not built
 
 No on-Pi estimator, no MPC, no learned feedforward. The feather,
@@ -226,9 +249,40 @@ redundant with it. Retiring them is a follow-up ticket, not this one.
   `surface_g_per_k`
 - `src/mission-control/bridge/src/index.js`: `fc.probe` subscription
 - `src/chambers/fc-core/fc_core/sim/control_loop.py`: steps the probe
-- `scripts/fit-probes.py`, `scripts/push-chamber-params.py`, one
-  systemd timer on elder-plops; both scripts import their core from a
-  `fc_core.sim` module so the two-twin test can call it in-process
+- `scripts/self-tune/fit-probes.py`, `scripts/self-tune/push-chamber-params.py`,
+  `reports/self-tune/`, one systemd timer on elder-plops; both scripts import
+  their core from a `fc_core.sim` module so the two-twin test can call it in-process
 - `src/chambers/fc-core/fc_core/test/test_two_twin_convergence.py`
 - `scripts/fit-chamber-model.py`: unchanged except that its loaders are
   importable
+
+## 7. Amendments from implementation (2026-08-30)
+
+Rulings and design notes recorded in implementation:
+
+- Ruling 4: idle gate criterion is commanded duty below a threshold, not relay
+  OFF time. Dead-time measurement requires a transition from sustained idle to
+  commanded pulse, and the fitter detects that on duty edges.
+- Ruling 8: dead_time is not jointly optimizable with (F, Q, tau) because
+  ChamberModel quantises delay to the sample interval. Grid search on [5, 900] s
+  with (F, Q, tau) refined at each point solves it.
+- Ruling 9: a well-tuned loop holds station just below band.midpoint with
+  continuous standing duty. Neither band.midpoint as a trigger gate nor a
+  quiet-relay requirement is workable because background pulses are always
+  present.
+- Ruling 11: single isolated pulses are poor data for dead-time identification.
+  Closed-loop windows with background pulses fit better because the model can
+  reason about the combined input (commanded pulse plus background duty).
+- Ruling 12: quasi-probe windows (history as probes) require a quiet period
+  BEFORE the pulse window only, not after; the decay is inference-rich and
+  including post-decay periods adds noise.
+- Ruling 13: report JSON uses null for invalid fits and plausibility-rejected
+  values.
+- Deviation from guard spec: a value that violates the 2x threshold is CLAMPED
+  to the bound and reported (ratchet logic). Plausibility violations still refuse
+  the entire fit.
+- Mid-probe parameter-change abort: if `probe_seconds` or `probe_interval_h`
+  change live while a probe is active, the probe aborts cleanly (duty -> 0,
+  marker -> 0).
+- scipy is an exec_depend, used only by `fc_core.sim.probe_fit` and `simc`,
+  never on the Pi's controller path.
