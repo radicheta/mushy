@@ -32,8 +32,25 @@ def test_fit_recovers_true_params_from_wrong_start():
     assert not f.rejected
     assert abs(f.fill_g_per_h - 7.0) / 7.0 < 0.2
     assert abs(f.moisture_loss_m3_per_h - 0.4) / 0.4 < 0.3
-    assert abs(f.dead_time_s - 50.0) < 20.0
+    # theta from ONE isolated pulse is only a factor-2 quantity: the
+    # (theta, tau) valley is flat under 0.1 %RH noise -- measured 43-148 s for
+    # a true 50 s over seeds 0-4, at dt 2, 5 and 10 alike. What this test can
+    # defend is that the grid search leaves theta somewhere the data chose
+    # rather than pinned at the 360 s start (MUSHY-138 ruling 8). Closed-loop
+    # windows, which carry the background pulse train as extra excitation, do
+    # far better: median 42 s vs 50 s in test_two_twin_convergence.
+    assert 20.0 < f.dead_time_s < 150.0
     assert f.rmse_pct < 0.2
+
+
+def test_fit_dead_time_does_not_depend_on_the_starting_belief():
+    """The regression ruling 8 fixed: dead_time enters ChamberModel through a
+    dt-quantised arrival queue, so a default finite-difference Jacobian reads a
+    zero gradient and theta stayed at whatever it started at."""
+    w = synth_window(TRUE)
+    thetas = [fit_window(w, replace(BASE, dead_time_s=t)).dead_time_s
+              for t in (5.0, 30.0, 360.0, 900.0)]
+    assert max(thetas) - min(thetas) < 5.0, thetas
 
 
 def test_aggregate_needs_five_windows():

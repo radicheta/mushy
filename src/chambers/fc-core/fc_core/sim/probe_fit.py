@@ -132,25 +132,52 @@ def _simulate(x, w: Window, base: ChamberParams):
     return out
 
 
+GRID_N = 12          # log-spaced dead-time grid over [BOUNDS_LO[2], BOUNDS_HI[2]]
+THETA_IDX = 2
+
+
 def fit_window(w: Window, base: ChamberParams) -> WindowFit:
+    """Fit (F, Q, theta, tau) to one probe window.
+
+    ``dead_time_s`` enters ChamberModel through a dt-quantised arrival queue,
+    so the residual is a STEP function of theta: the default 1e-8 relative
+    finite-difference step falls inside one step and reads a zero gradient,
+    leaving theta pinned to whatever it started at (MUSHY-138 ruling 8). So
+    theta is searched on a coarse log grid with the other three optimised at
+    each point, then all four are polished with a difference step of at least
+    2*dt in theta.
+    """
     if max(w.temp) - min(w.temp) > MAX_TEMP_MOVE_C:
         return WindowFit(0, 0, 0, 0, 0, rejected='temp_moved')
     if not any(r > 0.5 for r in w.relay[w.probe_start_idx:]):
         return WindowFit(0, 0, 0, 0, 0, rejected='no_pulse')
     obs = np.asarray(w.rh)
 
-    def run(dead_time_start):
-        x0 = np.clip([base.fill_g_per_h, base.moisture_loss_m3_per_h, dead_time_start, base.tau_s],
-                     BOUNDS_LO, BOUNDS_HI)
-        return least_squares(lambda x: _simulate(x, w, base) - obs, x0,
-                             bounds=(BOUNDS_LO, BOUNDS_HI), x_scale=x0, max_nfev=200)
+    lo3 = (BOUNDS_LO[0], BOUNDS_LO[1], BOUNDS_LO[3])
+    hi3 = (BOUNDS_HI[0], BOUNDS_HI[1], BOUNDS_HI[3])
+    y0 = np.clip([base.fill_g_per_h, base.moisture_loss_m3_per_h, base.tau_s], lo3, hi3)
 
-    # two starts on dead_time_s: today's belief (360 s) can trap the optimiser
-    # in a local minimum when the true dead time is much shorter (spec note).
-    candidates = [run(base.dead_time_s), run(30.0)]
-    res = min(candidates, key=lambda r: r.cost)
+    def at_theta(theta):
+        return least_squares(lambda y: _simulate([y[0], y[1], theta, y[2]], w, base) - obs,
+                             y0, bounds=(lo3, hi3), x_scale=y0, max_nfev=100)
+
+    grid = sorted(set(np.geomspace(BOUNDS_LO[THETA_IDX], BOUNDS_HI[THETA_IDX], GRID_N))
+                  | {float(np.clip(base.dead_time_s, BOUNDS_LO[THETA_IDX], BOUNDS_HI[THETA_IDX]))})
+    coarse = min(((at_theta(t), t) for t in grid), key=lambda r: r[0].cost)
+    r3, theta0 = coarse
+
+    x0 = np.array([r3.x[0], r3.x[1], theta0, r3.x[2]])
+    diff_step = np.full(4, 1.49e-8)
+    diff_step[THETA_IDX] = max(2.0 * w.dt / theta0, 1e-3)
+    res = least_squares(lambda x: _simulate(x, w, base) - obs, x0, bounds=(BOUNDS_LO, BOUNDS_HI),
+                        x_scale=x0, max_nfev=200, diff_step=diff_step)
+    if res.cost > r3.cost:                       # polish made it worse: keep the grid point
+        res = r3
+        f, q, tau = (float(v) for v in res.x)
+        theta = theta0
+    else:
+        f, q, theta, tau = (float(v) for v in res.x)
     rmse = float(np.sqrt(np.mean(res.fun ** 2)))
-    f, q, theta, tau = (float(v) for v in res.x)
     return WindowFit(f, q, theta, tau, rmse)
 
 

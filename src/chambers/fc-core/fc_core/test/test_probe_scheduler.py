@@ -37,10 +37,10 @@ def test_just_ended_flags_the_first_tick_after():
 
 
 def test_conditions_block_start():
-    for kw in (dict(rh=0.895),               # below midpoint
+    for kw in (dict(rh=0.88),                # below band_low
                dict(rh=0.912),               # above band_high - margin
                dict(rate=0.5),               # ramping
-               dict(last_duty=0.2),          # not idle
+               dict(last_duty=0.6),          # not idle
                dict(allowed=False)):         # stale / mode C / wrong mode
         s = ProbeScheduler(CFG)
         assert not any(run(s, 5000, **kw)), kw
@@ -48,7 +48,7 @@ def test_conditions_block_start():
 
 def test_idle_counts_from_last_nonzero_duty():
     s = ProbeScheduler(CFG)
-    run(s, 3600, last_duty=0.3)             # interval elapsed but busy
+    run(s, 3600, last_duty=0.6)             # interval elapsed but busy
     assert not any(run(s, 899))             # idle 899 s: not yet
     assert run(s, 2)[1] is True
 
@@ -70,9 +70,17 @@ def test_interval_restarts_after_a_probe():
 
 
 def test_idle_duty_max_gate():
-    # 0.01 < idle_duty_max (0.02): counts as idle, so only the interval gates it.
+    # ruling 9: idle_duty_max is "holding station", not "relay quiet". 0.3 is a
+    # normal standing duty and must still count as idle, so only the interval gates it.
     s = ProbeScheduler(CFG)
-    assert not any(run(s, 3599, last_duty=0.01))
-    assert run(s, 1, last_duty=0.01)[0] is True
-    # 0.05 >= idle_duty_max: never idle, so the probe never fires.
-    assert not any(run(ProbeScheduler(CFG), 5000, last_duty=0.05))
+    assert not any(run(s, 3599, last_duty=0.3))
+    assert run(s, 1, last_duty=0.3)[0] is True
+    # 0.6 >= idle_duty_max (0.5): crash recovery, so the probe never fires.
+    assert not any(run(ProbeScheduler(CFG), 5000, last_duty=0.6))
+
+
+def test_fires_below_the_midpoint():
+    # ruling 9: a well-tuned loop parks just under the midpoint and must stay probeable.
+    s = ProbeScheduler(CFG)
+    assert not any(run(s, 3599, rh=0.888))
+    assert run(s, 1, rh=0.888)[0] is True

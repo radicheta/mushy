@@ -145,22 +145,31 @@ def temp_feedforward_duty(trim: float, rate_c_per_h: float, rh: float, temp_c: f
 
 @dataclass(frozen=True)
 class ProbeConfig:
-    """MUSHY-138 identification probe: one duty=1.0 pulse of known length
-    into a quiet chamber. interval_s == 0 disables."""
+    """MUSHY-138 identification probe: one duty=1.0 pulse of known length,
+    fired anywhere inside the band. interval_s == 0 disables.
+
+    The fitter reconstructs the ACTUAL delivered duty from the recorded relay
+    edges, so ordinary background pulses are known input, not contamination:
+    the probe does not need a quiet relay (ruling 9). ``idle_s`` of duty below
+    ``idle_duty_max`` only establishes that the chamber is holding station and
+    not in crash recovery."""
 
     probe_seconds: float = 150.0
     interval_s: float = 0.0
     idle_s: float = 900.0
     max_temp_rate_c_per_h: float = 0.3
     top_margin: float = 0.005
-    # commanded duty below this counts as idle; 0.02 * 900 s = 18 s of
-    # banked demand, under the driver's 30 s min pulse, so the relay cannot
-    # have fired
-    idle_duty_max: float = 0.02
+    # commanded duty below this for idle_s means "holding station, not in
+    # crash recovery" -- NOT "the relay is quiet" (ruling 9)
+    idle_duty_max: float = 0.5
 
 
 class ProbeScheduler:
     """Pure probe state machine, stepped once per control tick.
+
+    Fires anywhere in the band (ruling 9): a well-tuned loop holding station
+    just under the midpoint must stay probeable, and a background pulse train
+    is input the fitter reconstructs rather than noise it has to avoid.
 
     ``step`` returns True while the probe is being commanded; the caller
     publishes duty 1.0 and parks the PID. Timing for the fit comes from
@@ -201,7 +210,7 @@ class ProbeScheduler:
             return False
         if self._since_probe_s < cfg.interval_s or self._idle_s < cfg.idle_s:
             return False
-        if not (band.midpoint <= rh <= band.band_high - cfg.top_margin):
+        if not (band.band_low <= rh <= band.band_high - cfg.top_margin):
             return False
         if abs(temp_rate_c_per_h) >= cfg.max_temp_rate_c_per_h:
             return False
