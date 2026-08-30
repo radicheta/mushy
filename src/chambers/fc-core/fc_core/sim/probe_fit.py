@@ -159,6 +159,9 @@ def fit_window(w: Window, base: ChamberParams) -> WindowFit:
 
     def at_theta(theta):
         return least_squares(lambda y: _simulate([y[0], y[1], theta, y[2]], w, base) - obs,
+                             # max_nfev is deliberately tight: an inner fit that stops
+                             # short only affects this grid point's RANK, and the
+                             # 4-parameter polish re-optimises from the winner anyway.
                              y0, bounds=(lo3, hi3), x_scale=y0, max_nfev=100)
 
     grid = sorted(set(np.geomspace(BOUNDS_LO[THETA_IDX], BOUNDS_HI[THETA_IDX], GRID_N))
