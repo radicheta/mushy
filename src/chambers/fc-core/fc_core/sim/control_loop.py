@@ -20,7 +20,8 @@ no slew stage), so it does not belong in the extracted law.
 from dataclasses import dataclass
 from math import exp
 
-from fc_core.control_kernel import BandSpec, duty_bias_factor, project_error_pct
+from fc_core.control_kernel import (BandSpec, TempRateEstimator, duty_bias_factor,
+                                    project_error_pct, temp_feedforward_duty)
 from fc_core.vendor.simple_pid import PID
 
 
@@ -51,19 +52,25 @@ class ControlLoop:
                  band: BandSpec,
                  gains: Gains = DEFAULT_GAINS,
                  target: float = 0.90,
-                 duty_bias: float = 0.0):
+                 duty_bias: float = 0.0,
+                 temp_ff_gain: float = 0.0):
         self.band = band
         self.gains = gains
         self.target = target
         self.duty_bias = duty_bias
+        self.temp_ff_gain = temp_ff_gain
+        self.temp_rate = TempRateEstimator()
 
         self.pid = PID(gains.kp, gains.ki, gains.kd,
                         setpoint=0.0, output_limits=(0.0, 1.0))
         self.d_filtered = 0.0
 
-    def step(self, rh_frac: float, dt: float):
+    def step(self, rh_frac: float, dt: float, temp_c=None):
         band = self.band
         gains = self.gains
+        # MUSHY-125: keep the rate estimate running on every tick, PID
+        # branch or not, so re-engaging after a bypass sees a warm filter.
+        rate = self.temp_rate.update(temp_c, dt) if temp_c is not None else 0.0
 
         projected = project_error_pct(rh_frac, band)
         if projected is None:
@@ -112,5 +119,10 @@ class ControlLoop:
         if self.duty_bias > 0.0:
             duty = max(0.0, min(
                 1.0, duty + self.duty_bias * duty_bias_factor(rh_frac, band)))
+
+        # MUSHY-125 temperature-ramp feedforward, same placement.
+        if self.temp_ff_gain != 0.0 and temp_c is not None:
+            duty = max(0.0, min(1.0, duty + temp_feedforward_duty(
+                self.temp_ff_gain, rate, rh_frac, temp_c, band)))
 
         return duty, raw_pid_output

@@ -13,7 +13,8 @@ from typing import Optional
 from statistics import median
 from fc_core import scheduler
 from fc_core.vendor.simple_pid import PID
-from fc_core.control_kernel import BandSpec, duty_bias_factor, project_error_pct
+from fc_core.control_kernel import (BandSpec, TempRateEstimator, duty_bias_factor,
+                                    project_error_pct, temp_feedforward_duty)
 from fc_msgs.msg import Mode
 from fc_msgs.srv import SetMode, StartExperiment, CancelExperiment
 from rcl_interfaces.msg import SetParametersResult
@@ -100,6 +101,7 @@ class FruitingChamberController(Node):
                 ('pid_derivative_filter_tau', 10.0),
                 ('pid_integrator_decay_tau', 1200.0),
                 ('humidifier_duty_bias', 0.0),
+                ('humidifier_temp_feedforward', 0.0),
                 ('pid_setpoint_ramp_seconds', 30.0),
                 ('bypass_threshold', 0.025),
             ]
@@ -359,6 +361,7 @@ class FruitingChamberController(Node):
         # Phase 26: per-physical-sensor freshness tracking
         self._last_sht30_timestamp = None       # set when slot-1 carries frame_id=='sht30'
         self._last_temp2_timestamp = None       # set by temperature_2_callback (always SCD41)
+        self._temp_rate = TempRateEstimator()   # MUSHY-125 filtered dT/dt, C/h
         self._last_humidity2_timestamp = None   # set by humidity_2_callback (always SCD41)
         self._last_sht30_fresh = None           # tri-state; None means "not yet evaluated"
         self._last_scd41_fresh = None
@@ -1657,6 +1660,10 @@ class FruitingChamberController(Node):
             # Phase 28 D-08: resolve active mode once per tick.
             mode = self._resolve_active_mode()
 
+            # MUSHY-125: filtered chamber dT/dt, updated every tick so the
+            # estimate is warm whichever branch below runs.
+            temp_rate = self._temp_rate.update(self.current_temp, dt)
+
             # Phase 31 D-02: force_duty short-circuit. When the active mode
             # declares a finite force_duty, bypass PID + Mode C entirely and
             # emit the literal duty value. Park the integrator (set_auto_mode
@@ -1809,6 +1816,21 @@ class FruitingChamberController(Node):
                 if bias > 0.0:
                     duty = max(0.0, min(
                         1.0, duty + bias * duty_bias_factor(rh, band)))
+
+                # MUSHY-125: temperature-ramp feedforward. The dominant
+                # disturbance on this chamber is temperature, not RH: a
+                # warming ramp moves saturation under a water content that
+                # has not changed, and the PID only sees the RH error after
+                # it has opened. dT/dt is locally sensed and arrives first.
+                # Gain comes from the chamber model at the current operating
+                # point (surface re-evaporation covers most of a ramp at 10 C,
+                # far less at 20 C); the param is a dimensionless trim on it,
+                # 1.0 = model, 0.0 = off. Faded across the upper band like the
+                # bias.
+                ff_gain = self.get_parameter('humidifier_temp_feedforward').value
+                if ff_gain != 0.0:
+                    duty = max(0.0, min(1.0, duty + temp_feedforward_duty(
+                        ff_gain, temp_rate, rh, self.current_temp, band)))
 
             self._publish_duty(duty)
 

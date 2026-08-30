@@ -97,6 +97,7 @@ def run_closed_loop(hours: float,
                     target: float = DEFAULT_TARGET,
                     climb_seconds: float = 0.0,
                     duty_bias: float = 0.0,
+                    temp_ff_gain: float = 0.0,
                     dt: float = 1.0,
                     ambient_ah_g_m3: TimeVarying = DEFAULT_AMBIENT_AH_G_M3,
                     temp_c: TimeVarying = DEFAULT_TEMP_C,
@@ -118,7 +119,8 @@ def run_closed_loop(hours: float,
     temp_c0 = temp_c(0.0) if callable(temp_c) else temp_c
     chamber = ChamberModel(params, rh0_pct=rh0, temp_c=temp_c0)
     pwm = pwm if pwm is not None else PwmSimulator(pwm_cfg)
-    control = ControlLoop(band, gains=gains, target=target, duty_bias=duty_bias)
+    control = ControlLoop(band, gains=gains, target=target, duty_bias=duty_bias,
+                          temp_ff_gain=temp_ff_gain)
     last_duty = 0.0
 
     rh_series: List[float] = []
@@ -129,15 +131,15 @@ def run_closed_loop(hours: float,
     elapsed = 0.0
     for _ in range(steps):
         rh_frac = chamber.rh / 100.0
+        temp_now = temp_c(elapsed) if callable(temp_c) else temp_c
 
-        duty, _raw_pid_output = control.step(rh_frac, dt)
+        duty, _raw_pid_output = control.step(rh_frac, dt, temp_c=temp_now)
 
         duty = apply_slew(duty, last_duty, dt, climb_seconds)
         last_duty = duty
 
         delivered = pwm.step(duty, dt_s=dt)
         ambient_now = ambient_ah_g_m3(elapsed) if callable(ambient_ah_g_m3) else ambient_ah_g_m3
-        temp_now = temp_c(elapsed) if callable(temp_c) else temp_c
         chamber.step(delivered_duty=delivered, dt_s=dt, ambient_ah_g_m3=ambient_now, temp_c=temp_now)
 
         rh_series.append(chamber.rh)

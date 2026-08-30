@@ -212,3 +212,77 @@ def test_kernel_matches_legacy_inline_projection(band):
             assert new is None, f'rh={rh} band={band}: freeze branch diverged'
         else:
             assert new == old, f'rh={rh} band={band}: {new!r} != {old!r}'
+
+
+# ---------------------------------------------------------------------------
+# MUSHY-125: temperature-ramp feedforward. dT/dt is estimated with a
+# first-order filter so a 0.01 C sensor quantum at 1 Hz does not become a
+# 36 C/h spike.
+# ---------------------------------------------------------------------------
+
+from fc_core.control_kernel import (TempRateEstimator, temp_feedforward_duty,  # noqa: E402
+                                    temp_feedforward_gain)
+
+
+def test_rate_is_zero_at_constant_temperature():
+    est = TempRateEstimator(tau_s=600.0)
+    for _ in range(3600):
+        rate = est.update(10.0, dt=1.0)
+    assert rate == pytest.approx(0.0, abs=1e-9)
+
+
+def test_rate_converges_to_a_linear_ramp_slope():
+    est = TempRateEstimator(tau_s=600.0)
+    t, rate = 0.0, 0.0
+    for _ in range(4 * 3600):
+        t += 1.0
+        rate = est.update(10.0 + 2.0 * t / 3600.0, dt=1.0)   # +2 C/h
+    assert rate == pytest.approx(2.0, rel=1e-3)
+
+
+def test_rate_decays_after_a_step_instead_of_spiking():
+    est = TempRateEstimator(tau_s=600.0)
+    for _ in range(600):
+        est.update(10.0, dt=1.0)
+    first = est.update(10.01, dt=1.0)               # one sensor quantum
+    assert first < 0.1                               # not 36 C/h
+    for _ in range(3600):
+        last = est.update(10.01, dt=1.0)
+    assert last == pytest.approx(0.0, abs=1e-3)   # e^-6 of the spike
+
+
+def test_rate_is_zero_before_the_second_sample():
+    assert TempRateEstimator(tau_s=600.0).update(12.3, dt=1.0) == 0.0
+
+
+def test_model_gain_matches_the_audit_arithmetic():
+    """MUSHY-62 audit: at 10 C the humidifier covers ~0.1 g/m3/K of a ramp,
+    i.e. (0.9 * 5.76 * 0.60 - 2.77) / 3.89 ~ 0.09 duty per (C/h)."""
+    assert temp_feedforward_gain(0.90, 10.0) == pytest.approx(0.09, abs=0.02)
+
+
+def test_model_gain_grows_with_temperature_and_flips_sign_when_cold():
+    assert temp_feedforward_gain(0.90, 16.0) > 3 * temp_feedforward_gain(0.90, 10.0)
+    assert temp_feedforward_gain(0.90, 3.0) < 0.0
+
+
+def test_feedforward_scales_with_trim_and_rate():
+    g = temp_feedforward_gain(0.890, 12.0)
+    assert temp_feedforward_duty(1.0, 2.0, 0.890, 12.0, FRUITING) == pytest.approx(2.0 * g)
+    assert temp_feedforward_duty(0.5, 2.0, 0.890, 12.0, FRUITING) == pytest.approx(1.0 * g)
+
+
+def test_feedforward_is_negative_on_cooling():
+    assert temp_feedforward_duty(1.0, -1.0, 0.890, 12.0, FRUITING) < 0.0
+
+
+def test_feedforward_fades_to_zero_at_band_high():
+    """Same fade as the MUSHY-57 bias: a chamber already above the band is
+    not to be pushed wetter by a warming ramp."""
+    assert temp_feedforward_duty(1.0, 2.0, 0.915, 12.0, FRUITING) == 0.0
+    full = temp_feedforward_duty(1.0, 2.0, 0.900, 12.0, FRUITING)
+    assert temp_feedforward_duty(1.0, 2.0, 0.9075, 12.0, FRUITING) == pytest.approx(full / 2, rel=0.05)
+
+
+def test_feedforward_is_zero_when_disabled():
+    assert temp_feedforward_duty(0.0, 5.0, 0.880, 12.0, FRUITING) == 0.0
