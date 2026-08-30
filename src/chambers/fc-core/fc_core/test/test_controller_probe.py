@@ -122,7 +122,12 @@ def test_probe_aborted_by_force_duty_mid_probe(ros_context):
     published = []
     t_ns = _start_probe(node, published)
 
+    # band_low/band_high too: left at their NaN sentinel, _resolve_active_mode
+    # takes the legacy synthesize-from-target path, which hardcodes force_duty
+    # to NaN and would make this test vacuous.
     node.set_parameters([
+        rclpy.parameter.Parameter('modes.fruiting.band_low', value=0.89),
+        rclpy.parameter.Parameter('modes.fruiting.band_high', value=0.99),
         rclpy.parameter.Parameter('modes.fruiting.force_duty', value=0.3)])
     published.clear()
     _tick(node, t_ns)
