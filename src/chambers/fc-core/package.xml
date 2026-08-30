@@ -17,6 +17,9 @@
   <depend>rpi_hardware_pwm</depend>
   <depend>RPi.GPIO</depend>
   <depend>adafruit-circuitpython-dht</depend>
+  <!-- scipy is only imported by fc_core.sim.probe_fit / simc (offline
+       identification tooling); never on the Pi's live controller path. -->
+  <exec_depend>python3-scipy</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

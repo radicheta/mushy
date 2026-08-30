@@ -923,6 +923,18 @@ class FruitingChamberController(Node):
         if republish_alerter_globals:
             self._pending_alerter_globals_republish = ('param_set',)
         if rebuild_probe:
+            if self._probe.active:
+                # A parameter change mid-probe must abort it cleanly:
+                # dropping the OLD scheduler while active would leave the
+                # TRANSIENT_LOCAL marker latched at 1.0 (mislabels a later
+                # window for the fitter) and the next tick's
+                # `if not self._pid_engaged:` would re-engage with
+                # _last_published_duty == 1.0, preloading the integrator at
+                # full duty on the live humidifier.
+                self._publish_probe(False)
+                self._publish_duty(self._pre_probe_duty)
+                self._engage_pid_bumplessly(self._pre_probe_duty)
+                self.get_logger().info('Probe aborted by parameter change')
             # NOT self._probe_config(): rclpy applies accepted values only
             # after this callback returns, so get_parameter() here would
             # still read the PRE-batch value (verified empirically) and a
