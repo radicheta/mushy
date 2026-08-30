@@ -173,11 +173,24 @@ def main() -> int:
     ap.add_argument('--fetch', action='store_true',
                     help='fetch from Open-Meteo and (re)write the committed '
                          'fixture and its checksum sidecar')
+    ap.add_argument('--out', default=None,
+                    help='write to this path instead of the committed '
+                         'fixture. Use it for any window whose recent days '
+                         'Open-Meteo still serves as forecast/ERA5T rather '
+                         'than final ERA5 -- the committed fixture is a '
+                         'scientific input to the MUSHY-60 fit and to '
+                         "test_ambient.py's checksum test, and overwriting "
+                         'it in place would silently move both.')
     ap.add_argument('--load-timescale', action='store_true',
                     help='load the committed fixture into the Timescale '
                          'weather table (reads the fixture on disk, no '
                          'network involved)')
     args = ap.parse_args()
+
+    if args.out:
+        global FIXTURE, FIXTURE_META
+        FIXTURE = Path(args.out)
+        FIXTURE_META = FIXTURE.with_name(FIXTURE.stem + '.meta.json')
 
     if not args.fetch and not args.load_timescale:
         ap.error('nothing to do: pass --fetch, --load-timescale, or both')

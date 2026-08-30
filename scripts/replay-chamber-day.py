@@ -204,7 +204,8 @@ def build_grid(paths: dict):
     )
 
 
-def build_ambient_ah(full_idx, allow_stale: bool = False) -> np.ndarray:
+def build_ambient_ah(full_idx, allow_stale: bool = False,
+                     fixture: str = None) -> np.ndarray:
     """Real per-second ambient absolute humidity from the MUSHY-64 fixture.
 
     Times past the fixture's last sample step-hold it (same treatment
@@ -225,7 +226,8 @@ def build_ambient_ah(full_idx, allow_stale: bool = False) -> np.ndarray:
     ``to_rows()`` docstring first -- Open-Meteo's archive endpoint serves
     model-forecast, not reanalysis, for recent days.
     """
-    ambient = AmbientSeries.from_csv()
+    ambient = (AmbientSeries.from_csv(fixture) if fixture
+               else AmbientSeries.from_csv())
     stale_s = int(full_idx[-1]) - int(ambient.end.timestamp())
     if stale_s > 3600:
         msg = (f'ambient fixture ends {ambient.end.isoformat()} but the window '
@@ -329,6 +331,13 @@ def main():
                          '2026-08-29 21:08Z (MUSHY-129). Pick the one the real '
                          'chamber was running during --start..--end or the '
                          'comparison is meaningless.')
+    ap.add_argument('--ambient-fixture', default=None,
+                    help='alternate AmbientSeries CSV (default: the committed '
+                         'fixture). Use the side fixture produced by '
+                         'fetch-ambient-weather.py --out for recent windows; '
+                         'its most recent days are Open-Meteo forecast/ERA5T, '
+                         'not final reanalysis, so label any result that '
+                         'depends on them.')
     ap.add_argument('--allow-stale-ambient', action='store_true',
                     help='proceed even when the window runs past the ambient '
                          'fixture, step-holding its last hourly reading')
@@ -359,7 +368,9 @@ def main():
 
     paths = export_csvs(CACHE_DIR / tag)
     grid = build_grid(paths)
-    ambient_ah = build_ambient_ah(grid['full_idx'], allow_stale=args.allow_stale_ambient)
+    ambient_ah = build_ambient_ah(grid['full_idx'],
+                                  allow_stale=args.allow_stale_ambient,
+                                  fixture=args.ambient_fixture)
 
     rh0 = float(grid['rh_pct'][0])
     temp0 = float(grid['temp_c'][0])
@@ -571,8 +582,7 @@ def main():
     lines.append('## Error development over time (drift vs instantaneous mismatch)\n')
     lines.append('| window | RMSE | MAE | max abs | mean signed |')
     lines.append('|---|---|---|---|---|')
-    for label in ['1h', '6h', '12h', '24h']:
-        m = checkpoints[label]
+    for label, m in checkpoints.items():
         lines.append(f'| {label} | {m["rmse"]:.4f} | {m["mae"]:.4f} | '
                      f'{m["max_abs"]:.4f} | {m["mean_signed"]:+.4f} |')
     lines.append('')
