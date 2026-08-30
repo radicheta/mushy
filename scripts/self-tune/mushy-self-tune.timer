@@ -1,0 +1,11 @@
+[Unit]
+Description=Mushy self-tune nightly (04:10 local)
+
+[Timer]
+OnCalendar=*-*-* 04:10:00
+Persistent=true
+RandomizedDelaySec=5m
+Unit=mushy-self-tune.service
+
+[Install]
+WantedBy=timers.target
