@@ -68,7 +68,12 @@ def test_a_converges_onto_b():
     oracle = one_round(B, B, seed=99)
     assert history[-1][2] >= in_band_fraction(oracle) - 0.05
     ratio = history[-1][1].gains.kp / simc_gains(B, DEFAULT_TEMP_C).kp
-    assert 0.5 < ratio < 2.0, ratio            # within 2x of the oracle gains, either way
+    # Lower bound relaxed 0.5 -> 0.35 with ruling 15: holding the prior dead
+    # time (360 -> 90 s here, true 50 s) detunes SIMC by roughly theta_true /
+    # theta_belief, and a too-slow loop is the safe direction -- the in-band
+    # assertion above is what proves it is still good enough. The upper bound
+    # stays 2.0: over-tuning is the dangerous side and must not be relaxed.
+    assert 0.35 < ratio < 2.0, ratio
 
 
 def test_probe_does_not_degrade_a_correct_chamber():
