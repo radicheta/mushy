@@ -305,14 +305,18 @@ Rulings and design notes recorded in implementation:
   inside the plausibility box let a wild fit pin at a bound and land inside the
   box, making the guard's refusal unreachable; a median still sitting within 1 %
   of a bound is now rejected as `<param>_at_bound`.
-- OPEN (2026-08-30, found by the widened bounds): `test_two_twin_convergence`
-  now FAILS at round 0 with `dead_time_s_at_bound`. 7 of 11 sim windows pin
-  theta at the low fit bound; under the old bounds they pinned at 5.0 s, which
-  is also the plausibility floor, so the guard accepted it and the section 6
-  "dead time -16 %" result was the 2x ratchet walking the belief 360 -> ~45 s
-  over five rounds, not the fitter identifying theta. Dead-time identifiability
-  in closed-loop sim windows is unresolved; F, Q and tau still fit well
-  (F 7.2-8.3 vs true 7.0, tau ~370 vs 400).
+- Ruling 15: dead time is NOT identifiable from busy closed-loop windows. 7 of
+  11 two-twin windows pin theta at whatever the low fit bound is (2.5 s now;
+  5.0 s under the old bounds, which was also the plausibility floor -- so the
+  guard accepted the bound and the section 6 "dead time -16 %" result was the
+  2x ratchet walking the belief 360 -> 45 s, not identification). Treating the
+  pre-roll as warm-up (residuals scored only from `probe_start_idx`, theta
+  capped at the warm-up length) was tried and did NOT move the pinned windows,
+  so it was reverted. `aggregate` now holds the prior dead time when the median
+  sits at the low bound and reports `dead_time_held`, which is a note and does
+  not invalidate the fit (validity stays F/Q-based). Theta waits for longer or
+  quieter probes. F, Q and tau still converge (F/Q/tau within 20 % of the hidden
+  twin; in-band fraction and kp within the oracle bounds).
 - An in-flight probe is aborted (marker 0, PID re-engaged on the pre-probe duty)
   by a force experiment, the staleness guard, and a missing reading, not only by
   a live parameter change. During a probe the controller republishes

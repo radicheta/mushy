@@ -44,13 +44,25 @@ def test_a_converges_onto_b():
         assert agg.valid, (r, agg.reasons, [f.rejected for f in fits])
         push = guard(agg.params, belief, DEFAULT_TEMP_C)
         assert push.ok, (r, push.reasons)
+        if 'dead_time_held' in agg.reasons:
+            assert push.params.dead_time_s == belief.dead_time_s, (r, push.params.dead_time_s)
         belief = push.params
         history.append((agg, push, in_band_fraction(m)))
 
-    for k in ('fill_g_per_h', 'moisture_loss_m3_per_h', 'dead_time_s', 'tau_s'):
+    for k in ('fill_g_per_h', 'moisture_loss_m3_per_h', 'tau_s'):
         got, want = getattr(belief, k), getattr(B, k)
         assert abs(got - want) / want < 0.2, (k, got, want)
         assert abs(got - want) <= max(history[-1][0].iqr[k], 0.2 * want), (k, got, want)
+
+    # Dead time is deliberately NOT asserted to converge (MUSHY-138 ruling 15):
+    # most closed-loop windows pin theta at the low fit bound, so aggregate()
+    # holds the prior and flags 'dead_time_held' (asserted in-loop above). An
+    # earlier version of this test appeared to converge theta only because the
+    # fitter handed the guard the bound every round and the 2x ratchet walked
+    # the belief 360 -> 45 s; that was the ratchet, not identification. What is
+    # required now is only that theta stays plausible and never takes the bound.
+    assert any('dead_time_held' in a.reasons for a, _, _ in history)
+    assert 5.0 <= belief.dead_time_s <= 900.0, belief.dead_time_s
 
     # last round no worse than knowing B from the start
     oracle = one_round(B, B, seed=99)

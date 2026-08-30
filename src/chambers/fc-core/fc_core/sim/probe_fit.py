@@ -211,8 +211,21 @@ def aggregate(fits: List[WindowFit], base: ChamberParams, temps: List[float]) ->
             reasons.append(f'{k}_iqr')
     for i, k in enumerate(BOUND_KEYS):
         lo, hi = BOUNDS_LO[i], BOUNDS_HI[i]
-        if good and (med[k] <= lo * (1 + AT_BOUND_FRAC) or med[k] >= hi * (1 - AT_BOUND_FRAC)):
+        if not good or not (med[k] <= lo * (1 + AT_BOUND_FRAC) or med[k] >= hi * (1 - AT_BOUND_FRAC)):
+            continue
+        if k == 'dead_time_s' and med[k] <= lo * (1 + AT_BOUND_FRAC):
+            # Ruling 15: dead time is NOT identifiable from busy closed-loop
+            # windows -- most of them pin theta at whatever the low bound is
+            # (7 of 11 in the two-twin sim; scoring residuals only after the
+            # probe start, i.e. treating the pre-roll as warm-up, did not move
+            # them). Hold the prior instead of shipping the bound: the fit
+            # stays valid on F/Q, and theta waits for longer or quieter probes.
+            med[k] = getattr(base, k)
+            reasons.append('dead_time_held')
+        else:
             reasons.append(f'{k}_at_bound')
     params = replace(base, **med)
-    return Aggregate(valid=not reasons, n=len(good), reasons=reasons, params=params, iqr=iqr,
+    # 'dead_time_held' is a note, not a refusal: validity stays F/Q-based.
+    blocking = [r for r in reasons if r != 'dead_time_held']
+    return Aggregate(valid=not blocking, n=len(good), reasons=reasons, params=params, iqr=iqr,
                       median_temp_c=median(temps) if temps else float('nan'))

@@ -114,3 +114,13 @@ def test_aggregate_rejects_a_median_sitting_on_a_fit_bound():
     fits = [WindowFit(BOUNDS_HI[0], 1.0, 100.0, 600.0, 0.01) for _ in range(5)]
     a = aggregate(fits, BASE, [6.0] * 5)
     assert not a.valid and 'fill_g_per_h_at_bound' in a.reasons
+
+
+def test_aggregate_holds_dead_time_when_the_windows_pin_it_low():
+    """Ruling 15: theta pinned at the low bound is unidentified, not measured.
+    The fit stays valid on F/Q and the prior dead time is carried through."""
+    from fc_core.sim.probe_fit import BOUNDS_LO, WindowFit
+    fits = [WindowFit(7.0, 1.0, BOUNDS_LO[2], 600.0, 0.01) for _ in range(5)]
+    a = aggregate(fits, BASE, [6.0] * 5)
+    assert a.valid and a.reasons == ['dead_time_held']
+    assert a.params.dead_time_s == BASE.dead_time_s
