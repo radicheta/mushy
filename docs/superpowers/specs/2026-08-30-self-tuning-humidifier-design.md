@@ -305,6 +305,14 @@ Rulings and design notes recorded in implementation:
   inside the plausibility box let a wild fit pin at a bound and land inside the
   box, making the guard's refusal unreachable; a median still sitting within 1 %
   of a bound is now rejected as `<param>_at_bound`.
+- OPEN (2026-08-30, found by the widened bounds): `test_two_twin_convergence`
+  now FAILS at round 0 with `dead_time_s_at_bound`. 7 of 11 sim windows pin
+  theta at the low fit bound; under the old bounds they pinned at 5.0 s, which
+  is also the plausibility floor, so the guard accepted it and the section 6
+  "dead time -16 %" result was the 2x ratchet walking the belief 360 -> ~45 s
+  over five rounds, not the fitter identifying theta. Dead-time identifiability
+  in closed-loop sim windows is unresolved; F, Q and tau still fit well
+  (F 7.2-8.3 vs true 7.0, tau ~370 vs 400).
 - An in-flight probe is aborted (marker 0, PID re-engaged on the pre-probe duty)
   by a force experiment, the staleness guard, and a missing reading, not only by
   a live parameter change. During a probe the controller republishes
