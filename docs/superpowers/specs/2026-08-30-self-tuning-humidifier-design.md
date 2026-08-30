@@ -286,3 +286,26 @@ Rulings and design notes recorded in implementation:
   marker -> 0).
 - scipy is an exec_depend, used only by `fc_core.sim.probe_fit` and `simc`,
   never on the Pi's controller path.
+- Deviation from section 2: `fit-probes.py` imports only `psql()`/`parse_epoch()`
+  from `fit-chamber-model.py` and uses its own `load()`/`resample()` at 10 s
+  resolution instead of the per-minute loaders (the probe needs sub-minute
+  timing).
+- The nightly wrapper captures the fitter's exit status directly (`set +e; ...;
+  rc=$?`); `if ! cmd; then rc=$?` captures the NEGATED status, so every crash
+  read as "exit 0" and the timer never failed.
+- Dry run is the default and `SELF_TUNE_PUSH=1` opts into a real push (the unit
+  carries it commented out), so a hand run of the wrapper on elder-plops -- which
+  is also production -- cannot touch fc1.
+- The five `param set` calls go over ONE ssh chained with `&&`, then `pid_kp` is
+  read back and must match to 1e-6 before the yaml is edited; values serialise
+  with `repr(float(v))` because a double param set from an int literal has
+  crashed the controller before (decay_tau, 2026-06-28). The yaml commit also
+  requires HEAD == main and a working tree holding only the two target files.
+- Fit bounds in `probe_fit` are 0.5x/2x the section 3 plausibility ranges. Fitting
+  inside the plausibility box let a wild fit pin at a bound and land inside the
+  box, making the guard's refusal unreachable; a median still sitting within 1 %
+  of a bound is now rejected as `<param>_at_bound`.
+- An in-flight probe is aborted (marker 0, PID re-engaged on the pre-probe duty)
+  by a force experiment, the staleness guard, and a missing reading, not only by
+  a live parameter change. During a probe the controller republishes
+  `humidity_target` and `pid_output` so Mission Control has no 150 s hole.
