@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-jazzy-ament-cmake \
         python3-pytest \
         python3-colcon-common-extensions \
+        python3-scipy \
     && rm -rf /var/lib/apt/lists/*
 
 COPY docker/fc-core-test-entrypoint.sh /entrypoint.sh

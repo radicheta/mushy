@@ -14,8 +14,8 @@ from statistics import median
 from fc_core import scheduler
 from fc_core.vendor.simple_pid import PID
 from fc_core.control_kernel import (BandSpec, TempRateEstimator, duty_bias_factor,
-                                    project_error_pct, temp_feedforward_duty)
-from fc_core.sim.chamber_model import ChamberParams
+                                    project_error_pct, temp_feedforward_duty,
+                                    ProbeConfig, ProbeScheduler)
 from fc_msgs.msg import Mode
 from fc_msgs.srv import SetMode, StartExperiment, CancelExperiment
 from rcl_interfaces.msg import SetParametersResult
@@ -105,6 +105,11 @@ class FruitingChamberController(Node):
                 ('humidifier_temp_feedforward', 0.0),
                 ('pid_setpoint_ramp_seconds', 30.0),
                 ('bypass_threshold', 0.025),
+                ('probe_seconds', 150.0),            # MUSHY-138 identification probe
+                ('probe_interval_h', 0.0),           # 0 = disabled
+                ('pid_simc_tau_c_seconds', 0.0),     # preference consumed by the push script
+                ('fill_g_per_h', 3.890),             # chamber model F, live-fitted
+                ('surface_g_per_k', 2.77),           # chamber model C
             ]
         )
 
@@ -246,6 +251,7 @@ class FruitingChamberController(Node):
         self._pid_output_pub = self.create_publisher(
             Float32, 'fc1/control/pid_output', actuator_qos
         )
+        self._probe_pub = self.create_publisher(Float32, 'fc1/control/probe', actuator_qos)
 
         # Sensor health publisher — TRANSIENT_LOCAL so late-joiners get last state
         # (SENS-01, WARMUP-02)
@@ -363,6 +369,8 @@ class FruitingChamberController(Node):
         self._last_sht30_timestamp = None       # set when slot-1 carries frame_id=='sht30'
         self._last_temp2_timestamp = None       # set by temperature_2_callback (always SCD41)
         self._temp_rate = TempRateEstimator()   # MUSHY-125 filtered dT/dt, C/h
+        self._probe = ProbeScheduler(self._probe_config())
+        self._pre_probe_duty = 0.0
         self._last_humidity2_timestamp = None   # set by humidity_2_callback (always SCD41)
         self._last_sht30_fresh = None           # tri-state; None means "not yet evaluated"
         self._last_scd41_fresh = None
@@ -433,6 +441,7 @@ class FruitingChamberController(Node):
         # and any late-joiners receive the cached payloads on subscribe.
         self._publish_alerter_overrides(source='config_default')
         self._publish_alerter_globals(source='config_default')
+        self._publish_probe(False)
 
         # Phase 30 D-06..D-09 — time-of-day scheduler.
         # Plain attribute clock seam (testable: `node._now_hhmm = lambda: ...`).
@@ -731,6 +740,7 @@ class FruitingChamberController(Node):
         # Phase 29 — Tier B + Tier C republish flags (Pattern C: deferred drain).
         republish_alerter_overrides = False
         republish_alerter_globals = False
+        rebuild_probe = False
         for p in params:
             n = p.name
             v = p.value
@@ -895,6 +905,12 @@ class FruitingChamberController(Node):
                         successful=False,
                         reason=f'pid_kd must be in [0,20] (got {v})',
                     )
+            elif n in ('probe_seconds', 'probe_interval_h', 'fill_g_per_h', 'surface_g_per_k',
+                       'pid_simc_tau_c_seconds'):
+                if not (isinstance(v, (int, float)) and v >= 0.0):
+                    return SetParametersResult(successful=False, reason=f'{n}: must be >= 0 (got {v})')
+                if n in ('probe_seconds', 'probe_interval_h'):
+                    rebuild_probe = True
 
         if republish_current_mode:
             # Drained at top of control_loop on the next tick. rclpy applies the
@@ -906,6 +922,16 @@ class FruitingChamberController(Node):
             self._pending_alerter_overrides_republish = ('param_set',)
         if republish_alerter_globals:
             self._pending_alerter_globals_republish = ('param_set',)
+        if rebuild_probe:
+            # NOT self._probe_config(): rclpy applies accepted values only
+            # after this callback returns, so get_parameter() here would
+            # still read the PRE-batch value (verified empirically) and a
+            # SetParameters that turns the probe on would silently rebuild
+            # it right back to disabled. get_post gives the would-be value,
+            # same as the band_low/band_high cross-param checks above.
+            self._probe = ProbeScheduler(ProbeConfig(
+                probe_seconds=get_post('probe_seconds'),
+                interval_s=get_post('probe_interval_h') * 3600.0))
 
         return SetParametersResult(successful=True)
 
@@ -1439,6 +1465,15 @@ class FruitingChamberController(Node):
             self._pid.set_auto_mode(False)
             self._pid_engaged = False
 
+    def _probe_config(self) -> ProbeConfig:
+        return ProbeConfig(probe_seconds=self.get_parameter('probe_seconds').value,
+                           interval_s=self.get_parameter('probe_interval_h').value * 3600.0)
+
+    def _publish_probe(self, on: bool):
+        msg = Float32()
+        msg.data = 1.0 if on else 0.0
+        self._probe_pub.publish(msg)
+
     def _publish_duty(self, duty):
         duty = max(0.0, min(1.0, float(duty)))
         # D-12: stash post-clamp value so set_mode bumpless re-engage carries
@@ -1643,6 +1678,9 @@ class FruitingChamberController(Node):
                 )
             self._publish_duty(0.0)
             self._disengage_pid()
+            if self._probe.active:
+                self._probe.step(0.0, 0.0, BandSpec(0.0, 1.0, 'both'), 0.0, 0.0, allowed=False)
+                self._publish_probe(False)
         else:
             # Recovery: log on transition back to fresh data
             if self._safe_state_active:
@@ -1688,6 +1726,27 @@ class FruitingChamberController(Node):
                 # Update _last_tick_ts so the eventual revert sees a sane dt.
                 self._last_tick_ts = now
                 return
+
+            # MUSHY-138 identification probe: duty 1.0 for probe_seconds when
+            # the chamber is quiet, PID parked, re-engaged with the pre-probe
+            # duty (NOT the Mode C 1.0). Marker topic labels the window in
+            # Timescale; the fit takes its timing from the relay edges.
+            mode_ok = mode.name in ('fruiting', 'pinning')
+            band = BandSpec(mode.band_low, mode.band_high, mode.defend_side)
+            was_active = self._probe.active
+            if self._probe.step(dt, self.current_humidity, band, temp_rate,
+                                self._last_published_duty, allowed=mode_ok):
+                if not was_active:
+                    self._pre_probe_duty = self._last_published_duty
+                    self._disengage_pid()
+                    self.get_logger().info(f'Probe {self._probe.count} start, {self._probe.cfg.probe_seconds:.0f}s')
+                    self._publish_probe(True)
+                self._publish_duty(1.0)
+                return
+            if self._probe.just_ended:
+                self._publish_probe(False)
+                self._engage_pid_bumplessly(self._pre_probe_duty)
+                self.get_logger().info('Probe end')
 
             if not self._pid_engaged:
                 # DEFER-29-01 fix: pass current operating duty so post-restart
@@ -1832,7 +1891,8 @@ class FruitingChamberController(Node):
                 if ff_gain != 0.0:
                     duty = max(0.0, min(1.0, duty + temp_feedforward_duty(
                         ff_gain, temp_rate, rh, self.current_temp, band,
-                        ChamberParams().fill_g_per_h, ChamberParams().surface_g_per_k)))
+                        self.get_parameter('fill_g_per_h').value,
+                        self.get_parameter('surface_g_per_k').value)))
 
             self._publish_duty(duty)
 
