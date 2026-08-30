@@ -403,7 +403,7 @@ app.get('/farmer/summary', (req, res) => {
 
 // Allowlist for history endpoint topics — prevents SQL injection via topic param (T-07-04)
 const ALLOWED_TOPICS = ['fc.humidity', 'fc.temperature', 'fc.co2', 'fc.humidifier', 'fc.humidity_2', 'fc.temperature_2',
-                         'fc.humidifier_duty', 'fc.humidity_target', 'fc.pid_output',
+                         'fc.humidifier_duty', 'fc.humidity_target', 'fc.pid_output', 'fc.probe',
                          'fc.vpd', 'fc.water_vapor'];
 
 // Server-side downsampling: choose bucket interval based on requested time range (D-06)
@@ -995,6 +995,24 @@ rclnodejs.init().then(async () => {
         }
     );
     console.log('[bridge] Humidity-target subscription: TRANSIENT_LOCAL QoS');
+
+    // MUSHY-138: subscribe to fc1/control/probe -> fc.probe
+    // 1.0 while an identification probe is commanded. Labels the window for
+    // scripts/self-tune/fit-probes.py; timing comes from fc.humidifier edges.
+    node.createSubscription(
+        'std_msgs/msg/Float32',
+        '/fc1/control/probe',
+        { qos: transientLocalQos },
+        async (msg) => {
+            const value = msg.data;
+            const ts = Date.now();
+            const tsNs = ts * 1_000_000;
+            latestTelemetry.probe = { value, timestamp: ts };
+            broadcast({ probe: value, timestamp: ts });
+            await insertTelemetry('fc.probe', value, ts, tsNs);
+        }
+    );
+    console.log('[bridge] Probe subscription: TRANSIENT_LOCAL QoS');
 
     // Phase 27: subscribe to fc1/control/pid_output -> fc.pid_output
     // TRANSIENT_LOCAL matches fc_controller publisher.
