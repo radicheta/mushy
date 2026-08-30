@@ -81,10 +81,26 @@ def test_find_windows_slices_on_probe_rising_edge():
 def test_find_quasi_windows_uses_idle_then_single_pulse():
     w = synth_window(TRUE)
     n = len(w.rh)
-    # add a second pulse 20 min after the first: the first window is spoiled, no windows found
+    # a second pulse 20 min after the first is modelled input, not
+    # contamination (ruling 12): the first window still opens.
     relay2 = list(w.relay)
     for i in range(n):
         if 600 + 1200 <= i * w.dt < 600 + 1200 + 60:
             relay2[i] = 1.0
-    assert find_quasi_windows(w.dt, w.rh, w.temp, w.ambient_ah, relay2) == []
+    assert len(find_quasi_windows(w.dt, w.rh, w.temp, w.ambient_ah, relay2)) == 1
     assert len(find_quasi_windows(w.dt, w.rh, w.temp, w.ambient_ah, w.relay)) == 1
+
+
+def test_find_quasi_windows_requires_idle_before_the_pulse():
+    w = synth_window(TRUE)
+    n, dt = len(w.rh), w.dt
+    relay2 = [0.0] * n
+    for i in range(n):
+        t = i * dt
+        if 600 <= t < 600 + 150:                          # qualifying pulse (900s idle before it)
+            relay2[i] = 1.0
+        if 600 + 150 + 300 <= t < 600 + 150 + 300 + 60:    # only 5 min OFF before this one -- not a window
+            relay2[i] = 1.0
+    windows = find_quasi_windows(dt, w.rh, w.temp, w.ambient_ah, relay2)
+    assert len(windows) == 1
+    assert windows[0].probe_start_idx == int(600 / dt)

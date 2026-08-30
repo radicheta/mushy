@@ -91,28 +91,25 @@ def find_windows(dt, rh, temp, ambient_ah, relay, probe, pre_s=PRE_S, post_s=POS
 
 
 def find_quasi_windows(dt, rh, temp, ambient_ah, relay, idle_s=900.0, pre_s=PRE_S, post_s=POST_S):
-    """History without probe markers: relay OFF >= idle_s, then ONE pulse, then
-    no relay activity for the rest of the window."""
+    """History without probe markers: a quasi window opens on any rising relay
+    edge preceded by >= idle_s of OFF time. It no longer requires the rest of
+    the window to stay quiet (MUSHY-138 ruling 12) -- ruling 9 already
+    established that later background pulses inside the window are modelled
+    input (fit_window simulates the actual delivered duty from the relay
+    series), not contamination to reject on. Only the idle time BEFORE the
+    edge still gates whether a window opens at all."""
     out, idle = [], idle_s   # assume the record starts already idle (unknown history)
     i = 0
     while i < len(relay):
         if relay[i] > 0.5:
             if idle >= idle_s:
-                j = i
-                while j < len(relay) and relay[j] > 0.5:
-                    j += 1
-                k = j
-                quiet = True
-                while k < len(relay) and (k - i) * dt < post_s:
-                    if relay[k] > 0.5:
-                        quiet = False
-                        break
-                    k += 1
-                if quiet:
-                    w = _slice(dt, rh, temp, ambient_ah, relay, i, pre_s, post_s)
-                    if w is not None:
-                        out.append(w)
-                i = j
+                w = _slice(dt, rh, temp, ambient_ah, relay, i, pre_s, post_s)
+                if w is not None:
+                    out.append(w)
+                while i < len(relay) and relay[i] > 0.5:
+                    i += 1
+                idle = 0.0
+                continue
             idle = 0.0
         else:
             idle += dt
