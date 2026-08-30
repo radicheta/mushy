@@ -96,8 +96,9 @@ def main():
                 t = grid['temp_c']
                 lines.append(f"| recorded | - | {d['rms']:.3f} | {d['lo']:.2f} | {d['hi']:.2f} | "
                              f"{d['in_band']:.0%} | {float(np.mean(grid['duty_recorded'])):.3f} | - |")
-                lines.append(f'| model gain, duty per C/h: {temp_feedforward_gain(target, float(t.min())):.3f} '
-                             f'@{t.min():.1f}C .. {temp_feedforward_gain(target, float(t.max())):.3f} @{t.max():.1f}C '
+                p = ChamberParams()
+                lines.append(f'| model gain, duty per C/h: {temp_feedforward_gain(target, float(t.min()), p.fill_g_per_h, p.surface_g_per_k):.3f} '
+                             f'@{t.min():.1f}C .. {temp_feedforward_gain(target, float(t.max()), p.fill_g_per_h, p.surface_g_per_k):.3f} @{t.max():.1f}C '
                              f'| | | | | | | |')
             d = deviation(m.rh_series, tp, band)
             row = (f"| {trim} | 600 | {d['rms']:.3f} | {d['lo']:.2f} | {d['hi']:.2f} | "
