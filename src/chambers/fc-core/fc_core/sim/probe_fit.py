@@ -24,9 +24,15 @@ POST_S = 5400.0
 MIN_WINDOWS = 5
 MAX_IQR_RATIO = 0.5
 MAX_TEMP_MOVE_C = 0.5
-# spec section 3 plausibility ranges, used as fit bounds too
-BOUNDS_LO = (1.0, 0.1, 5.0, 60.0)       # F, Q, dead_time, tau
-BOUNDS_HI = (50.0, 5.0, 900.0, 3600.0)
+# Fit bounds are DELIBERATELY wider than the spec section 3 plausibility
+# ranges (0.5x the low, 2x the high). Fitting inside the plausibility box makes
+# a wild fit pin at the bound and land inside the box, so the guard's refusal
+# could never fire; out here a wild fit stays visibly wild -- and if the median
+# still sits on a bound, aggregate() rejects it as <param>_at_bound.
+BOUNDS_LO = (0.5, 0.05, 2.5, 30.0)      # F, Q, dead_time, tau
+BOUNDS_HI = (100.0, 10.0, 1800.0, 7200.0)
+BOUND_KEYS = ('fill_g_per_h', 'moisture_loss_m3_per_h', 'dead_time_s', 'tau_s')
+AT_BOUND_FRAC = 0.01
 
 
 @dataclass
@@ -203,6 +209,10 @@ def aggregate(fits: List[WindowFit], base: ChamberParams, temps: List[float]) ->
     for k in ('fill_g_per_h', 'moisture_loss_m3_per_h'):
         if good and iqr[k] / max(med[k], 1e-9) >= MAX_IQR_RATIO:
             reasons.append(f'{k}_iqr')
+    for i, k in enumerate(BOUND_KEYS):
+        lo, hi = BOUNDS_LO[i], BOUNDS_HI[i]
+        if good and (med[k] <= lo * (1 + AT_BOUND_FRAC) or med[k] >= hi * (1 - AT_BOUND_FRAC)):
+            reasons.append(f'{k}_at_bound')
     params = replace(base, **med)
     return Aggregate(valid=not reasons, n=len(good), reasons=reasons, params=params, iqr=iqr,
                       median_temp_c=median(temps) if temps else float('nan'))

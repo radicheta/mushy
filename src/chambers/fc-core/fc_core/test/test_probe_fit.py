@@ -104,3 +104,13 @@ def test_find_quasi_windows_requires_idle_before_the_pulse():
     windows = find_quasi_windows(dt, w.rh, w.temp, w.ambient_ah, relay2)
     assert len(windows) == 1
     assert windows[0].probe_start_idx == int(600 / dt)
+
+
+def test_aggregate_rejects_a_median_sitting_on_a_fit_bound():
+    """A fit that pins at a bound is a failed fit, not a measurement: the fit
+    bounds are wider than the guard's plausibility box, so nothing downstream
+    would notice it otherwise."""
+    from fc_core.sim.probe_fit import BOUNDS_HI, WindowFit
+    fits = [WindowFit(BOUNDS_HI[0], 1.0, 100.0, 600.0, 0.01) for _ in range(5)]
+    a = aggregate(fits, BASE, [6.0] * 5)
+    assert not a.valid and 'fill_g_per_h_at_bound' in a.reasons
