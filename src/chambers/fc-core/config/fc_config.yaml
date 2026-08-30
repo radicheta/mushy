@@ -40,7 +40,7 @@
     pid_derivative_filter_tau: 60.0  # 10→60 2026-05-12 to suppress PWM-period (120s) ripple in derivative term — duty was tracking its own PWM-induced RH wiggle
     pid_integrator_decay_tau: 300.0  # 999.49 — in-band I decay; 1200→300 2026-05-12 to break ~20min limit cycle (decay tau was resonating with chamber thermal response)
     pid_setpoint_ramp_seconds: 30.0  # D-07
-    humidifier_temp_feedforward: 0.0  # MUSHY-125 -- trim on the model-derived temperature-ramp feedforward,
+    humidifier_temp_feedforward: 1.0  # MUSHY-125 -- trim on the model-derived temperature-ramp feedforward,
                                       # duty += trim * (rh*V*dAH_sat/dT - C)/F * dT/dt, faded like
                                       # humidifier_duty_bias. 1.0 = trust the chamber model, 0.0 = off.
                                       # Twin-validated only (999.33-11); not yet exposed to the chamber.
