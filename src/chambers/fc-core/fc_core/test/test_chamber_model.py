@@ -205,3 +205,26 @@ def test_no_rclpy_dependency():
     )
     assert result.returncode == 0, f'sim package failed to import alone:\n{result.stderr}'
     assert result.stdout.strip() == '', f'sim package pulled in ROS deps: {result.stdout}'
+
+
+def test_surface_reservoir_returns_water_on_warming_and_takes_it_on_cooling():
+    """MUSHY-136: with the humidifier off and no inside/outside gradient, a
+    temperature change alone moves the chamber's absolute humidity by
+    surface_g_per_k grams per kelvin -- condensate re-evaporating off wet
+    surfaces on warming, condensing back on cooling. Reversible."""
+    p = ChamberParams(surface_g_per_k=2.8)
+    m = ChamberModel(p, rh0_pct=90.0, temp_c=10.0)
+    ah0 = m.ah
+    m.step(delivered_duty=0.0, dt_s=1.0, ambient_ah_g_m3=ah0, temp_c=11.0)
+    assert m.ah == pytest.approx(ah0 + 2.8 / CHAMBER_VOLUME_M3, rel=1e-9)
+    m.step(delivered_duty=0.0, dt_s=1.0, ambient_ah_g_m3=m.ah, temp_c=10.0)
+    assert m.ah == pytest.approx(ah0, rel=1e-9)
+
+
+def test_surface_reservoir_off_reproduces_the_mushy60_model():
+    """With the term zeroed the model is byte-for-byte the MUSHY-60 model:
+    a temperature change alone does not move absolute humidity."""
+    m = ChamberModel(ChamberParams(surface_g_per_k=0.0), rh0_pct=90.0, temp_c=10.0)
+    ah0 = m.ah
+    m.step(delivered_duty=0.0, dt_s=1.0, ambient_ah_g_m3=ah0, temp_c=11.0)
+    assert m.ah == pytest.approx(ah0, rel=1e-12)

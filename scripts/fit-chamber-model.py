@@ -392,6 +392,7 @@ def build_samples(grid_ts, temp_rh, duty, duty_app, ambient: AmbientSeries):
             'duty_app': duty_app[ts],
             'ah_in': absolute_humidity_g_m3(temp, rh),
             'ah_out': absolute_humidity_g_m3(amb.temp_c, amb.rh_pct),
+            'temp_c': temp,
         })
     return out, stats
 
@@ -409,6 +410,7 @@ def with_derivatives(samples):
             continue
         rec = dict(a)
         rec['dah_dt'] = (b['ah_in'] - a['ah_in']) * 3600.0 / dt_s
+        rec['dtemp_dt'] = (b['temp_c'] - a['temp_c']) * 3600.0 / dt_s   # C per hour
         out.append(rec)
     return out
 
@@ -487,7 +489,35 @@ def fit_q(samples):
     return (num / den if den else float('nan')), n
 
 
-def fit_f_regression(samples, q):
+def fit_q_c(samples):
+    """MUSHY-136. Ordinary least squares, no intercept, on quiet samples:
+       V*dAH/dt = -Q * (AH_in - AH_out) + C * dT/dt.
+    C is the reversible exchange with wet surfaces in grams per kelvin of
+    chamber temperature change (ChamberParams.surface_g_per_k). Solves the
+    2x2 normal equations directly. Returns ((q, c), n)."""
+    sxx = sxt = stt = sxy = sty = 0.0
+    n = 0
+    for s in samples:
+        x = -(s['ah_in'] - s['ah_out'])
+        t = s['dtemp_dt']
+        y = CHAMBER_VOLUME_M3 * s['dah_dt']
+        sxx += x * x
+        sxt += x * t
+        stt += t * t
+        sxy += x * y
+        sty += t * y
+        n += 1
+    det = sxx * stt - sxt * sxt
+    if det == 0.0:
+        # No temperature movement in the sample: C is unidentifiable, Q
+        # reduces to the one-parameter fit.
+        return ((sxy / sxx if sxx else float('nan')), float('nan')), n
+    q = (sxy * stt - sty * sxt) / det
+    c = (sty * sxx - sxy * sxt) / det
+    return (q, c), n
+
+
+def fit_f_regression(samples, q, c=0.0):
     """Least squares through the origin, Q held fixed, regressed on u_app,
     restricted to raw duty > 0 (active) samples:
        V*dAH/dt + Q*(AH_in - AH_out) = F * u_app.
@@ -504,14 +534,15 @@ def fit_f_regression(samples, q):
         if s['duty'] <= 0.0:
             continue
         u = s['duty_app']
-        z = CHAMBER_VOLUME_M3 * s['dah_dt'] + q * (s['ah_in'] - s['ah_out'])
+        z = (CHAMBER_VOLUME_M3 * s['dah_dt'] + q * (s['ah_in'] - s['ah_out'])
+             - c * s['dtemp_dt'])
         num += u * z
         den += u * u
         n += 1
     return (num / den if den else float('nan')), n
 
 
-def fit_f_moment(samples, q):
+def fit_f_moment(samples, q, c=0.0):
     """Moment-balance cross-check for F. NOT estimator-independent: in
     quasi-steady state mean(V*dAH/dt) ~ 0, so this is very nearly
     Q*mean(gradient)/mean(u) -- directly proportional to Q, and it inherits
@@ -524,9 +555,11 @@ def fit_f_moment(samples, q):
     mean_grad = sum(s['ah_in'] - s['ah_out'] for s in samples) / n
     mean_dahdt = sum(s['dah_dt'] for s in samples) / n
     mean_u = sum(s['duty'] for s in samples) / n
+    mean_dtempdt = sum(s['dtemp_dt'] for s in samples) / n
     if mean_u == 0:
         return float('nan')
-    return (q * mean_grad + CHAMBER_VOLUME_M3 * mean_dahdt) / mean_u
+    return (q * mean_grad + CHAMBER_VOLUME_M3 * mean_dahdt
+            - c * mean_dtempdt) / mean_u
 
 
 def fit_f_over_q(samples):
@@ -626,9 +659,9 @@ def q_band_sweep(samples, runs=None):
 
     def one(lo, hi):
         quiet = [s for s, r in zip(samples, runs) if lo <= r <= hi]
-        q, n = fit_q(quiet)
-        f_reg, _ = fit_f_regression(samples, q)
-        return {'lo': lo, 'hi': hi, 'q_g_per_m3h': q,
+        (q, c), n = fit_q_c(quiet)
+        f_reg, _ = fit_f_regression(samples, q, c)
+        return {'lo': lo, 'hi': hi, 'q_g_per_m3h': q, 'c_g_per_k': c,
                 'f_regression_g_per_h': f_reg, 'n_quiet': n}
 
     hi_sweep = [one(Q_BAND_LO, hi) for hi in Q_HI_SWEEP]
@@ -652,8 +685,11 @@ def precompute_day_stats(samples, runs=None):
         runs = zero_run_lengths(samples)
     days = defaultdict(lambda: {
         'quiet_xy': 0.0, 'quiet_xx': 0.0, 'quiet_n': 0,
+        'quiet_xt': 0.0, 'quiet_tt': 0.0, 'quiet_ty': 0.0,
         'act_u_dahdt': 0.0, 'act_u_grad': 0.0, 'act_uu': 0.0, 'act_n': 0,
+        'act_u_dtemp': 0.0,
         'full_grad': 0.0, 'full_dahdt': 0.0, 'full_u': 0.0, 'full_n': 0,
+        'full_dtempdt': 0.0,
     })
     for s, run in zip(samples, runs):
         d = days[s['ts'].date()]
@@ -662,23 +698,31 @@ def precompute_day_stats(samples, runs=None):
             y = -CHAMBER_VOLUME_M3 * s['dah_dt']
             d['quiet_xy'] += grad * y
             d['quiet_xx'] += grad * grad
+            d['quiet_xt'] += grad * s['dtemp_dt']
+            d['quiet_tt'] += s['dtemp_dt'] * s['dtemp_dt']
+            d['quiet_ty'] += s['dtemp_dt'] * y
             d['quiet_n'] += 1
         if s['duty'] > 0.0:
             d['act_u_dahdt'] += s['duty_app'] * s['dah_dt']
             d['act_u_grad'] += s['duty_app'] * grad
             d['act_uu'] += s['duty_app'] * s['duty_app']
+            d['act_u_dtemp'] += s['duty_app'] * s['dtemp_dt']
             d['act_n'] += 1
         d['full_grad'] += grad
         d['full_dahdt'] += s['dah_dt']
         d['full_u'] += s['duty']
+        d['full_dtempdt'] += s['dtemp_dt']
         d['full_n'] += 1
     return dict(days)
 
 
 def aggregate_days(day_stats, dates):
     agg = {'quiet_xy': 0.0, 'quiet_xx': 0.0, 'quiet_n': 0,
+           'quiet_xt': 0.0, 'quiet_tt': 0.0, 'quiet_ty': 0.0,
            'act_u_dahdt': 0.0, 'act_u_grad': 0.0, 'act_uu': 0.0, 'act_n': 0,
-           'full_grad': 0.0, 'full_dahdt': 0.0, 'full_u': 0.0, 'full_n': 0}
+           'act_u_dtemp': 0.0,
+           'full_grad': 0.0, 'full_dahdt': 0.0, 'full_u': 0.0, 'full_n': 0,
+           'full_dtempdt': 0.0}
     for dt in dates:
         d = day_stats.get(dt)
         if d is None:
@@ -689,24 +733,36 @@ def aggregate_days(day_stats, dates):
 
 
 def stats_from_agg(agg):
-    """Q, F regression, F moment, F/Q from aggregated per-day sums."""
-    q = agg['quiet_xy'] / agg['quiet_xx'] if agg['quiet_xx'] else float('nan')
-    f_reg = ((CHAMBER_VOLUME_M3 * agg['act_u_dahdt'] + q * agg['act_u_grad'])
+    """Q, C, F regression, F moment, F/Q from aggregated per-day sums.
+
+    Same 2x2 normal equations as `fit_q_c`, written on y = -V*dAH/dt so the
+    solved pair is (Q, -C)."""
+    det = agg['quiet_xx'] * agg['quiet_tt'] - agg['quiet_xt'] ** 2
+    if det:
+        q = (agg['quiet_xy'] * agg['quiet_tt'] - agg['quiet_ty'] * agg['quiet_xt']) / det
+        c = -(agg['quiet_ty'] * agg['quiet_xx'] - agg['quiet_xy'] * agg['quiet_xt']) / det
+    else:
+        q = agg['quiet_xy'] / agg['quiet_xx'] if agg['quiet_xx'] else float('nan')
+        c = float('nan')
+    c_eff = c if c == c else 0.0
+    f_reg = ((CHAMBER_VOLUME_M3 * agg['act_u_dahdt'] + q * agg['act_u_grad']
+              - c_eff * agg['act_u_dtemp'])
              / agg['act_uu'] if agg['act_uu'] else float('nan'))
     n = agg['full_n']
     if n:
         mean_grad = agg['full_grad'] / n
         mean_dahdt = agg['full_dahdt'] / n
         mean_u = agg['full_u'] / n
+        mean_dtempdt = agg['full_dtempdt'] / n
     else:
-        mean_grad = mean_dahdt = mean_u = float('nan')
-    f_mom = ((q * mean_grad + CHAMBER_VOLUME_M3 * mean_dahdt) / mean_u
-             if mean_u else float('nan'))
+        mean_grad = mean_dahdt = mean_u = mean_dtempdt = float('nan')
+    f_mom = ((q * mean_grad + CHAMBER_VOLUME_M3 * mean_dahdt - c_eff * mean_dtempdt)
+             / mean_u if mean_u else float('nan'))
     f_over_q = mean_grad / mean_u if mean_u else float('nan')
-    return q, f_reg, f_mom, f_over_q
+    return q, c, f_reg, f_mom, f_over_q
 
 
-def moment_and_foq_for_dates(day_stats, dates, q):
+def moment_and_foq_for_dates(day_stats, dates, q, c=0.0):
     """F-moment and F/Q for a date subset with Q held fixed (not re-fit) --
     used for the monthly moment breakdown and the Aug-excluded validate
     view, where Q should come from the parent set, not from a re-fit on a
@@ -718,9 +774,10 @@ def moment_and_foq_for_dates(day_stats, dates, q):
     mean_grad = agg['full_grad'] / n
     mean_dahdt = agg['full_dahdt'] / n
     mean_u = agg['full_u'] / n
+    mean_dtempdt = agg['full_dtempdt'] / n
     if mean_u == 0:
         return float('nan'), float('nan')
-    f_mom = (q * mean_grad + CHAMBER_VOLUME_M3 * mean_dahdt) / mean_u
+    f_mom = (q * mean_grad + CHAMBER_VOLUME_M3 * mean_dahdt - c * mean_dtempdt) / mean_u
     f_over_q = mean_grad / mean_u
     return f_mom, f_over_q
 
@@ -734,14 +791,15 @@ def bootstrap_ci(day_stats, dates, n_boot=N_BOOT, seed=BOOT_SEED):
     dates = list(dates)
     if not dates:
         nan = (float('nan'), float('nan'))
-        return {'q': nan, 'f_reg': nan, 'f_mom': nan, 'f_over_q': nan}
+        return {'q': nan, 'c': nan, 'f_reg': nan, 'f_mom': nan, 'f_over_q': nan}
     rng = random.Random(seed)
-    boots = {'q': [], 'f_reg': [], 'f_mom': [], 'f_over_q': []}
+    boots = {'q': [], 'c': [], 'f_reg': [], 'f_mom': [], 'f_over_q': []}
     for _ in range(n_boot):
         sample_dates = [rng.choice(dates) for _ in range(len(dates))]
         agg = aggregate_days(day_stats, sample_dates)
-        q, f_reg, f_mom, f_over_q = stats_from_agg(agg)
+        q, c, f_reg, f_mom, f_over_q = stats_from_agg(agg)
         boots['q'].append(q)
+        boots['c'].append(c)
         boots['f_reg'].append(f_reg)
         boots['f_mom'].append(f_mom)
         boots['f_over_q'].append(f_over_q)
@@ -767,13 +825,13 @@ def bootstrap_ratio_ci(
     """
     fit_dates, val_dates = list(fit_dates), list(val_dates)
     rng = random.Random(seed)
-    boots = {'q': [], 'f_reg': [], 'f_mom': [], 'f_over_q': []}
+    boots = {'q': [], 'c': [], 'f_reg': [], 'f_mom': [], 'f_over_q': []}
     for _ in range(n_boot):
         fit_sample = [rng.choice(fit_dates) for _ in range(len(fit_dates))]
         val_sample = [rng.choice(val_dates) for _ in range(len(val_dates))]
-        qf, frf, fmf, foqf = stats_from_agg(aggregate_days(day_stats, fit_sample))
-        qv, frv, fmv, foqv = stats_from_agg(aggregate_days(day_stats, val_sample))
-        for key, num, den in (('q', qv, qf), ('f_reg', frv, frf),
+        qf, cf, frf, fmf, foqf = stats_from_agg(aggregate_days(day_stats, fit_sample))
+        qv, cv, frv, fmv, foqv = stats_from_agg(aggregate_days(day_stats, val_sample))
+        for key, num, den in (('q', qv, qf), ('c', cv, cf), ('f_reg', frv, frf),
                               ('f_mom', fmv, fmf), ('f_over_q', foqv, foqf)):
             valid = den not in (0.0,) and den == den and num == num
             boots[key].append(num / den if valid else float('nan'))
@@ -796,7 +854,7 @@ def assert_estimators_agree(direct, agg, label, tol=1e-6):
     identical point estimates on the same, non-resampled sample set -- both
     are sums over the same data, just grouped differently. Raising here is
     what prevents the two implementations from silently drifting apart."""
-    names = ('q', 'f_reg', 'f_mom', 'f_over_q')
+    names = ('q', 'c', 'f_reg', 'f_mom', 'f_over_q')
     for name, a, b in zip(names, direct, agg):
         if a != a and b != b:   # both nan
             continue
@@ -819,23 +877,23 @@ def fit_half(samples, day_stats, runs=None):
     # rescan every sample per replicate. See `assert_estimators_agree`.
     band_flags = quiet_band_mask(samples, Q_BAND_LO, Q_BAND_HI, runs=runs)
     quiet = [s for s, f in zip(samples, band_flags) if f]
-    q, nq = fit_q(quiet)
-    f_reg, nf = fit_f_regression(samples, q)
-    f_mom = fit_f_moment(samples, q)
+    (q, c), nq = fit_q_c(quiet)
+    f_reg, nf = fit_f_regression(samples, q, c)
+    f_mom = fit_f_moment(samples, q, c)
     f_over_q = fit_f_over_q(samples)
 
     agg = aggregate_days(day_stats, dates)
-    q_agg, f_reg_agg, f_mom_agg, f_over_q_agg = stats_from_agg(agg)
+    q_agg, c_agg, f_reg_agg, f_mom_agg, f_over_q_agg = stats_from_agg(agg)
     assert_estimators_agree(
-        (q, f_reg, f_mom, f_over_q),
-        (q_agg, f_reg_agg, f_mom_agg, f_over_q_agg), 'fit_half')
+        (q, c, f_reg, f_mom, f_over_q),
+        (q_agg, c_agg, f_reg_agg, f_mom_agg, f_over_q_agg), 'fit_half')
 
     ci = bootstrap_ci(day_stats, dates)
 
     # Aug-excluded view: only differs when the set actually spans August.
     non_aug_dates = [d for d in dates if d.month != 8]
     f_mom_excl_aug, f_over_q_excl_aug = moment_and_foq_for_dates(
-        day_stats, non_aug_dates, q)
+        day_stats, non_aug_dates, q, c)
 
     n_full = agg['full_n']
     mean_grad = agg['full_grad'] / n_full if n_full else float('nan')
@@ -844,19 +902,19 @@ def fit_half(samples, day_stats, runs=None):
                         / OLD_MODEL_LEAK_G_PER_H * 100)
 
     return {
-        'q_g_per_m3h': q, 'n_quiet': nq,
+        'q_g_per_m3h': q, 'c_g_per_k': c, 'n_quiet': nq,
         'f_regression_g_per_h': f_reg, 'n_active': nf,
         'f_moment_g_per_h': f_mom, 'f_moment_excl_aug_g_per_h': f_mom_excl_aug,
         'f_over_q': f_over_q, 'f_over_q_excl_aug': f_over_q_excl_aug,
         'n_samples': len(samples),
-        'q_ci': ci['q'], 'f_regression_ci': ci['f_reg'],
+        'q_ci': ci['q'], 'c_ci': ci['c'], 'f_regression_ci': ci['f_reg'],
         'f_moment_ci': ci['f_mom'], 'f_over_q_ci': ci['f_over_q'],
         'mean_grad_g_per_m3': mean_grad, 'implied_leak_g_per_h': implied_leak,
         'old_leak_pct_off': old_leak_pct_off,
     }
 
 
-def monthly_moment_breakdown(day_stats, q_all):
+def monthly_moment_breakdown(day_stats, q_all, c_all=0.0):
     """F-moment and F/Q per calendar month, Q held fixed at the 'all' band
     value -- shows August's gradient collapse without needing a per-month
     Q re-fit (most months don't have enough quiet data to support one)."""
@@ -865,7 +923,7 @@ def monthly_moment_breakdown(day_stats, q_all):
     for month_start in months:
         dates = [dt for dt in day_stats if dt.year == month_start.year
                  and dt.month == month_start.month]
-        f_mom, f_over_q = moment_and_foq_for_dates(day_stats, dates, q_all)
+        f_mom, f_over_q = moment_and_foq_for_dates(day_stats, dates, q_all, c_all)
         rows.append({'month': f'{month_start.year}-{month_start.month:02d}',
                      'f_moment_g_per_h': f_mom, 'f_over_q': f_over_q,
                      'n_days': len(dates)})
@@ -930,7 +988,8 @@ def main() -> int:
         'effective_q_by_regime': effective_q_by_regime(samples, runs=runs),
         'effective_q_by_regime_and_half': effective_q_by_regime_and_half(samples, runs=runs),
         'q_band_sweep': q_band_sweep(samples, runs=runs),
-        'monthly_moment': monthly_moment_breakdown(day_stats, q_all_result['q_g_per_m3h']),
+        'monthly_moment': monthly_moment_breakdown(day_stats, q_all_result['q_g_per_m3h'],
+                                                   q_all_result['c_g_per_k']),
     }
     print(json.dumps(results, indent=2, default=str))
 
@@ -948,6 +1007,7 @@ def render_report(r) -> str:
 
     def row(name, d):
         return (f"| {name} | {d['q_g_per_m3h']:.2f} {ci_str(d['q_ci'])} | "
+                f"{d['c_g_per_k']:.2f} {ci_str(d['c_ci'])} | "
                 f"{d['n_quiet']} | "
                 f"{d['f_regression_g_per_h']:.2f} {ci_str(d['f_regression_ci'])} | "
                 f"{d['n_active']} | "
@@ -995,11 +1055,11 @@ def render_report(r) -> str:
         return 'inf' if hi == float('inf') else str(int(hi))
 
     hi_sweep_rows = '\n'.join(
-        f"| [{Q_BAND_LO}, {hi_label(s['hi'])}] | {s['q_g_per_m3h']:.3f} | "
+        f"| [{Q_BAND_LO}, {hi_label(s['hi'])}] | {s['q_g_per_m3h']:.3f} | {s['c_g_per_k']:.2f} | "
         f"{s['f_regression_g_per_h']:.2f} | {s['n_quiet']} |"
         for s in r['q_band_sweep']['hi_sweep'])
     lo_sweep_rows = '\n'.join(
-        f"| [{s['lo']}, {Q_BAND_HI}] | {s['q_g_per_m3h']:.3f} | "
+        f"| [{s['lo']}, {Q_BAND_HI}] | {s['q_g_per_m3h']:.3f} | {s['c_g_per_k']:.2f} | "
         f"{s['f_regression_g_per_h']:.2f} | {s['n_quiet']} |"
         for s in r['q_band_sweep']['lo_sweep'])
     sweep_freg = [s['f_regression_g_per_h'] for s in
@@ -1029,7 +1089,7 @@ def render_report(r) -> str:
     def contains(ci, x):
         return ci[0] <= x <= ci[1]
 
-    ratio_names = {'q': 'Q', 'f_reg': 'F regression', 'f_mom': 'F moment',
+    ratio_names = {'q': 'Q', 'c': 'C', 'f_reg': 'F regression', 'f_mom': 'F moment',
                    'f_over_q': 'F/Q'}
     excludes_1p6 = [ratio_names[k] for k, ci in ratio.items() if not contains(ci, 1.6)]
     contains_1p6 = [ratio_names[k] for k, ci in ratio.items() if contains(ci, 1.6)]
@@ -1042,6 +1102,14 @@ def render_report(r) -> str:
 Generated by `scripts/fit-chamber-model.py`. Window 2026-04-11 to 2026-08-08,
 1-minute samples, ambient from the MUSHY-64 fixture. All CIs are 95% day-block
 bootstrap intervals ({N_BOOT} resamples, whole UTC days, unless noted).
+
+MUSHY-136: the quiet-window regression now carries a second regressor,
+`C * dT/dt` -- the reversible exchange with wet surfaces, grams per kelvin of
+chamber temperature change (`ChamberParams.surface_g_per_k`). Q is fitted
+jointly with it, and F is regressed with both loss terms removed. The
+sections below that discuss Q's band- and regime-dependence were written for
+the one-parameter fit; the MUSHY-62 audit showed that dependence to be the
+cooling rate of the selected windows, which C now absorbs.
 
 ## Headline: F/Q is the identified quantity, F and Q are simulator priors
 
@@ -1070,8 +1138,8 @@ restricted to raw `duty > 0`; a moment-balance cross-check (proportional to
 Q, NOT estimator-independent -- see below); and `F/Q`, the one quantity
 here that is free of both Q and the lag.
 
-| set | Q (m3/h) | quiet n | F regression (g/h) | active n | F moment (g/h) | F/Q | total |
-|---|---|---|---|---|---|---|---|
+| set | Q (m3/h) | C (g/K) | quiet n | F regression (g/h) | active n | F moment (g/h) | F/Q | total |
+|---|---|---|---|---|---|---|---|---|
 {row('all', all_)}
 {row('fit (Apr-Jun)', fit_)}
 {row('validate (Jul-Aug)', val_)}
@@ -1093,14 +1161,14 @@ operational choice [{Q_BAND_LO}, {Q_BAND_HI}]:
 
 Upper bound (lo={Q_BAND_LO} fixed):
 
-| band | Q (m3/h) | F regression (g/h) | quiet n |
-|---|---|---|---|
+| band | Q (m3/h) | C (g/K) | F regression (g/h) | quiet n |
+|---|---|---|---|---|
 {hi_sweep_rows}
 
 Lower bound (hi={Q_BAND_HI} fixed):
 
-| band | Q (m3/h) | F regression (g/h) | quiet n |
-|---|---|---|---|
+| band | Q (m3/h) | C (g/K) | F regression (g/h) | quiet n |
+|---|---|---|---|---|
 {lo_sweep_rows}
 
 Resulting `F` range across both sweeps: **{f_range_lo:.1f}-{f_range_hi:.1f} g/h**, a
@@ -1254,6 +1322,7 @@ replicates, resampling each half independently:
 | statistic | validate/fit ratio 95% CI |
 |---|---|
 | Q | {ratio['q'][0]:.2f} to {ratio['q'][1]:.2f} |
+| C | {ratio['c'][0]:.2f} to {ratio['c'][1]:.2f} |
 | F regression | {ratio['f_reg'][0]:.2f} to {ratio['f_reg'][1]:.2f} |
 | F moment | {ratio['f_mom'][0]:.2f} to {ratio['f_mom'][1]:.2f} |
 | F/Q | {ratio['f_over_q'][0]:.2f} to {ratio['f_over_q'][1]:.2f} |

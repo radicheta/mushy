@@ -7,21 +7,31 @@ This version balances grams of water per cubic metre and derives RH from
 temperature on read, so the moisture balance itself does not have to know
 what temperature the chamber is at.
 
-Fitted constants (Task 2, see 999.33-06-FIT-RESULTS.md):
+Fitted constants (MUSHY-136 refit of the MUSHY-60 identification, see
+999.33-06-FIT-RESULTS.md):
 
-    FITTED_Q = 0.9634   # m3/h
-    FITTED_F = 6.776    # g/h
+    FITTED_Q = 0.553    # m3/h   [0.40, 0.68]
+    FITTED_C = 2.77     # g/K    [2.56, 3.00]
+    FITTED_F = 3.890    # g/h    = Q * (F/Q)
 
-Task 2's identification found that the only WELL-IDENTIFIED quantity is the
-ratio F/Q = 7.0337 (computed independently as mean_gradient/mean_duty, so it
-does not depend on Q, on the lag model, or on the quiet-band choice). The
-branch's own band sweep gives Q in [0.658, 1.242] -- -32% / +29% of the
-shipped 0.9634, a 1.9x span top-to-bottom -- and F in [5.8, 8.3] g/h, -14% /
-+23% of the shipped 6.776. F is therefore set as Q * (F/Q) = 0.9634 * 7.0337
-= 6.776 -- NOT the fit's headline 7.11 -- so that the model's steady-state
-behaviour matches the identified ratio exactly. Using 7.11 instead would put
-steady-state duty 5% off the one number we actually trust. This is a
-deliberate decision.
+The balance is V*dAH/dt = F*u - Q*(AH_in - AH_out) + C*dT/dt. The third
+term is the MUSHY-136 surface reservoir: the chamber air exchanges water
+reversibly with wet walls, substrate and standing water as its temperature
+moves, ~0.9x the saturation slope, so an idle chamber's absolute humidity
+tracks the saturation curve at near-constant RH. The MUSHY-62 audit found
+this term explains 83% of idle-window variance where the gradient leak
+alone explained 10%, and that BOTH earlier Q estimates (0.96 and 1.9) were
+measuring the cooling rate of the windows they selected. C is flat across
+every quiet-band choice (2.75-2.90); Q still moves with the band
+(0.39-0.73) but is now the minor term.
+
+F/Q = 7.0337 (mean_gradient/mean_duty, independent of Q, of the lag and of
+the band) remains the one quantity the live controller consumes, so F is
+set as Q * (F/Q) rather than the regression's 4.35 [3.29, 5.36], exactly as
+MUSHY-60 did. Driven replays (real temperature and ambient in, RH out) with
+these values: 2026-08-08 RMSE 1.69 (was 4.58), held-out 2026-08-14 3.45
+(was 10.54), held-out idle 2026-08-18 1.88 (was 4.09), held-out sigma-delta
+night 2026-08-29 1.81 (was 8.93). See 999.33-10-MUSHY-136-VALIDATION.md.
 
 Why F/Q, and not some other combination: equilibrium_duty() below is
 Q * gradient / F = gradient / (F/Q) -- Q cancels out of it entirely. Verified
@@ -83,23 +93,29 @@ class ChamberParams:
     nameplate output, because most emitted water lands in the substrate
     rather than the air. See MUSHY-68.
 
-    Together, steady-state behaviour is well identified (via the F/Q ratio,
-    see module docstring); the TRANSIENT response carries a much larger
-    uncertainty from the band choice than steady state does, because the
-    response time is set by V/Q and the branch's own sweep puts V/Q in
-    [4.64 h, 8.75 h] -- not a factor-1.2 band. This simulator is for
-    RELATIVE comparison between control configurations, not absolute
-    prediction.
+    Steady-state behaviour is well identified (via the F/Q ratio, see
+    module docstring). The transient response is now dominated by the
+    surface term whenever chamber temperature is moving, and by V/Q
+    (~10 h at the fitted Q, band-dependent) when it is not. Driven replays
+    against recorded days land within 2-3.5 RH points RMSE; a
+    constant-temperature synthetic run cannot exercise the surface term at
+    all, so amplitude claims from such runs say little about the real
+    chamber (see test_replay_fidelity.py).
     """
 
-    moisture_loss_m3_per_h: float = 0.9634  # fitted (Task 2); see class docstring
-    fill_g_per_h: float = 6.776             # fitted (Task 2); see class docstring
+    moisture_loss_m3_per_h: float = 0.553   # fitted (MUSHY-136); see module docstring
+    fill_g_per_h: float = 3.890             # Q * (F/Q); see module docstring
     dead_time_s: float = 360.0              # fitted: transport + mixing lag
     tau_s: float = 600.0                    # fitted: first-order mixing constant
-    # AUDIT MOCK-UP (MUSHY-62): reversible surface reservoir. Grams of water
-    # the chamber air gains per kelvin of chamber warming (loses on cooling).
-    # 0.0 = the shipped model.
-    surface_g_per_k: float = 0.0
+    # MUSHY-136: reversible exchange with wet surfaces (walls, substrate,
+    # standing water). Grams of water the chamber AIR gains per kelvin of
+    # chamber warming, and loses per kelvin of cooling. 0.0 reproduces the
+    # MUSHY-60 model exactly.
+    # ponytail: linear in dT/dt, no RH-level dependence; fitted at 85-99% RH
+    # on a chamber kept wet. A chamber pinned at 97% for a day drifts +1.8 pp
+    # wet under this form -- upgrade to a relaxation toward a surface
+    # equilibrium RH if that, or a dry chamber, ever matters.
+    surface_g_per_k: float = 2.77           # fitted (MUSHY-136); see module docstring
 
     def equilibrium_duty(self, ah_in_g_m3: float, ah_out_g_m3: float) -> float:
         """Delivered duty that exactly cancels the loss for a given

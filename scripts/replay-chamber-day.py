@@ -22,9 +22,10 @@ predicting temperature. Feeding it the recorded value at every step means the
 comparison below isolates moisture-balance error; it says nothing about
 whether a thermal model would be needed too.
 
-No parameter is tuned here. Q = 0.9634 m3/h and F = 6.776 g/h are the
-MUSHY-60 fitted values, used as-is. If the match is poor, that is reported as
-the finding, not adjusted away.
+No parameter is tuned here: ChamberParams' fitted defaults are used as-is
+(--q/--f/--c exist to compare candidate values, and the report names any
+override). If the match is poor, that is reported as the finding, not
+adjusted away.
 
 === Data ===
   fc.humidity      RH, percent, ~2s cadence (SHT30 poll)
@@ -95,7 +96,7 @@ GAP_BREAK_S = 10   # asof tolerance for fc.humidity / fc.temperature
 BAND = BandSpec(band_low=0.885, band_high=0.915, defend_side='both')
 TARGET = 0.90
 GAINS = DEFAULT_GAINS
-PARAMS = ChamberParams()   # fitted MUSHY-60 values, unmodified: Q=0.9634, F=6.776
+PARAMS = ChamberParams()   # fitted defaults, unmodified (see chamber_model.py)
 
 
 def psql_copy(sql: str, out_path: Path) -> None:
@@ -342,11 +343,11 @@ def main():
                     help='proceed even when the window runs past the ambient '
                          'fixture, step-holding its last hourly reading')
     ap.add_argument('--q', type=float, default=None,
-                    help='AUDIT ONLY: override moisture_loss_m3_per_h')
+                    help='override ChamberParams.moisture_loss_m3_per_h (Q)')
     ap.add_argument('--f', type=float, default=None,
-                    help='AUDIT ONLY: override fill_g_per_h')
+                    help='override ChamberParams.fill_g_per_h (F)')
     ap.add_argument('--c', type=float, default=None,
-                    help='AUDIT ONLY: override surface_g_per_k')
+                    help='override ChamberParams.surface_g_per_k (C)')
     ap.add_argument('--out-tag', default=None,
                     help='suffix for the output filenames (default: derived '
                          'from the window and --pwm)')
@@ -357,7 +358,7 @@ def main():
             moisture_loss_m3_per_h=args.q if args.q is not None else PARAMS.moisture_loss_m3_per_h,
             fill_g_per_h=args.f if args.f is not None else PARAMS.fill_g_per_h,
             surface_g_per_k=args.c if args.c is not None else PARAMS.surface_g_per_k)
-        print(f'AUDIT OVERRIDE Q={PARAMS.moisture_loss_m3_per_h} F={PARAMS.fill_g_per_h} '
+        print(f'PARAM OVERRIDE Q={PARAMS.moisture_loss_m3_per_h} F={PARAMS.fill_g_per_h} '
               f'C={PARAMS.surface_g_per_k}', file=sys.stderr)
 
     DAY_START, DAY_END = args.start, args.end
