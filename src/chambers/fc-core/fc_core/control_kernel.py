@@ -140,3 +140,69 @@ def temp_feedforward_duty(trim: float, rate_c_per_h: float, rh: float, temp_c: f
         return 0.0
     return (trim * temp_feedforward_gain(rh, temp_c) * rate_c_per_h
             * duty_bias_factor(rh, band))
+
+
+@dataclass(frozen=True)
+class ProbeConfig:
+    """MUSHY-138 identification probe: one duty=1.0 pulse of known length
+    into a quiet chamber. interval_s == 0 disables."""
+
+    probe_seconds: float = 150.0
+    interval_s: float = 0.0
+    idle_s: float = 900.0
+    max_temp_rate_c_per_h: float = 0.3
+    top_margin: float = 0.005
+
+
+class ProbeScheduler:
+    """Pure probe state machine, stepped once per control tick.
+
+    ``step`` returns True while the probe is being commanded; the caller
+    publishes duty 1.0 and parks the PID. Timing for the fit comes from
+    the stored relay edges, not from this flag, so the sigma-delta
+    driver's fire delay does not matter here. ``just_ended`` is set for
+    exactly one tick after a probe stops so the caller can re-engage the
+    PID with its pre-probe output.
+    """
+
+    def __init__(self, cfg: ProbeConfig):
+        self.cfg = cfg
+        self.count = 0
+        self.active = False
+        self.just_ended = False
+        self._since_probe_s = 0.0      # reboot => wait a full interval
+        self._idle_s = 0.0
+        self._remaining_s = 0.0
+
+    def step(self, dt: float, rh: float, band: BandSpec, temp_rate_c_per_h: float,
+             last_duty: float, allowed: bool) -> bool:
+        cfg = self.cfg
+        self.just_ended = False
+        self._since_probe_s += dt
+        self._idle_s = self._idle_s + dt if last_duty <= 0.0 else 0.0
+
+        if self.active:
+            self._remaining_s -= dt
+            if self._remaining_s <= 0.0 or rh >= band.band_high or not allowed:
+                self.active = False
+                self.just_ended = True
+                self._remaining_s = 0.0
+                self._idle_s = 0.0
+                self._since_probe_s = 0.0
+                return False
+            return True
+
+        if cfg.interval_s <= 0.0 or not allowed:
+            return False
+        if self._since_probe_s < cfg.interval_s or self._idle_s < cfg.idle_s:
+            return False
+        if not (band.midpoint <= rh <= band.band_high - cfg.top_margin):
+            return False
+        if abs(temp_rate_c_per_h) >= cfg.max_temp_rate_c_per_h:
+            return False
+
+        self.active = True
+        self.count += 1
+        self._since_probe_s = 0.0
+        self._remaining_s = cfg.probe_seconds
+        return True
