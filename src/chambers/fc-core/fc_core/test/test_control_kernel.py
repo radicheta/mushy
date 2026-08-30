@@ -258,31 +258,38 @@ def test_rate_is_zero_before_the_second_sample():
 def test_model_gain_matches_the_audit_arithmetic():
     """MUSHY-62 audit: at 10 C the humidifier covers ~0.1 g/m3/K of a ramp,
     i.e. (0.9 * 5.76 * 0.60 - 2.77) / 3.89 ~ 0.09 duty per (C/h)."""
-    assert temp_feedforward_gain(0.90, 10.0) == pytest.approx(0.09, abs=0.02)
+    assert temp_feedforward_gain(0.90, 10.0, fill_g_per_h=3.89, surface_g_per_k=2.77) == pytest.approx(0.09, abs=0.02)
 
 
 def test_model_gain_grows_with_temperature_and_flips_sign_when_cold():
-    assert temp_feedforward_gain(0.90, 16.0) > 3 * temp_feedforward_gain(0.90, 10.0)
-    assert temp_feedforward_gain(0.90, 3.0) < 0.0
+    assert temp_feedforward_gain(0.90, 16.0, fill_g_per_h=3.89, surface_g_per_k=2.77) > 3 * temp_feedforward_gain(0.90, 10.0, fill_g_per_h=3.89, surface_g_per_k=2.77)
+    assert temp_feedforward_gain(0.90, 3.0, fill_g_per_h=3.89, surface_g_per_k=2.77) < 0.0
 
 
 def test_feedforward_scales_with_trim_and_rate():
-    g = temp_feedforward_gain(0.890, 12.0)
-    assert temp_feedforward_duty(1.0, 2.0, 0.890, 12.0, FRUITING) == pytest.approx(2.0 * g)
-    assert temp_feedforward_duty(0.5, 2.0, 0.890, 12.0, FRUITING) == pytest.approx(1.0 * g)
+    g = temp_feedforward_gain(0.890, 12.0, fill_g_per_h=3.89, surface_g_per_k=2.77)
+    assert temp_feedforward_duty(1.0, 2.0, 0.890, 12.0, FRUITING, fill_g_per_h=3.89, surface_g_per_k=2.77) == pytest.approx(2.0 * g)
+    assert temp_feedforward_duty(0.5, 2.0, 0.890, 12.0, FRUITING, fill_g_per_h=3.89, surface_g_per_k=2.77) == pytest.approx(1.0 * g)
 
 
 def test_feedforward_is_negative_on_cooling():
-    assert temp_feedforward_duty(1.0, -1.0, 0.890, 12.0, FRUITING) < 0.0
+    assert temp_feedforward_duty(1.0, -1.0, 0.890, 12.0, FRUITING, fill_g_per_h=3.89, surface_g_per_k=2.77) < 0.0
 
 
 def test_feedforward_fades_to_zero_at_band_high():
     """Same fade as the MUSHY-57 bias: a chamber already above the band is
     not to be pushed wetter by a warming ramp."""
-    assert temp_feedforward_duty(1.0, 2.0, 0.915, 12.0, FRUITING) == 0.0
-    full = temp_feedforward_duty(1.0, 2.0, 0.900, 12.0, FRUITING)
-    assert temp_feedforward_duty(1.0, 2.0, 0.9075, 12.0, FRUITING) == pytest.approx(full / 2, rel=0.05)
+    assert temp_feedforward_duty(1.0, 2.0, 0.915, 12.0, FRUITING, fill_g_per_h=3.89, surface_g_per_k=2.77) == 0.0
+    full = temp_feedforward_duty(1.0, 2.0, 0.900, 12.0, FRUITING, fill_g_per_h=3.89, surface_g_per_k=2.77)
+    assert temp_feedforward_duty(1.0, 2.0, 0.9075, 12.0, FRUITING, fill_g_per_h=3.89, surface_g_per_k=2.77) == pytest.approx(full / 2, rel=0.05)
 
 
 def test_feedforward_is_zero_when_disabled():
-    assert temp_feedforward_duty(0.0, 5.0, 0.880, 12.0, FRUITING) == 0.0
+    assert temp_feedforward_duty(0.0, 5.0, 0.880, 12.0, FRUITING, fill_g_per_h=3.89, surface_g_per_k=2.77) == 0.0
+
+
+def test_temp_feedforward_gain_scales_with_fill_rate():
+    from fc_core.control_kernel import temp_feedforward_gain
+    g1 = temp_feedforward_gain(0.90, 16.0, fill_g_per_h=3.89, surface_g_per_k=2.77)
+    g2 = temp_feedforward_gain(0.90, 16.0, fill_g_per_h=7.78, surface_g_per_k=2.77)
+    assert g1 > 0 and abs(g2 - g1 / 2) < 1e-9

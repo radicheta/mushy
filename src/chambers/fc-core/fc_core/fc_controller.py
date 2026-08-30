@@ -15,6 +15,7 @@ from fc_core import scheduler
 from fc_core.vendor.simple_pid import PID
 from fc_core.control_kernel import (BandSpec, TempRateEstimator, duty_bias_factor,
                                     project_error_pct, temp_feedforward_duty)
+from fc_core.sim.chamber_model import ChamberParams
 from fc_msgs.msg import Mode
 from fc_msgs.srv import SetMode, StartExperiment, CancelExperiment
 from rcl_interfaces.msg import SetParametersResult
@@ -1830,7 +1831,8 @@ class FruitingChamberController(Node):
                 ff_gain = self.get_parameter('humidifier_temp_feedforward').value
                 if ff_gain != 0.0:
                     duty = max(0.0, min(1.0, duty + temp_feedforward_duty(
-                        ff_gain, temp_rate, rh, self.current_temp, band)))
+                        ff_gain, temp_rate, rh, self.current_temp, band,
+                        ChamberParams().fill_g_per_h, ChamberParams().surface_g_per_k)))
 
             self._publish_duty(duty)
 

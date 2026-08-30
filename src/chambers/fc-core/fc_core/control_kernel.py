@@ -8,7 +8,6 @@ No rclpy, no clock reads, no parameter lookups. Everything is an argument.
 """
 from dataclasses import dataclass
 
-from fc_core.sim.chamber_model import ChamberParams
 from fc_core.sim.psychrometrics import CHAMBER_VOLUME_M3, absolute_humidity_g_m3
 
 
@@ -107,7 +106,8 @@ class TempRateEstimator:
         return (temp_c - self._filt) / self.tau_s * 3600.0
 
 
-def temp_feedforward_gain(rh: float, temp_c: float) -> float:
+def temp_feedforward_gain(rh: float, temp_c: float,
+                          fill_g_per_h: float, surface_g_per_k: float) -> float:
     """Duty per (C/h) of chamber warming needed to hold RH (MUSHY-125).
 
     (rh * V * dAH_sat/dT - C) / F: the water the air must gain per kelvin
@@ -117,15 +117,16 @@ def temp_feedforward_gain(rh: float, temp_c: float) -> float:
     saturation slope roughly doubles between 10 and 20 C -- so at ~4 C the
     surfaces over-supply and the sign flips, while at 16 C it is ~0.4.
     That is why this is a function and not a tuned constant.
+    MUSHY-138: F and C are arguments so a live fit reaches this without
+    touching ChamberParams defaults.
     """
     slope = (absolute_humidity_g_m3(temp_c + 0.5, 100.0)
              - absolute_humidity_g_m3(temp_c - 0.5, 100.0))          # g/m3 per K
-    p = ChamberParams()
-    return (rh * CHAMBER_VOLUME_M3 * slope - p.surface_g_per_k) / p.fill_g_per_h
+    return (rh * CHAMBER_VOLUME_M3 * slope - surface_g_per_k) / fill_g_per_h
 
 
 def temp_feedforward_duty(trim: float, rate_c_per_h: float, rh: float, temp_c: float,
-                          band: BandSpec) -> float:
+                          band: BandSpec, fill_g_per_h: float, surface_g_per_k: float) -> float:
     """Duty to add for a temperature ramp (MUSHY-125), before the final clamp.
 
     A warming chamber's saturation pressure runs away from a water content
@@ -138,8 +139,8 @@ def temp_feedforward_duty(trim: float, rate_c_per_h: float, rh: float, temp_c: f
     """
     if trim == 0.0:
         return 0.0
-    return (trim * temp_feedforward_gain(rh, temp_c) * rate_c_per_h
-            * duty_bias_factor(rh, band))
+    return (trim * temp_feedforward_gain(rh, temp_c, fill_g_per_h, surface_g_per_k)
+            * rate_c_per_h * duty_bias_factor(rh, band))
 
 
 @dataclass(frozen=True)

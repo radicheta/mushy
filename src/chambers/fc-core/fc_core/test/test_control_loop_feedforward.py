@@ -31,12 +31,13 @@ def test_warming_ramp_adds_duty_below_the_midpoint():
     ff = ControlLoop(DEFAULT_BAND, temp_ff_gain=1.0)
     off = ControlLoop(DEFAULT_BAND)
     t = 12.0
+    p = ChamberParams()
     for _ in range(3600):
         t += 0.5 / 3600.0                          # +0.5 C/h
         d_ff, raw_ff = ff.step(0.895, 1.0, temp_c=t)
         d_off, raw_off = off.step(0.895, 1.0, temp_c=t)
     assert raw_ff == raw_off                        # PID untouched, telemetry unchanged
-    assert d_ff == pytest.approx(d_off + 0.5 * temp_feedforward_gain(0.895, t), abs=0.01)
+    assert d_ff == pytest.approx(d_off + 0.5 * temp_feedforward_gain(0.895, t, p.fill_g_per_h, p.surface_g_per_k), abs=0.01)
     assert d_ff > d_off + 0.05                      # and it is a real contribution
 
 

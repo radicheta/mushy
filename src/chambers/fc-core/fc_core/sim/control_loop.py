@@ -22,6 +22,7 @@ from math import exp
 
 from fc_core.control_kernel import (BandSpec, TempRateEstimator, duty_bias_factor,
                                     project_error_pct, temp_feedforward_duty)
+from fc_core.sim.chamber_model import ChamberParams
 from fc_core.vendor.simple_pid import PID
 
 
@@ -53,12 +54,14 @@ class ControlLoop:
                  gains: Gains = DEFAULT_GAINS,
                  target: float = 0.90,
                  duty_bias: float = 0.0,
-                 temp_ff_gain: float = 0.0):
+                 temp_ff_gain: float = 0.0,
+                 params: ChamberParams = None):
         self.band = band
         self.gains = gains
         self.target = target
         self.duty_bias = duty_bias
         self.temp_ff_gain = temp_ff_gain
+        self.params = params or ChamberParams()
         self.temp_rate = TempRateEstimator()
 
         self.pid = PID(gains.kp, gains.ki, gains.kd,
@@ -123,6 +126,7 @@ class ControlLoop:
         # MUSHY-125 temperature-ramp feedforward, same placement.
         if self.temp_ff_gain != 0.0 and temp_c is not None:
             duty = max(0.0, min(1.0, duty + temp_feedforward_duty(
-                self.temp_ff_gain, rate, rh_frac, temp_c, band)))
+                self.temp_ff_gain, rate, rh_frac, temp_c, band,
+                self.params.fill_g_per_h, self.params.surface_g_per_k)))
 
         return duty, raw_pid_output
