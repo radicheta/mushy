@@ -6,5 +6,5 @@ After=network-online.target docker.service
 Type=oneshot
 User=santi
 WorkingDirectory=/mnt/slime-kingdom/opt/mushy
-Environment=SELF_TUNE_DRY_RUN=1
+# To enable real pushes add: Environment=SELF_TUNE_PUSH=1
 ExecStart=/usr/local/bin/mushy-self-tune.sh

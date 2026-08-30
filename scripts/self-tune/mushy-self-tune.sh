@@ -15,4 +15,6 @@ elif [ "$rc" -ne 0 ]; then
   echo "fit-probes failed (exit $rc)"
   exit "$rc"
 fi
-.venv/bin/python scripts/self-tune/push-chamber-params.py "$REPORT" ${SELF_TUNE_DRY_RUN:+--dry-run}
+# Fail-safe by hand: the push is a dry run UNLESS SELF_TUNE_PUSH=1 is set.
+.venv/bin/python scripts/self-tune/push-chamber-params.py "$REPORT" \
+  $([ "${SELF_TUNE_PUSH:-0}" = 1 ] || echo --dry-run)
