@@ -99,16 +99,25 @@ def run_closed_loop(hours: float,
                     duty_bias: float = 0.0,
                     dt: float = 1.0,
                     ambient_ah_g_m3: TimeVarying = DEFAULT_AMBIENT_AH_G_M3,
-                    temp_c: TimeVarying = DEFAULT_TEMP_C) -> RunMetrics:
+                    temp_c: TimeVarying = DEFAULT_TEMP_C,
+                    pwm=None) -> RunMetrics:
     """``ambient_ah_g_m3`` and ``temp_c`` may each be a constant float (held for
     the whole run, the original behaviour) or a callable ``elapsed_s -> value``
-    for a driven replay against real recorded/ambient conditions."""
+    for a driven replay against real recorded/ambient conditions.
+
+    ``pwm`` is the actuator simulator. It defaults to ``PwmSimulator`` (the
+    retired fixed-window driver) so existing callers are unchanged; pass a
+    ``SigmaDeltaSimulator`` to replay against what fc1 has actually run since
+    2026-08-29 21:08Z (MUSHY-129). Both expose ``step(commanded, dt_s)`` plus
+    the ``relay_cycles``/``commanded_but_discarded_s`` fields ``_metrics``
+    reads, so they are interchangeable here. ``pwm_cfg`` is ignored when
+    ``pwm`` is supplied."""
     params = params or ChamberParams()
     pwm_cfg = pwm_cfg or PwmConfig()
 
     temp_c0 = temp_c(0.0) if callable(temp_c) else temp_c
     chamber = ChamberModel(params, rh0_pct=rh0, temp_c=temp_c0)
-    pwm = PwmSimulator(pwm_cfg)
+    pwm = pwm if pwm is not None else PwmSimulator(pwm_cfg)
     control = ControlLoop(band, gains=gains, target=target, duty_bias=duty_bias)
     last_duty = 0.0
 
