@@ -77,6 +77,14 @@ Bridge subscribes and stores it as `fc.probe`, copying the
 **Abort.** Duty -> 0 and marker -> 0 if RH crosses `band_high` or the
 staleness guard trips mid-probe.
 
+**Where it lives.** The probe state machine (trigger evaluation, pulse
+countdown, abort) is a pure class in `control_kernel.py` and is stepped
+from `sim/control_loop.py:ControlLoop` exactly as it is from
+`fc_controller.py`, so the simulator runs the same probe logic as the Pi
+(section 6 depends on this). `fc_controller` only supplies the inputs
+(relay-idle time from the driver, staleness, mode) and publishes the
+marker.
+
 **Knobs (yaml).** `probe_seconds` (default 150; a 36 s pulse measured
 0.13 %RH, so 150 s is ~0.5 %RH, above the 0.1 %RH sensor noise and inside
 the +/-1.5 %RH fruiting band), `probe_interval_h` (default 0 = disabled;
@@ -142,9 +150,8 @@ Pi stays a human action; the human no longer chooses the numbers.
 
 In order; each step gates the next.
 
-1. **Twin round-trip.** Generate probe windows from `ChamberModel` with
-   known (F, Q, theta, tau) plus sensor noise; the fitter must recover
-   them within the IQR it reports. This is the fitter's one test.
+1. **Two-twin convergence** (section 6). The whole loop, in simulation,
+   must tune twin A's parameters onto twin B's.
 2. **History as quasi-probes.** Run the fitter over the last month with
    "relay OFF >= 15 min, then a single pulse" transitions standing in for
    probe markers. Output is a first real answer on theta = 50 vs 360 s and
@@ -154,6 +161,50 @@ In order; each step gates the next.
    (marker, relay edges, RH response). Run the fitter by hand.
 4. **Push on.** Enable the cron. First accepted fit gets a human read of
    the report before the yaml commit is deployed.
+
+## 6. Two-twin convergence test (Santi, 2026-08-30)
+
+The end-to-end test of the design, run entirely in simulation before any
+of it reaches fc1. Two instances of `ChamberModel` with different
+parameters:
+
+- **B, the "real" chamber**: hidden parameters, e.g. F 2x, Q 0.7x,
+  dead_time 50 s, tau 400 s relative to today's `ChamberParams`. Plays
+  the plant inside `run_closed_loop`, on the sigma-delta driver
+  simulator, driven by the recorded ambient/temperature fixture.
+- **A, the controller's belief**: today's `ChamberParams`. SIMC gains and
+  the feedforward gain are derived from A and given to `ControlLoop`.
+
+Loop, N rounds of simulated days:
+
+1. run `run_closed_loop` for D simulated days with the probe enabled;
+   record the trace (RH, T, delivered duty, relay edges, probe marker)
+2. run the fitter on that trace (the fitter takes in-memory series; the
+   Timescale loaders are one adapter in front of it, so the same fitting
+   code runs on sim and on prod)
+3. run the push step in-process: guardrails, SIMC derivation, new gains
+   and `ChamberParams` into `ControlLoop`
+4. repeat
+
+Pass criteria:
+
+- after the rounds, A's (F, Q, dead_time, tau) are within the fitter's
+  reported IQR of B's, and within 20 % of B's absolute
+- the closed-loop metrics from `_metrics` (in-band fraction, relay
+  cycles) in the last round are no worse than a run that used B's true
+  parameters from the start
+- the guardrails held every round (no pushed value outside plausibility,
+  no > 2x step)
+
+Also run with A = B to confirm the probe does not degrade a chamber that
+is already right (in-band fraction unchanged, probes counted).
+
+Caveat written down so nobody over-reads a pass: the fitter's forward
+model IS `ChamberModel`, so this proves the pipeline, not that the model
+class matches the real chamber. Step 2 of section 4 (last month's
+history as quasi-probes) is where model adequacy first gets tested.
+Add sensor quantisation (0.01 %RH) and noise (0.1 %RH) to B's output so
+the fit is not trivially exact.
 
 ## 5. Not built
 
@@ -174,7 +225,10 @@ redundant with it. Retiring them is a follow-up ticket, not this one.
   `probe_interval_h`, `pid_simc_tau_c_seconds`, `fill_g_per_h`,
   `surface_g_per_k`
 - `src/mission-control/bridge/src/index.js`: `fc.probe` subscription
+- `src/chambers/fc-core/fc_core/sim/control_loop.py`: steps the probe
 - `scripts/fit-probes.py`, `scripts/push-chamber-params.py`, one
-  systemd timer on elder-plops
+  systemd timer on elder-plops; both scripts import their core from a
+  `fc_core.sim` module so the two-twin test can call it in-process
+- `src/chambers/fc-core/fc_core/test/test_two_twin_convergence.py`
 - `scripts/fit-chamber-model.py`: unchanged except that its loaders are
   importable
