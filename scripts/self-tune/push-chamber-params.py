@@ -54,7 +54,7 @@ def main():
         return 3
     fit = ChamberParams(**rep['params'])
     last = ChamberParams(**json.loads(ACCEPTED.read_text())['params']) if ACCEPTED.exists() else ChamberParams()
-    tau_c = yaml_value('pid_simc_tau_c_seconds') or None
+    tau_c = yaml_value('pid_simc_tau_c_seconds') or None  # 0.0 and unset are equivalent: simc_gains defaults tau_c to the fitted theta either way
     push = guard(fit, last, rep['median_temp_c'], tau_c_s=tau_c)
     print(json.dumps({'ok': push.ok, 'reasons': push.reasons, 'clamped': push.clamped,
                       'params': asdict(push.params), 'gains': asdict(push.gains)}, indent=2))
@@ -65,12 +65,15 @@ def main():
         'pid_kp': push.gains.kp, 'pid_ki': push.gains.ki, 'pid_kd': push.gains.kd,
         'fill_g_per_h': push.params.fill_g_per_h, 'surface_g_per_k': push.params.surface_g_per_k,
     }
+    # All ros2 param sets first: `sh` uses check=True, so a failure partway
+    # raises before anything on this side (yaml, accepted.json, git) is
+    # touched -- the push is atomic, not a partial one-param-at-a-time write.
     for k, v in values.items():
         sh(['ssh', 'fc1', 'ros2-cmd', 'param', 'set', NODE, k, f'{v:.6g}'], a.dry_run)
-        if not a.dry_run:
-            set_yaml(k, v)
     if a.dry_run:
         return 0
+    for k, v in values.items():
+        set_yaml(k, v)
     ACCEPTED.write_text(json.dumps({'params': asdict(push.params), 'gains': asdict(push.gains),
                                     'report': str(a.report)}, indent=2))
     sh(['git', '-C', str(REPO_ROOT), 'add', str(YAML), str(ACCEPTED)], False)

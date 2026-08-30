@@ -67,7 +67,13 @@ def _finite(obj):
 
 
 def resample(rows, t0, t1, dt, initial=None):
-    """Sample-and-hold onto [t0, t1) at dt. `initial` is the value before the first row."""
+    """Sample-and-hold onto [t0, t1) at dt. `initial` is the value before the first row.
+
+    Raises ValueError if there are no rows and no `initial` to hold instead
+    (previously an IndexError from `rows[0]`, indistinguishable from a
+    genuine bug -- MUSHY-138 fix round 2)."""
+    if not rows and initial is None:
+        raise ValueError('resample: no rows and no initial value')
     out, i, cur = [], 0, initial
     t = t0
     while t < t1:
@@ -97,9 +103,16 @@ def main():
     print(f'analysis window: {t0.isoformat()} .. {t1.isoformat()} '
           f'(clamped to ambient coverage ending {amb.end.isoformat()})')
     e0, e1 = t0.timestamp(), t1.timestamp()
-    rh = resample(load('fc.humidity', e0, e1), e0, e1, DT)
-    temp = resample(load('fc.temperature', e0, e1), e0, e1, DT)
-    relay = resample(load('fc.humidifier', e0 - 86400, e1), e0, e1, DT, initial=0.0)
+    rh_rows = load('fc.humidity', e0, e1)
+    temp_rows = load('fc.temperature', e0, e1)
+    relay_rows = load('fc.humidifier', e0 - 86400, e1)
+    for topic, rows in (('fc.humidity', rh_rows), ('fc.temperature', temp_rows), ('fc.humidifier', relay_rows)):
+        if not rows:
+            print(f'no telemetry rows for {topic} in window')
+            return 1
+    rh = resample(rh_rows, e0, e1, DT)
+    temp = resample(temp_rows, e0, e1, DT)
+    relay = resample(relay_rows, e0, e1, DT, initial=0.0)
     ambient = []
     t = e0
     while t < e1:

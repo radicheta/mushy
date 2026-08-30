@@ -2,6 +2,8 @@
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 _spec = importlib.util.spec_from_file_location('fit_probes', Path(__file__).with_name('fit-probes.py'))
 fp = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(fp)
@@ -20,3 +22,15 @@ def test_relay_edges_to_held_state():
     # its own resample() -- corrected to what plain hold-last-value produces.
     edges = [(0.0, 0.0), (12.0, 1.0), (33.0, 0.0)]
     assert fp.resample(edges, t0=0.0, t1=50.0, dt=10.0, initial=0.0) == [0.0, 0.0, 1.0, 1.0, 0.0]
+
+
+def test_resample_empty_rows_raises_instead_of_indexerror():
+    # A telemetry window with zero rows (e.g. dead sensor, empty date range)
+    # used to hit `rows[0]` and raise IndexError -- indistinguishable from a
+    # real bug. Now a clear ValueError (MUSHY-138 fix round 2).
+    with pytest.raises(ValueError):
+        fp.resample([], t0=0.0, t1=40.0, dt=10.0)
+
+
+def test_resample_empty_rows_with_initial_holds_it():
+    assert fp.resample([], t0=0.0, t1=30.0, dt=10.0, initial=0.0) == [0.0, 0.0, 0.0]
