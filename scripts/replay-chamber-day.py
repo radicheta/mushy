@@ -341,10 +341,24 @@ def main():
     ap.add_argument('--allow-stale-ambient', action='store_true',
                     help='proceed even when the window runs past the ambient '
                          'fixture, step-holding its last hourly reading')
+    ap.add_argument('--q', type=float, default=None,
+                    help='AUDIT ONLY: override moisture_loss_m3_per_h')
+    ap.add_argument('--f', type=float, default=None,
+                    help='AUDIT ONLY: override fill_g_per_h')
+    ap.add_argument('--c', type=float, default=None,
+                    help='AUDIT ONLY: override surface_g_per_k')
     ap.add_argument('--out-tag', default=None,
                     help='suffix for the output filenames (default: derived '
                          'from the window and --pwm)')
     args = ap.parse_args()
+    global PARAMS
+    if args.q is not None or args.f is not None or args.c is not None:
+        PARAMS = ChamberParams(
+            moisture_loss_m3_per_h=args.q if args.q is not None else PARAMS.moisture_loss_m3_per_h,
+            fill_g_per_h=args.f if args.f is not None else PARAMS.fill_g_per_h,
+            surface_g_per_k=args.c if args.c is not None else PARAMS.surface_g_per_k)
+        print(f'AUDIT OVERRIDE Q={PARAMS.moisture_loss_m3_per_h} F={PARAMS.fill_g_per_h} '
+              f'C={PARAMS.surface_g_per_k}', file=sys.stderr)
 
     DAY_START, DAY_END = args.start, args.end
     t0 = int(pd.Timestamp(DAY_START).timestamp())

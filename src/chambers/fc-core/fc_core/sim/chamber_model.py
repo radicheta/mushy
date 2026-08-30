@@ -96,6 +96,10 @@ class ChamberParams:
     fill_g_per_h: float = 6.776             # fitted (Task 2); see class docstring
     dead_time_s: float = 360.0              # fitted: transport + mixing lag
     tau_s: float = 600.0                    # fitted: first-order mixing constant
+    # AUDIT MOCK-UP (MUSHY-62): reversible surface reservoir. Grams of water
+    # the chamber air gains per kelvin of chamber warming (loses on cooling).
+    # 0.0 = the shipped model.
+    surface_g_per_k: float = 0.0
 
     def equilibrium_duty(self, ah_in_g_m3: float, ah_out_g_m3: float) -> float:
         """Delivered duty that exactly cancels the loss for a given
@@ -134,7 +138,9 @@ class ChamberModel:
 
     def step(self, delivered_duty: float, dt_s: float, ambient_ah_g_m3: float,
              temp_c: Optional[float] = None) -> float:
+        d_temp = 0.0
         if temp_c is not None:
+            d_temp = float(temp_c) - self.temp_c
             self.temp_c = float(temp_c)
         self._now_s += dt_s
 
@@ -150,5 +156,6 @@ class ChamberModel:
         dah_dt = (self.p.fill_g_per_h * self._applied
                   - self.p.moisture_loss_m3_per_h * (self._ah - ambient_ah_g_m3)
                   ) / CHAMBER_VOLUME_M3          # g/m3 per hour
-        self._ah = max(0.0, self._ah + dah_dt * (dt_s / 3600.0))
+        self._ah = max(0.0, self._ah + dah_dt * (dt_s / 3600.0)
+                       + self.p.surface_g_per_k * d_temp / CHAMBER_VOLUME_M3)
         return self.rh
