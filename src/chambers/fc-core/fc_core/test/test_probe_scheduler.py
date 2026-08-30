@@ -67,3 +67,12 @@ def test_interval_restarts_after_a_probe():
     run(s, 3600 + 150 + 1)
     assert not any(run(s, 3598))
     assert s.count == 1
+
+
+def test_idle_duty_max_gate():
+    # 0.01 < idle_duty_max (0.02): counts as idle, so only the interval gates it.
+    s = ProbeScheduler(CFG)
+    assert not any(run(s, 3599, last_duty=0.01))
+    assert run(s, 1, last_duty=0.01)[0] is True
+    # 0.05 >= idle_duty_max: never idle, so the probe never fires.
+    assert not any(run(ProbeScheduler(CFG), 5000, last_duty=0.05))

@@ -153,6 +153,10 @@ class ProbeConfig:
     idle_s: float = 900.0
     max_temp_rate_c_per_h: float = 0.3
     top_margin: float = 0.005
+    # commanded duty below this counts as idle; 0.02 * 900 s = 18 s of
+    # banked demand, under the driver's 30 s min pulse, so the relay cannot
+    # have fired
+    idle_duty_max: float = 0.02
 
 
 class ProbeScheduler:
@@ -180,7 +184,7 @@ class ProbeScheduler:
         cfg = self.cfg
         self.just_ended = False
         self._since_probe_s += dt
-        self._idle_s = self._idle_s + dt if last_duty <= 0.0 else 0.0
+        self._idle_s = self._idle_s + dt if last_duty < cfg.idle_duty_max else 0.0
 
         if self.active:
             self._remaining_s -= dt

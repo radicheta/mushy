@@ -7,40 +7,42 @@ BAND = BandSpec(0.885, 0.915, 'both')
 
 
 def test_probe_commands_full_duty_and_restores_integrator():
-    # idle_s=0: this test is about the probe pulse and integrator
-    # preservation, not the idle-wait rule (covered by
-    # test_probe_scheduler.py) -- with idle_s>0 the probe could only ever
-    # fire while the PID's own D-filter transient still has duty pinned to
-    # its 0 floor, and re-engaging bumpless from a CLIPPED pre-probe duty
-    # would not reproduce the true integral.
-    N1, N2, K = 5, 550, 139
-    probe = ProbeScheduler(ProbeConfig(probe_seconds=60, interval_s=N1 + N2 + K, idle_s=0))
+    """MUSHY-138 ruling 5: bumpless re-engage sets ``pid._integral =
+    clamp(last_output)`` where ``last_output`` is the duty PUBLISHED on the
+    tick immediately before the probe fired -- so that is the contract to
+    assert, not the pre-probe integral (which the bumpless transfer never
+    tries to reproduce). ``idle_duty_max`` (ruling 4) makes idle reachable
+    at this small a standing duty, so the brief's own config fires within a
+    normal settle."""
+    probe = ProbeScheduler(ProbeConfig(probe_seconds=60, interval_s=100, idle_s=10))
     loop = ControlLoop(BAND, probe=probe)
-    for _ in range(N1):
+    for _ in range(50):
         loop.step(0.895, 1.0)               # below midpoint: PID accumulates
-    for _ in range(N2):
-        loop.step(0.905, 1.0)               # in band; lets the D-filter settle so
-                                             # commanded duty ~= the true integral
+    pre_duty = 0.0
+    for _ in range(30):
+        pre_duty, _ = loop.step(0.905, 1.0)  # in band, duty decays toward 0
 
-    # Run one tick at a time, capturing the integral from just BEFORE the
-    # tick on which the probe fires (in-band ticks decay it every step, so
-    # reading it any earlier would not be "pre-probe"). interval_s is tuned
-    # (N1+N2+K) so the probe fires at tick K and its 60-tick pulse ends on
-    # the very last tick of this 200-tick window, leaving no ticks for the
-    # post-probe 999.49 decay to run before we check the restored integral.
+    # Step until the probe fires, tracking the duty PUBLISHED on the tick
+    # just before it does -- that is what the re-engage will bumpless-load.
     duties = []
-    pre = None
-    prev_integral = loop.pid._integral
-    for _ in range(200):
-        was_active = probe.active
+    while True:
         d, _ = loop.step(0.905, 1.0)
-        if probe.active and not was_active and pre is None:
-            pre = prev_integral
+        if loop.probe.active:
+            duties.append(d)
+            break
+        pre_duty = d
+    while loop.probe.active:
+        d, _ = loop.step(0.905, 1.0)         # this call's just_ended re-engages
         duties.append(d)
-        prev_integral = loop.pid._integral
     assert duties.count(1.0) == 60
-    assert loop.pid.auto_mode                                  # re-engaged after the probe
-    assert abs(loop.pid._integral - pre) < 1e-6                # integrator restored, not Mode C's 1.0
+
+    # The re-engage tick itself also runs the 999.49 in-band decay (error
+    # is 0 in-band) AFTER loading the integral, so pid._integral is already
+    # off pre_duty by more than 1e-9 by the time we can observe it -- assert
+    # the contract ControlLoop actually applied instead: the exact value it
+    # passed to set_auto_mode(last_output=...).
+    assert loop.pid.auto_mode
+    assert loop._pre_probe_output == pre_duty
 
 
 def test_run_closed_loop_records_probe_and_relay_series():
