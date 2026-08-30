@@ -135,6 +135,9 @@ def run_closed_loop(hours: float,
     temp_c0 = temp_c(0.0) if callable(temp_c) else temp_c
     chamber = ChamberModel(params, rh0_pct=rh0, temp_c=temp_c0)
     pwm = pwm if pwm is not None else PwmSimulator(pwm_cfg)
+    assert probe is None or hasattr(pwm, 'relay_on'), (
+        f'{type(pwm).__name__} has no .relay_on: the probe fit reads relay edges, and '
+        'the getattr default below would hand it an all-zero relay series')
     control = ControlLoop(band, gains=gains, target=target, duty_bias=duty_bias,
                           temp_ff_gain=temp_ff_gain, params=params_belief, probe=probe)
     last_duty = 0.0
