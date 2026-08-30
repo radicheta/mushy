@@ -188,7 +188,7 @@ class ProbeScheduler:
                 self.just_ended = True
                 self._remaining_s = 0.0
                 self._idle_s = 0.0
-                self._since_probe_s = 0.0
+                self._since_probe_s = 0.0  # interval measured from probe end
                 return False
             return True
 

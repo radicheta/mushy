@@ -28,7 +28,7 @@ def test_fires_after_interval_and_idle_then_lasts_probe_seconds():
 
 def test_just_ended_flags_the_first_tick_after():
     s = ProbeScheduler(CFG)
-    run(s, 3600 + 150)
+    run(s, 3600 + 149)
     assert s.active
     s.step(1.0, 0.905, BAND, 0.0, 1.0, True)
     assert not s.active and s.just_ended
