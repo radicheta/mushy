@@ -1770,6 +1770,15 @@ class FruitingChamberController(Node):
                     self.get_logger().info(f'Probe {self._probe.count} start, {self._probe.cfg.probe_seconds:.0f}s')
                     self._publish_probe(True)
                 self._publish_duty(1.0)
+                # Keep the telemetry pair alive across the 150 s pulse so
+                # Mission Control has no hole: setpoint as-is, output = the
+                # commanded duty (same convention as the force_duty branch).
+                ht_msg = Float32()
+                ht_msg.data = float(self._effective_setpoint)
+                self._humidity_target_pub.publish(ht_msg)
+                po_msg = Float32()
+                po_msg.data = 1.0
+                self._pid_output_pub.publish(po_msg)
                 return
             if self._probe.just_ended:
                 self._publish_probe(False)
