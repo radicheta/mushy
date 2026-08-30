@@ -38,6 +38,9 @@ Key environment variables:
 # Run package tests
 colcon test --packages-select fc_core
 pytest src/chambers/fc-core/fc_core/test/
+
+# Pure sim/kernel tests, no ROS needed (fast loop)
+PYTHONPATH=src/chambers/fc-core .venv/bin/python -m pytest -q src/chambers/fc-core/fc_core/test/test_two_twin_convergence.py
 ```
 
 ### Linting
