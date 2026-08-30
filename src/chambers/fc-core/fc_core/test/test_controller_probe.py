@@ -96,3 +96,60 @@ def test_probe_aborted_by_param_change_mid_probe(ros_context):
     _tick(node, t_ns)
     assert ('duty', 1.0) not in published
     node.destroy_node()
+
+
+def _start_probe(node, published):
+    """Run ticks until the probe is commanding; returns the next tick time."""
+    node._grace_active = lambda: False  # bypass grace — not under test here
+    node.set_parameters([rclpy.parameter.Parameter('probe_interval_h', value=0.001)])
+    node._probe_pub.publish = lambda m: published.append(('probe', m.data))
+    node._duty_pub.publish = lambda m: published.append(('duty', m.data))
+    node.current_temp = 15.0
+    t_ns = 0
+    for _ in range(1200):
+        _tick(node, t_ns)
+        t_ns += int(1e9)
+        if ('probe', 1.0) in published:
+            break
+    assert ('probe', 1.0) in published, 'probe never started'
+    return t_ns
+
+
+def test_probe_aborted_by_force_duty_mid_probe(ros_context):
+    """A force experiment starting mid-probe must not leave the marker latched
+    (and the probe must not resume commanding 1.0 on the live humidifier)."""
+    node = FruitingChamberController()
+    published = []
+    t_ns = _start_probe(node, published)
+
+    node.set_parameters([
+        rclpy.parameter.Parameter('modes.fruiting.force_duty', value=0.3)])
+    published.clear()
+    _tick(node, t_ns)
+
+    assert ('probe', 0.0) in published
+    duties = [m for (topic, m) in published if topic == 'duty']
+    assert duties == [pytest.approx(0.3)]
+
+    # ...and it stays force-driven; the probe does not resume.
+    published.clear()
+    _tick(node, t_ns + int(1e9))
+    assert ('duty', 1.0) not in published
+    node.destroy_node()
+
+
+def test_probe_aborted_by_staleness_mid_probe(ros_context):
+    node = FruitingChamberController()
+    published = []
+    t_ns = _start_probe(node, published)
+
+    # Stop refreshing the humidity stamp: the next tick, far in the future,
+    # trips the staleness guard.
+    published.clear()
+    node.get_clock = lambda: _mock_clock_at(t_ns + int(3600e9))
+    node.control_loop()
+
+    assert ('probe', 0.0) in published
+    duties = [m for (topic, m) in published if topic == 'duty']
+    assert duties == [pytest.approx(0.0)]
+    node.destroy_node()

@@ -931,9 +931,8 @@ class FruitingChamberController(Node):
                 # `if not self._pid_engaged:` would re-engage with
                 # _last_published_duty == 1.0, preloading the integrator at
                 # full duty on the live humidifier.
-                self._publish_probe(False)
+                self._abort_probe()
                 self._publish_duty(self._pre_probe_duty)
-                self._engage_pid_bumplessly(self._pre_probe_duty)
                 self.get_logger().info('Probe aborted by parameter change')
             # NOT self._probe_config(): rclpy applies accepted values only
             # after this callback returns, so get_parameter() here would
@@ -1486,6 +1485,22 @@ class FruitingChamberController(Node):
         msg.data = 1.0 if on else 0.0
         self._probe_pub.publish(msg)
 
+    def _abort_probe(self):
+        """MUSHY-138: drop an in-flight probe on any path that bypasses the
+        probe block (staleness, force_duty, no reading yet).
+
+        Without this the marker stays latched at 1.0 (mislabelling the window
+        for the fitter), the scheduler resumes commanding 1.0 when the branch
+        clears, and _last_published_duty is the probe's 1.0 -- which the next
+        `if not self._pid_engaged:` would preload into the integrator. Callers
+        publish their own duty afterwards, so this only restores PID state.
+        """
+        if not self._probe.active:
+            return
+        self._probe.step(0.0, 0.0, BandSpec(0.0, 1.0, 'both'), 0.0, 0.0, allowed=False)
+        self._publish_probe(False)
+        self._engage_pid_bumplessly(self._pre_probe_duty)
+
     def _publish_duty(self, duty):
         duty = max(0.0, min(1.0, float(duty)))
         # D-12: stash post-clamp value so set_mode bumpless re-engage carries
@@ -1656,6 +1671,7 @@ class FruitingChamberController(Node):
             self._publish_sensor_health(warming_up=False)
 
         if self.current_temp is None or self.current_humidity is None:
+            self._abort_probe()
             self._publish_duty(0.0)
             self._disengage_pid()
             return
@@ -1688,11 +1704,9 @@ class FruitingChamberController(Node):
                 self.get_logger().warn(
                     'Sensor data stale — humidifier OFF for safety'
                 )
+            self._abort_probe()
             self._publish_duty(0.0)
             self._disengage_pid()
-            if self._probe.active:
-                self._probe.step(0.0, 0.0, BandSpec(0.0, 1.0, 'both'), 0.0, 0.0, allowed=False)
-                self._publish_probe(False)
         else:
             # Recovery: log on transition back to fresh data
             if self._safe_state_active:
@@ -1725,6 +1739,8 @@ class FruitingChamberController(Node):
             # duty so the chart shows the operator-commanded value cleanly,
             # not stale PID state.
             if not isnan(mode.force_duty):
+                # An in-flight probe does not survive a force experiment.
+                self._abort_probe()
                 if self._pid.auto_mode:
                     self._pid.set_auto_mode(False)
                 self._pid_engaged = False
