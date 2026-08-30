@@ -30,11 +30,29 @@ def yaml_value(key):
     return float(m.group(2)) if m else None
 
 
-def set_yaml(key, value):
-    text, n = re.subn(rf'^(\s*{key}:\s*)[0-9.eE+-]+', rf'\g<1>{value:.6g}', YAML.read_text(), count=1, flags=re.M)
+def num(v):
+    """Serialise so a double param never looks like an int.
+
+    `%.6g` emits `4` for 4.0; a double-typed ROS param set from an int literal
+    crashed fc_controller on reboot once already (decay_tau, 2026-06-28).
+    """
+    return repr(float(v))
+
+
+def set_yaml(key, value, provenance):
+    """Rewrite `key`'s value and replace any trailing comment with the report
+    it came from -- the old comment describes a hand tune that no longer holds."""
+    text, n = re.subn(rf'^(\s*{key}:\s*)[0-9.eE+-]+.*$',
+                      lambda m: f'{m.group(1)}{num(value)}  # self-tune {provenance}',
+                      YAML.read_text(), count=1, flags=re.M)
     if n != 1:
         raise SystemExit(f'{key} not found in {YAML}')
     YAML.write_text(text)
+
+
+def git(*args, check=True):
+    return subprocess.run(['git', '-C', str(REPO_ROOT), *args],
+                          check=check, capture_output=True, text=True).stdout.strip()
 
 
 def sh(cmd, dry):
@@ -65,17 +83,37 @@ def main():
         'pid_kp': push.gains.kp, 'pid_ki': push.gains.ki, 'pid_kd': push.gains.kd,
         'fill_g_per_h': push.params.fill_g_per_h, 'surface_g_per_k': push.params.surface_g_per_k,
     }
-    # All ros2 param sets first: `sh` uses check=True, so a failure partway
-    # raises before anything on this side (yaml, accepted.json, git) is
-    # touched -- the push is atomic, not a partial one-param-at-a-time write.
-    for k, v in values.items():
-        sh(['ssh', 'fc1', 'ros2-cmd', 'param', 'set', NODE, k, f'{v:.6g}'], a.dry_run)
+    # One ssh, all five sets chained with && : a network drop mid-push cannot
+    # leave fc1 with half a gain set. It is not transactional -- an ssh that
+    # dies between two sets still leaves the earlier ones applied -- so the
+    # read-back below is what actually decides whether the yaml is edited.
+    remote = ' && '.join(f'ros2-cmd param set {NODE} {k} {num(v)}' for k, v in values.items())
+    sh(['ssh', 'fc1', remote], a.dry_run)
     if a.dry_run:
         return 0
+    got = subprocess.run(['ssh', 'fc1', f'ros2-cmd param get {NODE} pid_kp'],
+                         check=True, capture_output=True, text=True).stdout
+    m = re.search(r'([0-9.eE+-]+)\s*$', got.strip())
+    if m is None or abs(float(m.group(1)) - values['pid_kp']) > 1e-6:
+        print(f'refused: fc1 pid_kp read back as {got.strip()!r}, wanted {num(values["pid_kp"])};'
+              ' yaml not touched')
+        return 1
+
+    # Only commit a clean checkout of main holding exactly our two files:
+    # this runs unattended on a host that is also production.
+    branch = git('symbolic-ref', '--short', 'HEAD', check=False)
+    if branch != 'main':
+        print(f'refused: HEAD is {branch!r}, not main; params pushed to fc1, yaml not committed')
+        return 1
     for k, v in values.items():
-        set_yaml(k, v)
+        set_yaml(k, v, Path(a.report).name)
     ACCEPTED.write_text(json.dumps({'params': asdict(push.params), 'gains': asdict(push.gains),
                                     'report': str(a.report)}, indent=2))
+    dirty = sorted(line[3:] for line in git('status', '--porcelain').splitlines())
+    expected = sorted(str(f.relative_to(REPO_ROOT)) for f in (YAML, ACCEPTED))
+    if dirty != expected:
+        print(f'refused: working tree holds {dirty}, expected only {expected}; not committing')
+        return 1
     sh(['git', '-C', str(REPO_ROOT), 'add', str(YAML), str(ACCEPTED)], False)
     sh(['git', '-C', str(REPO_ROOT), 'commit', '-q', '-m',
         f'config(fc_core): self-tune push from {Path(a.report).name} [MUSHY-138]'], False)
