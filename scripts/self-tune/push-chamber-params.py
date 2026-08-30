@@ -49,7 +49,7 @@ def main():
     ap.add_argument('--dry-run', action='store_true')
     a = ap.parse_args()
     rep = json.loads(Path(a.report).read_text())
-    if not rep['valid']:
+    if not rep['valid'] or rep['median_temp_c'] is None:
         print('refused: fit invalid', rep['reasons'])
         return 3
     fit = ChamberParams(**rep['params'])

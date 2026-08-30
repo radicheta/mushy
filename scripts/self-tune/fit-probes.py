@@ -12,6 +12,7 @@ of fc.probe markers (spec section 4 step 2, history before any probe ran).
 import argparse
 import importlib.util
 import json
+import math
 import sys
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
@@ -50,6 +51,19 @@ def load(topic, t0, t1):
             ts, v = line.split('\t')
             rows.append((float(ts), float(v)))
     return rows
+
+
+def _finite(obj):
+    """Recursively replace non-finite floats (inf/nan) with None so json.dumps
+    produces strict JSON (MUSHY-138 ruling 13) -- aggregate()'s iqr/median_temp_c
+    are float('inf')/float('nan') when too few windows were fit."""
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _finite(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_finite(v) for v in obj]
+    return obj
 
 
 def resample(rows, t0, t1, dt, initial=None):
@@ -99,11 +113,19 @@ def main():
 
     if a.quasi:
         windows = find_quasi_windows(DT, rh, temp, ambient, relay, idle_s=IDLE_S)
-        # find_quasi_windows assumes the record starts already idle; a pulse
-        # whose probe_start_idx falls inside the first idle_s of the loaded
-        # series has no real idle history behind it (MUSHY-138 ruling 7).
-        idle_grid_pts = int(IDLE_S / DT)
-        windows = [w for w in windows if w.probe_start_idx >= idle_grid_pts]
+        # find_quasi_windows preloads its idle counter to idle_s ("assume the
+        # record starts already idle"), so the FIRST rising edge in the whole
+        # series always qualifies as a window regardless of how much real
+        # idle time actually preceded it -- even zero. (Window.probe_start_idx
+        # is a LOCAL offset into the sliced window, capped at pre_s/dt=60
+        # grid points; it cannot be compared against idle_s/dt=90 to recover
+        # the pulse's true position in the series, so that check is done here
+        # against the raw relay array instead.) Only that first window can be
+        # spurious (MUSHY-138 ruling 7); every later one reset idle from real
+        # OFF time within the series.
+        first_on = next((i for i, v in enumerate(relay) if v > 0.5), None)
+        if windows and first_on is not None and first_on * DT < IDLE_S:
+            windows = windows[1:]
     else:
         probe = resample(load('fc.probe', e0, e1), e0, e1, DT, initial=0.0)
         windows = find_windows(DT, rh, temp, ambient, relay, probe)
@@ -125,6 +147,7 @@ def main():
         'valid': agg.valid, 'reasons': agg.reasons, 'n': agg.n,
         'params': asdict(agg.params), 'iqr': agg.iqr, 'median_temp_c': agg.median_temp_c,
     }
+    report = _finite(report)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     out = Path(a.out) if a.out else REPORT_DIR / f'{now:%Y-%m-%d}{"-quasi" if a.quasi else ""}.json'
     out.write_text(json.dumps(report, indent=2))
