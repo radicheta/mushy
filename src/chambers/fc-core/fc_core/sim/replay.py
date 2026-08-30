@@ -12,12 +12,13 @@ are easy to forget and that dominate the observed behaviour:
 Uses the VENDORED simple_pid, the same one the Pi runs. `dt` is always passed
 explicitly so the PID never reads a wall clock.
 """
+import random
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Union
 
 TimeVarying = Union[float, Callable[[float], float]]
 
-from fc_core.control_kernel import BandSpec
+from fc_core.control_kernel import BandSpec, ProbeScheduler
 from fc_core.sim.chamber_model import ChamberModel, ChamberParams
 from fc_core.sim.control_loop import ControlLoop, Gains
 from fc_core.sim.psychrometrics import absolute_humidity_g_m3
@@ -65,8 +66,13 @@ class RunMetrics:
     cycle_period_h: Optional[float] = None
     burst_count: int = 0
     water_units: float = 0.0
-    rh_series: List[float] = field(default_factory=list)
+    rh_series: List[float] = field(default_factory=list)     # SENSED rh, %
     duty_series: List[float] = field(default_factory=list)
+    temp_series: List[float] = field(default_factory=list)
+    ambient_series: List[float] = field(default_factory=list)  # g/m3
+    relay_series: List[float] = field(default_factory=list)    # 1.0 relay closed
+    probe_series: List[float] = field(default_factory=list)    # 1.0 probe commanded
+    dt: float = 1.0
 
     def summary(self) -> str:
         period = f'{self.cycle_period_h:.2f} h' if self.cycle_period_h else 'none'
@@ -101,7 +107,11 @@ def run_closed_loop(hours: float,
                     dt: float = 1.0,
                     ambient_ah_g_m3: TimeVarying = DEFAULT_AMBIENT_AH_G_M3,
                     temp_c: TimeVarying = DEFAULT_TEMP_C,
-                    pwm=None) -> RunMetrics:
+                    pwm=None,
+                    probe: ProbeScheduler = None,
+                    params_belief: ChamberParams = None,
+                    rh_noise_pct: float = 0.0,
+                    seed: int = 0) -> RunMetrics:
     """``ambient_ah_g_m3`` and ``temp_c`` may each be a constant float (held for
     the whole run, the original behaviour) or a callable ``elapsed_s -> value``
     for a driven replay against real recorded/ambient conditions.
@@ -112,7 +122,13 @@ def run_closed_loop(hours: float,
     2026-08-29 21:08Z (MUSHY-129). Both expose ``step(commanded, dt_s)`` plus
     the ``relay_cycles``/``commanded_but_discarded_s`` fields ``_metrics``
     reads, so they are interchangeable here. ``pwm_cfg`` is ignored when
-    ``pwm`` is supplied."""
+    ``pwm`` is supplied.
+
+    ``params`` is the PLANT; ``params_belief`` (MUSHY-138) is what the
+    controller thinks, feeding ``ControlLoop.params`` -- defaults to
+    ``params`` for backward compatibility. ``rh_noise_pct > 0`` makes
+    ``rh_series`` the SENSED value (gaussian noise + 0.01 quantisation)
+    rather than the true chamber RH."""
     params = params or ChamberParams()
     pwm_cfg = pwm_cfg or PwmConfig()
 
@@ -120,17 +136,26 @@ def run_closed_loop(hours: float,
     chamber = ChamberModel(params, rh0_pct=rh0, temp_c=temp_c0)
     pwm = pwm if pwm is not None else PwmSimulator(pwm_cfg)
     control = ControlLoop(band, gains=gains, target=target, duty_bias=duty_bias,
-                          temp_ff_gain=temp_ff_gain)
+                          temp_ff_gain=temp_ff_gain, params=params_belief, probe=probe)
     last_duty = 0.0
+    rng = random.Random(seed)
 
     rh_series: List[float] = []
     duty_series: List[float] = []
+    temp_series: List[float] = []
+    ambient_series: List[float] = []
+    relay_series: List[float] = []
+    probe_series: List[float] = []
     delivered_total = 0.0
 
     steps = int(hours * 3600.0 / dt)
     elapsed = 0.0
     for _ in range(steps):
-        rh_frac = chamber.rh / 100.0
+        rh_true = chamber.rh
+        rh_sensed = rh_true
+        if rh_noise_pct > 0.0:
+            rh_sensed = round(rh_true + rng.gauss(0.0, rh_noise_pct), 2)
+        rh_frac = rh_sensed / 100.0
         temp_now = temp_c(elapsed) if callable(temp_c) else temp_c
 
         duty, _raw_pid_output = control.step(rh_frac, dt, temp_c=temp_now)
@@ -142,12 +167,19 @@ def run_closed_loop(hours: float,
         ambient_now = ambient_ah_g_m3(elapsed) if callable(ambient_ah_g_m3) else ambient_ah_g_m3
         chamber.step(delivered_duty=delivered, dt_s=dt, ambient_ah_g_m3=ambient_now, temp_c=temp_now)
 
-        rh_series.append(chamber.rh)
+        rh_series.append(rh_sensed)
         duty_series.append(duty)
+        temp_series.append(temp_now)
+        ambient_series.append(ambient_now)
+        relay_series.append(1.0 if getattr(pwm, 'relay_on', False) else 0.0)
+        probe_series.append(1.0 if control.probe.active else 0.0)
         delivered_total += delivered * dt
         elapsed += dt
 
-    return _metrics(rh_series, duty_series, pwm, hours, delivered_total, dt)
+    m = _metrics(rh_series, duty_series, pwm, hours, delivered_total, dt)
+    m.temp_series, m.ambient_series = temp_series, ambient_series
+    m.relay_series, m.probe_series, m.dt = relay_series, probe_series, dt
+    return m
 
 
 def _metrics(rh_series, duty_series, pwm, hours, delivered_total, dt) -> RunMetrics:

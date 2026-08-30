@@ -63,6 +63,10 @@ class SigmaDeltaSimulator:
     commanded_but_discarded_s: float = 0.0   # always 0; kept for RunMetrics parity
     pulse_lengths: List[float] = field(default_factory=list)
 
+    @property
+    def relay_on(self) -> bool:
+        return self._relay_high
+
     def _cap_allows(self, extra_s: float) -> bool:
         # ponytail: O(horizon) sum per tick is fine for a sim; the Pi driver keeps a running sum.
         return sum(self._on_history) + extra_s <= self.cfg.max_duty_5min_avg * self.cfg.cap_horizon_s

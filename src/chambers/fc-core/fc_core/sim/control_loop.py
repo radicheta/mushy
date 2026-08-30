@@ -20,8 +20,8 @@ no slew stage), so it does not belong in the extracted law.
 from dataclasses import dataclass
 from math import exp
 
-from fc_core.control_kernel import (BandSpec, TempRateEstimator, duty_bias_factor,
-                                    project_error_pct, temp_feedforward_duty)
+from fc_core.control_kernel import (BandSpec, ProbeConfig, ProbeScheduler, TempRateEstimator,
+                                    duty_bias_factor, project_error_pct, temp_feedforward_duty)
 from fc_core.sim.chamber_model import ChamberParams
 from fc_core.vendor.simple_pid import PID
 
@@ -55,7 +55,8 @@ class ControlLoop:
                  target: float = 0.90,
                  duty_bias: float = 0.0,
                  temp_ff_gain: float = 0.0,
-                 params: ChamberParams = None):
+                 params: ChamberParams = None,
+                 probe: ProbeScheduler = None):
         self.band = band
         self.gains = gains
         self.target = target
@@ -63,23 +64,41 @@ class ControlLoop:
         self.temp_ff_gain = temp_ff_gain
         self.params = params or ChamberParams()
         self.temp_rate = TempRateEstimator()
+        self.probe = probe or ProbeScheduler(ProbeConfig())
+        self._last_duty = 0.0
+        self._pre_probe_output = 0.0
 
         self.pid = PID(gains.kp, gains.ki, gains.kd,
                         setpoint=0.0, output_limits=(0.0, 1.0))
         self.d_filtered = 0.0
 
-    def step(self, rh_frac: float, dt: float, temp_c=None):
+    def step(self, rh_frac: float, dt: float, temp_c=None, allowed: bool = True):
         band = self.band
         gains = self.gains
         # MUSHY-125: keep the rate estimate running on every tick, PID
         # branch or not, so re-engaging after a bypass sees a warm filter.
         rate = self.temp_rate.update(temp_c, dt) if temp_c is not None else 0.0
 
+        # MUSHY-138 identification probe. Parks the PID for the pulse and
+        # re-engages it with the pre-probe output, NOT the Mode C 1.0.
+        was_active = self.probe.active
+        if self.probe.step(dt, rh_frac, band, rate, self._last_duty, allowed):
+            if not was_active:
+                self._pre_probe_output = self._last_duty
+                if self.pid.auto_mode:
+                    self.pid.set_auto_mode(False)
+            self._last_duty = 1.0
+            return 1.0, 0.0
+        if self.probe.just_ended:
+            self.pid.set_auto_mode(True, last_output=self._pre_probe_output)
+            self.d_filtered = 0.0
+
         projected = project_error_pct(rh_frac, band)
         if projected is None:
             # defend_side='low' freeze: clamp duty 0, disengage the PID.
             if self.pid.auto_mode:
                 self.pid.set_auto_mode(False)
+            self._last_duty = 0.0
             return 0.0, 0.0
 
         error_pct = projected
@@ -97,6 +116,7 @@ class ControlLoop:
         if edge_pct > bypass_pct and rh_frac < nearest:
             if self.pid.auto_mode:
                 self.pid.set_auto_mode(False)
+            self._last_duty = 1.0
             return 1.0, 1.0
 
         if not self.pid.auto_mode:
@@ -129,4 +149,5 @@ class ControlLoop:
                 self.temp_ff_gain, rate, rh_frac, temp_c, band,
                 self.params.fill_g_per_h, self.params.surface_g_per_k)))
 
+        self._last_duty = duty
         return duty, raw_pid_output
