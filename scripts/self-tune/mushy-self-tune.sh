@@ -4,12 +4,14 @@ set -euo pipefail
 cd /mnt/slime-kingdom/opt/mushy
 export PYTHONPATH=src/chambers/fc-core
 REPORT="reports/self-tune/$(date -u +%F).json"
-if ! .venv/bin/python scripts/self-tune/fit-probes.py --days 14 --out "$REPORT"; then
-  rc=$?
-  if [ "$rc" -eq 3 ]; then
-    echo "fit invalid, not pushing"
-    exit 0
-  fi
+set +e
+.venv/bin/python scripts/self-tune/fit-probes.py --days 14 --out "$REPORT"
+rc=$?
+set -e
+if [ "$rc" -eq 3 ]; then
+  echo "fit invalid, not pushing"
+  exit 0
+elif [ "$rc" -ne 0 ]; then
   echo "fit-probes failed (exit $rc)"
   exit "$rc"
 fi
