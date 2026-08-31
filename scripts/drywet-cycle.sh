@@ -43,26 +43,33 @@ stop() { ros2 service call /cancel_experiment fc_msgs/srv/CancelExperiment "{}" 
 le()   { awk "BEGIN{exit !($1 <= $2)}"; }
 ge()   { awk "BEGIN{exit !($1 >= $2)}"; }
 
+T0=$(date +%s)
+# Elapsed comes from the WALL CLOCK, not from counting 20 s sleeps: each pass
+# also spends several seconds in `ros2 topic echo`, which drifted the counter
+# ~33% slow on cycle 1 (a labelled "t+45min" was 60 real minutes).
+el_min() { echo $(( ($(date +%s) - T0) / 60 )); }
+
 say "BEGIN off_max=${OFF_MAX}min floor=${RH_FLOOR} stop=${RH_STOP} rh=$(rh) mode=$(mode)"
 stop                                    # take control of anything in flight
 sleep 2
 
-el=0; hit=0
-while [ "$el" -lt "$OFF_MAX" ]; do
-  n=$(( OFF_MAX - el )); [ "$n" -gt "$CHUNK" ] && n=$CHUNK
-  say "DRYDOWN chunk ${n}min (elapsed ${el}min) rh=$(rh)"
+hit=0
+while [ "$(el_min)" -lt "$OFF_MAX" ]; do
+  n=$(( OFF_MAX - $(el_min) )); [ "$n" -gt "$CHUNK" ] && n=$CHUNK
+  say "DRYDOWN chunk ${n}min (elapsed $(el_min)min) rh=$(rh)"
   fire force-evaporation "$n"
-  for ((i=0; i<n; i++)); do
-    sleep 60; el=$((el+1)); r=$(rh)
-    say "  drydown t+${el}min rh=$r T=$(ros2 topic echo /fc1/temperature --once \
+  chunk_end=$(( $(date +%s) + n * 60 - 10 ))     # leave the TTL the last word
+  while [ "$(date +%s)" -lt "$chunk_end" ] && [ "$(el_min)" -lt "$OFF_MAX" ]; do
+    sleep 60; r=$(rh)
+    say "  drydown t+$(el_min)min rh=$r T=$(ros2 topic echo /fc1/temperature --once \
          --qos-reliability best_effort --qos-durability volatile 2>/dev/null \
          | awk '/^temperature:/{printf "%.2f", $2; exit}')"
     if [ -n "$r" ] && le "$r" "$RH_FLOOR"; then hit=1; break; fi
   done
   stop; sleep 3
-  [ "$hit" = 1 ] && { say "DRYDOWN floor $RH_FLOOR reached at t+${el}min"; break; }
+  [ "$hit" = 1 ] && { say "DRYDOWN floor $RH_FLOOR reached at t+$(el_min)min"; break; }
 done
-say "DRYDOWN end t+${el}min rh=$(rh) mode=$(mode)"
+say "DRYDOWN end t+$(el_min)min rh=$(rh) mode=$(mode)"
 
 say "WETUP start rh=$(rh)"
 fire force-condensation "$WET_MAX"
