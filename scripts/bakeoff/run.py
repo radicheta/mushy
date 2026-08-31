@@ -14,7 +14,7 @@ Rules the whole harness exists to enforce:
 
     .venv/bin/python scripts/bakeoff/run.py --split inter --candidates alice,bob
 """
-import argparse, json, time
+import argparse, json, os, time
 import numpy as np
 import torch
 import torch.nn as nn
@@ -318,7 +318,7 @@ def score(pred, b):
     return rmse, bias
 
 
-def fit(name, tr, te, dt_s, steps, lr, seed):
+def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25):
     """dead_time is held FIXED (integer sample shift is not differentiable) and
     tau is fitted. Both are shared by every candidate, so the choice cannot
     reorder the ranking -- it only sets a common floor.
@@ -328,8 +328,33 @@ def fit(name, tr, te, dt_s, steps, lr, seed):
     model = CANDIDATES[name]()
     log_tau = torch.nn.Parameter(torch.tensor(np.log(600.0)))
     opt = torch.optim.Adam(list(model.parameters()) + [log_tau], lr=lr)
+
+    # Resume: the loop is fully deterministic (no dropout, no minibatch
+    # sampling -- the seed only picks the init), so restarting from a
+    # checkpoint gives the same trajectory as an uninterrupted run.
+    start = 0
+    if ckpt_path and os.path.exists(ckpt_path):
+        ck = torch.load(ckpt_path, weights_only=False)
+        if ck['name'] == name and ck['seed'] == seed:
+            model.load_state_dict(ck['model'])
+            with torch.no_grad():
+                log_tau.copy_(ck['log_tau'])
+            opt.load_state_dict(ck['opt'])
+            start = ck['it']
+            print(f'    [{name}] resumed from {ckpt_path} at step {start}', flush=True)
+
+    def save(it):
+        if not ckpt_path:
+            return
+        # atomic: a power cut mid-write must not leave a corrupt checkpoint,
+        # which is the exact failure this whole mechanism exists for.
+        torch.save(dict(name=name, seed=seed, it=it, model=model.state_dict(),
+                        log_tau=log_tau.detach().clone(), opt=opt.state_dict()),
+                   ckpt_path + '.tmp')
+        os.replace(ckpt_path + '.tmp', ckpt_path)
+
     t0 = time.time()
-    for it in range(steps):
+    for it in range(start, steps):
         opt.zero_grad()
         pred = rollout(model, log_tau.exp(), tr, dt_s)
         m = tr['valid']
@@ -340,6 +365,8 @@ def fit(name, tr, te, dt_s, steps, lr, seed):
         if it % max(1, steps // 8) == 0 or it == steps - 1:
             print(f'    [{name}] step {it:4d}  train rmse {loss.item()**.5:6.3f}  '
                   f'({time.time()-t0:5.1f}s)', flush=True)
+        if it % every == every - 1 or it == steps - 1:
+            save(it + 1)
     with torch.no_grad():
         r_tr, _ = score(rollout(model, log_tau.exp(), tr, dt_s), tr)
         r_te, b_te = score(rollout(model, log_tau.exp(), te, dt_s), te)
@@ -365,7 +392,9 @@ def main():
     rows = []
     for name in a.candidates.split(','):
         print(f'  fitting {name}...', flush=True)
-        model, log_tau, r_tr, r_te, b_te = fit(name, tr, te, dt_s, a.steps, a.lr, a.seed)
+        ckpt = f'{a.out}.{name}.ckpt' if a.out else ''
+        model, log_tau, r_tr, r_te, b_te = fit(name, tr, te, dt_s, a.steps,
+                                               a.lr, a.seed, ckpt)
         row = dict(candidate=name, split=a.split, seed=a.seed,
                    n_params=sum(p.numel() for p in model.parameters()) + 1,
                    tau_s=float(log_tau.exp()),
