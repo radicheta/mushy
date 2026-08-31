@@ -254,6 +254,7 @@ def windows(b, dt_s, mins, stride_min=30, cap=0, seed=0):
     w = {k: take(b[k]) for k in ('duty', 'temp', 'rh', 'valid', 'amb_ah') + CHANNELS}
     w['ah0'], w['ah'] = ah[i, t], take(ah)
     w['dates'] = np.array([f'{b["dates"][a]}+{int(c*dt_s/60):04d}m' for a, c in zip(i, t)])
+    w['day'] = i.clone()                        # source day, for a leak-free split
     w['gap'] = (w['ah'] - w['amb_ah']).mean(1)
     return w
 
@@ -445,25 +446,33 @@ def main():
     ap.add_argument('--steps', type=int, default=300)
     ap.add_argument('--lr', type=float, default=0.05)
     ap.add_argument('--seed', type=int, default=0)
-    ap.add_argument('--train-windows', type=int, default=1024,
-                    help='deterministic subsample; full-batch gradient, so resume stays exact')
+    ap.add_argument('--train-windows', type=int, default=0,
+                    help='0 = every window. A cap is a COMPUTE knob, not a claim '
+                         'about the data: 1024 was an arbitrary early choice that '
+                         'starved the high-capacity candidates')
     ap.add_argument('--out', default='')
     a = ap.parse_args()
 
     tr_d, te_d, dt_s = load(a.split)
     H = max(HORIZONS)
     allw = windows(tr_d, dt_s, H, cap=a.train_windows, seed=a.seed)
-    # 80/20 fit/validation, deterministic per seed. Split on WINDOW INDEX, not
-    # at random within a day, so a validation window is never the neighbour of
-    # a fitting window it overlaps.
+    # 80/20 fit/validation split BY DAY, deterministic per seed. Splitting by
+    # window index LEAKS: windows are 45 min long taken every 30 min, so a
+    # validation window would share half its samples with a fitting window and
+    # start 30 min away from it. Validation then reads optimistic, early
+    # stopping stops too late, and the mechanism under-regularises exactly the
+    # candidates it exists to protect.
     n = len(allw['ah'])
+    days = np.unique(allw['day'].numpy())
     rs = np.random.RandomState(1000 + a.seed)
-    vm = np.zeros(n, bool); vm[rs.choice(n, max(1, n // 5), replace=False)] = True
+    vdays = set(rs.choice(days, max(1, len(days) // 5), replace=False).tolist())
+    vm = np.array([d in vdays for d in allw['day'].numpy()])
     cut = lambda m: {k: (v[m] if hasattr(v, '__len__') and len(v) == n else v)
                      for k, v in allw.items()}
     tr, va = cut(~vm), cut(vm)
     te = windows(te_d, dt_s, H)
-    print(f'  fit {len(tr["ah"])} windows / validate {len(va["ah"])}')
+    print(f'  fit {len(tr["ah"])} windows ({len(days)-len(vdays)} days) / '
+          f'validate {len(va["ah"])} ({len(vdays)} days)')
     ks = [int(h * 60 / dt_s) for h in HORIZONS]
     hz = ''.join(f'{h:.0f}min'.rjust(14) for h in HORIZONS)
     print(f'split={a.split}  train {len(tr["ah"])} windows (of {len(tr_d["rh"])} days)  '
