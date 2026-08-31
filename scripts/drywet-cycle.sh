@@ -3,21 +3,25 @@
 # five months of closed-loop operation never visited.
 #
 # WHY: the controller only switches the humidifier off when the chamber is
-# already humid (drying gap 0.74 g/m3 OFF vs 2.76 ON), so "humidifier off while
-# actually drying" is absent from the corpus -- 8 natural cases in 5 months.
-# Every candidate model therefore fits the humidifier OUT. One hour of forced
-# off in dry conditions, then full-on to saturation, buys the identification
-# data that more months of production would not.
+# already humid (drying gap 0.74 g/m3 off vs 2.76 on), so "humidifier off while
+# actually drying" has 8 natural cases in 5 months and every candidate model
+# fits the humidifier OUT.
 #
-# SAFETY: both phases go through the Phase 31 forcing-experiment service, which
-# carries its own monotonic-clock TTL and auto-reverts to the prior mode. If
-# this script dies, is killed, or the ssh session drops, the controller still
-# reverts on its own -- the TTL is the deadman, the cancel is only precision.
+# The dry-down ends on a CONDITION, not a clock. A fixed hour is not enough
+# when the chamber starts wall-loaded from a recent humidification push -- the
+# first observed attempt went UP 0.7 points in 15 min with duty at zero, the
+# walls still shedding. So: hold off until RH falls to the floor, or the cap.
 #
-#   ./drywet-cycle.sh <label> [off_min] [on_max_min] [rh_stop_fraction]
+# SAFETY: every phase goes through the Phase 31 forcing-experiment service,
+# which carries its own monotonic-clock TTL and auto-reverts to the prior mode.
+# If this script dies or the ssh session drops, the controller reverts on its
+# own. The TTL is the deadman; the cancels here are only precision. Service cap
+# is 120 min per experiment, so a longer hold is chained in chunks.
+#
+#   ./drywet-cycle.sh <label> [off_max_min] [rh_floor] [rh_stop] [wet_max_min]
 set -u
-LABEL="${1:?label required}" ; OFF_MIN="${2:-60}"
-ON_MAX="${3:-30}"            ; RH_STOP="${4:-0.99}"
+LABEL="${1:?label required}" ; OFF_MAX="${2:-180}" ; RH_FLOOR="${3:-0.85}"
+RH_STOP="${4:-0.99}"         ; WET_MAX="${5:-45}"  ; CHUNK=120
 LOG=/home/ubuntu/drywet-cycle.log
 
 set +u          # ROS setup.bash reads unset vars; set -u aborts on them
@@ -27,34 +31,45 @@ set -u
 export ROS_DOMAIN_ID=69 ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET \
        RMW_IMPLEMENTATION=rmw_cyclonedds_cpp CYCLONEDDS_URI=file:///etc/cyclonedds.xml
 
-ts()  { date -u +%Y-%m-%dT%H:%M:%SZ; }
-say() { echo "[$(ts)] $LABEL $*" | tee -a "$LOG"; }
-rh()  { ros2 topic echo /fc1/humidity --once --qos-reliability best_effort \
-          --qos-durability volatile 2>/dev/null \
-        | awk '/^relative_humidity:/{printf "%.4f", $2; exit}'; }
-fire(){ ros2 service call /start_experiment fc_msgs/srv/StartExperiment \
-          "{experiment_name: $1, duration_minutes: $2}" >>"$LOG" 2>&1; }
+ts()   { date -u +%Y-%m-%dT%H:%M:%SZ; }
+say()  { echo "[$(ts)] $LABEL $*" >>"$LOG"; }
+rh()   { ros2 topic echo /fc1/humidity --once --qos-reliability best_effort \
+           --qos-durability volatile 2>/dev/null \
+         | awk '/^relative_humidity:/{printf "%.4f", $2; exit}'; }
+mode() { ros2 param get /fc_controller active_mode 2>/dev/null | awk '{print $NF}'; }
+fire() { ros2 service call /start_experiment fc_msgs/srv/StartExperiment \
+           "{experiment_name: $1, duration_minutes: $2}" >>"$LOG" 2>&1; }
+stop() { ros2 service call /cancel_experiment fc_msgs/srv/CancelExperiment "{}" >>"$LOG" 2>&1; }
+le()   { awk "BEGIN{exit !($1 <= $2)}"; }
+ge()   { awk "BEGIN{exit !($1 >= $2)}"; }
 
-say "BEGIN off=${OFF_MIN}min on_max=${ON_MAX}min stop=${RH_STOP} rh=$(rh) mode=$(
-     ros2 param get /fc_controller active_mode 2>/dev/null | awk '{print $NF}')"
+say "BEGIN off_max=${OFF_MAX}min floor=${RH_FLOOR} stop=${RH_STOP} rh=$(rh) mode=$(mode)"
+stop                                    # take control of anything in flight
+sleep 2
 
-say "DRYDOWN start rh=$(rh)"
-fire force-evaporation "$OFF_MIN"
-for ((i=0; i<OFF_MIN; i++)); do sleep 60; say "  drydown t+${i}min rh=$(rh)"; done
-sleep 30                                   # let the TTL revert land
-say "DRYDOWN end rh=$(rh) mode=$(ros2 param get /fc_controller active_mode 2>/dev/null | awk '{print $NF}')"
+el=0; hit=0
+while [ "$el" -lt "$OFF_MAX" ]; do
+  n=$(( OFF_MAX - el )); [ "$n" -gt "$CHUNK" ] && n=$CHUNK
+  say "DRYDOWN chunk ${n}min (elapsed ${el}min) rh=$(rh)"
+  fire force-evaporation "$n"
+  for ((i=0; i<n; i++)); do
+    sleep 60; el=$((el+1)); r=$(rh)
+    say "  drydown t+${el}min rh=$r T=$(ros2 topic echo /fc1/temperature --once \
+         --qos-reliability best_effort --qos-durability volatile 2>/dev/null \
+         | awk '/^temperature:/{printf "%.2f", $2; exit}')"
+    if [ -n "$r" ] && le "$r" "$RH_FLOOR"; then hit=1; break; fi
+  done
+  stop; sleep 3
+  [ "$hit" = 1 ] && { say "DRYDOWN floor $RH_FLOOR reached at t+${el}min"; break; }
+done
+say "DRYDOWN end t+${el}min rh=$(rh) mode=$(mode)"
 
 say "WETUP start rh=$(rh)"
-fire force-condensation "$ON_MAX"
-for ((i=0; i<ON_MAX*3; i++)); do
-  sleep 20
-  r=$(rh); [ -z "$r" ] && continue
+fire force-condensation "$WET_MAX"
+for ((i=0; i<WET_MAX*3; i++)); do
+  sleep 20; r=$(rh); [ -z "$r" ] && continue
   (( i % 3 == 0 )) && say "  wetup t+$((i/3))min rh=$r"
-  if awk "BEGIN{exit !($r >= $RH_STOP)}"; then
-    say "WETUP reached $RH_STOP at rh=$r -- cancelling early"
-    ros2 service call /cancel_experiment fc_msgs/srv/CancelExperiment "{}" >>"$LOG" 2>&1
-    break
-  fi
+  if ge "$r" "$RH_STOP"; then say "WETUP reached $RH_STOP at rh=$r"; stop; break; fi
 done
-sleep 30
-say "DONE rh=$(rh) mode=$(ros2 param get /fc_controller active_mode 2>/dev/null | awk '{print $NF}')"
+sleep 5
+say "DONE rh=$(rh) mode=$(mode)"
