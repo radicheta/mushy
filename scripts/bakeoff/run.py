@@ -22,7 +22,8 @@ import torch.nn as nn
 # Exogenous per-step channels handed to the candidates. History is carried by
 # fixed-timescale EWMAs of DRIVERS ONLY -- never of AH, which is the target.
 CHANNELS = ('amb_t', 'amb_rh', 'precip', 'solar', 'cloud', 'wind', 'pressure',
-            't_ew5', 't_ew30', 'u_ew5', 'u_ew30', 'a_ew30', 's_ew30')
+            't_ew5', 't_ew30', 't_ew60', 'u_ew5', 'u_ew30', 'u_ew60',
+            'a_ew30', 'a_ew60', 's_ew30', 's_ew60')
 
 V = 5.76                        # chamber volume m3
 MW_OVER_R = 18.01528 / 8.31446
@@ -139,7 +140,7 @@ class Eve(Candidate):
         super().__init__()
         self.logF = nn.Parameter(torch.tensor(np.log(3.89)))
         self.C = nn.Parameter(torch.tensor(2.77))
-        self.net = nn.Sequential(nn.Linear(5, width), nn.Tanh(),
+        self.net = nn.Sequential(nn.Linear(6, width), nn.Tanh(),
                                  nn.Linear(width, width), nn.Tanh(),
                                  nn.Linear(width, 1))
         with torch.no_grad():                    # start near the shipped Q
@@ -151,7 +152,8 @@ class Eve(Candidate):
         # is the sign and size of the air/wall temperature difference that
         # drives condensation. Solar enters because an uninsulated steel wall
         # is heated directly by it, not only through air temperature.
-        x = torch.stack([(T - 12.0) / 8.0, (T - ctx['t_ew30']) / 1.5,
+        x = torch.stack([(T - 12.0) / 8.0,
+                         (T - ctx['t_ew30']) / 1.5, (T - ctx['t_ew60']) / 2.0,
                          (ah - amb) / 4.0, u, ctx['solar'] / 300.0], dim=-1)
         Q = torch.nn.functional.softplus(self.net(x).squeeze(-1))
         return (self.logF.exp() * u - Q * (ah - amb) + self.C * dT_dt) / V, aux
@@ -172,7 +174,7 @@ class Frank(Candidate):
     inputs, never from AH, so nothing leaks the target (TRAP 3).
     """
     extra = 2                          # learned reservoir states
-    N_IN = 18
+    N_IN = 22
 
     def __init__(self, width=32):
         super().__init__()
@@ -193,8 +195,10 @@ class Frank(Candidate):
             ctx['solar'] / 300.0, (ctx['cloud'] - 50.0) / 40.0,
             ctx['wind'] / 15.0, (ctx['pressure'] - 1013.0) / 10.0,
             (ctx['t_ew5'] - 12.0) / 8.0, (ctx['t_ew30'] - 12.0) / 8.0,
-            ctx['u_ew5'], ctx['u_ew30'],
-            (ctx['a_ew30'] - 8.0) / 3.0, ctx['s_ew30'] / 300.0,
+            (ctx['t_ew60'] - 12.0) / 8.0,
+            ctx['u_ew5'], ctx['u_ew30'], ctx['u_ew60'],
+            (ctx['a_ew30'] - 8.0) / 3.0, (ctx['a_ew60'] - 8.0) / 3.0,
+            ctx['s_ew30'] / 300.0, ctx['s_ew60'] / 300.0,
         ], dim=-1)
         y = self.net(torch.cat([x, h], dim=-1))
         dh = y[:, 1:] - 0.2 * h                  # leak keeps h bounded
@@ -256,7 +260,15 @@ def ewma(x, tau_s, dt_s, dates):
     return out
 
 
-WARMUP_MIN = 30          # applied ONLY to days that start a contiguous run
+# (channel -> source series, tau seconds). 5 min catches the mixing-scale
+# response, 30 and 60 min bracket the wall/substrate timescale -- which is
+# unknown, so both are offered and the fit chooses.
+EWMAS = {'t_ew5': ('temp', 300.), 't_ew30': ('temp', 1800.), 't_ew60': ('temp', 3600.),
+         'u_ew5': ('duty', 300.), 'u_ew30': ('duty', 1800.), 'u_ew60': ('duty', 3600.),
+         'a_ew30': ('amb_ah', 1800.), 'a_ew60': ('amb_ah', 3600.),
+         's_ew30': ('solar', 1800.), 's_ew60': ('solar', 3600.)}
+
+WARMUP_MIN = 60          # applied ONLY to days that start a contiguous run
 
 
 def warmup_mask(dates, n_steps, dt_s):
@@ -280,9 +292,7 @@ def load(split):
     train = z[f'{split}_train']
     dates = z['dates']
     hist = {k: ewma(z[src], tau, dt_s, dates) for k, (src, tau) in
-            {'t_ew5': ('temp', 300.), 't_ew30': ('temp', 1800.),
-             'u_ew5': ('duty', 300.), 'u_ew30': ('duty', 1800.),
-             'a_ew30': ('amb_ah', 1800.), 's_ew30': ('solar', 1800.)}.items()}
+            EWMAS.items()}
     valid = z['valid'] & warmup_mask(dates, z['rh'].shape[1], dt_s)
 
     def pack(sel):

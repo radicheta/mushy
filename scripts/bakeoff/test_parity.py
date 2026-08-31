@@ -12,7 +12,7 @@ import torch
 sys.path.insert(0, 'src/chambers/fc-core')
 sys.path.insert(0, 'scripts/bakeoff')
 from fc_core.sim.chamber_model import ChamberModel, ChamberParams
-from run import Alice, rollout, ah_to_rh, ewma, CHANNELS
+from run import Alice, rollout, ah_to_rh, ewma, CHANNELS, EWMAS
 
 
 def build_batch(z, d, dt_s):
@@ -24,9 +24,7 @@ def build_batch(z, d, dt_s):
          ('duty', 'temp', 'amb_ah', 'amb_rh', 'precip', 'solar', 'cloud',
           'wind', 'pressure')}
     b['amb_t'] = torch.tensor(z['amb_temp'][sl])
-    for k, (src, tau) in {'t_ew5': ('temp', 300.), 't_ew30': ('temp', 1800.),
-                          'u_ew5': ('duty', 300.), 'u_ew30': ('duty', 1800.),
-                          'a_ew30': ('amb_ah', 1800.), 's_ew30': ('solar', 1800.)}.items():
+    for k, (src, tau) in EWMAS.items():
         b[k] = torch.tensor(ewma(z[src], tau, dt_s, z['dates'])[sl])
     b['ah0'] = torch.tensor(z['ah'][sl][:, 0])
     assert all(c in b for c in CHANNELS), 'test batch is missing a channel'
