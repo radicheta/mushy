@@ -57,7 +57,8 @@ AT_BOUND_FRAC = 0.01
 # and report how far F/Q moves. Past MAX_FQ_C_SPREAD the plant gain is not
 # determined and aggregate() refuses, rather than shipping a number whose value
 # came from an assumption. 1.5x is the tolerance because SIMC gains scale with
-# F/Q and this drives a live chamber.
+# F/Q and this drives a live chamber. Measured on the two real probes of
+# 2026-08-31 with C=2.77 carried: 10.17x, refused.
 FQ_C_FRAC = 0.25
 MAX_FQ_C_SPREAD = 1.5
 
