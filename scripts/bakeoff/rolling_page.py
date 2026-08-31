@@ -101,15 +101,38 @@ def split_rmse(pred, tgt):
     return dict(all=f(np.ones(len(e), bool)), forced=f(in_forced), normal=f(~in_forced))
 
 
-out = []
+DROP = set(os.environ.get('DROP', '').split(',')) - {''}
+REFIT = os.environ.get('REFIT', '')
+
+JOBS = []
 for name in ('alice', 'bob', 'charlie', 'dave', 'eve', 'frank', 'gary'):
-    p = f'{CK}/inter-{name}-s0.json.{name}.ckpt'
-    if not os.path.exists(p) or not DONE(name):
+    if name in DROP:
         continue
-    ck = torch.load(p, weights_only=False)
+    p = f'{CK}/inter-{name}-s0.json.{name}.ckpt'
+    if os.path.exists(p) and DONE(name):
+        JOBS.append((name, name, p, None))
+
+# Refit variants, reconstructed from the scalars in the refit JSON. Same colour
+# as their base model (colour follows the entity), dashed to mark the variant.
+if REFIT and os.path.exists(REFIT):
+    for r in json.load(open(REFIT))['models']:
+        if r['name'] in DROP or r['name'] not in ('alice', 'bob', 'charlie', 'dave'):
+            continue
+        JOBS.append((r['name'] + '+forced', r['name'], None, r))
+
+out = []
+for label, name, p, refit in JOBS:
     m = CANDIDATES[name]()
-    m.load_state_dict(ck['model'])
-    tau = TAU_LO + (TAU_HI - TAU_LO) * torch.sigmoid(ck['log_tau'])
+    if refit is None:
+        ck = torch.load(p, weights_only=False)
+        m.load_state_dict(ck['model'])
+        tau = TAU_LO + (TAU_HI - TAU_LO) * torch.sigmoid(ck['log_tau'])
+    else:
+        with torch.no_grad():
+            for k_, v in refit['params'].items():
+                getattr(m, k_).copy_(torch.tensor(
+                    np.log(v) if k_.startswith('log') else v, dtype=torch.float64))
+        tau = torch.tensor(refit['tau_s'], dtype=torch.float64)
     series, rmse = {}, {}
     tgt = np.array([float(ah[i]) for i in targets])
     for h, k in zip(HORIZONS, ks):
@@ -118,7 +141,8 @@ for name in ('alice', 'bob', 'charlie', 'dave', 'eve', 'frank', 'gary'):
             pv = (rollout(m, tau, b, dt_s) / 100.0 * ah_sat(b['temp'])).numpy()[:, k - 1]
         series[int(h)] = [round(float(x), 4) for x in pv]
         rmse[int(h)] = split_rmse(pv, tgt)
-    out.append(dict(name=name, series=series, rmse=rmse,
+    out.append(dict(name=label, base=name, series=series, rmse=rmse,
+                    dash=refit is not None,
                     n_params=sum(x.numel() for x in m.parameters()) + 1))
 
 # persistence baseline at each horizon, for the same starts
@@ -206,7 +230,7 @@ let t='<table class="data"><tr><th>model</th><th>par</th>'
  + REG.map(([k,lab])=>D.h.map(h=>`<th>${{lab.split(' ')[0]}} ${{h}}m</th>`).join('')).join('')+'</tr>';
 t+=`<tr><td>hold AH constant</td><td>0</td>`
  + REG.map(([k])=>D.h.map(h=>`<td>1.00</td>`).join('')).join('')+'</tr>';
-for(const m of D.models) t+=`<tr><td><span class="dot" style="display:inline-block;background:var(--s-${{m.name}})"></span> ${{m.name}}</td>`
+for(const m of D.models) t+=`<tr><td><span class="dot" style="display:inline-block;background:var(--s-${{m.base}})"></span> ${{m.name}}</td>`
  + `<td>${{m.n_params}}</td>`
  + REG.map(([k])=>D.h.map(h=>{{const v=m.rmse[h][k],b=D.base[h][k];
      return `<td>${{(v==null||b==null)?'&mdash;':(v/b).toFixed(2)}}</td>`;}}).join('')).join('')+'</tr>';
@@ -222,7 +246,7 @@ D.h.forEach((h,idx)=>{{
     <p class="note">Each point is a prediction made ${{h}} minutes earlier, drawn at the time it
     is about. The black line is what the chamber actually did.</p>
     <div class="legend">${{'<span><svg width="16" height="10"><line x1="0" y1="5" x2="16" y2="5" stroke="var(--measured)" stroke-width="2.5"/></svg>measured</span>'
-      + D.models.map(m=>`<span><span class="dot" style="background:var(--s-${{m.name}})"></span>${{m.name}}</span>`).join('')}}</div>
+      + D.models.map(m=>`<span><svg width="16" height="10"><line x1="0" y1="5" x2="16" y2="5" stroke="var(--s-${{m.base}})" stroke-width="2.5"${{m.dash?' stroke-dasharray="4 2.5"':''}}/></svg>${{m.name}}</span>`).join('')}}</div>
     <div class="chart" id="${{id}}"><div class="tt" id="tt${{h}}"></div></div></div>`);
   const xs=D.x, tg=D.target;   // shared across panels now
   const all=[tg].concat(D.models.map(m=>m.series[h])).flat();
@@ -242,12 +266,12 @@ D.h.forEach((h,idx)=>{{
      +`<text x="${{PAD.l-8}}" y="${{y+4}}" text-anchor="end" font-size="11" fill="var(--text-muted)">${{v.toFixed(1)}}</text>`;}}
   for(let mn=Math.ceil(xs[0]/20)*20;mn<=xs[xs.length-1];mn+=20)
     g+=`<text x="${{X(mn)}}" y="${{H-8}}" text-anchor="middle" font-size="11" fill="var(--text-muted)">${{mn}}m</text>`;
-  const line=(v,c,w,lab)=>{{let d='';for(let i=0;i<xs.length;i++)d+=(i?'L':'M')+X(xs[i]).toFixed(1)+' '+Y(v[i]).toFixed(1);
-    let o=`<path d="${{d}}" fill="none" stroke="${{c}}" stroke-width="${{w}}" stroke-linejoin="round"/>`;
+  const line=(v,c,w,lab,dash)=>{{let d='';for(let i=0;i<xs.length;i++)d+=(i?'L':'M')+X(xs[i]).toFixed(1)+' '+Y(v[i]).toFixed(1);
+    let o=`<path d="${{d}}" fill="none" stroke="${{c}}" stroke-width="${{w}}" stroke-linejoin="round"${{dash?' stroke-dasharray="5 3"':''}}/>`;
     if(lab)o+=`<text x="${{W-PAD.r+7}}" y="${{Y(v[v.length-1])+4}}" font-size="11.5" font-weight="600" fill="${{c}}">${{lab}}</text>`;
     return o;}};
   g+=line(tg,'var(--measured)',2.5,'');
-  for(const m of D.models) g+=line(m.series[h],`var(--s-${{m.name}})`,2,m.name);
+  for(const m of D.models) g+=line(m.series[h],`var(--s-${{m.base}})`,2,m.name,m.dash);
   g+=`<line id="${{id}}-cx" x1="0" y1="${{PAD.t}}" x2="0" y2="${{H-PAD.b}}" stroke="var(--text-muted)" opacity="0"/>`;
   S(id).insertAdjacentHTML('afterbegin',`<svg viewBox="0 0 ${{W}} ${{H}}" preserveAspectRatio="xMidYMid meet" role="img">${{g}}</svg>`);
   const box=S(id),tt=S('tt'+h),svg=box.querySelector('svg'),cx=document.getElementById(id+'-cx');
@@ -258,7 +282,7 @@ D.h.forEach((h,idx)=>{{
     cx.setAttribute('x1',X(xs[i]));cx.setAttribute('x2',X(xs[i]));cx.setAttribute('opacity','.55');
     tt.innerHTML=`<div class="hd">at ${{xs[i].toFixed(0)}} min · duty ${{D.duty_at[i].toFixed(2)}}</div><table>`
       +`<tr><td class="k">measured</td><td class="v">${{F(tg[i])}}</td></tr>`
-      +D.models.map(m=>`<tr><td class="k"><span class="dot" style="display:inline-block;background:var(--s-${{m.name}})"></span> ${{m.name}}</td><td class="v">${{F(m.series[h][i])}}</td></tr>`).join('')
+      +D.models.map(m=>`<tr><td class="k"><span class="dot" style="display:inline-block;background:var(--s-${{m.base}})"></span> ${{m.name}}</td><td class="v">${{F(m.series[h][i])}}</td></tr>`).join('')
       +'</table>';
     tt.style.opacity='1';
     tt.style.left=Math.min(e.clientX-r.left+14,r.width-tt.offsetWidth-6)+'px';
