@@ -207,8 +207,42 @@ class Frank(Candidate):
         return y[:, 0] * 2.0, (h + dh * (ctx['dt_s'] / 3600.0),)
 
 
+class Gary(Candidate):
+    """Charlie's saturation-deficit driver with a LEARNED scalar Q of the
+    DEFICIT ALONE. One input, deliberately: the fitted function can then be
+    plotted and read off, and it cannot absorb anything that is not Q.
+
+    Motivated by what eve already rules out. eve carries the drying gap among
+    its six inputs, so it can learn a gap-dependent Q inside alice's structure
+    -- and it still loses to charlie (0.436 vs 0.419). So the win is the
+    DRIVER, (AH - s*AH_sat(T)) instead of (AH - AH_out), not a flexible
+    coefficient. This asks the remaining question: given the right driver, is
+    the loss LINEAR in it? Linear means charlie was already right; a knee means
+    a threshold; a bend means a power law worth shipping instead of a net.
+
+    Initialised at charlie's constant, so step 0 IS charlie."""
+    def __init__(self, width=16):
+        super().__init__()
+        self.logF = nn.Parameter(torch.tensor(np.log(3.89)))
+        self.s = nn.Parameter(torch.tensor(0.95))
+        self.C = nn.Parameter(torch.tensor(2.77))
+        self.net = nn.Sequential(nn.Linear(1, width), nn.Tanh(),
+                                 nn.Linear(width, width), nn.Tanh(),
+                                 nn.Linear(width, 1))
+        with torch.no_grad():                    # start as charlie's constant Q
+            self.net[-1].bias.fill_(float(np.log(np.exp(0.553) - 1.0)))
+            self.net[-1].weight.mul_(0.01)
+
+    def deriv(self, ah, aux, u, T, dT_dt, amb, ctx):
+        drive = ah - self.s.clamp(0.5, 1.2) * ah_sat(T)
+        # /0.5 : the deficit runs about -0.9..+1.0 in the corpus and reaches
+        # -1.6 in a forced dry-down, so this puts tanh in its useful range.
+        Q = torch.nn.functional.softplus(self.net((drive / 0.5).unsqueeze(-1)).squeeze(-1))
+        return (self.logF.exp() * u - Q * drive + self.C * dT_dt) / V, aux
+
+
 CANDIDATES = {'alice': Alice, 'bob': Bob, 'charlie': Charlie,
-              'dave': Dave, 'eve': Eve, 'frank': Frank}
+              'dave': Dave, 'eve': Eve, 'frank': Frank, 'gary': Gary}
 
 
 # ------------------------------------------------------------------ rollout
