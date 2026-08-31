@@ -20,8 +20,10 @@ LABEL="${1:?label required}" ; OFF_MIN="${2:-60}"
 ON_MAX="${3:-30}"            ; RH_STOP="${4:-0.99}"
 LOG=/home/ubuntu/drywet-cycle.log
 
+set +u          # ROS setup.bash reads unset vars; set -u aborts on them
 source /opt/ros/jazzy/setup.bash
 source /home/ubuntu/mushroom_farm_ws/install/setup.bash
+set -u
 export ROS_DOMAIN_ID=69 ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET \
        RMW_IMPLEMENTATION=rmw_cyclonedds_cpp CYCLONEDDS_URI=file:///etc/cyclonedds.xml
 

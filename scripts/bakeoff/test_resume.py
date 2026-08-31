@@ -9,21 +9,21 @@ import numpy as np
 import torch
 
 sys.path.insert(0, 'scripts/bakeoff')
-from run import fit, load
+from run import fit, load, windows, HORIZONS
 
 STEPS, CAND = 6, 'alice'
 
 
-def flat(model, log_tau):
+def flat(model, tau_s):
     return torch.cat([p.detach().reshape(-1) for p in model.parameters()]
-                     + [log_tau.detach().reshape(-1)])
+                     + [torch.tensor([tau_s], dtype=torch.float64)])
 
 
 def main():
-    tr, te, dt_s = load('inter')
-    sel = np.linspace(0, len(tr['rh']) - 1, 2).astype(int)      # 2 days: fast
-    tr = {k: (v[sel] if hasattr(v, '__len__') else v) for k, v in tr.items()}
-    te = {k: (v[:2] if hasattr(v, '__len__') else v) for k, v in te.items()}
+    tr_d, te_d, dt_s = load('inter')
+    H = max(HORIZONS)
+    tr = windows(tr_d, dt_s, H, cap=32, seed=0)                 # small: fast
+    te = windows(te_d, dt_s, H, cap=32, seed=0)
 
     m, lt, _, r_ref, _ = fit(CAND, tr, te, dt_s, STEPS, 0.05, 0)
     ref = flat(m, lt)
@@ -36,7 +36,7 @@ def main():
 
     assert torch.equal(ref, flat(m2, lt2)), (
         f'resumed params differ: max |d| = {(ref - flat(m2, lt2)).abs().max():.3e}')
-    assert torch.equal(r_ref, r2), 'resumed test scores differ'
+    assert r_ref == r2, 'resumed test scores differ'
     print(f'OK  resume is bit-exact over {STEPS} steps ({CAND})')
 
 

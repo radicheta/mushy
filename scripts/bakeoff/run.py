@@ -26,6 +26,8 @@ CHANNELS = ('amb_t', 'amb_rh', 'precip', 'solar', 'cloud', 'wind', 'pressure',
             'a_ew30', 'a_ew60', 's_ew30', 's_ew60')
 
 V = 5.76                        # chamber volume m3
+HORIZONS = (5.0, 15.0, 45.0)    # minutes -- the horizons the controller acts on
+TAU_LO, TAU_HI = 60.0, 1800.0   # duty mixing lag is bounded to PHYSICAL values
 MW_OVER_R = 18.01528 / 8.31446
 DEAD_TIME_S = 360.0             # shipped default; see note in fit() below
 CORPUS = 'scripts/bakeoff/corpus.npz'
@@ -236,6 +238,35 @@ def rollout(model, tau_s, batch, dt_s):
     return ah_to_rh(temp, torch.stack(out, dim=1))
 
 
+def windows(b, dt_s, mins, stride_min=30, cap=0, seed=0):
+    """[days, T] -> [windows, H]. Each window carries its own initial AH, so a
+    fit is scored on where the chamber goes NEXT, not on a whole day."""
+    H, S = int(mins * 60 / dt_s), int(stride_min * 60 / dt_s)
+    ah = b['rh'] / 100.0 * ah_sat(b['temp'])
+    st = [(i, t) for i in range(len(b['rh']))
+          for t in range(0, b['rh'].shape[1] - H, S)
+          if bool(b['valid'][i, t:t + H].all())]
+    if cap and len(st) > cap:                       # deterministic subsample:
+        rs = np.random.RandomState(seed)            # full-batch gradient, so no
+        st = [st[j] for j in sorted(rs.choice(len(st), cap, replace=False))]
+    i, t = (torch.tensor(x) for x in zip(*st))
+    take = lambda v: torch.stack([v[a, c:c + H] for a, c in zip(i, t)])
+    w = {k: take(b[k]) for k in ('duty', 'temp', 'rh', 'valid', 'amb_ah') + CHANNELS}
+    w['ah0'], w['ah'] = ah[i, t], take(ah)
+    w['dates'] = np.array([f'{b["dates"][a]}+{int(c*dt_s/60):04d}m' for a, c in zip(i, t)])
+    w['gap'] = (w['ah'] - w['amb_ah']).mean(1)
+    return w
+
+
+def horizon_mse(pred_ah, w, ks):
+    """MSE on ABSOLUTE HUMIDITY at each horizon. AH not RH: RH divides by a
+    temperature-dependent number, so scoring RH lets temperature errors and
+    moisture errors cancel. AT the horizon, not averaged over the window --
+    the average is dominated by the first minutes, where any model started
+    from truth is trivially right."""
+    return [((pred_ah[:, k - 1] - w['ah'][:, k - 1]) ** 2).mean() for k in ks]
+
+
 def _runs(dates):
     """Index runs of calendar-consecutive days present in the corpus. prep.py
     drops unusable days, so the corpus is ordered but not gap-free."""
@@ -319,15 +350,23 @@ def score(pred, b):
 
 
 def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25):
-    """dead_time is held FIXED (integer sample shift is not differentiable) and
-    tau is fitted. Both are shared by every candidate, so the choice cannot
-    reorder the ranking -- it only sets a common floor.
-    ponytail: fixed 360 s dead time; grid-search it only if the winner's
-    residual shows a consistent lead/lag."""
+    """Trains on the MULTI-HORIZON skill score: mean over 5/15/45 min of the
+    MSE divided by the persistence MSE at that horizon. Normalising by
+    persistence keeps the horizons comparable -- unnormalised, 45 min carries
+    ~60x the squared error and would be the only term that mattered.
+
+    dead_time is held FIXED (an integer sample shift is not differentiable).
+    tau is fitted but BOUNDED to 60-1800 s via a sigmoid, so it stays a mixing
+    lag. Unbounded it was not a time constant at all: candidates drove it from
+    89 s to 4094 h and used it as a gain knob to disconnect the humidifier."""
     torch.manual_seed(seed); np.random.seed(seed)
     model = CANDIDATES[name]()
-    log_tau = torch.nn.Parameter(torch.tensor(np.log(600.0)))
+    log_tau = torch.nn.Parameter(torch.tensor(-0.7985))     # sigmoid -> 600 s
+    tau_of = lambda r: TAU_LO + (TAU_HI - TAU_LO) * torch.sigmoid(r)
     opt = torch.optim.Adam(list(model.parameters()) + [log_tau], lr=lr)
+    ks = [int(h * 60 / dt_s) for h in HORIZONS]
+    base = [float(b) for b in horizon_mse(
+        tr['ah0'][:, None].expand_as(tr['ah']), tr, ks)]     # persistence
 
     # Resume: the loop is fully deterministic (no dropout, no minibatch
     # sampling -- the seed only picks the init), so restarting from a
@@ -356,21 +395,20 @@ def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25):
     t0 = time.time()
     for it in range(start, steps):
         opt.zero_grad()
-        pred = rollout(model, log_tau.exp(), tr, dt_s)
-        m = tr['valid']
-        loss = (((pred - tr['rh']) ** 2) * m).sum() / m.sum()
+        ah = rollout(model, tau_of(log_tau), tr, dt_s) / 100.0 * ah_sat(tr['temp'])
+        loss = sum(e / b for e, b in zip(horizon_mse(ah, tr, ks), base)) / len(ks)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(list(model.parameters()) + [log_tau], 10.0)
         opt.step()
         if it % max(1, steps // 8) == 0 or it == steps - 1:
-            print(f'    [{name}] step {it:4d}  train rmse {loss.item()**.5:6.3f}  '
-                  f'({time.time()-t0:5.1f}s)', flush=True)
+            print(f'    [{name}] step {it:4d}  train skill {loss.item():6.4f}  '
+                  f'tau {float(tau_of(log_tau).detach()):6.0f}s  ({time.time()-t0:5.1f}s)', flush=True)
         if it % every == every - 1 or it == steps - 1:
             save(it + 1)
     with torch.no_grad():
-        r_tr, _ = score(rollout(model, log_tau.exp(), tr, dt_s), tr)
-        r_te, b_te = score(rollout(model, log_tau.exp(), te, dt_s), te)
-    return model, log_tau, r_tr, r_te, b_te
+        f = lambda w: [float(x) ** .5 for x in horizon_mse(
+            rollout(model, tau_of(log_tau), w, dt_s) / 100.0 * ah_sat(w['temp']), w, ks)]
+        return model, float(tau_of(log_tau).detach()), f(tr), f(te), te
 
 
 def main():
@@ -380,38 +418,59 @@ def main():
     ap.add_argument('--steps', type=int, default=300)
     ap.add_argument('--lr', type=float, default=0.05)
     ap.add_argument('--seed', type=int, default=0)
-    ap.add_argument('--days', type=int, default=0, help='subsample train days (0=all)')
+    ap.add_argument('--train-windows', type=int, default=1024,
+                    help='deterministic subsample; full-batch gradient, so resume stays exact')
     ap.add_argument('--out', default='')
     a = ap.parse_args()
 
-    tr, te, dt_s = load(a.split)
-    if a.days:
-        sel = np.linspace(0, len(tr['rh']) - 1, a.days).astype(int)
-        tr = {k: (v[sel] if hasattr(v, '__len__') else v) for k, v in tr.items()}
-    print(f'split={a.split}  train {len(tr["rh"])} days  test {len(te["rh"])} days  dt={dt_s}s')
-    rows = []
+    tr_d, te_d, dt_s = load(a.split)
+    H = max(HORIZONS)
+    tr = windows(tr_d, dt_s, H, cap=a.train_windows, seed=a.seed)
+    te = windows(te_d, dt_s, H)
+    ks = [int(h * 60 / dt_s) for h in HORIZONS]
+    hz = ''.join(f'{h:.0f}min'.rjust(14) for h in HORIZONS)
+    print(f'split={a.split}  train {len(tr["ah"])} windows (of {len(tr_d["rh"])} days)  '
+          f'test {len(te["ah"])} windows  dt={dt_s}s')
+
+    # BASELINES FIRST. A candidate that does not clear these is not a model --
+    # under the previous day-averaged objective none of them did, and nothing
+    # in the harness said so.
+    base = [float(x) ** .5 for x in horizon_mse(
+        te['ah0'][:, None].expand_as(te['ah']), te, ks)]
+    s_ = float((te['ah'] * ah_sat(te['temp']) * te['valid']).sum()
+               / ((ah_sat(te['temp']) ** 2 * te['valid']).sum()))
+    sat = [float(x) ** .5 for x in horizon_mse(s_ * ah_sat(te['temp']), te, ks)]
+    show = lambda n, e, p='': print(
+        f'  {n:22s}{p:>6s}' + ''.join(f'{v:8.4f}{v/b:6.2f}' for v, b in zip(e, base)))
+    print(f'\n  {"":22s}{"par":>6s}{hz}   (err g/m3 AH, then skill vs persistence)')
+    show('BASELINE persistence', base)
+    show(f'BASELINE {s_:.3f}*AHsat', sat)
+
+    rows = [dict(candidate='_baseline_persistence', split=a.split, seed=a.seed,
+                 n_params=0, test_err=base),
+            dict(candidate='_baseline_saturation', split=a.split, seed=a.seed,
+                 n_params=1, test_err=sat)]
     for name in a.candidates.split(','):
         print(f'  fitting {name}...', flush=True)
         ckpt = f'{a.out}.{name}.ckpt' if a.out else ''
-        model, log_tau, r_tr, r_te, b_te = fit(name, tr, te, dt_s, a.steps,
-                                               a.lr, a.seed, ckpt)
-        row = dict(candidate=name, split=a.split, seed=a.seed,
-                   n_params=sum(p.numel() for p in model.parameters()) + 1,
-                   tau_s=float(log_tau.exp()),
-                   train_rmse=float(r_tr.mean()),
-                   test_rmse=float(r_te.mean()), test_rmse_med=float(r_te.median()),
-                   test_rmse_p90=float(r_te.quantile(0.9)), test_bias=float(b_te.mean()),
-                   test_worst_day=str(te['dates'][int(r_te.argmax())]),
-                   test_worst_rmse=float(r_te.max()))
-        rows.append(row)
-        print(f'  {name:8s} test rmse mean {row["test_rmse"]:6.3f} med {row["test_rmse_med"]:6.3f} '
-              f'p90 {row["test_rmse_p90"]:6.3f}  bias {row["test_bias"]:+.3f}  '
-              f'worst {row["test_worst_day"]} {row["test_worst_rmse"]:.2f}', flush=True)
-    print(f'\n{"candidate":10s} {"par":>4s} {"train":>7s} {"test":>7s} {"med":>7s} {"p90":>7s} {"bias":>7s}')
-    for r in sorted(rows, key=lambda r: r['test_rmse']):
-        print(f'{r["candidate"]:10s} {r["n_params"]:4d} {r["train_rmse"]:7.3f} '
-              f'{r["test_rmse"]:7.3f} {r["test_rmse_med"]:7.3f} {r["test_rmse_p90"]:7.3f} '
-              f'{r["test_bias"]:+7.3f}')
+        model, tau_s, e_tr, e_te, _ = fit(name, tr, te, dt_s, a.steps,
+                                          a.lr, a.seed, ckpt)
+        rows.append(dict(candidate=name, split=a.split, seed=a.seed,
+                         n_params=sum(p.numel() for p in model.parameters()) + 1,
+                         tau_s=tau_s, horizons_min=list(HORIZONS),
+                         train_err=e_tr, test_err=e_te,
+                         skill=[t / b for t, b in zip(e_te, base)],
+                         skill_worst=max(t / b for t, b in zip(e_te, base))))
+        show(name, e_te, str(rows[-1]['n_params']))
+        print(f'    tau={tau_s:.0f}s  worst-horizon skill {rows[-1]["skill_worst"]:.3f}',
+              flush=True)
+
+    # ranked on the WORST horizon: a good model is good at all three, and a
+    # model can fake one horizon (near-persistence at 5 min, slow drift at 45).
+    print(f'\n  ranked by worst-horizon skill (lower is better, <1 beats persistence)')
+    for r in sorted((r for r in rows if 'skill' in r), key=lambda r: r['skill_worst']):
+        print(f'    {r["candidate"]:10s} {r["n_params"]:5d}  '
+              f'{"  ".join(f"{x:.3f}" for x in r["skill"])}   worst {r["skill_worst"]:.3f}')
     if a.out:
         json.dump(rows, open(a.out, 'w'), indent=1)
         print(f'wrote {a.out}')
