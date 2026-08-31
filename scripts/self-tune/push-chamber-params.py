@@ -55,6 +55,43 @@ def git(*args, check=True):
                           check=check, capture_output=True, text=True).stdout.strip()
 
 
+def dirty_paths():
+    """Paths git reports as modified, sorted.
+
+    NOT via git(): that strips the output, which eats the leading space of
+    porcelain's 2-char status column on the FIRST line only, so `line[3:]`
+    lost a character of that path and no comparison against a list of
+    expected files could ever match (MUSHY-142 round 2).
+    """
+    out = subprocess.run(['git', '-C', str(REPO_ROOT), 'status', '--porcelain'],
+                         check=True, capture_output=True, text=True).stdout
+    return sorted(line[3:] for line in out.splitlines())
+
+
+def ours():
+    return sorted(str(f.relative_to(REPO_ROOT)) for f in (YAML, ACCEPTED))
+
+
+def precondition_refusal():
+    """Why this checkout must not be committed to, or None if it is safe.
+
+    Checked BEFORE anything is written or pushed (MUSHY-142). The old check
+    ran after set_yaml, so it could not tell a pre-existing hand edit to
+    fc_config.yaml -- params set live then committed by hand is a routine
+    workflow here -- from this script's own write, and would have folded that
+    edit into an automated commit and pushed it to origin/main. Running before
+    the fc1 param set as well means a refusal never leaves fc1 holding gains
+    the yaml does not record.
+    """
+    branch = git('symbolic-ref', '--short', 'HEAD', check=False)
+    if branch != 'main':
+        return f'HEAD is {branch!r}, not main'
+    overlap = [f for f in dirty_paths() if f in ours()]
+    if overlap:
+        return f'{overlap} already modified before this run; commit or revert first'
+    return None
+
+
 def sh(cmd, dry):
     print('+', ' '.join(cmd))
     if not dry:
@@ -79,6 +116,11 @@ def main():
     if not push.ok:
         return 3
 
+    refusal = precondition_refusal()
+    if refusal and not a.dry_run:
+        print(f'refused: {refusal}; nothing pushed')
+        return 1
+
     values = {
         'pid_kp': push.gains.kp, 'pid_ki': push.gains.ki, 'pid_kd': push.gains.kd,
         'fill_g_per_h': push.params.fill_g_per_h, 'surface_g_per_k': push.params.surface_g_per_k,
@@ -99,18 +141,13 @@ def main():
               ' yaml not touched')
         return 1
 
-    # Only commit a clean checkout of main holding exactly our two files:
-    # this runs unattended on a host that is also production.
-    branch = git('symbolic-ref', '--short', 'HEAD', check=False)
-    if branch != 'main':
-        print(f'refused: HEAD is {branch!r}, not main; params pushed to fc1, yaml not committed')
-        return 1
     for k, v in values.items():
         set_yaml(k, v, Path(a.report).name)
     ACCEPTED.write_text(json.dumps({'params': asdict(push.params), 'gains': asdict(push.gains),
                                     'report': str(a.report)}, indent=2))
-    dirty = sorted(line[3:] for line in git('status', '--porcelain').splitlines())
-    expected = sorted(str(f.relative_to(REPO_ROOT)) for f in (YAML, ACCEPTED))
+    # Belt and braces: the tree was clean of our files at precondition time,
+    # so anything beyond them now is a concurrent edit -- still not ours to commit.
+    dirty, expected = dirty_paths(), ours()
     if dirty != expected:
         print(f'refused: working tree holds {dirty}, expected only {expected}; not committing')
         return 1
