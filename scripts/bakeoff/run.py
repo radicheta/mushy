@@ -232,32 +232,58 @@ def rollout(model, tau_s, batch, dt_s):
     return ah_to_rh(temp, torch.stack(out, dim=1))
 
 
-def ewma(x, tau_s, dt_s):
-    """EWMA along time for each day independently, initialised at that day's
-    first sample. Each day is its own rollout, so there is no history to carry
-    across midnight; the first ~tau of every day is therefore a warm-up, which
-    is why WARMUP_MIN of each day is excluded from SCORING below."""
+def _runs(dates):
+    """Index runs of calendar-consecutive days present in the corpus. prep.py
+    drops unusable days, so the corpus is ordered but not gap-free."""
+    d = np.array([np.datetime64(x) for x in dates])
+    brk = np.where((d[1:] - d[:-1]) != np.timedelta64(1, 'D'))[0] + 1
+    return np.split(np.arange(len(d)), brk)
+
+
+def ewma(x, tau_s, dt_s, dates):
+    """EWMA along time, carried ACROSS midnight wherever the previous day is
+    actually present in the corpus. Each rollout is still one day, but the
+    driver history is real history: 23:30 yesterday is what the average at
+    00:00 today is built from. Only a day that STARTS a run has nothing to
+    inherit, and only those days pay a warm-up (see warmup_mask)."""
     from scipy.signal import lfilter
     a = min(1.0, dt_s / tau_s)
-    y = lfilter([a], [1.0, -(1.0 - a)], x, axis=1,
-                zi=(x[:, :1] * (1.0 - a)))[0]
-    return y
+    out = np.empty_like(x)
+    for run in _runs(dates):
+        flat = x[run].reshape(-1)                     # one continuous timeline
+        y = lfilter([a], [1.0, -(1.0 - a)], flat, zi=[flat[0] * (1.0 - a)])[0]
+        out[run] = y.reshape(len(run), -1)
+    return out
 
 
-WARMUP_MIN = 30          # per-day rollout + EWMA warm-up, excluded from scores
+WARMUP_MIN = 30          # applied ONLY to days that start a contiguous run
+
+
+def warmup_mask(dates, n_steps, dt_s):
+    """False for the first WARMUP_MIN of each run's FIRST day only.
+
+    Blanking the first 30 min of every day would delete local midnight from
+    every score in the corpus -- the coldest hours, where condensation and the
+    wall term matter most -- so a candidate that failed only at midnight would
+    never be charged for it. Days with a real predecessor inherit a warm EWMA
+    and are scored in full."""
+    m = np.ones((len(dates), n_steps), bool)
+    warm = int(WARMUP_MIN * 60 / dt_s)
+    for run in _runs(dates):
+        m[run[0], :warm] = False
+    return m
 
 
 def load(split):
     z = np.load(CORPUS)
     dt_s = float(z['dt'])
     train = z[f'{split}_train']
-    temp, duty, ambah, solar = z['temp'], z['duty'], z['amb_ah'], z['solar']
-    hist = {'t_ew5': ewma(temp, 300., dt_s), 't_ew30': ewma(temp, 1800., dt_s),
-            'u_ew5': ewma(duty, 300., dt_s), 'u_ew30': ewma(duty, 1800., dt_s),
-            'a_ew30': ewma(ambah, 1800., dt_s), 's_ew30': ewma(solar, 1800., dt_s)}
-    warm = int(WARMUP_MIN * 60 / dt_s)
-    valid = z['valid'].copy()
-    valid[:, :warm] = False
+    dates = z['dates']
+    hist = {k: ewma(z[src], tau, dt_s, dates) for k, (src, tau) in
+            {'t_ew5': ('temp', 300.), 't_ew30': ('temp', 1800.),
+             'u_ew5': ('duty', 300.), 'u_ew30': ('duty', 1800.),
+             'a_ew30': ('amb_ah', 1800.), 's_ew30': ('solar', 1800.)}.items()}
+    valid = z['valid'] & warmup_mask(dates, z['rh'].shape[1], dt_s)
 
     def pack(sel):
         b = {k: torch.tensor(z[k][sel]) for k in
@@ -267,7 +293,7 @@ def load(split):
         b.update({k: torch.tensor(v[sel]) for k, v in hist.items()})
         b['ah0'] = torch.tensor(z['ah'][sel][:, 0])
         b['valid'] = torch.tensor(valid[sel])
-        b['dates'] = z['dates'][sel]
+        b['dates'] = dates[sel]
         return b
     return pack(train), pack(~train), dt_s
 

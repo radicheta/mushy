@@ -27,7 +27,7 @@ def build_batch(z, d, dt_s):
     for k, (src, tau) in {'t_ew5': ('temp', 300.), 't_ew30': ('temp', 1800.),
                           'u_ew5': ('duty', 300.), 'u_ew30': ('duty', 1800.),
                           'a_ew30': ('amb_ah', 1800.), 's_ew30': ('solar', 1800.)}.items():
-        b[k] = torch.tensor(ewma(z[src], tau, dt_s)[sl])
+        b[k] = torch.tensor(ewma(z[src], tau, dt_s, z['dates'])[sl])
     b['ah0'] = torch.tensor(z['ah'][sl][:, 0])
     assert all(c in b for c in CHANNELS), 'test batch is missing a channel'
     return b
