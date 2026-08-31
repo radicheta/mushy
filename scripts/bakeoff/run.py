@@ -14,7 +14,7 @@ Rules the whole harness exists to enforce:
 
     .venv/bin/python scripts/bakeoff/run.py --split inter --candidates alice,bob
 """
-import argparse, json, os, time
+import argparse, json, math, os, time
 import numpy as np
 import torch
 import torch.nn as nn
@@ -49,8 +49,29 @@ def ah_sat(t):
 
 # ---------------------------------------------------------------- candidates
 class Candidate(nn.Module):
-    """A structure. `extra_states` is how many states beyond AH it carries."""
+    """A structure. `extra_states` is how many states beyond AH it carries.
+
+    EVERY candidate fits its own dead time. It used to be a hardcoded 360 s
+    shared by all of them -- inherited from chamber_model.py's default, which
+    was fitted ONCE to a single trace on 2026-08-08 and never revisited. Six
+    minutes of delay on the actuator input of every model in the comparison,
+    taken on faith. It is fitted now because a fractional delay interpolated
+    between samples IS differentiable; the integer sample shift that made it
+    "impossible" was only ever an implementation choice.
+    """
     extra = 0
+    D_MAX = 1800.0
+
+    def __init__(self):
+        super().__init__()
+        # logit(360/1800) EXACTLY, so every fit starts where the old hardcoded
+        # value was and is free to leave. The exact value matters: a rounded
+        # one leaves the fractional interpolation straddling two samples and
+        # the parity test against the shipped numpy model fails at 1e-6.
+        self.raw_d = nn.Parameter(torch.tensor(math.log(0.25), dtype=torch.float64))
+
+    def delay_s(self):
+        return self.D_MAX * torch.sigmoid(self.raw_d)
 
     def reset(self, ah0, temp0):
         return ()
@@ -241,8 +262,34 @@ class Gary(Candidate):
         return (self.logF.exp() * u - Q * drive + self.C * dT_dt) / V, aux
 
 
+class Herbert(Candidate):
+    """The sanity check: the simplest thing that can possibly work, with a
+    FITTABLE dead time.
+
+    Every other candidate failed the most basic test there is -- when the
+    humidifier turns on, absolute humidity should climb. They do not predict
+    that, because they were fitted where duty never drove anything and they
+    settled into echoing the present (best match at a 45 min delay, slope 0.13).
+
+    So: strip it to a first-order system with a source and a sink, and DELETE
+    the C*dT_dt term. Without a temperature route the fit cannot explain a rise
+    any other way -- F and the delay have to carry the humidifier response or
+    the model has nothing. Three parameters, one of them the dead time that has
+    been hardcoded at 360 s in every candidate up to now.
+
+        dAH/dt = (F * u(t - d) - Q * (AH - AH_ambient)) / V
+    """
+    def __init__(self):
+        super().__init__()
+        self.logF = nn.Parameter(torch.tensor(np.log(3.89)))
+        self.logQ = nn.Parameter(torch.tensor(np.log(0.553)))
+
+    def deriv(self, ah, aux, u, T, dT_dt, amb, ctx):
+        return (self.logF.exp() * u - self.logQ.exp() * (ah - amb)) / V, aux
+
+
 CANDIDATES = {'alice': Alice, 'bob': Bob, 'charlie': Charlie,
-              'dave': Dave, 'eve': Eve, 'frank': Frank, 'gary': Gary}
+              'dave': Dave, 'eve': Eve, 'frank': Frank, 'gary': Gary, 'herbert': Herbert}
 
 
 # ------------------------------------------------------------------ rollout
@@ -256,8 +303,24 @@ def rollout(model, tau_s, batch, dt_s):
     aux = model.reset(ah, temp[:, 0])
     applied = torch.zeros(B, dtype=duty.dtype)
     alpha = (dt_s / tau_s.clamp(min=dt_s)).clamp(max=1.0)
-    lag = int(round(DEAD_TIME_S / dt_s))
-    u_delayed = torch.cat([torch.zeros(B, lag, dtype=duty.dtype), duty[:, :-lag]], dim=1)
+    d_s = model.delay_s() if hasattr(model, 'delay_s') else None
+    if d_s is None:                                   # only a bare stub model
+        lag = int(round(DEAD_TIME_S / dt_s))
+        u_delayed = torch.cat([torch.zeros(B, lag, dtype=duty.dtype), duty[:, :-lag]], dim=1)
+    else:
+        # FRACTIONAL delay, linearly interpolated so it is differentiable in
+        # d_s. The integer shift above cannot be fitted -- that is why the dead
+        # time has been a hardcoded 360 s all along.
+        raw = torch.arange(N, dtype=duty.dtype) - d_s / dt_s
+        # before the delay has elapsed there is NO commanded duty yet, so pad
+        # with zero exactly as the integer shift did. Clamping to duty[0]
+        # instead leaks the first sample backwards and breaks parity.
+        pad = (raw >= 0).to(duty.dtype).unsqueeze(0)
+        src = raw.clamp(min=0.0)
+        lo = src.floor().long().clamp(max=N - 1)
+        hi = (lo + 1).clamp(max=N - 1)
+        w = (src - lo.to(duty.dtype)).unsqueeze(0)
+        u_delayed = (duty[:, lo] * (1 - w) + duty[:, hi] * w) * pad
     dT = torch.zeros(B, N, dtype=temp.dtype)
     dT[:, 1:] = (temp[:, 1:] - temp[:, :-1]) * (3600.0 / dt_s)      # K/h
     out = []
@@ -452,7 +515,9 @@ def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25, va=None):
         opt.step()
         if it % max(1, steps // 8) == 0 or it == steps - 1:
             print(f'    [{name}] step {it:4d}  train skill {loss.item():6.4f}  '
-                  f'tau {float(tau_of(log_tau).detach()):6.0f}s  ({time.time()-t0:5.1f}s)', flush=True)
+                  f'tau {float(tau_of(log_tau).detach()):5.0f}s  '
+                  f'dead {float(model.delay_s().detach()):5.0f}s  '
+                  f'({time.time()-t0:5.1f}s)', flush=True)
         if va is not None and (it % every == every - 1 or it == steps - 1):
             with torch.no_grad():
                 v = vloss()
@@ -470,7 +535,7 @@ def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25, va=None):
     with torch.no_grad():
         f = lambda w: [float(x) ** .5 for x in horizon_mse(
             rollout(model, tau_of(log_tau), w, dt_s) / 100.0 * ah_sat(w['temp']), w, ks)]
-        return model, float(tau_of(log_tau).detach()), f(tr), f(te), te
+        return model, float(tau_of(log_tau).detach()), f(tr), f(te), float(model.delay_s().detach())
 
 
 def main():
@@ -533,17 +598,17 @@ def main():
     for name in a.candidates.split(','):
         print(f'  fitting {name}...', flush=True)
         ckpt = f'{a.out}.{name}.ckpt' if a.out else ''
-        model, tau_s, e_tr, e_te, _ = fit(name, tr, te, dt_s, a.steps,
-                                          a.lr, a.seed, ckpt, va=va)
+        model, tau_s, e_tr, e_te, dead_s = fit(name, tr, te, dt_s, a.steps,
+                                               a.lr, a.seed, ckpt, va=va)
         rows.append(dict(candidate=name, split=a.split, seed=a.seed,
                          n_params=sum(p.numel() for p in model.parameters()) + 1,
-                         tau_s=tau_s, horizons_min=list(HORIZONS),
+                         tau_s=tau_s, dead_time_s=dead_s, horizons_min=list(HORIZONS),
                          train_err=e_tr, test_err=e_te,
                          skill=[t / b for t, b in zip(e_te, base)],
                          skill_worst=max(t / b for t, b in zip(e_te, base))))
         show(name, e_te, str(rows[-1]['n_params']))
-        print(f'    tau={tau_s:.0f}s  worst-horizon skill {rows[-1]["skill_worst"]:.3f}',
-              flush=True)
+        print(f'    tau={tau_s:.0f}s  dead_time={dead_s:.0f}s  '
+              f'worst-horizon skill {rows[-1]["skill_worst"]:.3f}', flush=True)
 
     # ranked on the WORST horizon: a good model is good at all three, and a
     # model can fake one horizon (near-persistence at 5 min, slow drift at 45).

@@ -15,7 +15,7 @@ mkdir -p "$OUT/logs"
 # candidates, so "charlie beats alice" could not be told from init noise.
 jobs=()
 for split in inter chrono; do
-  for c in alice bob charlie dave eve frank; do
+  for c in alice bob charlie dave eve frank gary herbert; do
     for s in $(seq 0 "${SEEDS:-4}"); do jobs+=("$c $split $s"); done
   done
 done
