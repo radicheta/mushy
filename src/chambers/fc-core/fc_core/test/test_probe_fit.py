@@ -64,10 +64,23 @@ def test_aggregate_needs_five_windows():
     assert abs(a.params.fill_g_per_h - 7.0) / 7.0 < 0.2
 
 
-def test_window_rejected_when_temperature_moves():
+def _ramped(span_c):
     w = synth_window(TRUE)
-    w.temp = [6.0 + 1.0 * (i / len(w.temp)) for i in range(len(w.temp))]
-    assert fit_window(w, BASE).rejected == 'temp_moved'
+    w.temp = [6.0 + span_c * (i / len(w.temp)) for i in range(len(w.temp))]
+    return w
+
+
+def test_window_rejected_when_temperature_moves():
+    """An afternoon-sized swing is still out (MUSHY-144 kept a gate, at 1.5 C:
+    the chamber moves 2-3 C per window between 10Z and 21Z)."""
+    assert fit_window(_ramped(3.0), BASE).rejected == 'temp_moved'
+
+
+def test_a_normal_nights_cooling_is_not_rejected():
+    """FC-1 cools 0.4-0.7 C per 100 min window overnight, and both real probes
+    on 2026-08-31 drifted ~0.65 C. At the old 0.5 C budget every one of them
+    was thrown away, which is what starved the fit (MUSHY-144)."""
+    assert fit_window(_ramped(0.7), BASE).rejected != 'temp_moved'
 
 
 def test_find_windows_slices_on_probe_rising_edge():

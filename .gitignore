@@ -70,3 +70,10 @@ logs/
 # Use 60-wifi.yaml.example as the shape reference.
 client.ovpn
 scripts/pi-deploy/etc/netplan/60-wifi.yaml
+
+# MUSHY-142: per-run self-tune fit reports are products, not sources; the
+# push script refuses to commit if the tree holds anything but the two files
+# it writes, and a stray report would block every nightly commit.
+# accepted.json is the pushed-state record and IS tracked.
+reports/self-tune/*.json
+!reports/self-tune/accepted.json

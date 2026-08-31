@@ -23,7 +23,15 @@ PRE_S = 600.0
 POST_S = 5400.0
 MIN_WINDOWS = 5
 MAX_IQR_RATIO = 0.5
-MAX_TEMP_MOVE_C = 0.5
+MAX_TEMP_MOVE_C = 1.5   # 0.5 -> 1.5 (MUSHY-144): the chamber cools 0.4-0.7 C
+                        # per 100 min window on a normal night, so 0.5 rejected
+                        # about half of the probes the scheduler was allowed to
+                        # fire at all. The model already consumes the measured
+                        # temperature series and MUSHY-136's surface term exists
+                        # to explain temperature-driven RH, so this gate is a
+                        # proxy, not physics; 1.5 still excludes the 2-3 C
+                        # afternoon swings. rmse_pct is the real quality signal
+                        # (good windows land ~0.06-0.07 %RH).
 # Fit bounds are DELIBERATELY wider than the spec section 3 plausibility
 # ranges (0.5x the low, 2x the high). Fitting inside the plausibility box makes
 # a wild fit pin at the bound and land inside the box, so the guard's refusal
