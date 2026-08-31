@@ -77,3 +77,6 @@ scripts/pi-deploy/etc/netplan/60-wifi.yaml
 # accepted.json is the pushed-state record and IS tracked.
 reports/self-tune/*.json
 !reports/self-tune/accepted.json
+
+# MUSHY-150 bake-off corpus cache (rebuild with scripts/bakeoff/prep.py)
+scripts/bakeoff/*.npz
