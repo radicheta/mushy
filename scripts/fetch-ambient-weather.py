@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Fetch historical ambient weather for FC-1 and write the offline fixture.
 
-One-shot and idempotent -- safe to re-run to extend the window. NOT a daemon,
-NOT scheduled, and never read by the controller at runtime (MUSHY-64).
+One-shot and idempotent -- safe to re-run to extend the window. Never read by
+the controller at runtime (MUSHY-64). The only scheduled caller is
+scripts/self-tune/mushy-self-tune.sh (MUSHY-143): once a day, trailing
+window, --out to a temp file + --load-timescale, so the committed fixture
+stays ERA5-only and the Timescale `weather` table is the live copy.
 
 Usage:
     python3 scripts/fetch-ambient-weather.py --fetch

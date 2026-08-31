@@ -21,7 +21,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / 'src' / 'chambers' / 'fc-core'))
 
-from fc_core.sim.ambient import AmbientSeries                        # noqa: E402
+from fc_core.sim.ambient import AmbientSample, AmbientSeries         # noqa: E402
 from fc_core.sim.chamber_model import ChamberParams                  # noqa: E402
 from fc_core.sim.probe_fit import (aggregate, find_quasi_windows,     # noqa: E402
                                    find_windows, fit_window)
@@ -35,15 +35,10 @@ _spec.loader.exec_module(fcm)
 DT = 10.0
 IDLE_S = 900.0
 REPORT_DIR = REPO_ROOT / 'reports' / 'self-tune'
-# ambient_-34.52_-55.10.csv (DEFAULT_FIXTURE) stops 2026-08-08; .recent.csv is
-# the sibling that is actually kept refreshed (currently to 2026-08-30T02Z,
-# ~1-2 days behind real time). Use it here so `--days` windows near "now"
-# don't fall outside AmbientSeries coverage.
-AMBIENT_CSV = REPO_ROOT / 'src' / 'chambers' / 'fc-core' / 'fc_core' / 'sim' / 'data' / 'ambient_-34.52_-55.10.recent.csv'
 
 
-def load(topic, t0, t1):
-    sql = (f"select extract(epoch from time), value from telemetry where topic='{topic}' "
+def load(topic, t0, t1, table='telemetry'):
+    sql = (f"select extract(epoch from time), value from {table} where topic='{topic}' "
            f"and time >= to_timestamp({t0}) and time <= to_timestamp({t1}) order by time")
     rows = []
     for line in fcm.psql(sql).splitlines():
@@ -51,6 +46,34 @@ def load(topic, t0, t1):
             ts, v = line.split('\t')
             rows.append((float(ts), float(v)))
     return rows
+
+
+HOLD_S = 3600.0   # ponytail: hold the last weather hour this far; add forecast hours if the fit ever needs more
+
+
+def weather_series(temp_rows, rh_rows, precip_rows, hold_until=None):
+    """AmbientSeries from the Timescale `weather` table rows (MUSHY-143).
+
+    The committed CSV fixture is ERA5-only and stops days behind real time;
+    the weather table is refreshed nightly by mushy-self-tune.sh (one
+    Open-Meteo call/day) so the fit covers last night's probes. Hours missing
+    any of the three topics are skipped -- AmbientSeries interpolates across
+    the gap. The table always ends on the last whole hour before the fetch,
+    so the last sample is held to ``hold_until`` (epoch) if that is within
+    HOLD_S -- a probe window is 90 min and ambient is a slow boundary term."""
+    rh = dict(rh_rows)
+    precip = dict(precip_rows)
+    times, samples = [], []
+    for ts, t in temp_rows:
+        if ts in rh and ts in precip:
+            times.append(datetime.fromtimestamp(ts, tz=timezone.utc))
+            samples.append(AmbientSample(t, rh[ts], precip[ts]))
+    if not times:
+        raise ValueError('weather table has no complete hours in window')
+    if hold_until is not None and 0 < hold_until - times[-1].timestamp() <= HOLD_S:
+        times.append(datetime.fromtimestamp(hold_until, tz=timezone.utc))
+        samples.append(samples[-1])
+    return AmbientSeries(times, samples)
 
 
 def _finite(obj):
@@ -97,11 +120,14 @@ def main():
 
     now = datetime.now(timezone.utc)
     t0_want = now - timedelta(days=a.days)
-    amb = AmbientSeries.from_csv(AMBIENT_CSV)
+    w0, w1 = (t0_want - timedelta(hours=1)).timestamp(), now.timestamp()
+    amb = weather_series(*(load(f'weather.{k}', w0, w1, table='weather')
+                           for k in ('temperature', 'humidity', 'precipitation')),
+                         hold_until=w1)
     t1 = min(now, amb.end)
-    t0 = t0_want
+    t0 = max(t0_want, amb.start)
     print(f'analysis window: {t0.isoformat()} .. {t1.isoformat()} '
-          f'(clamped to ambient coverage ending {amb.end.isoformat()})')
+          f'(clamped to weather-table coverage {amb.start.isoformat()}..{amb.end.isoformat()})')
     e0, e1 = t0.timestamp(), t1.timestamp()
     rh_rows = load('fc.humidity', e0, e1)
     temp_rows = load('fc.temperature', e0, e1)
