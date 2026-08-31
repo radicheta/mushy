@@ -349,7 +349,7 @@ def score(pred, b):
     return rmse, bias
 
 
-def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25):
+def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25, va=None):
     """Trains on the MULTI-HORIZON skill score: mean over 5/15/45 min of the
     MSE divided by the persistence MSE at that horizon. Normalising by
     persistence keeps the horizons comparable -- unnormalised, 45 min carries
@@ -358,7 +358,16 @@ def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25):
     dead_time is held FIXED (an integer sample shift is not differentiable).
     tau is fitted but BOUNDED to 60-1800 s via a sigmoid, so it stays a mixing
     lag. Unbounded it was not a time constant at all: candidates drove it from
-    89 s to 4094 h and used it as a gain knob to disconnect the humidifier."""
+    89 s to 4094 h and used it as a gain knob to disconnect the humidifier.
+
+    EARLY STOPPING on a held-out slice of train. Without it the comparison is
+    rigged: the physics candidates get strong inductive bias for free while the
+    neural ones get no regulariser at all, so they train straight past the
+    optimum. Measured: eve reached train 0.2183 against alice's 0.3127 and
+    still lost on test, and both were STILL DESCENDING at step 999. Fitting
+    better and generalising worse is overfitting, not an optimiser failure, and
+    candidate 6 cannot be the intended UPPER BOUND on available accuracy while
+    nothing stops it."""
     torch.manual_seed(seed); np.random.seed(seed)
     model = CANDIDATES[name]()
     log_tau = torch.nn.Parameter(torch.tensor(-0.7985))     # sigmoid -> 600 s
@@ -392,6 +401,12 @@ def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25):
                    ckpt_path + '.tmp')
         os.replace(ckpt_path + '.tmp', ckpt_path)
 
+    best = (float('inf'), None)         # (val loss, state) -- restored at the end
+    vloss = lambda: float(sum(
+        e / b for e, b in zip(horizon_mse(
+            rollout(model, tau_of(log_tau), va, dt_s) / 100.0 * ah_sat(va['temp']),
+            va, ks), base)) / len(ks))
+
     t0 = time.time()
     for it in range(start, steps):
         opt.zero_grad()
@@ -403,8 +418,20 @@ def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25):
         if it % max(1, steps // 8) == 0 or it == steps - 1:
             print(f'    [{name}] step {it:4d}  train skill {loss.item():6.4f}  '
                   f'tau {float(tau_of(log_tau).detach()):6.0f}s  ({time.time()-t0:5.1f}s)', flush=True)
+        if va is not None and (it % every == every - 1 or it == steps - 1):
+            with torch.no_grad():
+                v = vloss()
+            if v < best[0]:
+                best = (v, {k: t.detach().clone() for k, t in model.state_dict().items()},
+                        log_tau.detach().clone(), it)
         if it % every == every - 1 or it == steps - 1:
             save(it + 1)
+    if best[1] is not None:
+        model.load_state_dict(best[1])
+        with torch.no_grad():
+            log_tau.copy_(best[2])
+        print(f'    [{name}] early stop: best val {best[0]:.4f} at step {best[3]}'
+              f' of {steps}', flush=True)
     with torch.no_grad():
         f = lambda w: [float(x) ** .5 for x in horizon_mse(
             rollout(model, tau_of(log_tau), w, dt_s) / 100.0 * ah_sat(w['temp']), w, ks)]
@@ -425,8 +452,18 @@ def main():
 
     tr_d, te_d, dt_s = load(a.split)
     H = max(HORIZONS)
-    tr = windows(tr_d, dt_s, H, cap=a.train_windows, seed=a.seed)
+    allw = windows(tr_d, dt_s, H, cap=a.train_windows, seed=a.seed)
+    # 80/20 fit/validation, deterministic per seed. Split on WINDOW INDEX, not
+    # at random within a day, so a validation window is never the neighbour of
+    # a fitting window it overlaps.
+    n = len(allw['ah'])
+    rs = np.random.RandomState(1000 + a.seed)
+    vm = np.zeros(n, bool); vm[rs.choice(n, max(1, n // 5), replace=False)] = True
+    cut = lambda m: {k: (v[m] if hasattr(v, '__len__') and len(v) == n else v)
+                     for k, v in allw.items()}
+    tr, va = cut(~vm), cut(vm)
     te = windows(te_d, dt_s, H)
+    print(f'  fit {len(tr["ah"])} windows / validate {len(va["ah"])}')
     ks = [int(h * 60 / dt_s) for h in HORIZONS]
     hz = ''.join(f'{h:.0f}min'.rjust(14) for h in HORIZONS)
     print(f'split={a.split}  train {len(tr["ah"])} windows (of {len(tr_d["rh"])} days)  '
@@ -454,7 +491,7 @@ def main():
         print(f'  fitting {name}...', flush=True)
         ckpt = f'{a.out}.{name}.ckpt' if a.out else ''
         model, tau_s, e_tr, e_te, _ = fit(name, tr, te, dt_s, a.steps,
-                                          a.lr, a.seed, ckpt)
+                                          a.lr, a.seed, ckpt, va=va)
         rows.append(dict(candidate=name, split=a.split, seed=a.seed,
                          n_params=sum(p.numel() for p in model.parameters()) + 1,
                          tau_s=tau_s, horizons_min=list(HORIZONS),
