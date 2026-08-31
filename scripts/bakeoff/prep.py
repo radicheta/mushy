@@ -96,6 +96,10 @@ def entry_mask(grid):
     excursions >= 60 ppm carry a working-hours signature. Absolute threshold
     over a LOCAL baseline, because ASC re-baselines the sensor continuously
     (MUSHY-114) and any fixed ppm cut drifts out from under you."""
+    # Farmer's rule (2026-08-31): a flat 30 min per entry, 5 min before the
+    # excursion starts to 25 min after. Anchored on ONSET, not on the peak --
+    # CO2 peaks near the END of a visit, so peak-anchoring would miss the
+    # entry itself, which is the part the "5 min before" is there to catch.
     ENTRY_PPM, HALF_W, PRE_MIN, POST_MIN = 60.0, 30, 5, 25
     t, v = series('fc.co2')
     if len(t) == 0:
@@ -111,14 +115,22 @@ def entry_mask(grid):
     hit = np.where(np.nan_to_num(resid, nan=-1e9) > 3 * 1.4826 * np.nanmedian(np.abs(resid)))[0]
     mask = np.zeros(len(grid), bool)
     n_ev = 0
+    long_tails = []
     if len(hit):
         for grp in np.split(hit, np.where(np.diff(hit) > 20)[0] + 1):
             if resid[grp].max() < ENTRY_PPM:
                 continue
             n_ev += 1
             a = (m0 + grp[0] - PRE_MIN) * 60.0
-            b = (m0 + grp[-1] + POST_MIN) * 60.0
+            b = (m0 + grp[0] + POST_MIN) * 60.0
+            over = max(0, (grp[-1] - grp[0]) - POST_MIN)
+            if over:
+                long_tails.append(over)
             mask |= (grid >= a) & (grid <= b)
+    if long_tails:
+        print(f'  NOTE {len(long_tails)}/{n_ev} entries stay above threshold past '
+              f'+{POST_MIN} min (worst +{max(long_tails)} min) and are only '
+              f'partly masked by the flat window')
     return mask, n_ev
 
 
