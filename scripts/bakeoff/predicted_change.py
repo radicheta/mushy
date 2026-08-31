@@ -36,3 +36,33 @@ for m in D['models']:
         print(f'{m["name"]:16s}{hz:4d}{dP.std():11.3f}{dT.std():11.3f}'
               f'{dP.std()/dT.std():9.0%}{np.corrcoef(dT, dP)[0, 1]:7.2f}'
               f'{np.polyfit(dT, dP, 1)[0]:7.2f}')
+
+
+def match_vs_shift(pred, truth, dt_min, lags=(0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50)):
+    """Is the curve a DELAYED COPY of truth, or does it match where it stands?
+
+    Shift the prediction left by L and compare. A delayed copy improves
+    monotonically up to L = horizon; a real forecast is best at L = 0 and gets
+    worse. This is the diagnostic to use -- comparing the location of a single
+    minimum is fragile, and gave two contradictory answers on this data before
+    the window happened to clip one curve and then the other.
+    """
+    import numpy as np
+    out = []
+    for Lm in lags:
+        L = int(round(Lm / dt_min))
+        a, b = pred[L:], (truth[:len(truth) - L] if L else truth)
+        a, b = a - a.mean(), b - b.mean()
+        out.append((Lm, float(np.sqrt(((a - b) ** 2).mean())),
+                    float(np.corrcoef(a, b)[0, 1])))
+    return out
+
+
+if __name__ == '__main__' and len(sys.argv) > 2 and sys.argv[2] == '--shift':
+    dt_min = x[1] - x[0]
+    for m in D['models']:
+        for hz in D['h']:
+            c = match_vs_shift(np.array(m['series'][str(hz)]), tg, dt_min)
+            best = min(c, key=lambda r: r[1])[0]
+            print(f'{m["name"]:16s} h={hz:2d}  best match at shift {best:3d} min'
+                  f'   rmse L=0 {c[0][1]:.2f} -> L=45 {c[-2][1]:.2f}')
