@@ -23,6 +23,7 @@ from fc_core.sim.simc import guard                       # noqa: E402
 YAML = REPO_ROOT / 'src' / 'chambers' / 'fc-core' / 'config' / 'fc_config.yaml'
 ACCEPTED = REPO_ROOT / 'reports' / 'self-tune' / 'accepted.json'
 NODE = '/fc_controller'
+TRIM_RANGE = (0.01, 10.0)   # sanity bound on the MUSHY-145 rescaled feedforward trim
 
 
 def yaml_value(key):
@@ -125,6 +126,27 @@ def main():
         'pid_kp': push.gains.kp, 'pid_ki': push.gains.ki, 'pid_kd': push.gains.kd,
         'fill_g_per_h': push.params.fill_g_per_h, 'surface_g_per_k': push.params.surface_g_per_k,
     }
+    # MUSHY-145: F is a DIVISOR in temp_feedforward_gain (control_kernel.py),
+    # so writing fill_g_per_h silently rescales the MUSHY-125 temperature
+    # feedforward -- an effect nobody asked this push to have. The numerator of
+    # that gain does not contain F, so the gain moves by exactly F_old/F_new;
+    # scaling the trim by F_new/F_old holds the EFFECTIVE feedforward where the
+    # farmer tuned it. Twin-verified on 2026-08-30 13-23Z: leaving the trim
+    # alone widened RH p2p 4.22 -> 5.03 and put the chamber 3 min below the
+    # floor, while the rescale reproduced today's behaviour exactly.
+    #
+    # This keeps the push NEUTRAL on the feedforward. Retuning it against the
+    # corrected model is a separate, deliberate decision (MUSHY-125), not a
+    # side effect of a model update.
+    f_old, trim_old = yaml_value('fill_g_per_h'), yaml_value('humidifier_temp_feedforward')
+    if trim_old and f_old:
+        trim_new = trim_old * push.params.fill_g_per_h / f_old
+        lo, hi = TRIM_RANGE
+        if not (lo <= trim_new <= hi):
+            print(f'refused: rescaled humidifier_temp_feedforward={trim_new:.4g} outside '
+                  f'[{lo}, {hi}]; F moved {f_old:.4g} -> {push.params.fill_g_per_h:.4g}')
+            return 3
+        values['humidifier_temp_feedforward'] = trim_new
     # One ssh, all five sets chained with && : a network drop mid-push cannot
     # leave fc1 with half a gain set. It is not transactional -- an ssh that
     # dies between two sets still leaves the earlier ones applied -- so the

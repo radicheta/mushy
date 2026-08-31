@@ -89,3 +89,20 @@ def test_dirty_paths_keeps_the_first_paths_full_name(tmp_path, monkeypatch):
     yaml.write_text('x\n')
     accepted.write_text('{"a": 1}\n')
     assert pcp.dirty_paths() == pcp.ours()
+
+
+def test_feedforward_trim_is_rescaled_to_stay_neutral_when_F_moves(tmp_path, monkeypatch):
+    """MUSHY-145: F divides temp_feedforward_gain, so a push that writes F
+    without touching the trim silently weakens the feedforward by F_new/F_old.
+    Scaling the trim by the same factor holds the effective feedforward put."""
+    copy = tmp_path / 'fc_config.yaml'
+    copy.write_text('    fill_g_per_h: 3.890\n    humidifier_temp_feedforward: 0.4\n')
+    monkeypatch.setattr(pcp, 'YAML', copy)
+
+    f_old, trim_old = pcp.yaml_value('fill_g_per_h'), pcp.yaml_value('humidifier_temp_feedforward')
+    f_new = 19.663523608913977
+    trim_new = trim_old * f_new / f_old
+    assert abs(trim_new - 2.02) < 0.01                    # the twin's arm (c)
+
+    # effective feedforward, trim / F, is what must not move
+    assert abs((trim_old / f_old) - (trim_new / f_new)) < 1e-12
