@@ -9,13 +9,14 @@ STEPS=${STEPS:-1000}
 OUT=scripts/bakeoff/results
 mkdir -p "$OUT/logs"
 
+# EVERY candidate gets seeds. Seeds were originally only run for the neural
+# entries, and that made the leaderboard unreadable: eve's seed spread
+# (0.444-0.629 worst-horizon) was 4x the gap between the top three physics
+# candidates, so "charlie beats alice" could not be told from init noise.
 jobs=()
 for split in inter chrono; do
-  for c in alice bob charlie dave; do
-    jobs+=("$c $split 0")
-  done
-  for c in eve frank; do
-    for s in 0 1 2; do jobs+=("$c $split $s"); done
+  for c in alice bob charlie dave eve frank; do
+    for s in $(seq 0 "${SEEDS:-4}"); do jobs+=("$c $split $s"); done
   done
 done
 
