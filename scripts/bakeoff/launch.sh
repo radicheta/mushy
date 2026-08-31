@@ -23,6 +23,9 @@ printf '%s\n' "${jobs[@]}" | xargs -P "${PAR:-8}" -I{} bash -c '
   set -- {}
   c=$1; split=$2; seed=$3
   tag="$split-$c-s$seed"
+  # resume: a finished job has written its JSON, so skip it. Jobs are
+  # independent, so an interrupted batch restarts only what is missing.
+  if [ -s scripts/bakeoff/results/$tag.json ]; then echo "skip $tag"; exit 0; fi
   OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 .venv/bin/python scripts/bakeoff/run.py \
     --split "$split" --candidates "$c" --seed "$seed" --steps '"$STEPS"' \
     --out scripts/bakeoff/results/$tag.json \
