@@ -19,6 +19,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+# Exogenous per-step channels handed to the candidates. History is carried by
+# fixed-timescale EWMAs of DRIVERS ONLY -- never of AH, which is the target.
+CHANNELS = ('amb_t', 'amb_rh', 'precip', 'solar', 'cloud', 'wind', 'pressure',
+            't_ew5', 't_ew30', 'u_ew5', 'u_ew30', 'a_ew30', 's_ew30')
+
 V = 5.76                        # chamber volume m3
 MW_OVER_R = 18.01528 / 8.31446
 DEAD_TIME_S = 360.0             # shipped default; see note in fit() below
@@ -134,7 +139,7 @@ class Eve(Candidate):
         super().__init__()
         self.logF = nn.Parameter(torch.tensor(np.log(3.89)))
         self.C = nn.Parameter(torch.tensor(2.77))
-        self.net = nn.Sequential(nn.Linear(3, width), nn.Tanh(),
+        self.net = nn.Sequential(nn.Linear(5, width), nn.Tanh(),
                                  nn.Linear(width, width), nn.Tanh(),
                                  nn.Linear(width, 1))
         with torch.no_grad():                    # start near the shipped Q
@@ -142,28 +147,58 @@ class Eve(Candidate):
             self.net[-1].weight.mul_(0.01)
 
     def deriv(self, ah, aux, u, T, dT_dt, amb, ctx):
-        x = torch.stack([(T - 12.0) / 8.0, (ah - amb) / 4.0, u], dim=-1)
+        # T - T_ewma30 is a WALL-LAG proxy: the wall trails the air, so this
+        # is the sign and size of the air/wall temperature difference that
+        # drives condensation. Solar enters because an uninsulated steel wall
+        # is heated directly by it, not only through air temperature.
+        x = torch.stack([(T - 12.0) / 8.0, (T - ctx['t_ew30']) / 1.5,
+                         (ah - amb) / 4.0, u, ctx['solar'] / 300.0], dim=-1)
         Q = torch.nn.functional.softplus(self.net(x).squeeze(-1))
         return (self.logF.exp() * u - Q * (ah - amb) + self.C * dT_dt) / V, aux
 
 
 class Frank(Candidate):
-    """Black-box dAH/dt = NN(state). Its role is an UPPER BOUND: how much
-    predictive accuracy exists in this data at all. Run it regardless of how
-    the physics candidates do -- an upper bound is only informative when it is
-    measured even if the physics looks fine."""
+    """Black-box upper bound: how much predictive accuracy exists in this data
+    at all. dAH/dt = NN(inputs, h) with its OWN hidden state h.
+
+    The hidden state is not decoration. Without it Frank is a memoryless
+    function of AH, and it then cannot represent a wall reservoir -- so Dave
+    could beat it, and "the black box could not do better" would be a
+    statement about my architecture rather than about the data. An upper
+    bound has to be at least as expressive as every candidate it bounds.
+
+    History also enters as fixed-timescale EWMAs of the EXOGENOUS drivers
+    (5 min and 30 min). Those are safe: they are computed from recorded
+    inputs, never from AH, so nothing leaks the target (TRAP 3).
+    """
+    extra = 2                          # learned reservoir states
+    N_IN = 18
+
     def __init__(self, width=32):
         super().__init__()
-        self.net = nn.Sequential(nn.Linear(7, width), nn.Tanh(),
+        self.net = nn.Sequential(nn.Linear(self.N_IN + self.extra, width), nn.Tanh(),
                                  nn.Linear(width, width), nn.Tanh(),
-                                 nn.Linear(width, 1))
+                                 nn.Linear(width, 1 + self.extra))
         with torch.no_grad():
             self.net[-1].weight.mul_(0.01); self.net[-1].bias.zero_()
 
+    def reset(self, ah0, temp0):
+        return (torch.zeros(len(ah0), self.extra, dtype=ah0.dtype),)
+
     def deriv(self, ah, aux, u, T, dT_dt, amb, ctx):
-        x = torch.stack([(ah - 9.0) / 3.0, (T - 12.0) / 8.0, (ah - amb) / 4.0, u,
-                         dT_dt, (ctx['amb_t'] - 12.0) / 8.0, ctx['precip']], dim=-1)
-        return self.net(x).squeeze(-1) * 2.0, aux
+        (h,) = aux
+        x = torch.stack([
+            (ah - 9.0) / 3.0, (T - 12.0) / 8.0, (ah - amb) / 4.0, u, dT_dt,
+            (ctx['amb_t'] - 12.0) / 8.0, (ctx['amb_rh'] - 75.0) / 20.0, ctx['precip'],
+            ctx['solar'] / 300.0, (ctx['cloud'] - 50.0) / 40.0,
+            ctx['wind'] / 15.0, (ctx['pressure'] - 1013.0) / 10.0,
+            (ctx['t_ew5'] - 12.0) / 8.0, (ctx['t_ew30'] - 12.0) / 8.0,
+            ctx['u_ew5'], ctx['u_ew30'],
+            (ctx['a_ew30'] - 8.0) / 3.0, ctx['s_ew30'] / 300.0,
+        ], dim=-1)
+        y = self.net(torch.cat([x, h], dim=-1))
+        dh = y[:, 1:] - 0.2 * h                  # leak keeps h bounded
+        return y[:, 0] * 2.0, (h + dh * (ctx['dt_s'] / 3600.0),)
 
 
 CANDIDATES = {'alice': Alice, 'bob': Bob, 'charlie': Charlie,
@@ -175,8 +210,7 @@ def rollout(model, tau_s, batch, dt_s):
     """Free-running open-loop replay, batched over days. Returns predicted RH
     [B, T]. The duty path (dead time + first-order mixing) is SHARED by every
     candidate, so it cannot bias the ranking."""
-    duty, temp, amb, ambt, precip = (batch['duty'], batch['temp'], batch['amb_ah'],
-                                     batch['amb_temp'], batch['precip'])
+    duty, temp, amb = batch['duty'], batch['temp'], batch['amb_ah']
     B, N = duty.shape
     ah = batch['ah0'].clone()
     aux = model.reset(ah, temp[:, 0])
@@ -190,22 +224,49 @@ def rollout(model, tau_s, batch, dt_s):
     ctx = {'dt_s': dt_s}
     for i in range(N):
         applied = applied + alpha * (u_delayed[:, i] - applied)
-        ctx['amb_t'] = ambt[:, i]; ctx['precip'] = precip[:, i]
+        for k in CHANNELS:
+            ctx[k] = batch[k][:, i]
         d, aux = model.deriv(ah, aux, applied, temp[:, i], dT[:, i], amb[:, i], ctx)
         ah = torch.clamp(ah + d * (dt_s / 3600.0), min=0.0)
         out.append(ah)
     return ah_to_rh(temp, torch.stack(out, dim=1))
 
 
+def ewma(x, tau_s, dt_s):
+    """EWMA along time for each day independently, initialised at that day's
+    first sample. Each day is its own rollout, so there is no history to carry
+    across midnight; the first ~tau of every day is therefore a warm-up, which
+    is why WARMUP_MIN of each day is excluded from SCORING below."""
+    from scipy.signal import lfilter
+    a = min(1.0, dt_s / tau_s)
+    y = lfilter([a], [1.0, -(1.0 - a)], x, axis=1,
+                zi=(x[:, :1] * (1.0 - a)))[0]
+    return y
+
+
+WARMUP_MIN = 30          # per-day rollout + EWMA warm-up, excluded from scores
+
+
 def load(split):
     z = np.load(CORPUS)
     dt_s = float(z['dt'])
     train = z[f'{split}_train']
+    temp, duty, ambah, solar = z['temp'], z['duty'], z['amb_ah'], z['solar']
+    hist = {'t_ew5': ewma(temp, 300., dt_s), 't_ew30': ewma(temp, 1800., dt_s),
+            'u_ew5': ewma(duty, 300., dt_s), 'u_ew30': ewma(duty, 1800., dt_s),
+            'a_ew30': ewma(ambah, 1800., dt_s), 's_ew30': ewma(solar, 1800., dt_s)}
+    warm = int(WARMUP_MIN * 60 / dt_s)
+    valid = z['valid'].copy()
+    valid[:, :warm] = False
+
     def pack(sel):
-        t = lambda k: torch.tensor(z[k][sel])
-        b = {k: t(k) for k in ('duty', 'temp', 'amb_ah', 'amb_temp', 'precip', 'rh')}
+        b = {k: torch.tensor(z[k][sel]) for k in
+             ('duty', 'temp', 'amb_ah', 'rh', 'amb_temp', 'amb_rh', 'precip',
+              'solar', 'cloud', 'wind', 'pressure')}
+        b['amb_t'] = b.pop('amb_temp')
+        b.update({k: torch.tensor(v[sel]) for k, v in hist.items()})
         b['ah0'] = torch.tensor(z['ah'][sel][:, 0])
-        b['valid'] = torch.tensor(z['valid'][sel])
+        b['valid'] = torch.tensor(valid[sel])
         b['dates'] = z['dates'][sel]
         return b
     return pack(train), pack(~train), dt_s

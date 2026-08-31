@@ -142,6 +142,8 @@ def main():
     t_wt, v_wt = series('weather.temperature', 'weather')
     t_wh, v_wh = series('weather.humidity', 'weather')
     t_wp, v_wp = series('weather.precipitation', 'weather')
+    extra = {k: series(f'weather.{k}', 'weather')
+             for k in ('solar', 'cloud', 'wind', 'pressure')}
     print(f'  rh {len(t_rh)}  temp {len(t_tp)}  relay {len(t_rl)}  weather {len(t_wt)}')
 
     d0 = datetime.fromisoformat(START).replace(tzinfo=UYT)
@@ -163,6 +165,8 @@ def main():
     TP = interp_gap(t_tp, v_tp, grid_all, 300)
     AMB = interp_gap(common, amb_ah, grid_all, 7200)
     AMBT = interp_gap(t_wt, v_wt, grid_all, 7200)
+    AMBRH = interp_gap(t_wh, v_wh, grid_all, 7200)
+    EX = {k: interp_gap(t, v, grid_all, 7200) for k, (t, v) in extra.items()}
     PRECIP = zoh(t_wp, v_wp, grid_all, 0.0)
     DUTY = delivered_duty(t_rl, v_rl, grid_all)
 
@@ -174,10 +178,12 @@ def main():
         return x.reshape(n_days, STEPS)
 
     RHd, TPd, AMBd, DUTYd, AHd = days(RH), days(TP), days(AMB), days(DUTY), days(AH)
-    AMBTd, PRECIPd = days(AMBT), days(PRECIP)
+    AMBTd, PRECIPd, AMBRHd = days(AMBT), days(PRECIP), days(AMBRH)
+    EXd = {k: days(v) for k, v in EX.items()}
     ENTd = days(mask_entry_all)
     valid = (np.isfinite(RHd) & np.isfinite(TPd) & np.isfinite(AMBd)
-             & np.isfinite(AHd) & np.isfinite(AMBTd))
+             & np.isfinite(AHd) & np.isfinite(AMBTd) & np.isfinite(AMBRHd)
+             & np.isfinite(EXd['solar']) & np.isfinite(EXd['wind']))
     keep = (~valid).mean(axis=1) <= MAX_MISSING
     # a day is only usable if its FIRST sample is real -- the rollout
     # initialises from it
@@ -203,6 +209,8 @@ def main():
         rh=np.nan_to_num(RHd[idx]), temp=np.nan_to_num(TPd[idx]),
         amb_ah=np.nan_to_num(AMBd[idx]), duty=DUTYd[idx], ah=np.nan_to_num(AHd[idx]),
         amb_temp=np.nan_to_num(AMBTd[idx]), precip=PRECIPd[idx],
+        amb_rh=np.nan_to_num(AMBRHd[idx]),
+        **{k: np.nan_to_num(v[idx]) for k, v in EXd.items()},
         valid=valid[idx] & ~ENTd[idx],
         chrono_train=chrono_train, inter_train=inter_train, dt=DT)
     sz = os.path.getsize(OUT) / 1e6

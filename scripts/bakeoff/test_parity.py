@@ -12,7 +12,25 @@ import torch
 sys.path.insert(0, 'src/chambers/fc-core')
 sys.path.insert(0, 'scripts/bakeoff')
 from fc_core.sim.chamber_model import ChamberModel, ChamberParams
-from run import Alice, rollout, ah_to_rh
+from run import Alice, rollout, ah_to_rh, ewma, CHANNELS
+
+
+def build_batch(z, d, dt_s):
+    """One day, packed exactly as run.load() would -- including every
+    exogenous channel and the EWMA history, so this test exercises the same
+    code path the bake-off uses."""
+    sl = slice(d, d + 1)
+    b = {k: torch.tensor(z[k][sl]) for k in
+         ('duty', 'temp', 'amb_ah', 'amb_rh', 'precip', 'solar', 'cloud',
+          'wind', 'pressure')}
+    b['amb_t'] = torch.tensor(z['amb_temp'][sl])
+    for k, (src, tau) in {'t_ew5': ('temp', 300.), 't_ew30': ('temp', 1800.),
+                          'u_ew5': ('duty', 300.), 'u_ew30': ('duty', 1800.),
+                          'a_ew30': ('amb_ah', 1800.), 's_ew30': ('solar', 1800.)}.items():
+        b[k] = torch.tensor(ewma(z[src], tau, dt_s)[sl])
+    b['ah0'] = torch.tensor(z['ah'][sl][:, 0])
+    assert all(c in b for c in CHANNELS), 'test batch is missing a channel'
+    return b
 
 
 def main():
@@ -36,10 +54,7 @@ def main():
         model.logF.fill_(np.log(p.fill_g_per_h))
         model.logQ.fill_(np.log(p.moisture_loss_m3_per_h))
         model.C.fill_(p.surface_g_per_k)
-        batch = {k: torch.tensor(v[d:d + 1]) for k, v in
-                 (('duty', z['duty']), ('temp', z['temp']), ('amb_ah', z['amb_ah']),
-                  ('amb_temp', z['amb_temp']), ('precip', z['precip']))}
-        batch['ah0'] = torch.tensor(z['ah'][d:d + 1, 0])
+        batch = build_batch(z, d, dt_s)
         got = rollout(model, torch.tensor(p.tau_s), batch, dt_s)[0].numpy()
 
     err = np.abs(got - ref)
@@ -50,10 +65,10 @@ def main():
     # the shared duty path must actually delay: a step in duty must not move AH
     # for DEAD_TIME_S. Guards against silently dropping the lag.
     # compare AGAINST a zero-duty run, else the leak term moves AH on its own
-    b2 = {k: v.clone() for k, v in batch.items()}
+    b2 = {k: (v.clone() if torch.is_tensor(v) else v) for k, v in batch.items()}
     b2['temp'] = torch.full_like(batch['temp'], 12.0)
     b2['duty'] = torch.zeros_like(batch['duty'])
-    b3 = {k: v.clone() for k, v in b2.items()}
+    b3 = {k: (v.clone() if torch.is_tensor(v) else v) for k, v in b2.items()}
     b3['duty'][0, 100:] = 1.0
     with torch.no_grad():
         r0 = rollout(model, torch.tensor(p.tau_s), b2, dt_s)[0].numpy()
@@ -70,6 +85,21 @@ def main():
         assert p_.grad is not None and torch.isfinite(p_.grad).all() and p_.grad != 0, \
             f'no usable gradient for {n_}'
     print('gradients reach F, Q, C: ok')
+
+    # Frank must actually REMEMBER: a prediction late in the day has to depend
+    # on duty hours earlier, through its hidden state and the EWMA channels.
+    # A memoryless net would show zero sensitivity to the distant past.
+    from run import Frank
+    frank = Frank()
+    b4 = {k: (v.clone() if torch.is_tensor(v) else v) for k, v in batch.items()}
+    b4['duty'].requires_grad_(True)
+    out = rollout(frank, torch.tensor(600.0), b4, dt_s)
+    out[0, -1].backward()
+    g = b4['duty'].grad[0].abs()
+    early, late = g[:2000].sum().item(), g[-2000:].sum().item()
+    print(f'Frank d(RH at 24h)/d(duty): early-day {early:.3e}  late-day {late:.3e}')
+    assert early > 0, 'Frank has NO memory of the early day -- hidden state is dead'
+    print('Frank carries history: ok')
     print('PARITY OK')
 
 
