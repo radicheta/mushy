@@ -7,10 +7,12 @@ import os, re, subprocess, time
 import torch
 
 R, STEPS = 'scripts/bakeoff/results', int(os.environ.get('STEPS', 1000))
+# Mirrors launch.sh: every candidate on every seed. Kept in step with it --
+# a hardcoded job list here silently reports "all done" on a bigger matrix.
+SEEDS = int(os.environ.get('SEEDS', 4)) + 1
 JOBS = [(s, c, k) for s in ('inter', 'chrono')
-        for c, seeds in (('alice', [0]), ('bob', [0]), ('charlie', [0]),
-                         ('dave', [0]), ('eve', [0, 1, 2]), ('frank', [0, 1, 2]))
-        for k in seeds]
+        for c in ('alice', 'bob', 'charlie', 'dave', 'eve', 'frank')
+        for k in range(SEEDS)]
 
 
 def hms(s):
