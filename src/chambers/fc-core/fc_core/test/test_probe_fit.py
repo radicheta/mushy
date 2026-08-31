@@ -3,6 +3,7 @@ from dataclasses import replace
 
 from fc_core.sim.chamber_model import ChamberModel, ChamberParams
 from fc_core.sim.probe_fit import (Window, aggregate, delivered_from_relay, find_windows,
+                                   fq_c_spread,
                                    find_quasi_windows, fit_window)
 from fc_core.sim.psychrometrics import absolute_humidity_g_m3
 
@@ -137,3 +138,23 @@ def test_aggregate_holds_dead_time_when_the_windows_pin_it_low():
     a = aggregate(fits, BASE, [6.0] * 5)
     assert a.valid and a.reasons == ['dead_time_held']
     assert a.params.dead_time_s == BASE.dead_time_s
+
+
+def test_fq_spread_refuses_when_C_decides_the_answer():
+    """MUSHY-148: the plant gain must come from the probes, not from the
+    carried surface term. A fit whose F/Q moves with C is not a fit."""
+    fits = [fit_window(synth_window(TRUE, seed=s), BASE) for s in range(5)]
+    temps = [6.0] * 5
+    assert aggregate(fits, BASE, temps, fq_spread=1.1).valid
+    a = aggregate(fits, BASE, temps, fq_spread=3.0)
+    assert not a.valid and 'fq_not_identified_c' in a.reasons
+    # unmeasured (no windows) must not silently pass as identified
+    assert aggregate(fits, BASE, temps, fq_spread=float('inf')).valid is False
+
+
+def test_fq_c_spread_is_flat_on_a_synthetic_chamber_with_no_surface_term():
+    """Sanity: with C carried at 0 on both sides there is nothing to perturb,
+    so the measure must report ~1x rather than something alarming."""
+    windows = [synth_window(TRUE, seed=s) for s in range(3)]
+    base = replace(BASE, surface_g_per_k=0.0)
+    assert abs(fq_c_spread(windows, base) - 1.0) < 1e-9

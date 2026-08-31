@@ -42,6 +42,25 @@ BOUNDS_HI = (100.0, 10.0, 1800.0, 7200.0)
 BOUND_KEYS = ('fill_g_per_h', 'moisture_loss_m3_per_h', 'dead_time_s', 'tau_s')
 AT_BOUND_FRAC = 0.01
 
+# MUSHY-148. The surface term C is CARRIED, never fitted -- and over a probe
+# window it moves more water than the probe does: at C=2.77 a typical 0.75 C
+# drift is ~2.1 g against the probe's own F*t = ~0.8 g. So F/Q, the
+# steady-state ratio every SIMC gain rests on, is set by the ASSUMED C rather
+# than by the data: refitting the two real probes of 2026-08-31 gave F/Q 9.4
+# at C=0, 19.5 at C=2.0, 34.2 at C=2.77 and 273 at C=4.0 while fit rmse moved
+# by ~0.01 %RH. Shortening the window does NOT help (measured across
+# post_s 900..5400: the spread stays ~19-27x), because Q is a steady-state
+# quantity and V/Q is hours -- a probe is a transient and simply does not
+# contain it.
+#
+# So the fit now measures its own identifiability: refit at C*(1 +/- FQ_C_FRAC)
+# and report how far F/Q moves. Past MAX_FQ_C_SPREAD the plant gain is not
+# determined and aggregate() refuses, rather than shipping a number whose value
+# came from an assumption. 1.5x is the tolerance because SIMC gains scale with
+# F/Q and this drives a live chamber.
+FQ_C_FRAC = 0.25
+MAX_FQ_C_SPREAD = 1.5
+
 
 @dataclass
 class Window:
@@ -201,7 +220,27 @@ def _iqr(vals):
     return s[(3 * n) // 4] - s[n // 4]
 
 
-def aggregate(fits: List[WindowFit], base: ChamberParams, temps: List[float]) -> Aggregate:
+def fq_c_spread(windows: List[Window], base: ChamberParams,
+                frac: float = FQ_C_FRAC) -> float:
+    """How many times F/Q moves when the carried surface term C is perturbed
+    by +/-``frac`` (MUSHY-148). 1.0 means C does not matter; large means the
+    steady-state gain is an artefact of the assumption. inf when a perturbed
+    refit yields nothing usable."""
+    ratios = []
+    for scale in (1.0 - frac, 1.0 + frac):
+        b = replace(base, surface_g_per_k=base.surface_g_per_k * scale)
+        fq = [f.fill_g_per_h / f.moisture_loss_m3_per_h
+              for f in (fit_window(w, b) for w in windows)
+              if not f.rejected and f.moisture_loss_m3_per_h > 0]
+        if not fq:
+            return float('inf')
+        ratios.append(median(fq))
+    lo, hi = min(ratios), max(ratios)
+    return float('inf') if lo <= 0 else hi / lo
+
+
+def aggregate(fits: List[WindowFit], base: ChamberParams, temps: List[float],
+              fq_spread: float = None) -> Aggregate:
     good = [f for f in fits if not f.rejected]
     reasons = []
     if len(good) < MIN_WINDOWS:
@@ -232,6 +271,9 @@ def aggregate(fits: List[WindowFit], base: ChamberParams, temps: List[float]) ->
             reasons.append('dead_time_held')
         else:
             reasons.append(f'{k}_at_bound')
+    if fq_spread is not None and fq_spread > MAX_FQ_C_SPREAD:
+        # MUSHY-148: F/Q came from the assumed C, not the probes.
+        reasons.append('fq_not_identified_c')
     params = replace(base, **med)
     # 'dead_time_held' is a note, not a refusal: validity stays F/Q-based.
     blocking = [r for r in reasons if r != 'dead_time_held']

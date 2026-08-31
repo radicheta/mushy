@@ -23,8 +23,9 @@ sys.path.insert(0, str(REPO_ROOT / 'src' / 'chambers' / 'fc-core'))
 
 from fc_core.sim.ambient import AmbientSample, AmbientSeries         # noqa: E402
 from fc_core.sim.chamber_model import ChamberParams                  # noqa: E402
-from fc_core.sim.probe_fit import (aggregate, find_quasi_windows,     # noqa: E402
-                                   find_windows, fit_window)
+from fc_core.sim.probe_fit import (MAX_FQ_C_SPREAD, aggregate,        # noqa: E402
+                                   find_quasi_windows, find_windows, fit_window,
+                                   fq_c_spread)
 from fc_core.sim.psychrometrics import absolute_humidity_g_m3        # noqa: E402
 
 _spec = importlib.util.spec_from_file_location(
@@ -177,12 +178,17 @@ def main():
     base = ChamberParams()
     fits = [fit_window(w, base) for w in windows]
     temps = [w.temp[w.probe_start_idx] for w, f in zip(windows, fits) if not f.rejected]
-    agg = aggregate(fits, base, temps)
+    spread = fq_c_spread(windows, base) if windows else None
+    if spread is not None:
+        print(f'F/Q spread across C +/-{fq_c_spread.__defaults__[0]:.0%}: {spread:.2f}x '
+              f'(refuses above {MAX_FQ_C_SPREAD}x)')
+    agg = aggregate(fits, base, temps, fq_spread=spread)
     report = {
         'generated': now.isoformat(), 'days': a.days, 'quasi': a.quasi,
         'window_start': t0.isoformat(), 'window_end': t1.isoformat(),
         'windows_found': n_found, 'windows_dropped': n_dropped, 'windows': len(windows),
         'fits': [asdict(f) for f in fits],
+        'fq_c_spread': spread,
         'valid': agg.valid, 'reasons': agg.reasons, 'n': agg.n,
         'params': asdict(agg.params), 'iqr': agg.iqr, 'median_temp_c': agg.median_temp_c,
     }
