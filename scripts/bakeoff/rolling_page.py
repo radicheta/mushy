@@ -18,8 +18,12 @@ import torch
 sys.path.insert(0, 'scripts/bakeoff')
 from run import CANDIDATES, rollout, ah_sat, CHANNELS, HORIZONS, TAU_LO, TAU_HI
 
-CK = 'scripts/bakeoff/web/baseline-2026-08-31-preforced'
-R = json.load(open('scripts/bakeoff/web/replay.json'))
+# The bake-off checkpoints ARE the pre-forcing fits: refit_with_forced.py runs
+# with ckpt_path='' and never writes here. gary is skipped while its fit is
+# still running -- a mid-fit checkpoint is not a model.
+CK = 'scripts/bakeoff/results'
+DONE = lambda n: os.path.exists(f'scripts/bakeoff/results/inter-{n}-s0.json')
+R = json.load(open(sys.argv[1] if len(sys.argv) > 1 else 'scripts/bakeoff/web/replay.json'))
 dt_s = R['dt_s']
 rh = torch.tensor(R['actual_rh'], dtype=torch.float64)
 T = torch.tensor(R['temp'], dtype=torch.float64)
@@ -29,53 +33,109 @@ ah = rh / 100.0 * ah_sat(T)
 N = len(rh)
 ks = [int(h * 60 / dt_s) for h in HORIZONS]
 K = max(ks)
-starts = list(range(0, N - K))
+# EVERY horizon scores the SAME target times: targets run from K to the end,
+# and each horizon takes its origin k_h steps earlier. Building windows from a
+# shared set of ORIGINS instead would give each panel a different x-range --
+# the 5 min panel covering 5..84 min while the 45 min panel covered 45..124 --
+# which is not comparable side by side.
+targets = list(range(K, N))
 
-take = lambda v: torch.stack([v[i:i + K] for i in starts])
-B = {'duty': take(duty), 'temp': take(T), 'amb_ah': take(amb),
-     'ah0': ah[torch.tensor(starts)], 'rh': take(rh),
-     'valid': torch.ones(len(starts), K, dtype=torch.bool)}
-for c in CHANNELS:
-    B[c] = torch.zeros(len(starts), K, dtype=torch.float64)
-sat_win = ah_sat(B['temp'])
+# Forced phases: the LONGEST run of duty==0 and the LONGEST run of duty==1.
+# Thresholding on duty alone does not work -- the controller is bang-bang, so
+# duty hits 1.0 during ordinary operation too; only the forced phases hold a
+# constant value for tens of minutes.
+d = np.array(R['duty'])
 
-COL = {'alice': 'alice', 'bob': 'bob', 'charlie': 'charlie', 'dave': 'dave', 'gary': 'gary'}
+
+def longest_run(mask):
+    best = (0, 0, 0)
+    i = 0
+    while i < len(mask):
+        if mask[i]:
+            j = i
+            while j < len(mask) and mask[j]:
+                j += 1
+            if j - i > best[0]:
+                best = (j - i, i, j)
+            i = j
+        else:
+            i += 1
+    return best
+
+
+forced = []
+regions = {}
+for lab, mask in (('forced OFF', d < 1e-6), ('forced ON', d > 0.99)):
+    n_, i0, i1 = longest_run(mask)
+    if n_ * dt_s > 20 * 60:                      # only a real forced phase
+        forced.append(dict(a=round(R['t'][i0] / 60, 2), b=round(R['t'][i1 - 1] / 60, 2), label=lab))
+        regions[lab] = (i0, i1)
+
+fi0 = min(v[0] for v in regions.values()) if regions else None
+fi1 = max(v[1] for v in regions.values()) if regions else None
+
+
+
+def batch_for(k):
+    org = [t - k for t in targets]
+    take = lambda v: torch.stack([v[i:i + k] for i in org])
+    b = {'duty': take(duty), 'temp': take(T), 'amb_ah': take(amb),
+         'ah0': ah[torch.tensor(org)], 'rh': take(rh),
+         'valid': torch.ones(len(org), k, dtype=torch.bool)}
+    for c in CHANNELS:
+        b[c] = torch.zeros(len(org), k, dtype=torch.float64)
+    return b
+
+
+BATCH = {k: batch_for(k) for k in ks}
+
+# Which forecast TARGETS land inside the forced phases. The wide window is
+# mostly ordinary operation, so one aggregate number would average the failure
+# away -- the split is the entire reason for widening it.
+in_forced = np.array([(fi0 is not None and fi0 <= i < fi1) for i in targets])
+
+
+def split_rmse(pred, tgt):
+    e = (pred - tgt) ** 2
+    f = lambda m_: (float(np.sqrt(e[m_].mean())) if m_.any() else None)
+    return dict(all=f(np.ones(len(e), bool)), forced=f(in_forced), normal=f(~in_forced))
+
+
 out = []
-for name in ('alice', 'bob', 'charlie', 'dave', 'gary'):
-    p = f'{CK}/{name}.ckpt'
-    if not os.path.exists(p):
+for name in ('alice', 'bob', 'charlie', 'dave', 'eve', 'frank', 'gary'):
+    p = f'{CK}/inter-{name}-s0.json.{name}.ckpt'
+    if not os.path.exists(p) or not DONE(name):
         continue
     ck = torch.load(p, weights_only=False)
     m = CANDIDATES[name]()
     m.load_state_dict(ck['model'])
     tau = TAU_LO + (TAU_HI - TAU_LO) * torch.sigmoid(ck['log_tau'])
-    with torch.no_grad():
-        pred_ah = (rollout(m, tau, B, dt_s) / 100.0 * sat_win).numpy()
     series, rmse = {}, {}
+    tgt = np.array([float(ah[i]) for i in targets])
     for h, k in zip(HORIZONS, ks):
-        tgt = np.array([ah[i + k - 1] for i in starts])
-        pv = pred_ah[:, k - 1]
+        b = BATCH[k]
+        with torch.no_grad():
+            pv = (rollout(m, tau, b, dt_s) / 100.0 * ah_sat(b['temp'])).numpy()[:, k - 1]
         series[int(h)] = [round(float(x), 4) for x in pv]
-        rmse[int(h)] = float(np.sqrt(((pv - tgt) ** 2).mean()))
+        rmse[int(h)] = split_rmse(pv, tgt)
     out.append(dict(name=name, series=series, rmse=rmse,
                     n_params=sum(x.numel() for x in m.parameters()) + 1))
 
 # persistence baseline at each horizon, for the same starts
 base = {}
+tgt = np.array([float(ah[i]) for i in targets])
 for h, k in zip(HORIZONS, ks):
-    tgt = np.array([float(ah[i + k - 1]) for i in starts])
-    p0 = np.array([float(ah[i]) for i in starts])
-    base[int(h)] = float(np.sqrt(((p0 - tgt) ** 2).mean()))
+    p0 = np.array([float(ah[i - k]) for i in targets])
+    base[int(h)] = split_rmse(p0, tgt)
+
 
 payload = json.dumps({
     'h': [int(x) for x in HORIZONS],
-    'x': {int(h): [round(R['t'][i + k - 1] / 60, 3) for i in starts]
-          for h, k in zip(HORIZONS, ks)},
-    'target': {int(h): [round(float(ah[i + k - 1]), 4) for i in starts]
-               for h, k in zip(HORIZONS, ks)},
-    'duty_at': {int(h): [round(float(duty[i + k - 1]), 3) for i in starts]
-                for h, k in zip(HORIZONS, ks)},
-    'models': out, 'base': base, 'n': len(starts),
+    'x': [round(R['t'][i] / 60, 3) for i in targets],
+    'target': [round(float(ah[i]), 4) for i in targets],
+    'duty_at': [round(float(duty[i]), 3) for i in targets],
+    'forced': forced,
+    'models': out, 'base': base, 'n': len(targets),
 }, separators=(',', ':'))
 
 print(f'''<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -85,16 +145,16 @@ print(f'''<!doctype html><html lang="en"><head><meta charset="utf-8">
 :root {{ color-scheme:light; --bg:#f7f7f5; --surface-1:#fcfcfb; --border:#e2e1dc;
   --text-primary:#0b0b0b; --text-secondary:#52514e; --text-muted:#84837c;
   --grid:#ecebe6; --measured:#0b0b0b;
-  --s-alice:#2a78d6; --s-bob:#eb6834; --s-charlie:#1baf7a; --s-dave:#eda100; --s-gary:#e87ba4; }}
+  --s-alice:#2a78d6; --s-bob:#eb6834; --s-charlie:#1baf7a; --s-dave:#eda100; --s-eve:#e87ba4; --s-gary:#008300; --s-frank:#4a3aa7; }}
 @media (prefers-color-scheme:dark) {{ :root:not([data-theme="light"]) {{
   color-scheme:dark; --bg:#121211; --surface-1:#1a1a19; --border:#33322e;
   --text-primary:#fff; --text-secondary:#c3c2b7; --text-muted:#8d8c83;
   --grid:#2a2a27; --measured:#fff;
-  --s-alice:#3987e5; --s-bob:#d95926; --s-charlie:#199e70; --s-dave:#c98500; --s-gary:#d55181; }} }}
+  --s-alice:#3987e5; --s-bob:#d95926; --s-charlie:#199e70; --s-dave:#c98500; --s-eve:#d55181; --s-gary:#008300; --s-frank:#9085e9; }} }}
 :root[data-theme="dark"] {{ color-scheme:dark; --bg:#121211; --surface-1:#1a1a19;
   --border:#33322e; --text-primary:#fff; --text-secondary:#c3c2b7; --text-muted:#8d8c83;
   --grid:#2a2a27; --measured:#fff;
-  --s-alice:#3987e5; --s-bob:#d95926; --s-charlie:#199e70; --s-dave:#c98500; --s-gary:#d55181; }}
+  --s-alice:#3987e5; --s-bob:#d95926; --s-charlie:#199e70; --s-dave:#c98500; --s-eve:#d55181; --s-gary:#008300; --s-frank:#9085e9; }}
 *{{box-sizing:border-box}}
 body{{margin:0;background:var(--bg);color:var(--text-primary);
  font:14px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:28px 20px 64px}}
@@ -130,8 +190,9 @@ use them, and it is the horizon they were fitted on &mdash; unlike the free-run 
 made them integrate two hours from a single starting point.</p>
 <p class="meta" id="meta"></p>
 <div class="card"><h2>Accuracy at each horizon</h2>
-<p class="note">Root mean squared error of the rolling forecast, against holding
-absolute humidity constant. Below 1.00 beats doing nothing.</p><div id="tbl"></div></div>
+<p class="note">The window is mostly ordinary control with the forced experiment inside it,
+so the two regimes are scored separately &mdash; one blended number would average the
+failure away.</p><div id="tbl"></div></div>
 <div id="panels"></div>
 <p class="foot">Pre-forcing checkpoints &mdash; the models exactly as they stood before the
 experiment was added to anything. Generated by <code>scripts/bakeoff/rolling_page.py</code>.</p>
@@ -140,14 +201,18 @@ const D={payload};
 const S=id=>document.getElementById(id), F=(x,n=3)=>x.toFixed(n);
 S('meta').textContent=`${{D.n}} forecast origins, one per 10 s sample · absolute humidity in g/m³`;
 
+const REG=[['normal','ordinary control'],['forced','forced phases'],['all','whole window']];
 let t='<table class="data"><tr><th>model</th><th>par</th>'
- + D.h.map(h=>`<th>${{h}} min</th>`).join('') + D.h.map(h=>`<th>skill ${{h}}m</th>`).join('') + '</tr>';
-t+=`<tr><td>hold AH constant</td><td>0</td>`+D.h.map(h=>`<td>${{F(D.base[h])}}</td>`).join('')
- + D.h.map(()=>'<td>1.00</td>').join('')+'</tr>';
+ + REG.map(([k,lab])=>D.h.map(h=>`<th>${{lab.split(' ')[0]}} ${{h}}m</th>`).join('')).join('')+'</tr>';
+t+=`<tr><td>hold AH constant</td><td>0</td>`
+ + REG.map(([k])=>D.h.map(h=>`<td>1.00</td>`).join('')).join('')+'</tr>';
 for(const m of D.models) t+=`<tr><td><span class="dot" style="display:inline-block;background:var(--s-${{m.name}})"></span> ${{m.name}}</td>`
- + `<td>${{m.n_params}}</td>` + D.h.map(h=>`<td>${{F(m.rmse[h])}}</td>`).join('')
- + D.h.map(h=>`<td>${{(m.rmse[h]/D.base[h]).toFixed(2)}}</td>`).join('')+'</tr>';
-S('tbl').innerHTML=t+'</table>';
+ + `<td>${{m.n_params}}</td>`
+ + REG.map(([k])=>D.h.map(h=>{{const v=m.rmse[h][k],b=D.base[h][k];
+     return `<td>${{(v==null||b==null)?'&mdash;':(v/b).toFixed(2)}}</td>`;}}).join('')).join('')+'</tr>';
+S('tbl').innerHTML=t+'</table>'
+ +'<p class="note" style="margin-top:8px">Skill against holding absolute humidity constant, '
+ +'split by regime. Below 1.00 beats doing nothing; above 1.00 is worse than doing nothing.</p>';
 
 const W=1000,H=250,PAD={{l:54,r:74,t:12,b:26}};
 D.h.forEach((h,idx)=>{{
@@ -159,12 +224,19 @@ D.h.forEach((h,idx)=>{{
     <div class="legend">${{'<span><svg width="16" height="10"><line x1="0" y1="5" x2="16" y2="5" stroke="var(--measured)" stroke-width="2.5"/></svg>measured</span>'
       + D.models.map(m=>`<span><span class="dot" style="background:var(--s-${{m.name}})"></span>${{m.name}}</span>`).join('')}}</div>
     <div class="chart" id="${{id}}"><div class="tt" id="tt${{h}}"></div></div></div>`);
-  const xs=D.x[h], tg=D.target[h];
+  const xs=D.x, tg=D.target;   // shared across panels now
   const all=[tg].concat(D.models.map(m=>m.series[h])).flat();
   let lo=Math.min(...all), hi=Math.max(...all); const pd=(hi-lo)*0.08; lo-=pd; hi+=pd;
   const X=v=>PAD.l+((v-xs[0])/(xs[xs.length-1]-xs[0]))*(W-PAD.l-PAD.r),
         Y=v=>PAD.t+(1-(v-lo)/(hi-lo))*(H-PAD.t-PAD.b);
   let g='';
+  for(const b of D.forced){{
+    const x0=X(Math.max(b.a,xs[0])), x1=X(Math.min(b.b,xs[xs.length-1]));
+    if(x1>x0) g+=`<rect x="${{x0}}" y="${{PAD.t}}" width="${{x1-x0}}" height="${{H-PAD.t-PAD.b}}"
+      fill="var(--text-muted)" opacity="0.10"/>`
+      +`<text x="${{(x0+x1)/2}}" y="${{PAD.t+12}}" text-anchor="middle" font-size="10.5"
+        fill="var(--text-muted)">${{b.label}}</text>`;
+  }}
   for(let i=0;i<=4;i++){{const v=lo+(hi-lo)*i/4,y=Y(v);
     g+=`<line x1="${{PAD.l}}" y1="${{y}}" x2="${{W-PAD.r}}" y2="${{y}}" stroke="var(--grid)"/>`
      +`<text x="${{PAD.l-8}}" y="${{y+4}}" text-anchor="end" font-size="11" fill="var(--text-muted)">${{v.toFixed(1)}}</text>`;}}
@@ -184,7 +256,7 @@ D.h.forEach((h,idx)=>{{
     let i=Math.round((px-PAD.l)/(W-PAD.l-PAD.r)*(xs.length-1));
     i=Math.max(0,Math.min(xs.length-1,i));
     cx.setAttribute('x1',X(xs[i]));cx.setAttribute('x2',X(xs[i]));cx.setAttribute('opacity','.55');
-    tt.innerHTML=`<div class="hd">at ${{xs[i].toFixed(0)}} min · duty ${{D.duty_at[h][i].toFixed(2)}}</div><table>`
+    tt.innerHTML=`<div class="hd">at ${{xs[i].toFixed(0)}} min · duty ${{D.duty_at[i].toFixed(2)}}</div><table>`
       +`<tr><td class="k">measured</td><td class="v">${{F(tg[i])}}</td></tr>`
       +D.models.map(m=>`<tr><td class="k"><span class="dot" style="display:inline-block;background:var(--s-${{m.name}})"></span> ${{m.name}}</td><td class="v">${{F(m.series[h][i])}}</td></tr>`).join('')
       +'</table>';
