@@ -48,6 +48,13 @@ def main():
     ref = np.array(ref)
 
     model = Alice()
+    # The legacy numpy ChamberModel uses a 360 s dead time, which is now
+    # above run.py's D_MAX (capped to half the scoring window). Pin both
+    # here: this test checks the ROLLOUT reproduces the shipped model, and
+    # must not depend on whatever the current fitting init happens to be.
+    model.D_MAX = 1800.0
+    with torch.no_grad():
+        model.raw_d.copy_(torch.tensor(np.log(0.25)))
     with torch.no_grad():
         model.logF.fill_(np.log(p.fill_g_per_h))
         model.logQ.fill_(np.log(p.moisture_loss_m3_per_h))

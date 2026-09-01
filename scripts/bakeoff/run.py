@@ -69,15 +69,28 @@ class Candidate(nn.Module):
     "impossible" was only ever an implementation choice.
     """
     extra = 0
-    D_MAX = 1800.0
+    # DERIVED FROM THE WINDOW, never hardcoded. rollout() zeroes duty until the
+    # delay has elapsed (pad = (raw >= 0)), so a dead time at or beyond the
+    # window length means the model sees NO DUTY AT ALL and is free to discard
+    # its own actuator input. With D_MAX=1800 against a 600 s window that hatch
+    # was wide open, and on 2026-09-01 the forced-cycle fits walked straight
+    # into it -- all four landed at 750-767 s, i.e. humidifier disconnected,
+    # and still scored 0.59 on chrono. Half the window leaves at least 50% of
+    # every window actually driven by duty.
+    D_MAX = min(1800.0, max(HORIZONS) * 60.0 * 0.5)
+    D_INIT = 140.0          # measured: chrono fits land 95-140 s and the frozen
+                            # sweep optimum is 90-120 s. The old init was 360 s,
+                            # "where the hardcoded value was" -- that value is
+                            # now known to be wrong (worst in the chrono sweep)
+                            # and exceeds D_MAX anyway.
 
     def __init__(self):
         super().__init__()
-        # logit(360/1800) EXACTLY, so every fit starts where the old hardcoded
-        # value was and is free to leave. The exact value matters: a rounded
-        # one leaves the fractional interpolation straddling two samples and
-        # the parity test against the shipped numpy model fails at 1e-6.
-        self.raw_d = nn.Parameter(torch.tensor(math.log(0.25), dtype=torch.float64))
+        # logit(D_INIT / D_MAX): start at the measured dead time, free to
+        # leave. test_parity.py pins its own D_MAX and raw_d for the legacy
+        # 360 s rather than depending on this init.
+        self.raw_d = nn.Parameter(torch.tensor(
+            math.log(self.D_INIT / (self.D_MAX - self.D_INIT)), dtype=torch.float64))
 
     def delay_s(self):
         return self.D_MAX * torch.sigmoid(self.raw_d)
@@ -708,6 +721,10 @@ def main():
                          skill_mean=sum(t / b for t, b in zip(e_te, base)) / len(base),
                          skill_worst=max(t / b for t, b in zip(e_te, base))))
         show(name, e_te, str(rows[-1]['n_params']))
+        if dead_s > 0.95 * CANDIDATES[name].D_MAX:
+            print(f'    !! {name}: dead time {dead_s:.0f}s is PINNED at its cap '
+                  f'({CANDIDATES[name].D_MAX:.0f}s). The bound is doing the '
+                  f'fitting; the number below is not a measurement.', flush=True)
         print(f'    tau={tau_s:.0f}s  dead_time={dead_s:.0f}s  '
               f'mean skill {rows[-1]["skill_mean"]:.3f} '
               f'(worst {rows[-1]["skill_worst"]:.3f})', flush=True)
