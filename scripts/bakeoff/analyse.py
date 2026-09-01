@@ -3,7 +3,7 @@ the numbers they produce are cited as decisions, and a result whose script was
 a scratch file is a result nobody can re-check.
 
     .venv/bin/python scripts/bakeoff/analyse.py horizons  # per-horizon + movement
-    .venv/bin/python scripts/bakeoff/analyse.py paired    # within-seed, vs alice
+    .venv/bin/python scripts/bakeoff/analyse.py paired [split]  # within-seed, vs alice
     .venv/bin/python scripts/bakeoff/analyse.py alpha     # Euler vs exact ZOH
 
 NOT wired into run.py's ranking -- changing what the leaderboard ranks on is a
@@ -19,9 +19,9 @@ from run import (CANDIDATES, HORIZONS, TAU_LO, TAU_HI, ah_sat, horizon_mse,
 R = 'scripts/bakeoff/results'
 
 
-def _skills(key):
+def _skills(key, split='inter'):
     out = {}
-    for f in glob.glob(f'{R}/inter-*.json'):
+    for f in glob.glob(f'{R}/{split}-*.json'):
         for r in json.load(open(f)):
             if 'skill' in r:
                 out.setdefault(r['candidate'], {})[r['seed']] = r[key]
@@ -62,15 +62,21 @@ def horizons():
         for i in range(len(HORIZONS))))
 
 
-def paired():
+def paired(split='inter'):
     """Seeds are SHARED across candidates, so compare WITHIN a seed. The
-    marginal spread carries a per-seed offset common to every candidate --
-    here it is the validation day split, which is what alice's 0.405-0.440
-    swing actually is (alice has no random init at all). Pairing cancels it,
-    and turns 'inside seed noise' into 5-of-5."""
-    sk = {c: {s: v[s] for s in v} for c, v in _skills('skill_worst').items()}
-    seeds = sorted(sk['alice'])
-    print('worst-horizon skill by seed')
+    marginal spread carries a per-seed offset common to every candidate (the
+    validation day split; alice has no random init at all), and pairing
+    cancels it -- which is what turns 'inside seed noise' into a verdict."""
+    # RANK ON WHAT THE HARNESS RANKS ON. This read skill_worst while run.py
+    # ranks skill_mean, which silently produced a different ordering -- and
+    # the two disagree because max() slides along a dead-time ridge the
+    # objective is indifferent to.
+    sk = _skills('skill_mean', split)
+    # only seeds every candidate has finished -- pairing needs the same seed
+    # on both sides, and a half-finished matrix would otherwise crash or,
+    # worse, compare candidates over different seed sets.
+    seeds = sorted(set.intersection(*(set(v) for v in sk.values())))
+    print(f'[{split}] mean-horizon skill by seed')
     print(f'{"cand":10s}' + ''.join(f's{s}'.rjust(8) for s in seeds))
     order = sorted(sk, key=lambda c: st.median(list(sk[c].values())))
     for c in order:
@@ -120,4 +126,5 @@ def alpha():
 
 
 if __name__ == '__main__':
-    {'horizons': horizons, 'paired': paired, 'alpha': alpha}[sys.argv[1]]()
+    {'horizons': horizons, 'paired': paired,
+     'alpha': alpha}[sys.argv[1]](*sys.argv[2:])
