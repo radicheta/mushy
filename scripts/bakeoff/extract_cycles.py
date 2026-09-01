@@ -68,10 +68,16 @@ def one(label, t0, t1):
     grid = np.arange(g0, g1, DT)
     rh = np.interp(grid, rh_t, rh_v)
     tp = np.interp(grid, tp_t, tp_v)
-    duty = zoh(du_t, du_v, grid, 0.0)           # relay state is a hold, not a ramp
-    # ambient AH from the weather feed, hourly -> held across the grid
-    wt = zoh(wt_t, wt_v, grid, 15.0)
-    wh = zoh(wh_t, wh_v, grid, 70.0)
+    duty = zoh(du_t, du_v, grid, 0.0)           # relay state is a switch: HOLD
+    # Ambient is INTERPOLATED, not held. prep.py builds the corpus with
+    # interp_gap() for amb_ah / ambient T / ambient RH, and holding them here
+    # would mean the forced cycles were prepared differently from the corpus
+    # they are scored against -- the exact confound prep.py's docstring exists
+    # to prevent. The weather feed is hourly, so a hold also puts a 1 h
+    # staircase into a driver that physically varies smoothly, which is
+    # indistinguishable from a real step to anything fitting a step response.
+    wt = np.interp(grid, wt_t, wt_v) if len(wt_t) else np.full(len(grid), 15.0)
+    wh = np.interp(grid, wh_t, wh_v) if len(wh_t) else np.full(len(grid), 70.0)
     amb = np.array([absolute_humidity_g_m3(a, b / 100.0) for a, b in zip(wt, wh)])
     rh_pct = rh * 100.0 if np.nanmax(rh) <= 1.5 else rh
     ch = int((np.diff(duty) != 0).sum())
