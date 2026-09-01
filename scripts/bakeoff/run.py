@@ -291,8 +291,38 @@ class Herbert(Candidate):
         return (self.logF.exp() * u - self.logQ.exp() * (ah - amb)) / V, aux
 
 
+class Irving(Dave):
+    """Dave's wall state PLUS the fast C*dT route, instead of instead-of.
+
+    Dave was read as the test of "wall moisture is a STATE, not an algebraic
+    term" -- the ticket's founding hypothesis. It is not: its docstring says
+    the wall state REPLACES C*dT, so it deletes the instantaneous temperature
+    route at the same time, and the experiment conflates two changes. Dave
+    fails hardest at the SHORT horizon (0.942 / 0.886 / 0.734 at 5/15/45 min),
+    which is what having no fast route predicts.
+
+    That the fast term matters this much is already measured, and by a
+    perfectly controlled pair: herbert IS alice minus C*dT and nothing else
+    (5 params vs 4), and it scores 0.949 against alice's 0.410. ONE parameter
+    is worth 0.54 of skill, ~90x the entire charlie-vs-alice question.
+
+    So irving adds the wall state rather than substituting it, which makes it
+    a strict superset of BOTH: C=0 recovers dave, kw->0 recovers alice. If
+    memory is worth anything given a fast route, this is where it shows. If
+    irving cannot beat alice, the lack of memory is not what is hurting us.
+    """
+    def __init__(self):
+        super().__init__()
+        self.C = nn.Parameter(torch.tensor(2.77))
+
+    def deriv(self, ah, aux, u, T, dT_dt, amb, ctx):
+        d, aux = super().deriv(ah, aux, u, T, dT_dt, amb, ctx)
+        return d + self.C * dT_dt / V, aux
+
+
 CANDIDATES = {'alice': Alice, 'bob': Bob, 'charlie': Charlie,
-              'dave': Dave, 'eve': Eve, 'frank': Frank, 'gary': Gary, 'herbert': Herbert}
+              'dave': Dave, 'eve': Eve, 'frank': Frank, 'gary': Gary,
+              'herbert': Herbert, 'irving': Irving}
 
 
 # ------------------------------------------------------------------ rollout

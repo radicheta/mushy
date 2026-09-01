@@ -11,7 +11,8 @@ R = 'scripts/bakeoff/results'
 # a hardcoded job list here silently reports "all done" on a bigger matrix.
 SEEDS = int(os.environ.get('SEEDS', 4)) + 1
 JOBS = [(s, c, k) for s in ('inter', 'chrono')
-        for c in ('alice', 'bob', 'charlie', 'dave', 'eve', 'frank', 'gary', 'herbert')
+        for c in ('alice', 'bob', 'charlie', 'dave', 'eve', 'frank', 'gary',
+                  'herbert', 'irving')
         for k in range(SEEDS)]
 
 
