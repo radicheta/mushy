@@ -9,16 +9,26 @@
 # visits just TWO duty levels, 0 and 1. Nothing in five months identifies what
 # the chamber does at duty 0.35.
 #
-# DESIGN (Santi 2026-09-01):
-#   * 1 h holds at random duty, 5 min ramps between them -- identifies LEVELS.
-#     1 h is ~25 dead times, so every level fully settles.
-#   * interleaved blocks of HARD steps -- identifies DEAD TIME and the fast
-#     dynamics. A 5 min ramp is longer than the ~140 s dead time, so during a
-#     ramp the input is still moving throughout the delay and the dead time is
-#     smeared out. Ramps alone would repeat the corpus's own failure.
-#   * INTERLEAVED, not one block of each: otherwise "hard steps" would be
-#     confounded with whatever time of day they happened to run in, and the
-#     whole point of 24 h is to span the diurnal temperature cycle.
+# DESIGN (Santi 2026-09-01, dwell revised after measuring the drift):
+#   * SEGMENTS of 7-15 min at a constant duty, back to back for 24 h.
+#     LOWER BOUND ~3x the ~140 s dead time: below that consecutive responses
+#     overlap inside the chamber and cannot be attributed to their own step.
+#     UPPER BOUND is where thermal drift starts competing with the duty signal.
+#     THERE IS NO STEADY STATE to wait for -- the chamber tracks outside
+#     temperature and ambient AH, both always moving. Over 60 min T moves
+#     1.0-1.3 C and AH_sat ~0.9 g/m3 = ~7 RH points, against a forced dry-down
+#     excursion of ~8 points TOTAL, so an hour-long hold measures the weather as
+#     much as the humidifier. At 10 min drift is ~1.2 points and duty dominates
+#     ~6x. (This replaces the original 1 h holds and the claim that "1 h is ~25
+#     dead times so every level fully settles" -- there is nothing to settle to.)
+#   * MOSTLY HARD STEPS. A 5 min ramp is longer than the dead time, so during a
+#     ramp the input is still moving throughout the delay and the edge that
+#     pins the dead time is smeared out. A quarter of the transitions are
+#     2 min ramps instead, kept only as a check that the fitted model handles a
+#     moving input and not just steps.
+#   * Duty and transition style are drawn INDEPENDENTLY PER SEGMENT rather than
+#     in blocks, so neither is confounded with time of day -- spanning the
+#     diurnal temperature cycle is the whole reason this runs for 24 h.
 #
 # SAFETY. Three independent layers, because this runs unattended on a live grow:
 #   1. RH floor/ceiling with hysteresis, checked every 20 s. Overrides the
@@ -29,16 +39,23 @@
 #      mode stays redefined at whatever duty was last commanded, and the NEXT
 #      person to run a genuine force-condensation gets that value instead of 1.0.
 #
-# DUTY RANGE. The 1 h holds sample [0, DUTY_MAX], not [0, 1]. Corpus mean duty
-# is 0.137, i.e. the chamber holds steady at ~14%, so an hour at duty 0.6 is
-# ~4x the water it needs and RH pins against the ceiling. The guard would then
-# spend the hour overriding -- and the guard is CLOSED LOOP, so those minutes
-# would be exactly the confounded data this experiment exists to avoid. The
-# extremes still get visited: the hard-step blocks use full 0 and full 1, where
-# the dwell is short enough (10-20 min) that neither rail is reached.
+# DUTY RANGE. Two thirds of segments draw uniformly from [0, DUTY_MAX], not
+# [0, 1]. Corpus mean duty is 0.137, i.e. the chamber holds steady at ~14%, so a
+# long stretch at duty 0.6 is ~4x the water it needs and RH pins against the
+# ceiling -- and the guard that then takes over is CLOSED LOOP, producing
+# exactly the confounded data this experiment exists to avoid. The other third
+# goes to a rail (0.0 or 1.0) for the biggest available edge; at a 7-15 min
+# dwell neither rail has time to reach the guard (the 2026-08-31 forced cycle
+# needed 45 min at full duty to climb from 85% to 99%).
 #
 #   ./duty-probe.sh <label> [hours] [rh_floor] [rh_ceiling] [seed] [duty_max]
+#
+# DRY RUN. `DRYRUN=1 ./duty-probe.sh dry` prints the whole 24 h schedule in a
+# second against a virtual clock and touches neither ROS nor the chamber. Run
+# it before every real run: this is 24 h of a live grow and the schedule is
+# random, so "it looked right last time" is not a check.
 set -u
+DRYRUN="${DRYRUN:-0}"
 LABEL="${1:?label required}" ; HOURS="${2:-24}"
 RH_FLOOR="${3:-0.75}"       ; RH_CEIL="${4:-0.98}" ; SEED="${5:-1}"
 DUTY_MAX="${6:-0.35}"       # see DUTY RANGE above; ~2.5x the 0.137 equilibrium
@@ -56,7 +73,11 @@ set -u
 export ROS_DOMAIN_ID=69 ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET \
        RMW_IMPLEMENTATION=rmw_cyclonedds_cpp CYCLONEDDS_URI=file:///etc/cyclonedds.xml
 
-ts()  { date -u +%Y-%m-%dT%H:%M:%SZ; }
+VCLOCK=$(date +%s)
+now() { if [ "$DRYRUN" = 1 ]; then echo "$VCLOCK"; else date +%s; fi; }
+nap() { if [ "$DRYRUN" = 1 ]; then VCLOCK=$((VCLOCK + $1)); else sleep "$1"; fi; }
+ts()  { if [ "$DRYRUN" = 1 ]; then date -u -d "@$VCLOCK" +%Y-%m-%dT%H:%M:%SZ
+        else date -u +%Y-%m-%dT%H:%M:%SZ; fi; }
 say() { echo "[$(ts)] $LABEL $*" | tee -a "$LOG"; }
 rh()  { ros2 topic echo /fc1/humidity --once --qos-reliability best_effort \
           --qos-durability volatile 2>/dev/null \
@@ -69,11 +90,19 @@ stop(){ ros2 service call /cancel_experiment fc_msgs/srv/CancelExperiment "{}" >
 lt()  { awk "BEGIN{exit !($1 < $2)}"; }
 gt()  { awk "BEGIN{exit !($1 > $2)}"; }
 
-ORIG=$(ros2 param get /fc_controller "modes.$MODE.force_duty" 2>/dev/null | awk '{print $NF}')
+if [ "$DRYRUN" = 1 ]; then          # no ROS, no chamber, no waiting
+  setd(){ echo "$(ts),$1,$2" >>"$CSV"; }
+  fire(){ :; }; stop(){ :; }; rh(){ echo 0.90; }
+  LOG=/dev/null; CSV=$(mktemp); ORIG=1.0
+  say "DRY RUN -- virtual clock, nothing sent to fc1"
+fi
+
+[ "$DRYRUN" = 1 ] || ORIG=$(ros2 param get /fc_controller "modes.$MODE.force_duty" 2>/dev/null | awk '{print $NF}')
 [ -n "$ORIG" ] || { echo "FATAL: cannot read modes.$MODE.force_duty"; exit 1; }
-echo "$ORIG" > /home/ubuntu/duty-probe-restore.txt   # recovery breadcrumb if we die hard
+[ "$DRYRUN" = 1 ] || echo "$ORIG" > /home/ubuntu/duty-probe-restore.txt  # breadcrumb if we die hard
 
 cleanup() {
+  [ "$DRYRUN" = 1 ] && { echo "dry-run schedule: $CSV"; return; }
   say "CLEANUP restoring modes.$MODE.force_duty=$ORIG and cancelling"
   ros2 param set /fc_controller "modes.$MODE.force_duty" "$ORIG" >/dev/null 2>&1
   stop
@@ -83,9 +112,9 @@ trap cleanup EXIT INT TERM
 
 EXP_AT=0
 keepalive() {   # re-fire the forced experiment before its TTL runs out
-  local now; now=$(date +%s)
-  if [ $((now - EXP_AT)) -ge $((CHUNK * 60 - 300)) ]; then
-    fire; EXP_AT=$now; say "experiment (re)fired for ${CHUNK}min"
+  local t; t=$(now)
+  if [ $((t - EXP_AT)) -ge $((CHUNK * 60 - 300)) ]; then
+    fire; EXP_AT=$t; say "experiment (re)fired for ${CHUNK}min"
   fi
 }
 
@@ -95,26 +124,26 @@ guard() {
   if lt "$r" "$RH_FLOOR"; then
     say "FLOOR BREACH rh=$r < $RH_FLOOR -- forcing duty 1.0"
     setd 1.0 floor-override
-    while r=$(rh); [ -n "$r" ] && lt "$r" "$FLOOR_CLEAR"; do keepalive; sleep 20; done
+    while r=$(rh); [ -n "$r" ] && lt "$r" "$FLOOR_CLEAR"; do keepalive; nap 20; done
     say "floor cleared rh=$r"; return 1
   fi
   if gt "$r" "$RH_CEIL"; then
     say "CEILING BREACH rh=$r > $RH_CEIL -- forcing duty 0.0"
     setd 0.0 ceiling-override
-    while r=$(rh); [ -n "$r" ] && gt "$r" "$CEIL_CLEAR"; do keepalive; sleep 20; done
+    while r=$(rh); [ -n "$r" ] && gt "$r" "$CEIL_CLEAR"; do keepalive; nap 20; done
     say "ceiling cleared rh=$r"; return 1
   fi
   return 0
 }
 
 hold() {        # hold $1 for $2 minutes, re-asserting after any override
-  local d=$1 mins=$2 end; end=$(( $(date +%s) + mins * 60 ))
+  local d=$1 mins=$2 end; end=$(( $(now) + mins * 60 ))
   setd "$d" "hold"
   say "HOLD duty=$d for ${mins}min"
-  while [ "$(date +%s)" -lt "$end" ]; do
+  while [ "$(now)" -lt "$end" ]; do
     keepalive
     guard || setd "$d" "hold-resume"
-    sleep 20
+    nap 20
   done
 }
 
@@ -126,39 +155,35 @@ ramp() {        # linear $1 -> $2 over $3 minutes
     v=$(awk "BEGIN{printf \"%.3f\", $a + ($b - $a) * $i / $n}")
     setd "$v" "ramp"
     keepalive; guard || true
-    sleep 15
+    nap 15
   done
 }
 
-steps() {       # hard-transition block: no ramps. $1 = block minutes
-  local left=$1 d dwell
-  say "HARD-STEP BLOCK ${left}min"
-  while [ "$left" -gt 0 ]; do
-    d=$(( RANDOM % 2 ))                              # full off / full on: biggest edge
-    dwell=$(( 10 + (RANDOM % 3) * 5 ))               # 10/15/20 min
-    [ "$dwell" -gt "$left" ] && dwell=$left
-    hold "$d.0" "$dwell"
-    left=$(( left - dwell ))
-  done
+segment() {     # one scheduled segment: pick a duty, get there, hold it
+  local d style dwell
+  if [ $(( RANDOM % 3 )) -eq 0 ]; then
+    d=$(( RANDOM % 2 )).0                            # rail: the biggest edge
+  else
+    d=$(awk "BEGIN{srand($RANDOM); printf \"%.2f\", rand() * $DUTY_MAX}")
+  fi
+  dwell=$(( 7 + RANDOM % 9 ))                        # 7-15 min, see DESIGN
+  if [ $(( RANDOM % 4 )) -eq 0 ]; then               # 1 in 4 arrives on a ramp
+    style=ramp; ramp "$PREV" "$d" 2
+  else
+    style=step
+  fi
+  say "SEGMENT $style duty=$d dwell=${dwell}min"
+  hold "$d" "$dwell"
+  PREV=$d
 }
 
 RANDOM=$SEED
 say "START ${HOURS}h floor=$RH_FLOOR ceil=$RH_CEIL duty_max=$DUTY_MAX seed=$SEED orig_force_duty=$ORIG"
 echo "iso,duty,phase" > "$CSV"
-fire; EXP_AT=$(date +%s)
-END=$(( $(date +%s) + HOURS * 3600 ))
+fire; EXP_AT=$(now)
+END=$(( $(now) + HOURS * 3600 ))
 PREV=0.0
-while [ "$(date +%s)" -lt "$END" ]; do
-  # one 4 h super-block: 3 x (1 h level hold) then 1 h of hard steps.
-  for _ in 1 2 3; do
-    [ "$(date +%s)" -lt "$END" ] || break
-    NEXT=$(awk "BEGIN{srand($RANDOM); printf \"%.2f\", rand() * $DUTY_MAX}")
-    ramp "$PREV" "$NEXT" 5
-    hold "$NEXT" 55
-    PREV=$NEXT
-  done
-  [ "$(date +%s)" -lt "$END" ] || break
-  steps 60
-  PREV=$(tail -1 "$CSV" | cut -d, -f2)
+while [ "$(now)" -lt "$END" ]; do
+  segment
 done
 say "FINISHED"
