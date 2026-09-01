@@ -26,7 +26,13 @@ CHANNELS = ('amb_t', 'amb_rh', 'precip', 'solar', 'cloud', 'wind', 'pressure',
             'a_ew30', 'a_ew60', 's_ew30', 's_ew60')
 
 V = 5.76                        # chamber volume m3
-HORIZONS = (5.0, 15.0, 45.0)    # minutes -- the horizons the controller acts on
+HORIZONS = (5.0, 10.0)          # minutes. Santi 2026-09-01: 5-10 min is what
+                                # the controller actually needs. 45 min was
+                                # measured to buy nothing -- the WEAKEST
+                                # discriminator (spread 0.033 vs 0.047 at
+                                # 5 min) and, ranked under max(), it never
+                                # moved a placing: max() picked 5 min for
+                                # every candidate on every seed.
 TAU_LO, TAU_HI = 10.0, 1800.0   # 10 s = one sample; a mixing lag below the
                                 # sample interval is unobservable. Was 60 s,
                                 # but 8 of the first 16 fits pinned exactly on
@@ -678,17 +684,23 @@ def main():
                          tau_s=tau_s, dead_time_s=dead_s, horizons_min=list(HORIZONS),
                          train_err=e_tr, test_err=e_te,
                          skill=[t / b for t, b in zip(e_te, base)],
+                         skill_mean=sum(t / b for t, b in zip(e_te, base)) / len(base),
                          skill_worst=max(t / b for t, b in zip(e_te, base))))
         show(name, e_te, str(rows[-1]['n_params']))
         print(f'    tau={tau_s:.0f}s  dead_time={dead_s:.0f}s  '
-              f'worst-horizon skill {rows[-1]["skill_worst"]:.3f}', flush=True)
+              f'mean skill {rows[-1]["skill_mean"]:.3f} '
+              f'(worst {rows[-1]["skill_worst"]:.3f})', flush=True)
 
-    # ranked on the WORST horizon: a good model is good at all three, and a
-    # model can fake one horizon (near-persistence at 5 min, slow drift at 45).
-    print(f'\n  ranked by worst-horizon skill (lower is better, <1 beats persistence)')
-    for r in sorted((r for r in rows if 'skill' in r), key=lambda r: r['skill_worst']):
+    # Ranked on the MEAN, because the mean is what fit() minimises. Ranking on
+    # max() while training on the mean graded a compromise we asked for: the
+    # fit slides along a dead-time ridge the objective is indifferent to
+    # (alice's 5 seeds all sat within 0.007 on the mean) and max() turned that
+    # arbitrary choice into a 0.035 spread it then called seed noise.
+    print(f'\n  ranked by MEAN skill across {HORIZONS} min'
+          f' (lower is better, <1 beats persistence)')
+    for r in sorted((r for r in rows if 'skill' in r), key=lambda r: r['skill_mean']):
         print(f'    {r["candidate"]:10s} {r["n_params"]:5d}  '
-              f'{"  ".join(f"{x:.3f}" for x in r["skill"])}   worst {r["skill_worst"]:.3f}')
+              f'{"  ".join(f"{x:.3f}" for x in r["skill"])}   mean {r["skill_mean"]:.3f}')
     if a.out:
         json.dump(rows, open(a.out, 'w'), indent=1)
         print(f'wrote {a.out}')

@@ -13,9 +13,20 @@ mkdir -p "$OUT/logs"
 # entries, and that made the leaderboard unreadable: eve's seed spread
 # (0.444-0.629 worst-horizon) was 4x the gap between the top three physics
 # candidates, so "charlie beats alice" could not be told from init noise.
+# CULLED 2026-09-01 from 9 to 6 -- each cut has a reason, not a vibe:
+#   bob   dominated. eve already showed a FLEXIBLE Q inside alice's structure
+#         still loses to charlie's driver; bob is the weakest form of that
+#         (linear in T). Nothing left for it to tell us.
+#   dave  uninterpretable by construction: it swaps the wall state IN and the
+#         C*dT term OUT, two changes at once. irving is its strict superset
+#         (C=0 reproduces dave bit-for-bit) and asks the question properly.
+#   eve   its question is answered -- a 6-input neural Q inside alice's
+#         structure loses to charlie. gary asks what is left with ONE readable
+#         input instead of six.
+# The classes stay in run.py so archived results can still be re-scored.
 jobs=()
 for split in inter chrono; do
-  for c in alice bob charlie dave eve frank gary herbert irving; do
+  for c in alice charlie gary herbert irving frank; do
     for s in $(seq 0 "${SEEDS:-4}"); do jobs+=("$c $split $s"); done
   done
 done
