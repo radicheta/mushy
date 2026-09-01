@@ -40,5 +40,31 @@ def main():
     print(f'OK  resume is bit-exact over {STEPS} steps ({CAND})')
 
 
+def test_bounds_guard():
+    """A checkpoint fitted under different tau bounds must REFUSE to resume.
+    log_tau is raw; reading it through a changed tau_of() reinterprets the fit
+    instead of continuing it, and emits a plausible wrong result in seconds."""
+    import run
+    tr_d, te_d, dt_s = load('inter')
+    H = max(HORIZONS)
+    tr = windows(tr_d, dt_s, H, cap=32, seed=0)
+    te = windows(te_d, dt_s, H, cap=32, seed=0)
+    with tempfile.TemporaryDirectory() as d:
+        ck = os.path.join(d, 'g.ckpt')
+        fit(CAND, tr, te, dt_s, 2, 0.05, 0, ck, every=1)
+        lo = run.TAU_LO
+        try:
+            run.TAU_LO = lo / 6.0                       # the 60 -> 10 change
+            fit(CAND, tr, te, dt_s, 4, 0.05, 0, ck, every=1)
+        except SystemExit as e:
+            assert 'tau bounds' in str(e), e
+            print('OK  mismatched tau bounds refuse to resume')
+            return
+        finally:
+            run.TAU_LO = lo
+    raise AssertionError('resumed across a tau-bound change -- guard is dead')
+
+
 if __name__ == '__main__':
     main()
+    test_bounds_guard()

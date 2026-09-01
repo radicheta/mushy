@@ -27,7 +27,10 @@ CHANNELS = ('amb_t', 'amb_rh', 'precip', 'solar', 'cloud', 'wind', 'pressure',
 
 V = 5.76                        # chamber volume m3
 HORIZONS = (5.0, 15.0, 45.0)    # minutes -- the horizons the controller acts on
-TAU_LO, TAU_HI = 60.0, 1800.0   # duty mixing lag is bounded to PHYSICAL values
+TAU_LO, TAU_HI = 10.0, 1800.0   # 10 s = one sample; a mixing lag below the
+                                # sample interval is unobservable. Was 60 s,
+                                # but 8 of the first 16 fits pinned exactly on
+                                # that floor -- the bound was doing the fitting.
 MW_OVER_R = 18.01528 / 8.31446
 DEAD_TIME_S = 360.0             # shipped default; see note in fit() below
 CORPUS = 'scripts/bakeoff/corpus.npz'
@@ -481,6 +484,15 @@ def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25, va=None):
     start = 0
     if ckpt_path and os.path.exists(ckpt_path):
         ck = torch.load(ckpt_path, weights_only=False)
+        # The tau bounds are baked into the saved parameter: log_tau is a raw
+        # number read through tau_of(), so resuming under different bounds
+        # silently reinterprets the fit rather than continuing it. That is not
+        # a crash -- it emits a complete, plausible, WRONG result in seconds
+        # (2026-08-31: 16 of them, all reading tau ~= TAU_LO).
+        if ck.get('tau_bounds') != (TAU_LO, TAU_HI):
+            raise SystemExit(
+                f'{ckpt_path}: fitted under tau bounds {ck.get("tau_bounds")}, '
+                f'now {(TAU_LO, TAU_HI)}. Delete the checkpoint to refit.')
         if ck['name'] == name and ck['seed'] == seed:
             model.load_state_dict(ck['model'])
             with torch.no_grad():
@@ -494,7 +506,8 @@ def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25, va=None):
             return
         # atomic: a power cut mid-write must not leave a corrupt checkpoint,
         # which is the exact failure this whole mechanism exists for.
-        torch.save(dict(name=name, seed=seed, it=it, model=model.state_dict(),
+        torch.save(dict(name=name, seed=seed, it=it, tau_bounds=(TAU_LO, TAU_HI),
+                        model=model.state_dict(),
                         log_tau=log_tau.detach().clone(), opt=opt.state_dict()),
                    ckpt_path + '.tmp')
         os.replace(ckpt_path + '.tmp', ckpt_path)
