@@ -494,7 +494,7 @@ def score(pred, b):
 
 
 def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25, va=None,
-        tau_unbounded=False):
+        tau_unbounded=False, dead_time_s=0.0):
     """Trains on the MULTI-HORIZON skill score: mean over 5/15/45 min of the
     MSE divided by the persistence MSE at that horizon. Normalising by
     persistence keeps the horizons comparable -- unnormalised, 45 min carries
@@ -515,6 +515,19 @@ def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25, va=None,
     nothing stops it."""
     torch.manual_seed(seed); np.random.seed(seed)
     model = CANDIDATES[name]()
+    if dead_time_s:
+        # FROZEN dead time, shared by every candidate. Fitted per-candidate it
+        # is the least identifiable parameter in the harness -- alice alone
+        # spanned 45.1 to 139.9 s across seeds, injecting 0.0174 of spread into
+        # a Q-driver comparison whose entire effect size is 0.0036. A structure
+        # comparison cannot be read through that. This is NOT a return to the
+        # hardcoded 360 s taken on faith since 2026-08-08: that was one value
+        # never questioned; this is one value held EQUAL across candidates and
+        # SWEPT, so every reading is explicitly conditional on it.
+        with torch.no_grad():
+            model.raw_d.copy_(torch.tensor(
+                math.log(dead_time_s / (model.D_MAX - dead_time_s))))
+        model.raw_d.requires_grad_(False)
     if tau_unbounded:
         # tau = exp(raw): no floor, no ceiling. Same 600 s start. Paired with
         # the smooth alpha, because unbounding against the clamped alpha is a
@@ -531,7 +544,8 @@ def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25, va=None,
         tau_of = lambda r: TAU_LO + (TAU_HI - TAU_LO) * torch.sigmoid(r)
         bounds = (TAU_LO, TAU_HI)
     roll = lambda w: rollout(model, tau_of(log_tau), w, dt_s, tau_unbounded)
-    opt = torch.optim.Adam(list(model.parameters()) + [log_tau], lr=lr)
+    live = [p for p in model.parameters() if p.requires_grad]
+    opt = torch.optim.Adam(live + [log_tau], lr=lr)
     ks = [int(h * 60 / dt_s) for h in HORIZONS]
     base = [float(b) for b in horizon_mse(
         tr['ah0'][:, None].expand_as(tr['ah']), tr, ks)]     # persistence
@@ -582,7 +596,7 @@ def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25, va=None,
         ah = roll(tr) / 100.0 * ah_sat(tr['temp'])
         loss = sum(e / b for e, b in zip(horizon_mse(ah, tr, ks), base)) / len(ks)
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(list(model.parameters()) + [log_tau], 10.0)
+        torch.nn.utils.clip_grad_norm_(live + [log_tau], 10.0)
         opt.step()
         if it % max(1, steps // 8) == 0 or it == steps - 1:
             print(f'    [{name}] step {it:4d}  train skill {loss.item():6.4f}  '
@@ -621,6 +635,11 @@ def main():
                          'about the data: 1024 was an arbitrary early choice that '
                          'starved the high-capacity candidates')
     ap.add_argument('--out', default='')
+    ap.add_argument('--dead-time-s', type=float, default=0.0,
+                    help='freeze dead time at this many seconds for EVERY '
+                         'candidate instead of fitting it. 0 = fit it, the '
+                         'default. Takes dead time out of a structure '
+                         'comparison it otherwise dominates.')
     ap.add_argument('--tau-unbounded', action='store_true',
                     help='fit tau as exp(raw) with no floor or ceiling, and '
                          'switch the duty mixing to the smooth ZOH alpha. NOT '
@@ -677,9 +696,11 @@ def main():
         ckpt = f'{a.out}.{name}.ckpt' if a.out else ''
         model, tau_s, e_tr, e_te, dead_s = fit(name, tr, te, dt_s, a.steps,
                                                a.lr, a.seed, ckpt, va=va,
-                                               tau_unbounded=a.tau_unbounded)
+                                               tau_unbounded=a.tau_unbounded,
+                                               dead_time_s=a.dead_time_s)
         rows.append(dict(candidate=name, split=a.split, seed=a.seed,
                          tau_unbounded=a.tau_unbounded,
+                         dead_time_fixed=a.dead_time_s or None,
                          n_params=sum(p.numel() for p in model.parameters()) + 1,
                          tau_s=tau_s, dead_time_s=dead_s, horizons_min=list(HORIZONS),
                          train_err=e_tr, test_err=e_te,
