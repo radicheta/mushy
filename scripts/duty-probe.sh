@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# MUSHY-150: 24 h open-loop duty probe. The excitation five months of
+# MUSHY-150: 48 h open-loop duty probe. The excitation five months of
 # closed-loop operation cannot provide.
 #
 # WHY: in closed loop duty is not an independent input -- the controller raises
@@ -40,10 +40,20 @@
 #     weakly separable is the open problem, so the short period earns its place.
 #     Blocks are scattered at random through the 24 h for the same reason
 #     everything else is.
+#   * 48 h, not 24: two passes over the diurnal temperature cycle, so anything
+#     that only holds on one day (weather, a flush, a drifting sensor) shows up
+#     as a difference between the two rather than as structure.
 #
 # SAFETY. Three independent layers, because this runs unattended on a live grow:
-#   1. RH floor/ceiling with hysteresis, checked every 20 s. Overrides the
-#      schedule; the schedule does not resume until RH is back inside.
+#   1. RH floor/ceiling, checked every 20 s. Overrides the schedule; the
+#      schedule does not resume until RH is back inside. Both guards recover to
+#      RH_RECOVER (90%), the MIDDLE of the working range, not to a hair inside
+#      the bound they just broke -- a narrow hysteresis band leaves the chamber
+#      parked against a rail, where the next random segment trips the same guard
+#      again and the run degenerates into guard chatter at the edge. Recovery is
+#      closed loop by construction (duty is being set from RH), so those minutes
+#      are tagged floor-override / ceiling-override in the CSV and must be
+#      dropped from any fit -- they are the confound this run exists to escape.
 #   2. The Phase 31 experiment TTL. If this script dies or ssh drops, the
 #      controller reverts to the prior mode on its own. The TTL is the deadman.
 #   3. EXIT trap restores modes.force-condensation.force_duty. Without it the
@@ -55,11 +65,24 @@
 # long stretch at duty 0.6 is ~4x the water it needs and RH pins against the
 # ceiling -- and the guard that then takes over is CLOSED LOOP, producing
 # exactly the confounded data this experiment exists to avoid. The other third
-# goes to a rail (0.0 or 1.0) for the biggest available edge; at a 7-15 min
-# dwell neither rail has time to reach the guard (the 2026-08-31 forced cycle
+# goes to a rail for the biggest available edge; at a 7-15 min dwell neither
+# rail has time to reach the guard on its own (the 2026-08-31 forced cycle
 # needed 45 min at full duty to climb from 85% to 99%).
 #
-#   ./duty-probe.sh <label> [hours] [rh_floor] [rh_ceiling] [seed] [duty_max]
+# MATCH THE RUN'S MEAN DUTY TO WHAT THE CHAMBER ACTUALLY NEEDS, or it spends
+# the 48 h pinned against a guard, and guard minutes are closed-loop minutes --
+# the exact data this run exists to avoid. The reference is measured, not
+# modelled: recorded mean duty under ordinary control is 0.136 over five months
+# but 0.084 in July and 0.098 in August, so the SEASONAL number is ~0.10.
+# Uniform levels plus coin-flip rails give 0.28, nearly 3x that.
+# Two corrections, neither of which shrinks the range being explored:
+#   * levels are drawn as DUTY_MAX * rand()^DUTY_SKEW -- still reaches 0.35,
+#     just visits the high end less often (mean DUTY_MAX/(SKEW+1)).
+#   * RAIL_UP: only 1 rail in 6 goes to full duty. A 15 min hold at duty 1.0 is
+#     the single most expensive thing in the schedule.
+# START prints the resulting expected mean so it is checked every run.
+#
+#   ./duty-probe.sh <label> [hours=48] [rh_floor] [rh_ceiling] [seed] [duty_max]
 #
 # DRY RUN. `DRYRUN=1 ./duty-probe.sh dry` prints the whole 24 h schedule in a
 # second against a virtual clock and touches neither ROS nor the chamber. Run
@@ -67,12 +90,16 @@
 # random, so "it looked right last time" is not a check.
 set -u
 DRYRUN="${DRYRUN:-0}"
-LABEL="${1:?label required}" ; HOURS="${2:-24}"
-RH_FLOOR="${3:-0.75}"       ; RH_CEIL="${4:-0.98}" ; SEED="${5:-1}"
+LABEL="${1:?label required}" ; HOURS="${2:-48}"
+RH_FLOOR="${3:-0.80}"       ; RH_CEIL="${4:-0.98}" ; SEED="${5:-1}"
+RH_RECOVER="${RH_RECOVER:-0.90}"   # both guards hand back at mid-range, see SAFETY
 DUTY_MAX="${6:-0.35}"       # see DUTY RANGE above; ~2.5x the 0.137 equilibrium
-SINE="${SINE:-60x3,20x3}"   # period_min x cycles, comma separated; see SINE BLOCKS
-FLOOR_CLEAR=$(awk "BEGIN{print $RH_FLOOR + 0.02}")   # hysteresis, avoid chatter
-CEIL_CLEAR=$(awk "BEGIN{print $RH_CEIL - 0.02}")
+# period_min x cycles, comma separated. Each period appears TWICE over 48 h --
+# the slice scheduling puts the repeats ~24 h apart, so a period that only
+# looks clean at one time of day cannot hide. See SINE BLOCKS.
+SINE="${SINE:-60x3,20x3,60x3,20x3}"
+RAIL_UP="${RAIL_UP:-6}"     # 1-in-RAIL_UP rails go to full duty; see DUTY RANGE
+DUTY_SKEW="${DUTY_SKEW:-2}" # level draw = DUTY_MAX * rand()^SKEW; see DUTY RANGE
 MODE=force-condensation      # reused as a generic forced-duty mode; see EXIT trap
 CHUNK=110                    # service cap is 120 min; re-fire before it expires
 LOG=/home/ubuntu/duty-probe.log
@@ -87,7 +114,23 @@ export ROS_DOMAIN_ID=69 ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET \
 
 VCLOCK=$(date +%s)
 now() { if [ "$DRYRUN" = 1 ]; then echo "$VCLOCK"; else date +%s; fi; }
-nap() { if [ "$DRYRUN" = 1 ]; then VCLOCK=$((VCLOCK + $1)); else sleep "$1"; fi; }
+LAST_DUTY=0
+nap() {
+  if [ "$DRYRUN" != 1 ]; then sleep "$1"; return; fi
+  VCLOCK=$((VCLOCK + $1))
+  # A DELIBERATELY CRUDE chamber, present only so the dry run exercises the
+  # guards -- without it rh() is a constant and the safety layer is the one
+  # part of this script no check ever runs. Rates are read off the 2026-08-31
+  # forced cycle (~18 RH pts/h climbing at duty 1.0, ~7 pts/h falling at duty
+  # 0), split about the 0.137 equilibrium, and /100 because RH here is a
+  # FRACTION. It is NOT a plant model -- no temperature, no ambient, no dead
+  # time, no reservoir -- and nothing but the guard logic may be concluded
+  # from it.
+  # note the parens around the printf argument: bare `r>1?..` is parsed as
+  # output redirection by awk, which silently yields an empty DRY_RH.
+  DRY_RH=$(awk "BEGIN{r=$DRY_RH+($LAST_DUTY-0.137)*($LAST_DUTY>0.137?21:51)/100*$1/3600; \
+                      printf(\"%.4f\", (r>1?1:(r<0.5?0.5:r)))}")
+}
 ts()  { if [ "$DRYRUN" = 1 ]; then date -u -d "@$VCLOCK" +%Y-%m-%dT%H:%M:%SZ
         else date -u +%Y-%m-%dT%H:%M:%SZ; fi; }
 say() { echo "[$(ts)] $LABEL $*" | tee -a "$LOG"; }
@@ -103,8 +146,9 @@ lt()  { awk "BEGIN{exit !($1 < $2)}"; }
 gt()  { awk "BEGIN{exit !($1 > $2)}"; }
 
 if [ "$DRYRUN" = 1 ]; then          # no ROS, no chamber, no waiting
-  setd(){ echo "$(ts),$1,$2" >>"$CSV"; }
-  fire(){ :; }; stop(){ :; }; rh(){ echo 0.90; }
+  setd(){ LAST_DUTY=$1; echo "$(ts),$1,$2" >>"$CSV"; }
+  fire(){ :; }; stop(){ :; }; rh(){ echo "$DRY_RH"; }
+  DRY_RH=0.90
   LOG=/dev/null; CSV=$(mktemp); ORIG=1.0
   say "DRY RUN -- virtual clock, nothing sent to fc1"
 fi
@@ -134,15 +178,15 @@ keepalive() {   # re-fire the forced experiment before its TTL runs out
 guard() {
   local r; r=$(rh); [ -n "$r" ] || return 0        # no reading: hold course, TTL still protects
   if lt "$r" "$RH_FLOOR"; then
-    say "FLOOR BREACH rh=$r < $RH_FLOOR -- forcing duty 1.0"
+    say "FLOOR BREACH rh=$r < $RH_FLOOR -- duty 1.0 until $RH_RECOVER"
     setd 1.0 floor-override
-    while r=$(rh); [ -n "$r" ] && lt "$r" "$FLOOR_CLEAR"; do keepalive; nap 20; done
+    while r=$(rh); [ -n "$r" ] && lt "$r" "$RH_RECOVER"; do keepalive; nap 20; done
     say "floor cleared rh=$r"; return 1
   fi
   if gt "$r" "$RH_CEIL"; then
-    say "CEILING BREACH rh=$r > $RH_CEIL -- forcing duty 0.0"
+    say "CEILING BREACH rh=$r > $RH_CEIL -- duty 0.0 until $RH_RECOVER"
     setd 0.0 ceiling-override
-    while r=$(rh); [ -n "$r" ] && gt "$r" "$CEIL_CLEAR"; do keepalive; nap 20; done
+    while r=$(rh); [ -n "$r" ] && gt "$r" "$RH_RECOVER"; do keepalive; nap 20; done
     say "ceiling cleared rh=$r"; return 1
   fi
   return 0
@@ -191,9 +235,9 @@ sine() {        # $1 cycles of a $2-minute sinusoid over [0, DUTY_MAX]
 segment() {     # one scheduled segment: pick a duty, get there, hold it
   local d style dwell
   if [ $(( RANDOM % 3 )) -eq 0 ]; then
-    d=$(( RANDOM % 2 )).0                            # rail: the biggest edge
+    if [ $(( RANDOM % RAIL_UP )) -eq 0 ]; then d=1.0; else d=0.0; fi   # see DUTY RANGE
   else
-    d=$(awk "BEGIN{srand($RANDOM); printf \"%.2f\", rand() * $DUTY_MAX}")
+    d=$(awk "BEGIN{srand($RANDOM); printf(\"%.2f\", $DUTY_MAX * rand()^$DUTY_SKEW)}")
   fi
   dwell=$(( 7 + RANDOM % 9 ))                        # 7-15 min, see DESIGN
   if [ $(( RANDOM % 4 )) -eq 0 ]; then               # 1 in 4 arrives on a ramp
@@ -207,7 +251,9 @@ segment() {     # one scheduled segment: pick a duty, get there, hold it
 }
 
 RANDOM=$SEED
-say "START ${HOURS}h floor=$RH_FLOOR ceil=$RH_CEIL duty_max=$DUTY_MAX seed=$SEED orig_force_duty=$ORIG"
+EXP_DUTY=$(awk "BEGIN{printf(\"%.3f\", (1/3)*(1/$RAIL_UP) + (2/3)*$DUTY_MAX/($DUTY_SKEW+1))}")
+say "START ${HOURS}h floor=$RH_FLOOR ceil=$RH_CEIL recover=$RH_RECOVER duty_max=$DUTY_MAX"
+say "  rail_up=1/$RAIL_UP skew=$DUTY_SKEW seed=$SEED -> expected mean duty $EXP_DUTY (chamber needs ~0.10 in Aug)"
 echo "iso,duty,phase" > "$CSV"
 fire; EXP_AT=$(now)
 END=$(( $(now) + HOURS * 3600 ))
