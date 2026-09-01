@@ -206,18 +206,37 @@ segment() {     # one scheduled segment: pick a duty, get there, hold it
   PREV=$d
 }
 
-SINE_QUEUE=$(echo "$SINE" | tr ',' ' ')      # blocks still to be placed
 RANDOM=$SEED
 say "START ${HOURS}h floor=$RH_FLOOR ceil=$RH_CEIL duty_max=$DUTY_MAX seed=$SEED orig_force_duty=$ORIG"
 echo "iso,duty,phase" > "$CSV"
 fire; EXP_AT=$(now)
 END=$(( $(now) + HOURS * 3600 ))
 PREV=0.0
+# ONE SINE BLOCK PER EQUAL SLICE of the run, at a random offset inside its
+# slice. A per-segment probability does NOT work: it fires on the first few
+# draws and drains the queue, so every block ends up in the first hours and is
+# confounded with one time of day -- which is what the block structure this
+# design replaced was doing. Slicing bounds how far they can drift.
+SINE_QUEUE=$(echo "$SINE" | tr ',' ' ')
+set -- $SINE_QUEUE; NSINE=$#
+SINE_AT=''
+if [ "$NSINE" -gt 0 ]; then
+  SLICE=$(( HOURS * 3600 / NSINE ))
+  i=0
+  for b in $SINE_QUEUE; do
+    # leave room for the block itself so a late offset cannot overrun the end
+    room=$(( SLICE - ${b#*x} * ${b%x*} * 60 ))
+    [ "$room" -lt 60 ] && room=60
+    SINE_AT="$SINE_AT $(( $(now) + i * SLICE + RANDOM % room ))"
+    i=$(( i + 1 ))
+  done
+  say "sine blocks scheduled at:$(for t in $SINE_AT; do printf ' %s' "$(date -u -d "@$t" +%H:%MZ)"; done)"
+fi
+
 while [ "$(now)" -lt "$END" ]; do
-  # a sine block displaces a step segment ~1 draw in 6, which places every
-  # queued block long before the 24 h are up without ever bunching them at a
-  # fixed time of day.
-  if [ -n "$SINE_QUEUE" ] && [ $(( RANDOM % 6 )) -eq 0 ]; then
+  set -- $SINE_AT
+  if [ $# -gt 0 ] && [ "$(now)" -ge "$1" ]; then
+    shift; SINE_AT="$*"
     set -- $SINE_QUEUE
     sine "${1#*x}" "${1%x*}"
     shift; SINE_QUEUE="$*"
