@@ -13,11 +13,16 @@
 # exactly that. 360 s is included on purpose: it is the shipped constant, taken
 # on faith since 2026-08-08, and this measures what it costs.
 #
+# SPLIT=chrono runs the arm that actually decides -- inter shares days between
+# train and test, and the whole point of this ticket is what survives held-out
+# TIME. Run both; they disagree, and the disagreement is the result.
+#
 # Only the driver family + irving. frank and herbert are not part of the
 # Q-driver question and frank is the slowest fit in the harness.
 set -u
 cd "$(dirname "$0")/../.."
 STEPS=${STEPS:-3000}
+SPLIT=${SPLIT:-inter}
 OUT=scripts/bakeoff/results/deadtime-sweep
 mkdir -p "$OUT/logs"
 
@@ -32,10 +37,10 @@ for d in 60 90 120 150 180 360; do
 done | xargs -P "${PAR:-8}" -I{} bash -c '
   set -- {}
   d=$1; c=$2; seed=$3
-  tag="d$d-$c-s$seed"
+  tag="'$SPLIT'-d$d-$c-s$seed"
   if [ -s '"$OUT"'/$tag.json ]; then echo "skip $tag"; exit 0; fi
   OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 .venv/bin/python scripts/bakeoff/run.py \
-    --split inter --candidates "$c" --seed "$seed" --steps '"$STEPS"' \
+    --split '"$SPLIT"' --candidates "$c" --seed "$seed" --steps '"$STEPS"' \
     --dead-time-s "$d" --out '"$OUT"'/$tag.json \
     > '"$OUT"'/logs/$tag.log 2>&1
   echo "done $tag rc=$?"
