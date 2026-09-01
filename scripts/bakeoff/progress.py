@@ -6,13 +6,24 @@ carry the exact iteration -- the logs only print every steps//8.
 import os, re, subprocess, time
 import torch
 
-R, STEPS = 'scripts/bakeoff/results', int(os.environ.get('STEPS', 1000))
+R = 'scripts/bakeoff/results'
 # Mirrors launch.sh: every candidate on every seed. Kept in step with it --
 # a hardcoded job list here silently reports "all done" on a bigger matrix.
 SEEDS = int(os.environ.get('SEEDS', 4)) + 1
 JOBS = [(s, c, k) for s in ('inter', 'chrono')
         for c in ('alice', 'bob', 'charlie', 'dave', 'eve', 'frank', 'gary', 'herbert')
         for k in range(SEEDS)]
+
+
+def sniff_steps():
+    """launch.sh passes --steps on the command line, so read it from there. A
+    hardcoded default lies loudly: 1000 against the running 1500-step batch
+    showed live jobs at 112% "done" and put the ETA 3.5 h short."""
+    if os.environ.get('STEPS'):
+        return int(os.environ['STEPS'])
+    ps = subprocess.run(['ps', '-eo', 'args'], capture_output=True, text=True).stdout
+    m = re.search(r'run\.py .*--steps (\d+)', ps)
+    return int(m.group(1)) if m else 1000
 
 
 def hms(s):
@@ -34,6 +45,8 @@ def live():
 
 
 def main():
+    global STEPS
+    STEPS = sniff_steps()
     elapsed = live()
     seen, todo, run, dead = {}, [], [], []
     for split, c, k in JOBS:
