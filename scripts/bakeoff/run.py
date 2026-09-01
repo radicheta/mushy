@@ -633,6 +633,23 @@ def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25, va=None,
     with torch.no_grad():
         f = lambda w: [float(x) ** .5 for x in horizon_mse(
             roll(w) / 100.0 * ah_sat(w['temp']), w, ks)]
+        # DOES THIS MODEL ACTUALLY USE ITS INPUT? Perturb duty and look at the
+        # prediction. Every silent failure on MUSHY-150 so far ended here: the
+        # dead time escaped past the window (twice) and the model scored well
+        # while ignoring the humidifier entirely, and nothing in the harness
+        # said so. A skill number from a model that does not respond to duty
+        # is not a chamber model, it is a trend extrapolator.
+        bumped = dict(te); bumped['duty'] = (te['duty'] + 0.1).clamp(max=1.0)
+        d_ah = (roll(bumped) - roll(te)).abs().mean() / 100.0 * float(
+            ah_sat(te['temp']).mean())
+        if d_ah < 1e-4:
+            print(f'    !! {name}: prediction is INSENSITIVE TO DUTY '
+                  f'(d|AH|={float(d_ah):.2e} g/m3 for +0.10 duty). The fit is '
+                  f'ignoring the humidifier; its skill number is meaningless.',
+                  flush=True)
+        else:
+            print(f'    duty sensitivity: +0.10 duty -> {float(d_ah):.4f} g/m3',
+                  flush=True)
         return model, float(tau_of(log_tau).detach()), f(tr), f(te), float(model.delay_s().detach())
 
 
