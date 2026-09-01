@@ -39,6 +39,8 @@ ap.add_argument('--steps', type=int, default=3000)
 ap.add_argument('--lr', type=float, default=0.05)
 ap.add_argument('--seed', type=int, default=0)
 ap.add_argument('--stride', type=float, default=1.0, help='forced-window stride, min')
+ap.add_argument('--transitions-only', action='store_true',
+                help='keep only windows in which duty CHANGES')
 ap.add_argument('--dead-time-s', type=float, default=0.0)
 ap.add_argument('--cycles', default='scripts/bakeoff/data/cycles.json',
                 help='list of forced cycles from extract_cycles.py')
@@ -51,7 +53,7 @@ if isinstance(CY, dict):        # a single legacy replay.json
 H = max(HORIZONS)
 
 
-def forced_windows(stride_min, dt_s):
+def forced_windows(stride_min, dt_s, transitions_only=False):
     """EVERY forced cycle, packed exactly like corpus windows. Cycles are
     windowed SEPARATELY and only then concatenated -- they are hours apart, so
     a window spanning two of them would be a fabricated trajectory."""
@@ -73,6 +75,16 @@ def forced_windows(stride_min, dt_s):
              'valid': torch.ones(len(st), k, dtype=torch.bool)}
         for c in CHANNELS:          # inert for the physics candidates
             w[c] = torch.zeros(len(st), k, dtype=torch.float64)
+        if transitions_only:
+            # A window in which duty never moves says nothing about the
+            # input->output path, and the cycles hold duty flat for 45-70 min,
+            # so the flat majority outvotes the transitions and "ignore duty,
+            # extrapolate the AH trend" is the cheaper fit. Dropping them is
+            # weight 0 vs 1 -- the strongest form of the reweighting test.
+            keep = (w['duty'] != w['duty'][:, :1]).any(1)
+            if not bool(keep.any()):
+                continue
+            w = {kk: v[keep] for kk, v in w.items()}
         parts.append(w)
     return {kk: torch.cat([p[kk] for p in parts], 0) for kk in parts[0]}
 
@@ -85,11 +97,12 @@ def main():
     base = {s: [float(x) ** .5 for x in horizon_mse(
         w['ah0'][:, None].expand_as(w['ah']), w, ks)] for s, w in te.items()}
 
-    fw = forced_windows(a.stride, dt_s)
+    fw = forced_windows(a.stride, dt_s, a.transitions_only)
     mins = sum(len(c['actual_rh']) for c in CY) * dt_s / 60
     trans = sum(int((np.diff(c['duty']) != 0).sum()) for c in CY)
     tlo = min(min(c['temp']) for c in CY); thi = max(max(c['temp']) for c in CY)
-    print(f'TRAIN: forced cycles ONLY -- {len(CY)} cycles, {len(fw["ah"])} windows, '
+    print(f'TRAIN: forced cycles ONLY{" (TRANSITION windows only)" if a.transitions_only else ""}'
+          f' -- {len(CY)} cycles, {len(fw["ah"])} windows, '
           f'{mins:.0f} min, {trans} duty transitions, T {tlo:.1f}-{thi:.1f} C')
     print(f'TEST : corpus, inter {len(te["inter"]["ah"])} windows / '
           f'chrono {len(te["chrono"]["ah"])} windows\n')
