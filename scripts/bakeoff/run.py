@@ -296,16 +296,23 @@ CANDIDATES = {'alice': Alice, 'bob': Bob, 'charlie': Charlie,
 
 
 # ------------------------------------------------------------------ rollout
-def rollout(model, tau_s, batch, dt_s):
+def rollout(model, tau_s, batch, dt_s, alpha_smooth=False):
     """Free-running open-loop replay, batched over days. Returns predicted RH
     [B, T]. The duty path (dead time + first-order mixing) is SHARED by every
-    candidate, so it cannot bias the ranking."""
+    candidate, so it cannot bias the ranking.
+
+    alpha_smooth swaps the clamped ratio for the exact zero-order-hold
+    discretisation. The clamped form is an ABSORBING TRAP: it is exactly 1.0
+    for every tau <= dt_s and its gradient there is exactly 0.0, so a fit that
+    wanders below one sample can never climb back out, and every tau under the
+    floor is the same model. Only pair it with an unbounded tau."""
     duty, temp, amb = batch['duty'], batch['temp'], batch['amb_ah']
     B, N = duty.shape
     ah = batch['ah0'].clone()
     aux = model.reset(ah, temp[:, 0])
     applied = torch.zeros(B, dtype=duty.dtype)
-    alpha = (dt_s / tau_s.clamp(min=dt_s)).clamp(max=1.0)
+    alpha = (-torch.expm1(-dt_s / tau_s) if alpha_smooth else
+             (dt_s / tau_s.clamp(min=dt_s)).clamp(max=1.0))
     d_s = model.delay_s() if hasattr(model, 'delay_s') else None
     if d_s is None:                                   # only a bare stub model
         lag = int(round(DEAD_TIME_S / dt_s))
@@ -450,7 +457,8 @@ def score(pred, b):
     return rmse, bias
 
 
-def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25, va=None):
+def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25, va=None,
+        tau_unbounded=False):
     """Trains on the MULTI-HORIZON skill score: mean over 5/15/45 min of the
     MSE divided by the persistence MSE at that horizon. Normalising by
     persistence keeps the horizons comparable -- unnormalised, 45 min carries
@@ -471,8 +479,22 @@ def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25, va=None):
     nothing stops it."""
     torch.manual_seed(seed); np.random.seed(seed)
     model = CANDIDATES[name]()
-    log_tau = torch.nn.Parameter(torch.tensor(-0.7985))     # sigmoid -> 600 s
-    tau_of = lambda r: TAU_LO + (TAU_HI - TAU_LO) * torch.sigmoid(r)
+    if tau_unbounded:
+        # tau = exp(raw): no floor, no ceiling. Same 600 s start. Paired with
+        # the smooth alpha, because unbounding against the clamped alpha is a
+        # NO-OP below one sample -- every tau <= dt_s is the same model there
+        # and the gradient is exactly zero. Read the prior negative result in
+        # the paragraph above before trusting a run of this: the ceiling was
+        # put there because candidates drove tau to 4094 h and used it as a
+        # gain knob to switch the humidifier off. Early stopping on val is the
+        # only thing now standing between this flag and that outcome.
+        log_tau = torch.nn.Parameter(torch.tensor(math.log(600.0)))
+        tau_of, bounds = torch.exp, 'unbounded'
+    else:
+        log_tau = torch.nn.Parameter(torch.tensor(-0.7985))  # sigmoid -> 600 s
+        tau_of = lambda r: TAU_LO + (TAU_HI - TAU_LO) * torch.sigmoid(r)
+        bounds = (TAU_LO, TAU_HI)
+    roll = lambda w: rollout(model, tau_of(log_tau), w, dt_s, tau_unbounded)
     opt = torch.optim.Adam(list(model.parameters()) + [log_tau], lr=lr)
     ks = [int(h * 60 / dt_s) for h in HORIZONS]
     base = [float(b) for b in horizon_mse(
@@ -489,10 +511,10 @@ def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25, va=None):
         # silently reinterprets the fit rather than continuing it. That is not
         # a crash -- it emits a complete, plausible, WRONG result in seconds
         # (2026-08-31: 16 of them, all reading tau ~= TAU_LO).
-        if ck.get('tau_bounds') != (TAU_LO, TAU_HI):
+        if ck.get('tau_bounds') != bounds:
             raise SystemExit(
                 f'{ckpt_path}: fitted under tau bounds {ck.get("tau_bounds")}, '
-                f'now {(TAU_LO, TAU_HI)}. Delete the checkpoint to refit.')
+                f'now {bounds}. Delete the checkpoint to refit.')
         if ck['name'] == name and ck['seed'] == seed:
             model.load_state_dict(ck['model'])
             with torch.no_grad():
@@ -506,7 +528,7 @@ def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25, va=None):
             return
         # atomic: a power cut mid-write must not leave a corrupt checkpoint,
         # which is the exact failure this whole mechanism exists for.
-        torch.save(dict(name=name, seed=seed, it=it, tau_bounds=(TAU_LO, TAU_HI),
+        torch.save(dict(name=name, seed=seed, it=it, tau_bounds=bounds,
                         model=model.state_dict(),
                         log_tau=log_tau.detach().clone(), opt=opt.state_dict()),
                    ckpt_path + '.tmp')
@@ -515,13 +537,13 @@ def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25, va=None):
     best = (float('inf'), None)         # (val loss, state) -- restored at the end
     vloss = lambda: float(sum(
         e / b for e, b in zip(horizon_mse(
-            rollout(model, tau_of(log_tau), va, dt_s) / 100.0 * ah_sat(va['temp']),
+            roll(va) / 100.0 * ah_sat(va['temp']),
             va, ks), base)) / len(ks))
 
     t0 = time.time()
     for it in range(start, steps):
         opt.zero_grad()
-        ah = rollout(model, tau_of(log_tau), tr, dt_s) / 100.0 * ah_sat(tr['temp'])
+        ah = roll(tr) / 100.0 * ah_sat(tr['temp'])
         loss = sum(e / b for e, b in zip(horizon_mse(ah, tr, ks), base)) / len(ks)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(list(model.parameters()) + [log_tau], 10.0)
@@ -547,7 +569,7 @@ def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25, va=None):
               f' of {steps}', flush=True)
     with torch.no_grad():
         f = lambda w: [float(x) ** .5 for x in horizon_mse(
-            rollout(model, tau_of(log_tau), w, dt_s) / 100.0 * ah_sat(w['temp']), w, ks)]
+            roll(w) / 100.0 * ah_sat(w['temp']), w, ks)]
         return model, float(tau_of(log_tau).detach()), f(tr), f(te), float(model.delay_s().detach())
 
 
@@ -563,6 +585,12 @@ def main():
                          'about the data: 1024 was an arbitrary early choice that '
                          'starved the high-capacity candidates')
     ap.add_argument('--out', default='')
+    ap.add_argument('--tau-unbounded', action='store_true',
+                    help='fit tau as exp(raw) with no floor or ceiling, and '
+                         'switch the duty mixing to the smooth ZOH alpha. NOT '
+                         'comparable with a bounded run -- the shared duty path '
+                         'differs, so score it against its own bounded rerun, '
+                         'never against the main leaderboard.')
     a = ap.parse_args()
 
     tr_d, te_d, dt_s = load(a.split)
@@ -612,8 +640,10 @@ def main():
         print(f'  fitting {name}...', flush=True)
         ckpt = f'{a.out}.{name}.ckpt' if a.out else ''
         model, tau_s, e_tr, e_te, dead_s = fit(name, tr, te, dt_s, a.steps,
-                                               a.lr, a.seed, ckpt, va=va)
+                                               a.lr, a.seed, ckpt, va=va,
+                                               tau_unbounded=a.tau_unbounded)
         rows.append(dict(candidate=name, split=a.split, seed=a.seed,
+                         tau_unbounded=a.tau_unbounded,
                          n_params=sum(p.numel() for p in model.parameters()) + 1,
                          tau_s=tau_s, dead_time_s=dead_s, horizons_min=list(HORIZONS),
                          train_err=e_tr, test_err=e_te,
