@@ -169,7 +169,13 @@ cleanup() {
   stop
   say "CLEANUP done"
 }
-trap cleanup EXIT INT TERM
+# EXIT only for the handler: a TERM/INT trap that merely returns lets the
+# script CONTINUE after tearing its own experiment down -- it then schedules
+# duty into a mode that is no longer active. Signal handlers exit, and the
+# EXIT trap does the actual restore exactly once.
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 EXP_AT=0
 keepalive() {   # re-fire the forced experiment before its TTL runs out
