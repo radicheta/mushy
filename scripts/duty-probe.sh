@@ -139,8 +139,13 @@ rh()  { ros2 topic echo /fc1/humidity --once --qos-reliability best_effort \
         | awk '/^relative_humidity:/{printf "%.4f", $2; exit}'; }
 setd(){ ros2 param set /fc_controller "modes.$MODE.force_duty" "$1" >/dev/null 2>&1
         echo "$(ts),$1,$2" >>"$CSV"; }
+# Returns non-zero unless the controller actually accepted. It refuses with
+# ok=False message=experiment_in_progress while one is still running, so a
+# blind re-fire is a NO-OP that the caller then treats as success -- see
+# keepalive.
 fire(){ ros2 service call /start_experiment fc_msgs/srv/StartExperiment \
-          "{experiment_name: $MODE, duration_minutes: $CHUNK}" >>"$LOG" 2>&1; }
+          "{experiment_name: $MODE, duration_minutes: $CHUNK}" 2>&1 \
+        | tee -a "$LOG" | grep -q 'ok=True'; }
 stop(){ ros2 service call /cancel_experiment fc_msgs/srv/CancelExperiment "{}" >>"$LOG" 2>&1; }
 lt()  { awk "BEGIN{exit !($1 < $2)}"; }
 gt()  { awk "BEGIN{exit !($1 > $2)}"; }
@@ -170,7 +175,17 @@ EXP_AT=0
 keepalive() {   # re-fire the forced experiment before its TTL runs out
   local t; t=$(now)
   if [ $((t - EXP_AT)) -ge $((CHUNK * 60 - 300)) ]; then
-    fire; EXP_AT=$t; say "experiment (re)fired for ${CHUNK}min"
+    # CANCEL FIRST. /start_experiment has a lockout (fc_controller.py:1113):
+    # while an experiment is live it returns ok=False experiment_in_progress
+    # and starts nothing. The old code ignored that and still advanced EXP_AT,
+    # so the running TTL expired 5 min later, the controller reverted to
+    # fruiting, and the chamber ran CLOSED LOOP -- the exact confound this
+    # probe exists to escape -- until the next attempt ~100 min later. It cost
+    # 17:20-19:00Z on 2026-09-01. The cancel/start pair leaves at most one tick
+    # in the prior mode, and the schedule re-asserts duty on the next segment.
+    stop
+    if fire; then EXP_AT=$t; say "experiment (re)fired for ${CHUNK}min"
+    else say "WARN experiment refire REFUSED -- retrying next tick"; fi
   fi
 }
 
