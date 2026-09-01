@@ -29,6 +29,17 @@
 #   * Duty and transition style are drawn INDEPENDENTLY PER SEGMENT rather than
 #     in blocks, so neither is confounded with time of day -- spanning the
 #     diurnal temperature cycle is the whole reason this runs for 24 h.
+#   * SINE BLOCKS (Santi 2026-09-01): a few hours of duty swept smoothly over
+#     [0, DUTY_MAX] instead of stepped. A sinusoid is the one input that can be
+#     LOCK-IN DEMODULATED -- amplitude ratio and phase lag at a known frequency
+#     give gain and delay directly, with no rollout fit, no window weighting,
+#     and everything NOT at that frequency (thermal drift, ambient, sensor
+#     noise) rejected. TWO periods, not one: at a 60 min period the ~140 s dead
+#     time is only 14 deg of phase, so 60 min measures GAIN well and DELAY
+#     badly; 20 min puts the same delay at 42 deg. Dead time vs mixing tau being
+#     weakly separable is the open problem, so the short period earns its place.
+#     Blocks are scattered at random through the 24 h for the same reason
+#     everything else is.
 #
 # SAFETY. Three independent layers, because this runs unattended on a live grow:
 #   1. RH floor/ceiling with hysteresis, checked every 20 s. Overrides the
@@ -59,6 +70,7 @@ DRYRUN="${DRYRUN:-0}"
 LABEL="${1:?label required}" ; HOURS="${2:-24}"
 RH_FLOOR="${3:-0.75}"       ; RH_CEIL="${4:-0.98}" ; SEED="${5:-1}"
 DUTY_MAX="${6:-0.35}"       # see DUTY RANGE above; ~2.5x the 0.137 equilibrium
+SINE="${SINE:-60x3,20x3}"   # period_min x cycles, comma separated; see SINE BLOCKS
 FLOOR_CLEAR=$(awk "BEGIN{print $RH_FLOOR + 0.02}")   # hysteresis, avoid chatter
 CEIL_CLEAR=$(awk "BEGIN{print $RH_CEIL - 0.02}")
 MODE=force-condensation      # reused as a generic forced-duty mode; see EXIT trap
@@ -159,6 +171,23 @@ ramp() {        # linear $1 -> $2 over $3 minutes
   done
 }
 
+sine() {        # $1 cycles of a $2-minute sinusoid over [0, DUTY_MAX]
+  local cycles=$1 period=$2 n i v
+  n=$(( period * cycles * 4 ))                       # a step every 15 s
+  say "SINE ${cycles}x${period}min over [0,$DUTY_MAX]"
+  for i in $(seq 1 "$n"); do
+    # mean is DUTY_MAX/2 = ~0.175, slightly above the 0.137 the chamber needs,
+    # so RH creeps up over a block; ~2.5 RH points over 3 h, well short of the
+    # ceiling. The guard still backs it, but a guard firing here would be
+    # closed-loop data in the middle of the cleanest measurement of the run.
+    v=$(awk "BEGIN{printf \"%.3f\", $DUTY_MAX/2 * (1 - cos(2*3.14159265*$i/($period*4)))}")
+    setd "$v" "sine-${period}"
+    keepalive; guard || true
+    nap 15
+  done
+  PREV=$v
+}
+
 segment() {     # one scheduled segment: pick a duty, get there, hold it
   local d style dwell
   if [ $(( RANDOM % 3 )) -eq 0 ]; then
@@ -177,6 +206,7 @@ segment() {     # one scheduled segment: pick a duty, get there, hold it
   PREV=$d
 }
 
+SINE_QUEUE=$(echo "$SINE" | tr ',' ' ')      # blocks still to be placed
 RANDOM=$SEED
 say "START ${HOURS}h floor=$RH_FLOOR ceil=$RH_CEIL duty_max=$DUTY_MAX seed=$SEED orig_force_duty=$ORIG"
 echo "iso,duty,phase" > "$CSV"
@@ -184,6 +214,16 @@ fire; EXP_AT=$(now)
 END=$(( $(now) + HOURS * 3600 ))
 PREV=0.0
 while [ "$(now)" -lt "$END" ]; do
-  segment
+  # a sine block displaces a step segment ~1 draw in 6, which places every
+  # queued block long before the 24 h are up without ever bunching them at a
+  # fixed time of day.
+  if [ -n "$SINE_QUEUE" ] && [ $(( RANDOM % 6 )) -eq 0 ]; then
+    set -- $SINE_QUEUE
+    sine "${1#*x}" "${1%x*}"
+    shift; SINE_QUEUE="$*"
+  else
+    segment
+  fi
 done
+[ -z "$SINE_QUEUE" ] || say "WARNING ran out of time with sine blocks unplaced: $SINE_QUEUE"
 say "FINISHED"
