@@ -40,31 +40,41 @@ ap.add_argument('--lr', type=float, default=0.05)
 ap.add_argument('--seed', type=int, default=0)
 ap.add_argument('--stride', type=float, default=1.0, help='forced-window stride, min')
 ap.add_argument('--dead-time-s', type=float, default=0.0)
-ap.add_argument('--replay', default='scripts/bakeoff/web/replay.json')
+ap.add_argument('--cycles', default='scripts/bakeoff/data/cycles.json',
+                help='list of forced cycles from extract_cycles.py')
 ap.add_argument('--out', default='')
 a = ap.parse_args()
 
-R = json.load(open(a.replay))
+CY = json.load(open(a.cycles))
+if isinstance(CY, dict):        # a single legacy replay.json
+    CY = [CY]
 H = max(HORIZONS)
 
 
 def forced_windows(stride_min, dt_s):
-    """The forced cycle, packed exactly like corpus windows (from
-    refit_with_forced.py, which already got this right)."""
-    rh = torch.tensor(R['actual_rh'], dtype=torch.float64)
-    T = torch.tensor(R['temp'], dtype=torch.float64)
-    duty = torch.tensor(R['duty'], dtype=torch.float64)
-    amb = torch.tensor(R['amb_ah'], dtype=torch.float64)
-    ah = rh / 100.0 * ah_sat(T)
-    n, k, s = len(rh), int(H * 60 / dt_s), int(stride_min * 60 / dt_s)
-    st = list(range(0, n - k, s))
-    take = lambda v: torch.stack([v[i:i + k] for i in st])
-    w = {'duty': take(duty), 'temp': take(T), 'rh': take(rh), 'amb_ah': take(amb),
-         'ah': take(ah), 'ah0': torch.tensor([ah[i] for i in st], dtype=torch.float64),
-         'valid': torch.ones(len(st), k, dtype=torch.bool)}
-    for c in CHANNELS:              # inert for the physics candidates
-        w[c] = torch.zeros(len(st), k, dtype=torch.float64)
-    return w
+    """EVERY forced cycle, packed exactly like corpus windows. Cycles are
+    windowed SEPARATELY and only then concatenated -- they are hours apart, so
+    a window spanning two of them would be a fabricated trajectory."""
+    k, s = int(H * 60 / dt_s), int(stride_min * 60 / dt_s)
+    parts = []
+    for C in CY:
+        rh = torch.tensor(C['actual_rh'], dtype=torch.float64)
+        T = torch.tensor(C['temp'], dtype=torch.float64)
+        duty = torch.tensor(C['duty'], dtype=torch.float64)
+        amb = torch.tensor(C['amb_ah'], dtype=torch.float64)
+        ah = rh / 100.0 * ah_sat(T)
+        st = list(range(0, len(rh) - k, s))
+        if not st:
+            continue
+        take = lambda v: torch.stack([v[i:i + k] for i in st])
+        w = {'duty': take(duty), 'temp': take(T), 'rh': take(rh),
+             'amb_ah': take(amb), 'ah': take(ah),
+             'ah0': torch.tensor([ah[i] for i in st], dtype=torch.float64),
+             'valid': torch.ones(len(st), k, dtype=torch.bool)}
+        for c in CHANNELS:          # inert for the physics candidates
+            w[c] = torch.zeros(len(st), k, dtype=torch.float64)
+        parts.append(w)
+    return {kk: torch.cat([p[kk] for p in parts], 0) for kk in parts[0]}
 
 
 def main():
@@ -76,9 +86,11 @@ def main():
         w['ah0'][:, None].expand_as(w['ah']), w, ks)] for s, w in te.items()}
 
     fw = forced_windows(a.stride, dt_s)
-    print(f'TRAIN: forced cycle only -- {len(fw["ah"])} windows from '
-          f'{len(R["actual_rh"])*dt_s/60:.0f} min, duty levels '
-          f'{sorted(set(np.round(R["duty"], 2)))[:6]}...')
+    mins = sum(len(c['actual_rh']) for c in CY) * dt_s / 60
+    trans = sum(int((np.diff(c['duty']) != 0).sum()) for c in CY)
+    tlo = min(min(c['temp']) for c in CY); thi = max(max(c['temp']) for c in CY)
+    print(f'TRAIN: forced cycles ONLY -- {len(CY)} cycles, {len(fw["ah"])} windows, '
+          f'{mins:.0f} min, {trans} duty transitions, T {tlo:.1f}-{thi:.1f} C')
     print(f'TEST : corpus, inter {len(te["inter"]["ah"])} windows / '
           f'chrono {len(te["chrono"]["ah"])} windows\n')
 
