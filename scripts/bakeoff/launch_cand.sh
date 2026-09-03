@@ -17,7 +17,7 @@ set -u
 cd "$(dirname "$0")/../.."
 CAND=${CAND:-franktuned}
 STEPS=${STEPS:-3000}
-OUT=scripts/bakeoff/results
+OUT=${OUT:-scripts/bakeoff/results}
 mkdir -p "$OUT/logs"
 
 for split in inter chrono; do
@@ -26,11 +26,11 @@ done | xargs -P "${PAR:-10}" -I{} bash -c '
   set -- {}
   split=$1; seed=$2
   tag="$split-'"$CAND"'-s$seed"
-  if [ -s scripts/bakeoff/results/$tag.json ]; then echo "skip $tag"; exit 0; fi
+  if [ -s '"$OUT"'/$tag.json ]; then echo "skip $tag"; exit 0; fi
   OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 .venv/bin/python scripts/bakeoff/run.py \
     --split "$split" --candidates '"$CAND"' --seed "$seed" --steps '"$STEPS"' \
-    --out scripts/bakeoff/results/$tag.json \
-    > scripts/bakeoff/results/logs/$tag.log 2>&1
+    --out '"$OUT"'/$tag.json \
+    > '"$OUT"'/logs/$tag.log 2>&1
   echo "done $tag rc=$?"
 '
 echo "$CAND JOBS FINISHED"
