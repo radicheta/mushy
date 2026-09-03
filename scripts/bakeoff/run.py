@@ -363,10 +363,68 @@ class FrankTuned(Frank):
     NET_WD = 1e-4
 
 
+class Irma(Alice):
+    """Alice's balance PLUS a learned residual, zero-initialised: step 0 IS
+    alice bit-for-bit, so it cannot lose by construction.
+
+    WHY NESTED (MUSHY-154, gate read 2026-09-03). Frank is a superset of alice
+    in function space and it fits TRAIN better -- 0.0368 vs 0.0454 on inter,
+    0.0383 vs 0.0512 on chrono -- so expressivity was never the blocker. It
+    loses on TEST anyway, and franktuned (net at 1e-3 + wd) only halves the
+    inter deficit (+0.024 -> +0.011) without flipping it.
+
+    The reason is extrapolation, not instability: error growth 5->10 min is
+    1.95x for frank against alice's 1.95x on inter and 1.66x vs 1.76x on
+    chrono, so the rollout is NOT diverging -- frank is simply wrong from the
+    first horizon. It carries 22 inputs and 2 hidden states against alice's
+    three drivers, and its generalisation ratio degrades 0.52 -> 0.87 across
+    the seasonal split where alice's only goes 0.40 -> 0.56. Alice's terms are
+    linear and extrapolate exactly; a tanh sandwich flattens off-support.
+
+    So frank has to REDISCOVER alice's off-support behaviour from data, which
+    data can only pin down where it has support. Nesting hands it over for
+    free and leaves the net one job: the residual. And there IS a residual --
+    frank reproduces the per-pulse bump alice cannot (+0.282 vs +0.063 against
+    a measured +0.315, pulse_response.py). Frank learned that AND a pile of
+    season-specific junk, and the junk costs more than the pulse pays.
+
+    Inputs are the physical ones only, deliberately: no weather channels, no
+    60-min EWMAs. Frank had them and they are what failed to transfer.
+    """
+    NET_LR = 1e-3            # the net is an MLP; 0.05 is ~10x too high for it
+    NET_WD = 1e-4            # decay pulls the correction toward zero == alice
+
+    def __init__(self, width=32):
+        super().__init__()   # alice's logF, logQ, C and the fitted dead time
+        self.net = nn.Sequential(nn.Linear(8, width), nn.Tanh(),
+                                 nn.Linear(width, width), nn.Tanh(),
+                                 nn.Linear(width, 1))
+        with torch.no_grad():
+            # BOTH zeroed, not just scaled down as eve/gary do: those start
+            # NEAR their parent, irma starts AT alice exactly. test_irma.py
+            # pins that identity, and it is what makes "cannot lose" literal.
+            self.net[-1].weight.zero_()
+            self.net[-1].bias.zero_()
+
+    def deriv(self, ah, aux, u, T, dT_dt, amb, ctx):
+        d, aux = super().deriv(ah, aux, u, T, dT_dt, amb, ctx)
+        x = torch.stack([
+            (ah - amb) / 4.0,                    # alice's own sink driver
+            (ah - ah_sat(T)) / 0.5,              # charlie/gary's deficit driver
+            (T - 12.0) / 8.0,
+            (T - ctx['t_ew30']) / 1.5,           # eve's wall-lag proxy
+            dT_dt,
+            u, ctx['u_ew5'], ctx['u_ew30'],      # the pulse lives here
+        ], dim=-1)
+        # /V for the same reason alice divides: the correction is a source
+        # term in g/h, not a rate in g/m3/h.
+        return d + self.net(x).squeeze(-1) / V, aux
+
+
 CANDIDATES = {'alice': Alice, 'bob': Bob, 'charlie': Charlie,
               'dave': Dave, 'eve': Eve, 'frank': Frank, 'gary': Gary,
               'herbert': Herbert, 'irving': Irving,
-              'franktuned': FrankTuned}
+              'franktuned': FrankTuned, 'irma': Irma}
 
 
 # ------------------------------------------------------------------ rollout
