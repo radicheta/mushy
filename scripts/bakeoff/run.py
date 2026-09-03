@@ -69,6 +69,8 @@ class Candidate(nn.Module):
     "impossible" was only ever an implementation choice.
     """
     extra = 0
+    NET_LR = None       # per-group Adam for net.* parameters; None = shared lr
+    NET_WD = 0.0
     # DERIVED FROM THE WINDOW, never hardcoded. rollout() zeroes duty until the
     # delay has elapsed (pad = (raw >= 0)), so a dead time at or beyond the
     # window length means the model sees NO DUTY AT ALL and is free to discard
@@ -339,9 +341,32 @@ class Irving(Dave):
         return d + self.C * dT_dt / V, aux
 
 
+class FrankTuned(Frank):
+    """Frank with an optimiser that suits an MLP: the net at 1e-3 with weight
+    decay, the physics parameters (dead time) still at the shared lr.
+
+    THE GATE for MUSHY-154. Frank is meant to be the upper bound on what this
+    corpus can teach, and it loses to alice on both splits -- but it was
+    trained at lr 0.05, chosen for 4-parameter physics models initialised at
+    the shipped answer and ~10x too high for a tanh MLP started from
+    persistence. Its early stop fires at step 99-400 of 3000. A superset that
+    loses is a rigged setup, so the rig has to come out before "the black box
+    cannot do better" means anything. If a tuned frank STILL loses on inter,
+    the corpus has no more signal and irma (alice + a learned residual) is
+    moot.
+
+    Separate CANDIDATES entry rather than a CLI flag so the leaderboard tag,
+    the JSON and the checkpoint all carry which optimiser produced them --
+    the untuned frank rows stay comparable and nothing silently overwrites.
+    """
+    NET_LR = 1e-3
+    NET_WD = 1e-4
+
+
 CANDIDATES = {'alice': Alice, 'bob': Bob, 'charlie': Charlie,
               'dave': Dave, 'eve': Eve, 'frank': Frank, 'gary': Gary,
-              'herbert': Herbert, 'irving': Irving}
+              'herbert': Herbert, 'irving': Irving,
+              'franktuned': FrankTuned}
 
 
 # ------------------------------------------------------------------ rollout
@@ -558,10 +583,25 @@ def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25, va=None,
         bounds = (TAU_LO, TAU_HI)
     roll = lambda w: rollout(model, tau_of(log_tau), w, dt_s, tau_unbounded)
     live = [p for p in model.parameters() if p.requires_grad]
-    opt = torch.optim.Adam(live + [log_tau], lr=lr)
+    if model.NET_LR is None:
+        opt = torch.optim.Adam(live + [log_tau], lr=lr)
+    else:
+        net = {id(p) for p in model.net.parameters()}
+        opt = torch.optim.Adam(
+            [dict(params=[p for p in live if id(p) in net],
+                  lr=model.NET_LR, weight_decay=model.NET_WD),
+             dict(params=[p for p in live if id(p) not in net] + [log_tau], lr=lr)])
+        print(f'    [{name}] net lr {model.NET_LR} wd {model.NET_WD}, '
+              f'rest lr {lr}', flush=True)
     ks = [int(h * 60 / dt_s) for h in HORIZONS]
     base = [float(b) for b in horizon_mse(
         tr['ah0'][:, None].expand_as(tr['ah']), tr, ks)]     # persistence
+
+    # (val loss, model state, log_tau, step) -- restored at the end. It rides in
+    # the checkpoint too: the saved LAST state is not the fitted answer, so a
+    # resume that dropped this silently converted an early-stopped fit into an
+    # un-regularised one, which is the whole point of the mechanism.
+    best = (float('inf'), None)
 
     # Resume: the loop is fully deterministic (no dropout, no minibatch
     # sampling -- the seed only picks the init), so restarting from a
@@ -583,6 +623,7 @@ def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25, va=None,
             with torch.no_grad():
                 log_tau.copy_(ck['log_tau'])
             opt.load_state_dict(ck['opt'])
+            best = ck.get('best', best)
             start = ck['it']
             print(f'    [{name}] resumed from {ckpt_path} at step {start}', flush=True)
 
@@ -592,12 +633,11 @@ def fit(name, tr, te, dt_s, steps, lr, seed, ckpt_path='', every=25, va=None,
         # atomic: a power cut mid-write must not leave a corrupt checkpoint,
         # which is the exact failure this whole mechanism exists for.
         torch.save(dict(name=name, seed=seed, it=it, tau_bounds=bounds,
-                        model=model.state_dict(),
+                        model=model.state_dict(), best=best,
                         log_tau=log_tau.detach().clone(), opt=opt.state_dict()),
                    ckpt_path + '.tmp')
         os.replace(ckpt_path + '.tmp', ckpt_path)
 
-    best = (float('inf'), None)         # (val loss, state) -- restored at the end
     vloss = lambda: float(sum(
         e / b for e, b in zip(horizon_mse(
             roll(va) / 100.0 * ah_sat(va['temp']),
