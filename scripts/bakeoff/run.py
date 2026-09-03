@@ -39,7 +39,7 @@ TAU_LO, TAU_HI = 10.0, 1800.0   # 10 s = one sample; a mixing lag below the
                                 # that floor -- the bound was doing the fitting.
 MW_OVER_R = 18.01528 / 8.31446
 DEAD_TIME_S = 360.0             # shipped default; see note in fit() below
-CORPUS = 'scripts/bakeoff/corpus.npz'
+CORPUS = os.environ.get('BAKEOFF_CORPUS', 'scripts/bakeoff/corpus.npz')
 torch.set_default_dtype(torch.float64)          # settled by measurement, see ticket
 
 

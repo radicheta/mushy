@@ -20,9 +20,9 @@ from fc_core.sim.psychrometrics import absolute_humidity_g_m3
 DT = 10.0
 STEPS = int(86400 / DT)                     # 8640
 UYT = timezone(timedelta(hours=-3))
-START, END = '2026-04-11', '2026-09-01'
+START, END = '2026-04-11', os.environ.get('BAKEOFF_END', '2026-09-01')
 PIPE_TRANSIT_S = 6.0                        # farmer-measured 5-7 s (pwm_window.py)
-OUT = 'scripts/bakeoff/corpus.npz'
+OUT = os.environ.get('BAKEOFF_CORPUS', 'scripts/bakeoff/corpus.npz')
 MAX_MISSING = 0.20                          # drop a day with more gap than this
 
 
