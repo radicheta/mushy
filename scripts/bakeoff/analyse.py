@@ -16,7 +16,12 @@ sys.path.insert(0, 'scripts/bakeoff')
 from run import (CANDIDATES, HORIZONS, TAU_LO, TAU_HI, ah_sat, horizon_mse,
                  load, rollout, windows)
 
-R = 'scripts/bakeoff/results'
+# Month-subset runs write results-m08/ and results-m06/ (subset_corpus.py).
+# Overridable because the tags are IDENTICAL across corpora --
+# inter-alice-s0.json is the same name whichever npz produced it -- so a
+# hardcoded path here does not error on a month run, it silently reports the
+# FULL-CORPUS numbers while the reader believes they are August's.
+R = os.environ.get('BAKEOFF_RESULTS', 'scripts/bakeoff/results')
 
 
 def _skills(key, split='inter'):

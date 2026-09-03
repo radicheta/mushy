@@ -1,0 +1,50 @@
+[
+ {
+  "candidate": "_baseline_persistence",
+  "split": "inter",
+  "seed": 0,
+  "n_params": 0,
+  "test_err": [
+   0.04451364773055423,
+   0.09029327479787795
+  ]
+ },
+ {
+  "candidate": "_baseline_saturation",
+  "split": "inter",
+  "seed": 0,
+  "n_params": 1,
+  "test_err": [
+   0.19522717293387745,
+   0.1929649533987979
+  ]
+ },
+ {
+  "candidate": "irving",
+  "split": "inter",
+  "seed": 0,
+  "tau_unbounded": false,
+  "dead_time_fixed": null,
+  "n_params": 8,
+  "tau_s": 11.125201352820138,
+  "dead_time_s": 239.93248983089825,
+  "horizons_min": [
+   5.0,
+   10.0
+  ],
+  "train_err": [
+   0.03524910278222577,
+   0.0566980271402535
+  ],
+  "test_err": [
+   0.022025137975996725,
+   0.030638735705248245
+  ],
+  "skill": [
+   0.4947951717935405,
+   0.3393246703459725
+  ],
+  "skill_mean": 0.41705992106975653,
+  "skill_worst": 0.4947951717935405
+ }
+]

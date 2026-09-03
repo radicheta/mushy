@@ -1,0 +1,50 @@
+[
+ {
+  "candidate": "_baseline_persistence",
+  "split": "chrono",
+  "seed": 2,
+  "n_params": 0,
+  "test_err": [
+   0.07949667782651246,
+   0.13913140018435277
+  ]
+ },
+ {
+  "candidate": "_baseline_saturation",
+  "split": "chrono",
+  "seed": 2,
+  "n_params": 1,
+  "test_err": [
+   0.21137098104180432,
+   0.21165175935324623
+  ]
+ },
+ {
+  "candidate": "frank",
+  "split": "chrono",
+  "seed": 2,
+  "tau_unbounded": false,
+  "dead_time_fixed": null,
+  "n_params": 1957,
+  "tau_s": 44.765543897896315,
+  "dead_time_s": 291.7645414309673,
+  "horizons_min": [
+   5.0,
+   10.0
+  ],
+  "train_err": [
+   0.010208881486922084,
+   0.018715009696038468
+  ],
+  "test_err": [
+   0.04837926858020935,
+   0.07661375170592537
+  ],
+  "skill": [
+   0.6085696899911793,
+   0.5506575194701565
+  ],
+  "skill_mean": 0.5796136047306679,
+  "skill_worst": 0.6085696899911793
+ }
+]

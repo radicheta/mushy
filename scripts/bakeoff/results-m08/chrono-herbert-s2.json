@@ -1,0 +1,50 @@
+[
+ {
+  "candidate": "_baseline_persistence",
+  "split": "chrono",
+  "seed": 2,
+  "n_params": 0,
+  "test_err": [
+   0.07949667782651246,
+   0.13913140018435277
+  ]
+ },
+ {
+  "candidate": "_baseline_saturation",
+  "split": "chrono",
+  "seed": 2,
+  "n_params": 1,
+  "test_err": [
+   0.21137098104180432,
+   0.21165175935324623
+  ]
+ },
+ {
+  "candidate": "herbert",
+  "split": "chrono",
+  "seed": 2,
+  "tau_unbounded": false,
+  "dead_time_fixed": null,
+  "n_params": 4,
+  "tau_s": 157.9249060822135,
+  "dead_time_s": 19.950112603852318,
+  "horizons_min": [
+   5.0,
+   10.0
+  ],
+  "train_err": [
+   0.041762047631943126,
+   0.08146033237498713
+  ],
+  "test_err": [
+   0.07157013427944876,
+   0.11640680852857886
+  ],
+  "skill": [
+   0.9002908830434149,
+   0.836668130805388
+  ],
+  "skill_mean": 0.8684795069244015,
+  "skill_worst": 0.9002908830434149
+ }
+]
