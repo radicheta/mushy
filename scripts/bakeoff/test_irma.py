@@ -50,3 +50,20 @@ def test_net_params_are_found_by_the_optimiser_split():
     assert irma.NET_LR == 1e-3 and irma.NET_WD > 0
     assert {id(p) for p in irma.net.parameters()} <= {id(p) for p in irma.parameters()}
     assert any(p.requires_grad for p in irma.net.parameters())
+
+
+def test_irmaramp_step0_is_alice_bit_for_bit():
+    """Same identity for the ramp variant: two extra inputs, still zero-init."""
+    torch.manual_seed(0)
+    ramp = CANDIDATES['irmaramp']()
+    alice = CANDIDATES['alice']()
+    b = _batch()
+    n = len(b['ah'])
+    b['ctx'].update(amb_t=8.0 + torch.rand(n, dtype=torch.float64),
+                    at_ew60=8.0 + torch.rand(n, dtype=torch.float64),
+                    solar=300 * torch.rand(n, dtype=torch.float64),
+                    s_ew60=300 * torch.rand(n, dtype=torch.float64))
+    d_r, _ = ramp.deriv(b['ah'], (), b['u'], b['T'], b['dT_dt'], b['amb'], b['ctx'])
+    d_a, _ = alice.deriv(b['ah'], (), b['u'], b['T'], b['dT_dt'], b['amb'], b['ctx'])
+    assert torch.equal(d_r, d_a)
+    assert ramp.net[0].in_features == 10

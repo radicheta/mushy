@@ -23,7 +23,7 @@ import torch.nn as nn
 # fixed-timescale EWMAs of DRIVERS ONLY -- never of AH, which is the target.
 CHANNELS = ('amb_t', 'amb_rh', 'precip', 'solar', 'cloud', 'wind', 'pressure',
             't_ew5', 't_ew30', 't_ew60', 'u_ew5', 'u_ew30', 'u_ew60',
-            'a_ew30', 'a_ew60', 's_ew30', 's_ew60')
+            'a_ew30', 'a_ew60', 's_ew30', 's_ew60', 'at_ew60')
 
 V = 5.76                        # chamber volume m3
 HORIZONS = (5.0, 10.0)          # minutes. Santi 2026-09-01: 5-10 min is what
@@ -421,10 +421,40 @@ class Irma(Alice):
         return d + self.net(x).squeeze(-1) / V, aux
 
 
+class IrmaRamp(Irma):
+    """Irma plus two WEATHER RAMPS, no weather levels (MUSHY-154, 2026-09-03).
+
+    Frank carried seven weather channels as hourly levels and they did not
+    transfer across the season. Levels are near-constant inside a 45-min
+    window, so a net can only use them as a slow seasonal offset -- the junk
+    irma's docstring names. What the wall physically responds to is the RAMP:
+    an uninsulated steel container heats when the sun comes out and cools when
+    the outside air drops, and both arrive as a change, not a level. So this
+    feeds (x - EWMA60(x)) for ambient temperature and solar only, and nothing
+    else from the weather table. If this beats irma on chrono, weather earns a
+    live feed on the Pi; if not, archive weather is closed and only forecasts
+    remain.
+    """
+    def __init__(self, width=32):
+        super().__init__(width)
+        self.net[0] = nn.Linear(10, width)     # 8 irma inputs + 2 ramps
+
+    def deriv(self, ah, aux, u, T, dT_dt, amb, ctx):
+        # Alice's balance directly, NOT Irma.deriv: the net input is wider.
+        d, aux = Alice.deriv(self, ah, aux, u, T, dT_dt, amb, ctx)
+        x = torch.stack([
+            (ah - amb) / 4.0, (ah - ah_sat(T)) / 0.5, (T - 12.0) / 8.0,
+            (T - ctx['t_ew30']) / 1.5, dT_dt, u, ctx['u_ew5'], ctx['u_ew30'],
+            (ctx['amb_t'] - ctx['at_ew60']) / 2.0,    # K of outside ramp over ~1 h
+            (ctx['solar'] - ctx['s_ew60']) / 150.0,   # W/m2 of solar ramp
+        ], dim=-1)
+        return d + self.net(x).squeeze(-1) / V, aux
+
+
 CANDIDATES = {'alice': Alice, 'bob': Bob, 'charlie': Charlie,
               'dave': Dave, 'eve': Eve, 'frank': Frank, 'gary': Gary,
               'herbert': Herbert, 'irving': Irving,
-              'franktuned': FrankTuned, 'irma': Irma}
+              'franktuned': FrankTuned, 'irma': Irma, 'irmaramp': IrmaRamp}
 
 
 # ------------------------------------------------------------------ rollout
@@ -537,7 +567,8 @@ def ewma(x, tau_s, dt_s, dates):
 EWMAS = {'t_ew5': ('temp', 300.), 't_ew30': ('temp', 1800.), 't_ew60': ('temp', 3600.),
          'u_ew5': ('duty', 300.), 'u_ew30': ('duty', 1800.), 'u_ew60': ('duty', 3600.),
          'a_ew30': ('amb_ah', 1800.), 'a_ew60': ('amb_ah', 3600.),
-         's_ew30': ('solar', 1800.), 's_ew60': ('solar', 3600.)}
+         's_ew30': ('solar', 1800.), 's_ew60': ('solar', 3600.),
+         'at_ew60': ('amb_temp', 3600.)}
 
 WARMUP_MIN = 60          # applied ONLY to days that start a contiguous run
 
