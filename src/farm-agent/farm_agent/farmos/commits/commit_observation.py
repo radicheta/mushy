@@ -27,7 +27,7 @@ import time
 from farm_agent.farmos.farm_time import ymd
 
 from farm_agent.farmos.commits.attachments import upload_draft_attachments
-from farm_agent.farmos.commits.targets import resolve_asset_targets
+from farm_agent.farmos.commits.targets import mint_absent_blocks, resolve_asset_targets
 from farm_agent.farmos.logs import create_log
 
 log = logging.getLogger(__name__)
@@ -91,6 +91,15 @@ async def commit_observation(client: dict, draft: dict, ctx: dict | None = None)
             "http_status": res.get("http_status"),
         }
     targets = res["targets"]
+
+    # MUSHY-128: an observation about a block farmOS has never heard of used to
+    # fail forever with observation_requires_target, after the farmer approved
+    # a confirmation promising the block would be created. Same mint and same
+    # guards as commit_activity (MUSHY-126).
+    mint = await mint_absent_blocks(client, res["absent"], draft_id, ctx)
+    if not mint.get("ok"):
+        return mint
+    targets.extend(mint["targets"])
     asset_ids = [t[0] for t in targets]
 
     if not asset_ids:

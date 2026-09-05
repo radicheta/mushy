@@ -21,11 +21,9 @@ import time
 
 from farm_agent.farmos.farm_time import ymd
 
-from farm_agent.farmos import assets
 from farm_agent.farmos.commits.attachments import upload_draft_attachments
-from farm_agent.farmos.commits.targets import resolve_asset_targets
+from farm_agent.farmos.commits.targets import mint_absent_blocks, resolve_asset_targets
 from farm_agent.farmos.logs import create_log
-from farm_agent.farmos.ref_check import strain_code_from_ref
 
 log = logging.getLogger(__name__)
 
@@ -63,35 +61,13 @@ async def commit_activity(client: dict, draft: dict, ctx: dict | None = None) ->
     asset_ids = [t[0] for t in targets]
     absent = res["absent"]
 
-    # MUSHY-126: farmOS confirmed these refs are absent from every bundle, and
-    # the farmer already approved a confirmation that said "New in farmOS, will
-    # be created". Before this the handler resolved only, so an activity on a
-    # block that farmOS had never heard of could never commit at all.
-    #
-    # Same gate as commit_seeding: the strain has to come from the ref itself,
-    # and create_missing_fungi_type stays off unless ctx turns it on, so an
-    # unrecognised strain code fails loudly rather than minting a junk taxonomy
-    # term. A ref that is not a block name is left alone entirely.
-    for ref in absent:
-        strain = strain_code_from_ref(ref)
-        if not strain:
-            continue
-        block_res = await assets.upsert_fungi_asset(client, {
-            "name": ref,
-            "fungi_type_name": strain,
-            "fungi_xing_name": "block",
-            "qr_codes": [ref],
-            "draft_id": draft_id,
-            "create_missing_fungi_type": bool(ctx and ctx.get("create_missing_fungi_type")),
-        })
-        if not block_res.get("ok"):
-            return {
-                "ok": False,
-                "reason": block_res.get("reason") or "block_upsert_failed",
-                "http_status": block_res.get("http_status"),
-            }
-        asset_ids.append(block_res["asset_id"])
-        targets.append((block_res["asset_id"], "fungi"))
+    # MUSHY-126: mint the blocks farmOS confirmed absent (shared with
+    # commit_observation since MUSHY-128).
+    mint = await mint_absent_blocks(client, absent, draft_id, ctx)
+    if not mint.get("ok"):
+        return mint
+    targets.extend(mint["targets"])
+    asset_ids.extend(t[0] for t in mint["targets"])
 
     if not asset_ids:
         return {"ok": False, "reason": "no_target_asset_for_activity"}

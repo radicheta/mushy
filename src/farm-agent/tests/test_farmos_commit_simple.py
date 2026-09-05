@@ -774,3 +774,75 @@ class TestResolvesNonFungiAssets:
         }, {"capturePathsFor": AsyncMock(return_value=[str(jpg)])})
         assert r["ok"] is True
         assert "/api/asset/animal/" in seen.get("url", ""), seen
+
+
+# ---------------------------------------------------------------------------
+# commit_observation: minting an absent block (MUSHY-128)
+# ---------------------------------------------------------------------------
+
+class TestCommitObservationMintsAbsentBlock:
+    """Same promise as MUSHY-126: the confirmation says "New in farmOS, will be
+    created" for observations too, and observation_requires_target was the most
+    common commit failure on prod. Decision 2026-09-04: mint, same guards."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_name_cache(self):
+        assets_mod._NAME_CACHE.clear()
+        yield
+        assets_mod._NAME_CACHE.clear()
+
+    _DRAFT = {
+        "id": "d-mushy128", "log_type": "observation",
+        "draft_json": {
+            "qr_codes": ["260519_WIN_4"],
+            "notes": "Pins forming.",
+            "timestamp": 1700000000,
+        },
+    }
+
+    async def test_absent_block_is_created_and_observed(self):
+        client = make_mock_client()
+        r = await commit_observation(client, self._DRAFT)
+        assert r["ok"] is True, r
+        created = client["_created"]["assets"]
+        assert len(created) == 1
+        assert created[0]["payload"]["data"]["attributes"]["name"] == "260519_WIN_4"
+        assert created[0]["payload"]["data"]["relationships"]["fungi_type"]["data"][0]["id"] == "ft-win"
+        assert len(client["_created"]["logs"]) == 1
+
+    async def test_an_existing_block_is_still_never_minted(self):
+        client = make_mock_client(known_assets_by_name={"260519_WIN_4": "asset-existing"})
+        r = await commit_observation(client, self._DRAFT)
+        assert r["ok"] is True
+        assert client["_created"]["assets"] == []
+
+    async def test_a_ref_that_is_not_a_block_name_is_not_invented(self):
+        client = make_mock_client()
+        r = await commit_observation(client, {
+            "id": "d1", "log_type": "observation",
+            "draft_json": {"qr_codes": ["NoSuchThing"], "notes": "n", "timestamp": 1700000000},
+        })
+        assert r["ok"] is False
+        assert r["reason"] == "observation_requires_target"
+        assert client["_created"]["assets"] == []
+
+    async def test_an_unknown_strain_fails_instead_of_minting_a_taxonomy_term(self):
+        client = make_mock_client()
+        r = await commit_observation(client, {
+            "id": "d1", "log_type": "observation",
+            "draft_json": {"qr_codes": ["260519_ZZZ_4"], "notes": "n", "timestamp": 1700000000},
+        })
+        assert r["ok"] is False
+        assert r["reason"] == "fungi_type_not_found"
+        assert client["_created"]["assets"] == []
+
+    async def test_an_unreachable_lookup_never_mints(self):
+        import farm_agent.farmos.commits.targets as mod
+        client = make_mock_client()
+        broken = AsyncMock(return_value={"found": False, "error": "http_network", "path": "id_tag"})
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(mod, "resolve_qr", broken)
+            r = await commit_observation(client, self._DRAFT)
+        assert r["ok"] is False
+        assert r["reason"] == "http_network"
+        assert client["_created"]["assets"] == []

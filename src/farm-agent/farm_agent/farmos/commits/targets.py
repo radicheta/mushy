@@ -17,8 +17,10 @@ ASCII-only. No em-dashes.
 """
 from __future__ import annotations
 
+from farm_agent.farmos import assets
 from farm_agent.farmos.assets import find_asset_any_bundle
 from farm_agent.farmos.qr import resolve_qr
+from farm_agent.farmos.ref_check import strain_code_from_ref
 
 
 def _status_from_lookup_error(error: str) -> int | None:
@@ -74,3 +76,41 @@ async def resolve_asset_targets(client: dict, refs: list) -> dict:
             absent.append(ref)
 
     return {"ok": True, "targets": targets, "absent": absent}
+
+
+async def mint_absent_blocks(client: dict, absent: list, draft_id: str, ctx: dict | None) -> dict:
+    """Mint a fungi block for each absent ref that parses as a block name.
+
+    MUSHY-126 (activity) and MUSHY-128 (observation): farmOS confirmed these
+    refs are absent from every bundle, and the farmer already approved a
+    confirmation that said "New in farmOS, will be created". Same gate as
+    commit_seeding: the strain has to come from the ref itself, and
+    create_missing_fungi_type stays off unless ctx turns it on, so an
+    unrecognised strain code fails loudly rather than minting a junk taxonomy
+    term. A ref that is not a block name is skipped, not invented.
+
+    Returns:
+      {"ok": True,  "targets": [(asset_id, "fungi"), ...]}
+      {"ok": False, "reason": str, "http_status": int|None}
+    """
+    targets: list = []
+    for ref in absent:
+        strain = strain_code_from_ref(ref)
+        if not strain:
+            continue
+        block_res = await assets.upsert_fungi_asset(client, {
+            "name": ref,
+            "fungi_type_name": strain,
+            "fungi_xing_name": "block",
+            "qr_codes": [ref],
+            "draft_id": draft_id,
+            "create_missing_fungi_type": bool(ctx and ctx.get("create_missing_fungi_type")),
+        })
+        if not block_res.get("ok"):
+            return {
+                "ok": False,
+                "reason": block_res.get("reason") or "block_upsert_failed",
+                "http_status": block_res.get("http_status"),
+            }
+        targets.append((block_res["asset_id"], "fungi"))
+    return {"ok": True, "targets": targets}
