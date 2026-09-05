@@ -244,8 +244,11 @@ def build_preview(
             continue  # synthetic -- skip in body listing
         seen.add(f)
         cls = classify_field(f, draft, conf, threshold)
-        if cls in ("missing", "low_conf"):
+        if cls == "missing":
             lines.append(f"{f}: [?]")
+        elif cls == "low_conf":
+            # MUSHY-132: show the value the farmer is being asked to verify.
+            lines.append(f"{f}: {render_value(draft.get(f))} [?]")
         else:
             lines.append(f"{f}: {render_value(draft.get(f))}")
     for k in draft:
@@ -255,7 +258,7 @@ def build_preview(
             continue
         cls = classify_field(k, draft, conf, threshold)
         if cls == "low_conf":
-            lines.append(f"{k}: [?]")
+            lines.append(f"{k}: {render_value(draft.get(k))} [?]")
         else:
             lines.append(f"{k}: {render_value(draft.get(k))}")
 
@@ -452,8 +455,8 @@ def build_confirm_prompt(
     """Farmer-facing confirm prompt for a cleanly-extracted draft (D-1).
 
     Body of Node's confirm/preview.js:buildPreviewWithSuffix: calls build_preview,
-    strips [?] markers (by confirm time every field has cleared threshold or been
-    explicitly confirmed), appends REPLY_SUFFIX, and sanitizes.
+    strips [?] markers (a low-confidence field keeps its value, MUSHY-132),
+    appends REPLY_SUFFIX, and sanitizes.
     """
     body = build_preview(
         draft=draft,

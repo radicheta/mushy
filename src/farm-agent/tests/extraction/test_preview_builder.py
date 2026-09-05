@@ -283,3 +283,30 @@ def test_confirm_prompt_carries_the_ref_warning_through():
     )
 
     assert "did you mean 260530_KOS_7?" in out
+
+
+def test_low_confidence_field_shows_its_value_and_marker():
+    """MUSHY-132: an ask-back must show the value it is asking about."""
+    draft = {"type": "harvest", "harvest_batch_id": "H1", "qty_g": 500,
+             "source_block_refs": ["b1"], "event_timestamp": "2026-05-22T10:00:00Z"}
+    out = build_preview(draft=draft, per_field_confidence={"qty_g": 0.3},
+                        threshold=0.7, required_fields=["qty_g"])
+    assert "qty_g: 500 [?]" in out
+
+
+def test_confirm_prompt_keeps_low_confidence_value():
+    """MUSHY-132: stripping [?] at confirm time must not blank the field."""
+    draft = {"type": "harvest", "harvest_batch_id": "H1", "qty_g": 500,
+             "source_block_refs": ["b1"], "event_timestamp": "2026-05-22T10:00:00Z"}
+    out = build_confirm_prompt(draft=draft, per_field_confidence={"qty_g": 0.3},
+                               threshold=0.7, required_fields=["qty_g"])
+    assert "qty_g: 500" in out
+    assert "[?]" not in out
+
+
+def test_missing_field_still_renders_bare_marker():
+    draft = {"type": "harvest", "harvest_batch_id": "H1", "qty_g": None,
+             "source_block_refs": ["b1"], "event_timestamp": "2026-05-22T10:00:00Z"}
+    out = build_preview(draft=draft, per_field_confidence={}, threshold=0.7,
+                        required_fields=["qty_g"])
+    assert "qty_g: [?]" in out
