@@ -7,8 +7,9 @@
 - STOPPED / not done: dev :18080 cleanup of `MUSHY131-probe*` asset + 3 logs.
   Needs dev farmOS creds; the alerter container only carries prod.
 - COMMITTED: `4e4f0173` (MUSHY-132), `ee318f28` (MUSHY-128), `031dc44f`
-  (MUSHY-156 script). All pushed, all deployed. main == origin/main, prod
-  container tree == main.
+  (MUSHY-156 script). All pushed, all deployed. main == origin/main. Prod
+  container farm_agent/ == main; its scripts/ lacks mushy156_backfill.py (image
+  built one commit before 031dc44f). Runtime unaffected, no rebuild needed.
 
 ## Closed tonight
 MUSHY-131, 133, 126 (done since 2026-08-29, Plane states never moved),
@@ -37,3 +38,11 @@ MUSHY-132, MUSHY-128. MUSHY-156 backfill RAN on prod: 32 uploaded, 4 reused,
   get denied.
 - Backfill dedupe is byte size per asset (`scripts/mushy156_backfill.py`);
   upgrade to a content hash only if two photos on one asset ever tie.
+
+## Verified 2026-09-05 morning (UYT)
+- Backfill DID run with --write: dry run inside the container reports
+  `uploaded=0 reused=36 failed=0` (= 32 uploaded + 4 reused last night).
+- Handover commit 01042012 is on origin/main; main clean.
+- Gotcha: `docker exec` output never reaches `docker logs`, and the run left
+  no history. Only the idempotent dry run proves it. Keep `/tmp/bf.py` in the
+  container until MUSHY-156 closes, or re-`docker cp` it from scripts/.
