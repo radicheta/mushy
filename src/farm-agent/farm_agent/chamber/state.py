@@ -36,6 +36,23 @@ SEVERITY = {
 # js:514, 560, 385, 436, 609 -- a literal 60s in Node, NOT mode_boot_grace_ms.
 STARTUP_GRACE_MS = 60_000
 
+# MUSHY-159. fc_controller already publishes grace_elapsed_sec -- seconds since
+# ITS OWN boot -- inside every sensor_health frame, so a restart is that number
+# jumping backwards. No new topic and no Pi deploy.
+#
+# The slack absorbs the clock step a Pi with no RTC takes when timesyncd lands
+# after boot: fc1 booted 2026-09-06 22:42:00Z believing it was July, and
+# grace_elapsed_sec moved 39s against wall time when the clock was corrected.
+# A real restart drops it to near zero from at least a full publish interval.
+#
+# ponytail: repurposed field, not a boot id. If fc_controller ever publishes a
+# real boot id, compare that instead and delete the slack.
+RESTART_CLOCK_SLACK_SEC = 60.0
+RESTART_STORM_WINDOW_MS = 60 * 60_000
+# Announce the first restart, then escalate ONCE when it repeats, then hold.
+# A power storm is one situation and must not become one message per flap.
+RESTART_MAX_SENDS_PER_WINDOW = 2
+
 
 @dataclass(frozen=True)
 class Freshness:
@@ -129,6 +146,9 @@ class ChamberState:
     # moment it reads 'true' again.
     sht30_flag_false_since_ms: int | None = None
     scd41_flag_false_since_ms: int | None = None
+    # MUSHY-159: last grace_elapsed_sec seen, and the restarts detected from it.
+    controller_uptime_sec: float | None = None
+    controller_restarts: list = field(default_factory=list)
 
 
 def initial_state(now_ms: int) -> ChamberState:
@@ -400,6 +420,49 @@ def _eval_pi(nxt, config, now_ms):
     return acts
 
 
+def _eval_controller_restart(nxt, config, now_ms, values: dict):
+    """MUSHY-159 -- fc_controller restarted, inferred from grace_elapsed_sec.
+
+    An EVENT, not a state: it fires once and has no recovery, so it does not go
+    through drive_alert_type. The first frame after the ALERTER boots only
+    records a baseline -- the alerter restarting must not read as the controller
+    restarting.
+
+    Why this exists: fc1 power-cycled five times on the evening of 2026-09-06
+    and every liveness rule stayed silent, because a Pi that is republishing
+    within a minute never looks dark to a data-flow watchdog.
+    """
+    from farm_agent.chamber import message
+
+    try:
+        uptime_sec = float(values.get("grace_elapsed_sec"))
+    except (TypeError, ValueError):
+        return []
+
+    previous = nxt.controller_uptime_sec
+    nxt.controller_uptime_sec = uptime_sec
+    if previous is None or uptime_sec >= previous - RESTART_CLOCK_SLACK_SEC:
+        return []
+
+    nxt.controller_restarts = [
+        ts for ts in nxt.controller_restarts
+        if now_ms - ts < RESTART_STORM_WINDOW_MS
+    ] + [now_ms]
+    count = len(nxt.controller_restarts)
+    if count > RESTART_MAX_SENDS_PER_WINDOW:
+        return []                      # storm already announced; stay quiet
+
+    severity = "CRITICAL" if count > 1 else "WARN"
+    return [{
+        "kind": "send",
+        "alert_type": "controller_restart",
+        "severity": severity,
+        "body": message.format_controller_restart(
+            restarts_last_hour=count, severity=severity, config=config
+        ),
+    }]
+
+
 def _eval_physical_sensors(nxt, config, now_ms):
     """sht30/scd41 watchdogs. js:385-414 (sensor_health) and js:609-626 (tick).
 
@@ -553,6 +616,7 @@ def transition(prev: ChamberState, event: dict, now_ms: int, config):
         # Phase 26 Plan 03: strict string-bool equality; unknown values fail safe
         # (no refresh -> the watchdog eventually trips).
         v = event.get("values") or {}
+        actions.extend(_eval_controller_restart(nxt, config, now_ms, v))
         for sensor in ("sht30", "scd41"):
             flag = v.get(f"{sensor}_fresh")
             if flag == "true":

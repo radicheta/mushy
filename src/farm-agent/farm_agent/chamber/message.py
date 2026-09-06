@@ -165,6 +165,23 @@ def format_recovery(*, alert_type: str, fields: dict, duration_ms: int | None, c
     return body + f"Open: {config.dashboard_url}"
 
 
+def format_controller_restart(*, restarts_last_hour: int, severity: str, config) -> str:
+    """The chamber controller came back up (MUSHY-159).
+
+    An event, not a state, so there is no RECOVERY counterpart and nothing to
+    report a duration for.
+    """
+    body = f"[PROBLEM \u00b7 {severity}] FC-1 \u00b7 Controller restarted\n"
+    if restarts_last_hour > 1:
+        body += (
+            f"{restarts_last_hour} restarts in the last hour. "
+            "Looks like chamber power, not software.\n"
+        )
+    else:
+        body += "Control state was lost and rebuilt. Chamber ran unattended briefly.\n"
+    return body + f"Open: {config.dashboard_url}"
+
+
 def format_heartbeat(*, summary: dict, config, now_ms: int) -> str:
     """Daily HEARTBEAT message. Port of message.js:143-153."""
     co2 = summary.get("co2")

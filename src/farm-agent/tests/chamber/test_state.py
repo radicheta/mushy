@@ -759,3 +759,92 @@ def test_sht30_fresh_false_sustained_past_the_floor_pages(chamber_config):
     )
     assert st.per_type["sht30"].state == "OK"
     assert [a["kind"] for a in _sensor_acts(actions)] == ["recovery"]
+
+
+# ---------------------------------------------------------------------------
+# Controller restart -- MUSHY-159 (fc1 power-cycled 5x on 2026-09-06, silently)
+# ---------------------------------------------------------------------------
+
+
+def _uptime(sec):
+    return _health(sht30_fresh="true", scd41_fresh="true", grace_elapsed_sec=str(sec))
+
+
+def test_first_health_frame_only_records_a_baseline(chamber_config):
+    """The ALERTER restarting must not read as the CONTROLLER restarting."""
+    cfg = _cfg(chamber_config)
+    st = _link_up(state.initial_state(BOOT))
+    st, actions = state.transition(st, _uptime(9000.0), BOOT + 90 * MIN, cfg)
+    assert actions == []
+    assert st.controller_uptime_sec == 9000.0
+
+
+def test_uptime_going_backwards_reports_a_restart(chamber_config):
+    cfg = _cfg(chamber_config)
+    st = _link_up(state.initial_state(BOOT))
+    now = BOOT + 90 * MIN
+    st, _ = state.transition(st, _uptime(9000.0), now, cfg)
+    st, actions = state.transition(st, _uptime(12.0), now + MIN, cfg)
+
+    sends = [a for a in actions if a["alert_type"] == "controller_restart"]
+    assert len(sends) == 1
+    assert sends[0]["severity"] == "WARN"
+    assert "Controller restarted" in sends[0]["body"]
+
+
+def test_a_settling_clock_is_not_a_restart(chamber_config):
+    """fc1 has no RTC. timesyncd landing after boot moved grace_elapsed_sec 39s
+    against wall time on 2026-09-06; that must not page anyone."""
+    cfg = _cfg(chamber_config)
+    st = _link_up(state.initial_state(BOOT))
+    now = BOOT + 90 * MIN
+    st, _ = state.transition(st, _uptime(700.0), now, cfg)
+    st, actions = state.transition(st, _uptime(661.0), now + MIN, cfg)
+    assert actions == []
+
+
+def test_a_power_storm_escalates_once_then_holds(chamber_config):
+    """The farmer asked to be told, not to be told once per flap."""
+    cfg = _cfg(chamber_config)
+    st = _link_up(state.initial_state(BOOT))
+    now = BOOT + 90 * MIN
+    st, _ = state.transition(st, _uptime(9000.0), now, cfg)
+
+    bodies = []
+    for i in range(1, 6):                     # five restarts, as fc1 actually did
+        st, actions = state.transition(st, _uptime(10.0), now + i * MIN, cfg)
+        st, _ = state.transition(st, _uptime(600.0), now + i * MIN + 1000, cfg)
+        bodies += [a["body"] for a in actions if a["alert_type"] == "controller_restart"]
+
+    assert len(bodies) == 2                   # first, then the escalation, then quiet
+    assert "PROBLEM · WARN" in bodies[0]
+    assert "PROBLEM · CRITICAL" in bodies[1]
+    assert "2 restarts in the last hour" in bodies[1]
+    assert len(st.controller_restarts) == 5   # all five still counted
+
+
+def test_restarts_outside_the_window_do_not_escalate(chamber_config):
+    cfg = _cfg(chamber_config)
+    st = _link_up(state.initial_state(BOOT))
+    now = BOOT + 90 * MIN
+    st, _ = state.transition(st, _uptime(9000.0), now, cfg)
+    st, first = state.transition(st, _uptime(10.0), now + MIN, cfg)
+
+    later = now + MIN + 2 * 60 * MIN          # two hours on, a fresh situation
+    st, _ = state.transition(st, _uptime(9000.0), later, cfg)
+    st, second = state.transition(st, _uptime(10.0), later + MIN, cfg)
+
+    assert [a["severity"] for a in first if a["alert_type"] == "controller_restart"] == ["WARN"]
+    assert [a["severity"] for a in second if a["alert_type"] == "controller_restart"] == ["WARN"]
+
+
+def test_a_missing_or_junk_uptime_field_is_ignored(chamber_config):
+    cfg = _cfg(chamber_config)
+    st = _link_up(state.initial_state(BOOT))
+    now = BOOT + 90 * MIN
+    st, a1 = state.transition(st, _health(sht30_fresh="true", scd41_fresh="true"), now, cfg)
+    st, a2 = state.transition(
+        st, _health(sht30_fresh="true", grace_elapsed_sec="n/a"), now + MIN, cfg
+    )
+    assert a1 == [] and a2 == []
+    assert st.controller_uptime_sec is None
