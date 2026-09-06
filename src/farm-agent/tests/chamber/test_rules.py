@@ -131,24 +131,21 @@ def test_pi_offline_ros_branch_requires_explicit_false(chamber_config):
     ) is False
 
 
-def test_pi_offline_fc1_dark_hardcoded_3min_ignores_config(chamber_config):
-    """Phase 46 D-09: the chamber-dark branch is 3 min FLAT, not pi_offline_min.
+def test_pi_offline_fc1_dark_uses_pi_offline_min(chamber_config):
+    """2026-09-06: the chamber-dark branch honours pi_offline_min.
 
-    With pi_offline_min=15 a config-driven threshold would stay quiet for 15 min.
-    The farmer needs to know the chamber is uncontrolled in 3.
+    It was a flat 3-minute constant (Phase 46 D-09) so a dark chamber paged fast.
+    That constant paged the farmer for a 221-second wg0 hiccup -- the exact class
+    of flap pi_offline_min was raised to 15 to absorb. Farmer chose one threshold.
     """
     cfg = chamber_config(ALERT_PI_OFFLINE_MIN="15")
     now = 10_000_000
     assert rules.is_pi_offline(
-        **_pi_args(now_ms=now, fc1_last_msg_ts=now - int(3.5 * MIN)), config=cfg
+        **_pi_args(now_ms=now, fc1_last_msg_ts=now - 16 * MIN), config=cfg
     ) is True
     assert rules.is_pi_offline(
-        **_pi_args(now_ms=now, fc1_last_msg_ts=now - 2 * MIN), config=cfg
+        **_pi_args(now_ms=now, fc1_last_msg_ts=now - int(3.5 * MIN)), config=cfg
     ) is False
-
-
-def test_fc1_dark_threshold_constant_is_three_minutes():
-    assert rules.FC1_DARK_THRESHOLD_MS == 3 * 60_000
 
 
 # ---------------------------------------------------------------------------

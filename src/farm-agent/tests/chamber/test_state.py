@@ -681,3 +681,81 @@ def test_heartbeat_bypasses_snooze(chamber_config):
         at_08, cfg,
     )
     assert actions[0]["kind"] == "heartbeat"
+
+
+# ---------------------------------------------------------------------------
+# Flap floor -- 2026-09-06 regression (farmer paged for a 6-second blip)
+# ---------------------------------------------------------------------------
+
+
+def _health(**values):
+    return {"type": "sensor_health", "level": 0, "message": "ok", "values": values}
+
+
+def _sensor_acts(actions):
+    """Only the sht30/scd41 traffic -- the pi watchdog is a separate concern."""
+    return [a for a in actions if a.get("alert_type") in ("sht30", "scd41")]
+
+
+def _link_up(st):
+    """A live link, so the pi watchdog neither fires nor subsumes the sensors."""
+    st.ws_connected = True
+    st.ws_disconnected_since_ms = None
+    st.ros_connected = True
+    st.ros_disconnected_since_ms = None
+    st.fc1_last_msg_ts = None
+    return st
+
+
+def test_one_frame_of_sht30_fresh_false_does_not_page(chamber_config):
+    """The 60s flap floor used to measure `now - last_seen_ms`.
+
+    fc_controller publishes sensor_health once a minute, so that clock was
+    already >= 60s on arrival and the floor gated nothing: a single frame with
+    sht30_fresh='false' fired CRITICAL, and the next tick 30s later sent the
+    RECOVERY. That pair is what reached the farmer at 17:11 on 2026-09-06.
+    """
+    cfg = _cfg(chamber_config, ALERT_SENSOR_FLAP_MIN_SEC="60")
+    st = _link_up(state.initial_state(BOOT))
+    now = BOOT + 90 * MIN                     # past the startup grace
+
+    # a healthy frame, then a single unhappy one
+    st, _ = state.transition(st, _health(sht30_fresh="true", scd41_fresh="true"), now, cfg)
+    st, actions = state.transition(
+        st, _health(sht30_fresh="false", scd41_fresh="true"), now + MIN, cfg
+    )
+    assert st.per_type["sht30"].state == "OK"
+    assert _sensor_acts(actions) == []
+
+    # and the tick must not invent a RECOVERY for an alert that never fired
+    st, actions = state.transition(st, {"type": "tick"}, now + MIN + 30_000, cfg)
+    assert _sensor_acts(actions) == []
+
+
+def test_sht30_fresh_false_sustained_past_the_floor_pages(chamber_config):
+    """The floor delays the page, it does not remove it. A real failure still fires."""
+    cfg = _cfg(chamber_config, ALERT_SENSOR_FLAP_MIN_SEC="60")
+    st = _link_up(state.initial_state(BOOT))
+    now = BOOT + 90 * MIN
+
+    st, _ = state.transition(st, _health(sht30_fresh="true", scd41_fresh="true"), now, cfg)
+    st, _ = state.transition(
+        st, _health(sht30_fresh="false", scd41_fresh="true"), now + MIN, cfg
+    )
+    st, actions = state.transition(
+        st, _health(sht30_fresh="false", scd41_fresh="true"), now + 2 * MIN, cfg
+    )
+    assert st.per_type["sht30"].state == "FIRING"
+    assert [a["kind"] for a in _sensor_acts(actions)] == ["send"]
+
+    # the tick evaluates the same marker, so it cannot auto-recover a live failure
+    st, actions = state.transition(st, {"type": "tick"}, now + 2 * MIN + 30_000, cfg)
+    assert st.per_type["sht30"].state == "FIRING"
+    assert _sensor_acts(actions) == []
+
+    # recovery arrives only when the Pi says the sensor is fresh again
+    st, actions = state.transition(
+        st, _health(sht30_fresh="true", scd41_fresh="true"), now + 3 * MIN, cfg
+    )
+    assert st.per_type["sht30"].state == "OK"
+    assert [a["kind"] for a in _sensor_acts(actions)] == ["recovery"]

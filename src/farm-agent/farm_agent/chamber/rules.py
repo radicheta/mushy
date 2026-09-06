@@ -11,12 +11,6 @@ bug: 0, 0.0 and "" are legitimate values in this domain.
 
 from __future__ import annotations
 
-# rules.js:5 -- Phase 46 D-09. The chamber-dark threshold is HARD-CODED, not
-# config-driven: the legacy piOfflineMin=15 (from fc_config.yaml, sized for the
-# Pi-ping liveness branch) is far too slow for the data-flow signal. Surfaced by
-# the 2026-05-21 46-03 live-fire smoke.
-FC1_DARK_THRESHOLD_MS = 3 * 60_000
-
 
 def is_rh_oob(humidity: float, effective) -> bool:
     """True when |humidity - rh_target| > rh_band. Port of rules.js:16-19.
@@ -58,7 +52,7 @@ def is_pi_offline(
       1. WS disconnected for > pi_offline_min minutes (measured from the
          disconnect edge -- MUSHY-123)
       2. ROS disconnected for > pi_offline_min minutes
-      3. fc1 publisher silent for > FC1_DARK_THRESHOLD_MS (Phase 46 D-03)
+      3. fc1 publisher silent for > pi_offline_min minutes (Phase 46 D-03)
 
     Trigger 3 is the real "chamber dark" signal -- fc1 publisher silence inferred
     from data flow across every subscribed topic. Triggers 1-2 are RETAINED (D-03)
@@ -79,9 +73,12 @@ def is_pi_offline(
         if now_ms - ros_disconnected_since_ms > threshold_ms:
             return True
 
-    # Phase 46 D-03 + D-09. Hard 3-minute constant, NOT config.pi_offline_min.
+    # Phase 46 D-03. This branch used a hard-coded 3-minute constant (D-09) so
+    # that a dark chamber paged fast. 2026-09-06: that constant paged the farmer
+    # for a 221-second wg0 hiccup, which is exactly what pi_offline_min was
+    # raised to 15 to absorb. Farmer's call: one threshold, config-driven.
     if fc1_last_msg_ts is not None:
-        if now_ms - fc1_last_msg_ts > FC1_DARK_THRESHOLD_MS:
+        if now_ms - fc1_last_msg_ts > threshold_ms:
             return True
 
     return False

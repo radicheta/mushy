@@ -58,7 +58,7 @@ async def test_bridge_disconnect_fires_pi_alert(svc):
             "type": "pi_liveness",
             "ws_connected": True,
             "ros_connected": True,
-            "fc1_last_msg_ts": now - 4 * MIN,   # dark for 4 min > 3 min threshold
+            "fc1_last_msg_ts": now - 6 * MIN,   # dark for 6 min > pi_offline_min=5
         },
         now_ms=now,
     )
@@ -90,7 +90,7 @@ async def test_recovery_is_sent_after_the_alert(svc):
 
     await s.on_event(
         {"type": "pi_liveness", "ws_connected": True, "ros_connected": True,
-         "fc1_last_msg_ts": now - 4 * MIN}, now_ms=now,
+         "fc1_last_msg_ts": now - 6 * MIN}, now_ms=now,
     )
     assert len(client.sent) == 1
 
@@ -114,7 +114,7 @@ async def test_send_failure_does_not_break_the_fsm(svc):
     client.send = boom
     await s.on_event(
         {"type": "pi_liveness", "ws_connected": True, "ros_connected": True,
-         "fc1_last_msg_ts": now - 4 * MIN}, now_ms=now,
+         "fc1_last_msg_ts": now - 6 * MIN}, now_ms=now,
     )
     assert s.state.per_type["pi"].state == "FIRING"   # FSM advanced regardless
 
@@ -142,7 +142,7 @@ async def test_snoozed_type_suppresses_the_send(svc):
 
     await s.on_event(
         {"type": "pi_liveness", "ws_connected": True, "ros_connected": True,
-         "fc1_last_msg_ts": now - 4 * MIN}, now_ms=now,
+         "fc1_last_msg_ts": now - 6 * MIN}, now_ms=now,
     )
     assert s.state.per_type["pi"].state == "FIRING"   # FSM advances
     assert client.sent == []                           # but nothing is sent

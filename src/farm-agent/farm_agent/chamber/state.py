@@ -124,6 +124,11 @@ class ChamberState:
     humidifier_cycle_log: list = field(default_factory=list)
     sht30_last_seen_ms: int | None = None
     scd41_last_seen_ms: int | None = None
+    # 2026-09-06: when the Pi's own `xxx_fresh` flag first read 'false', so the
+    # flap floor can measure how long the sensor has been unhappy. Cleared the
+    # moment it reads 'true' again.
+    sht30_flag_false_since_ms: int | None = None
+    scd41_flag_false_since_ms: int | None = None
 
 
 def initial_state(now_ms: int) -> ChamberState:
@@ -395,7 +400,7 @@ def _eval_pi(nxt, config, now_ms):
     return acts
 
 
-def _eval_physical_sensors(nxt, config, now_ms, values: dict | None = None):
+def _eval_physical_sensors(nxt, config, now_ms):
     """sht30/scd41 watchdogs. js:385-414 (sensor_health) and js:609-626 (tick).
 
     MUSHY-44 quirk 3, FIXED 2026-08-19 (sanctioned delta from js:353/386/437/
@@ -408,23 +413,30 @@ def _eval_physical_sensors(nxt, config, now_ms, values: dict | None = None):
     from farm_agent.chamber import rules
 
     actions: list[dict] = []
-    v = values or {}
     effective = resolve_effective_config(nxt, config, now_ms) if has_mode_context(nxt) else config
     sensor_cfg = _fast_fire(effective)
     # 2026-05-12 flap floor: honour a Pi-side `xxx_fresh=='false'` flag only once
     # sustained for sensor_flap_min_sec. The slow-silence path (is_sensor_silent)
     # is deliberately untouched and keeps gating on sensor_offline_min (MINUTES).
+    #
+    # 2026-09-06: this used to measure `now - last_seen_ms`, i.e. "how long since
+    # we last saw a fresh sighting", NOT "how long has the flag been false". The
+    # controller publishes sensor_health once a minute, so that clock was already
+    # past a 60s floor on arrival and the floor suppressed nothing: a single
+    # frame with sht30_fresh='false' fired CRITICAL immediately. It now measures
+    # the flag's own dwell time. The tick evaluates the same marker (rather than
+    # the absent `values` payload), so a real sustained failure is no longer
+    # auto-RECOVERED by the next tick 30 seconds later.
     flap_ms = (config.sensor_flap_min_sec or 0) * 1000
-
-    def _flag_stale(last_seen_ms):
-        return last_seen_ms is not None and (now_ms - last_seen_ms) >= flap_ms
 
     for sensor in ("sht30", "scd41"):
         enabled = config.sht30_enabled if sensor == "sht30" else config.scd41_enabled
         if enabled is False:
             continue  # 999.42: a muted sensor is not evaluated at all
         last_ms = nxt.sht30_last_seen_ms if sensor == "sht30" else nxt.scd41_last_seen_ms
-        stale = (v.get(f"{sensor}_fresh") == "false" and _flag_stale(last_ms)) or (
+        false_since = getattr(nxt, f"{sensor}_flag_false_since_ms")
+        flag_stale = false_since is not None and (now_ms - false_since) >= flap_ms
+        stale = flag_stale or (
             rules.is_sensor_silent(last_seen_ms=last_ms, now_ms=now_ms, config=effective)
         )
         entry, acts = drive_alert_type(
@@ -541,16 +553,19 @@ def transition(prev: ChamberState, event: dict, now_ms: int, config):
         # Phase 26 Plan 03: strict string-bool equality; unknown values fail safe
         # (no refresh -> the watchdog eventually trips).
         v = event.get("values") or {}
-        if v.get("sht30_fresh") == "true":
-            nxt.sht30_last_seen_ms = now_ms
-        if v.get("scd41_fresh") == "true":
-            nxt.scd41_last_seen_ms = now_ms
+        for sensor in ("sht30", "scd41"):
+            flag = v.get(f"{sensor}_fresh")
+            if flag == "true":
+                setattr(nxt, f"{sensor}_last_seen_ms", now_ms)
+                setattr(nxt, f"{sensor}_flag_false_since_ms", None)
+            elif flag == "false" and getattr(nxt, f"{sensor}_flag_false_since_ms") is None:
+                setattr(nxt, f"{sensor}_flag_false_since_ms", now_ms)
         # last-seen refreshes above are UNCONDITIONAL (js:382-384) so evaluation
         # resumes with accurate liveness once pi clears.
         if (now_ms - nxt.booted_at_ms) >= STARTUP_GRACE_MS and (
             nxt.per_type["pi"].state != STATES["FIRING"]
         ):
-            actions.extend(_eval_physical_sensors(nxt, config, now_ms, v))
+            actions.extend(_eval_physical_sensors(nxt, config, now_ms))
 
     elif etype == "sensor_freshness":
         sensor = event.get("sensor")
