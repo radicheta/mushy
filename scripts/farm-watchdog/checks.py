@@ -8,6 +8,7 @@ nobody noticed:
   whisper transcribing  5.5 weeks of voice notes stored with NULL transcripts
   telemetry arriving    the chamber alerter was DEAF for 1.5 days (MUSHY-97)
   parked farm records   a confirmed 9-block session lost 17 days (MUSHY-75)
+  captures answered     out of API credit: 19 captures, 4 days, no reply (MUSHY-162)
   container restarting  a crash-looping dependent logged the cause for 3 days
 
 The framing that ties them together, and the reason none of these is a liveness
@@ -170,6 +171,24 @@ def check_parked_drafts(count) -> dict:
     return verdict(
         "no_parked_records", BROKEN,
         f"{count} confirmed record(s) parked in commit_failed at the retry cap",
+    )
+
+
+def check_unanswered_captures(count, window_h: int = 24, threshold: int = 3) -> dict:
+    """Captures the gate let through become a draft or a reply.
+
+    MUSHY-162: the Anthropic account ran out of credit. The gate failed open,
+    the extractor returned ok:false, and 19 captures over 4 days got silence.
+    Before that outage, 3 captures in 5 weeks legitimately ended in nothing
+    (two of them 5h apart), so one or two is background, three in a day is not.
+    """
+    if count is None:
+        return verdict("captures_answered", UNKNOWN, "could not read captures")
+    if count < threshold:
+        return verdict("captures_answered", OK, f"{count} unanswered in {window_h}h")
+    return verdict(
+        "captures_answered", BROKEN,
+        f"{count} capture(s) in the last {window_h}h got no draft and no reply",
     )
 
 

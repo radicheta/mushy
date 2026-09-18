@@ -200,6 +200,18 @@ def run_checks() -> dict:
     )
     results.append(checks.check_parked_drafts(int(parked) if parked else None))
 
+    # Gate values that allow extraction (farm_agent/gate/event_gate.py). The
+    # 10-minute floor leaves room for an extraction still in flight.
+    _, unanswered = psql(
+        "select count(*) from signal_capture c "
+        "where c.extraction_gate in ('fast_event', 'forced', 'haiku_event') "
+        "and c.farmos_person is not null and c.farmos_person <> '(unassigned)' "
+        "and c.captured_at between now() - interval '24 hours' and now() - interval '10 minutes' "
+        "and not exists (select 1 from signal_draft d where c.id = any(d.source_capture_ids)) "
+        "and not exists (select 1 from signal_outbound o where o.related_capture_id = c.id);"
+    )
+    results.append(checks.check_unanswered_captures(int(unanswered) if unanswered else None))
+
     containers = fetch_containers()
     results.append(checks.check_restarting(containers))
     results.append(checks.check_networks_attached(containers))

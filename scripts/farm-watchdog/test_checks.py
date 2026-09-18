@@ -153,6 +153,26 @@ class TestParkedDrafts:
         assert "parked" in r["detail"]
 
 
+class TestUnansweredCaptures:
+    """MUSHY-162: the Anthropic account ran out of credit. Every capture the
+    gate let through got extractor ok:false and the farmer heard nothing, for
+    19 captures over 4 days, while every container looked fine."""
+
+    def test_none_is_ok(self):
+        assert checks.check_unanswered_captures(0)["state"] == checks.OK
+
+    def test_the_normal_background_is_not_an_alarm(self):
+        """3 legit misses in 5 weeks before the outage (empty text, an edit,
+        a one-word follow-up), two of them 5h apart."""
+        assert checks.check_unanswered_captures(2)["state"] == checks.OK
+
+    def test_the_mushy162_inoc_session(self):
+        """Photo, voice note and text inside one minute, none answered."""
+        r = checks.check_unanswered_captures(3)
+        assert r["state"] == checks.BROKEN
+        assert "3 capture" in r["detail"]
+
+
 class TestContainers:
     def test_steady_containers_are_ok(self):
         c = [{"name": "a", "restarting": False, "networks": 1}]
@@ -222,6 +242,7 @@ class TestSummary:
     (checks.check_heartbeat_recent, (None,)),
     (checks.check_degraded_captures, (None,)),
     (checks.check_parked_drafts, (None,)),
+    (checks.check_unanswered_captures, (None,)),
     (checks.check_restarting, (None,)),
     (checks.check_networks_attached, (None,)),
 ])

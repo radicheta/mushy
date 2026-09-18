@@ -38,6 +38,7 @@ whole subject of this ticket.
 | `heartbeat_recent` | is the daily report still current (<25h)? | MUSHY-97 |
 | `voice_notes_transcribing` | any capture stored degraded in 24h? | 5.5-week whisper outage |
 | `no_parked_records` | confirmed records all written? | MUSHY-75 |
+| `captures_answered` | 3+ gated-through captures in 24h with no draft and no reply? | MUSHY-162 (API credit ran out) |
 | `no_restart_loops` | anything crash-looping? | 3 days of a dependent shouting |
 | `networks_attached` | anything network-detached? | BONE-10 |
 
