@@ -11,6 +11,7 @@ Per T-13-06: credentials NEVER logged. Logger used only for status messages.
 """
 
 import os
+import time
 import datetime
 import requests
 
@@ -32,6 +33,9 @@ from farmos_agent.farmos_client import (
 )
 from farmos_agent.telemetry_query import query_daily_summary
 from farmos_agent.report_builder import build_report_markdown
+
+
+CONFIGURE_RETRY_SEC = 10
 
 
 class FarmOSAgent(Node):
@@ -305,12 +309,13 @@ def main():
 
     # Self-transition — no external lifecycle manager in this container.
     # Call on_configure / on_activate directly (A2 fallback from RESEARCH.md).
-    cfg_result = node.on_configure(None)
-    if cfg_result != TransitionCallbackReturn.SUCCESS:
-        node.get_logger().error('[farmos_agent] configure failed — exiting')
-        node.destroy_node()
-        rclpy.shutdown()
-        return
+    # Timescale and farmOS can take minutes to come up after a host reboot.
+    # Wait for them here instead of exiting into docker's restart loop (BONE-22).
+    while node.on_configure(None) != TransitionCallbackReturn.SUCCESS:
+        node.get_logger().error(
+            f'[farmos_agent] configure failed — retrying in {CONFIGURE_RETRY_SEC}s'
+        )
+        time.sleep(CONFIGURE_RETRY_SEC)
 
     act_result = node.on_activate(None)
     if act_result != TransitionCallbackReturn.SUCCESS:

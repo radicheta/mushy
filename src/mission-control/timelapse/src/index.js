@@ -24,6 +24,7 @@ const pool = new Pool({
 
 const jobs = new Map();
 const healthState = { last_nightly_at: null, last_nightly_status: null };
+const DB_RETRY_MS = 5000;
 
 async function runComposition(jobId, { from, to, camera_id }) {
     const job = jobs.get(jobId);
@@ -60,8 +61,21 @@ function previousDayInTz(timezone) {
     return fmt.format(yesterday);
 }
 
+// Timescale can take minutes to accept connections after a host reboot.
+// Wait for it here instead of exiting into docker's restart loop (BONE-22).
+async function initDbWhenReady() {
+    for (;;) {
+        try {
+            return await db.initDb(pool);
+        } catch (e) {
+            console.error(`[db] not ready (${e.message}); retrying in ${DB_RETRY_MS / 1000}s`);
+            await new Promise((resolve) => setTimeout(resolve, DB_RETRY_MS));
+        }
+    }
+}
+
 async function main() {
-    await db.initDb(pool);
+    await initDbWhenReady();
     console.log('[db] Schema initialized');
 
     const app = express();
