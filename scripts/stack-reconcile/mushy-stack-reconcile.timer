@@ -1,5 +1,5 @@
 [Unit]
-Description=Periodically re-check for detached containers (self-heal between boots)
+Description=Periodically re-check for detached or failed-start containers (self-heal between boots)
 
 [Timer]
 # 3 min after boot: late enough that the boot-time oneshot and every compose

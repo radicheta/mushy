@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # stack-reconcile — repair docker containers that came up detached from their
-# networks, typically after a host cold start.
+# networks, or failed to start at all, typically after a host cold start.
 #
 # THE FAILURE THIS FIXES (observed 2026-08-13 boot, found 2026-08-17):
 # elder-plops rebooted at 23:56; dockerd started at 23:59 and auto-started every
@@ -35,9 +35,18 @@
 # The verify pass at the end exists because of exactly this uncertainty: it
 # re-checks and fails loudly rather than trusting the repair worked.
 #
+# THE SECOND FAILURE THIS FIXES (2026-10-12 boot, BONE-20):
+# dockerd started before DHCPv4 had delivered 10.68.155.50 (network-online was
+# satisfied by IPv6 alone). Six containers that publish on that address failed
+# with "failed to bind host port ... cannot assign requested address" and
+# stayed EXITED -- dockerd does not retry a start that fails this way. This
+# script only looked at running containers, so it reported OK. `docker start`
+# on such a container brings it up detached, so the repair is the same
+# force-recreate as above.
+#
 # Usage:
-#   stack-reconcile.sh            repair any detached containers
-#   stack-reconcile.sh --check    report only, exit 1 if any are detached
+#   stack-reconcile.sh            repair any detached or failed-start containers
+#   stack-reconcile.sh --check    report only, exit 1 if any are broken
 #
 # Env:
 #   RECONCILE_MIN_UPTIME_SEC  skip containers younger than this (default 60) so
@@ -71,27 +80,48 @@ done
 [ "$waited" -gt 0 ] && log "dockerd ready after ${waited}s"
 
 # ---------------------------------------------------------------------------
-# Find running containers with zero networks.
+# Classify one container. Prints "detached" or "failed-start" if it is broken,
+# nothing otherwise.
 #
-# host/none network modes are legitimately network-less -- mushy-bridge-1 runs
-# host-mode on purpose (it needs the host's wg0 for CycloneDDS). Excluding them
-# is required, not an optimisation.
+# detached: running with zero networks. host/none network modes are
+# legitimately network-less -- mushy-bridge-1 runs host-mode on purpose (it
+# needs the host's wg0 for CycloneDDS). Excluding them is required, not an
+# optimisation.
+#
+# failed-start: exited, restart policy says it should be up, and dockerd
+# recorded a start error. The error is what separates this from a container
+# someone stopped by hand (`docker stop` leaves State.Error empty), which must
+# stay stopped.
 # ---------------------------------------------------------------------------
-detached=""
+broken_kind() {
+    local status mode nets policy err
+    read -r status mode nets policy err <<<"$(docker inspect "$1" --format \
+        '{{.State.Status}} {{.HostConfig.NetworkMode}} {{len .NetworkSettings.Networks}} {{.HostConfig.RestartPolicy.Name}} {{if .State.Error}}1{{else}}0{{end}}' 2>/dev/null)"
+    if [ "$status" = "running" ]; then
+        [ "$nets" != "0" ] && return
+        case "$mode" in host|none|container:*) return ;; esac
+        echo detached
+    elif [ "$status" = "exited" ] && [ "$err" = "1" ]; then
+        case "$policy" in always|unless-stopped) echo failed-start ;; esac
+    fi
+}
+
+broken=""
 now_epoch=$(date +%s)
 
 while read -r name; do
     [ -z "$name" ] && continue
-    read -r mode nets started <<<"$(docker inspect "$name" --format \
-        '{{.HostConfig.NetworkMode}} {{len .NetworkSettings.Networks}} {{.State.StartedAt}}' 2>/dev/null)"
-    [ "$nets" != "0" ] && continue
-    case "$mode" in host|none|container:*) continue ;; esac
+    kind=$(broken_kind "$name")
+    [ -z "$kind" ] && continue
 
-    started_epoch=$(date -d "$started" +%s 2>/dev/null || echo 0)
-    age=$((now_epoch - started_epoch))
-    if [ "$age" -lt "$MIN_UPTIME_SEC" ]; then
-        log "SKIP $name -- detached but only ${age}s old, may still be starting"
-        continue
+    if [ "$kind" = "detached" ]; then
+        started=$(docker inspect "$name" --format '{{.State.StartedAt}}')
+        started_epoch=$(date -d "$started" +%s 2>/dev/null || echo 0)
+        age=$((now_epoch - started_epoch))
+        if [ "$age" -lt "$MIN_UPTIME_SEC" ]; then
+            log "SKIP $name -- detached but only ${age}s old, may still be starting"
+            continue
+        fi
     fi
 
     proj=$(docker inspect "$name" --format '{{index .Config.Labels "com.docker.compose.project"}}')
@@ -100,20 +130,24 @@ while read -r name; do
     files=$(docker inspect "$name" --format '{{index .Config.Labels "com.docker.compose.project.config_files"}}')
 
     if [ -z "$proj" ] || [ -z "$svc" ]; then
-        log "WARN $name is detached but carries no compose labels; repair it by hand"
+        log "WARN $name is $kind but carries no compose labels; repair it by hand"
         continue
     fi
-    log "DETACHED $name (project=$proj service=$svc mode=$mode age=${age}s)"
-    detached="${detached}${proj}|${svc}|${dir}|${files}"$'\n'
-done < <(docker ps --format '{{.Names}}')
+    if [ "$kind" = "detached" ]; then
+        log "DETACHED $name (project=$proj service=$svc age=${age}s)"
+    else
+        log "FAILED-START $name (project=$proj service=$svc): $(docker inspect "$name" --format '{{.State.Error}}')"
+    fi
+    broken="${broken}${proj}|${svc}|${dir}|${files}"$'\n'
+done < <(docker ps -a --format '{{.Names}}')
 
-if [ -z "$detached" ]; then
-    log "OK -- every container is attached to its network"
+if [ -z "$broken" ]; then
+    log "OK -- every container is attached to its network and none failed to start"
     exit 0
 fi
 
 if [ "$CHECK_ONLY" -eq 1 ]; then
-    log "CHECK: detached containers present (see above)"
+    log "CHECK: broken containers present (see above)"
     exit 1
 fi
 
@@ -128,7 +162,7 @@ fi
 rc=0
 while IFS='|' read -r proj dir files; do
     [ -z "$proj" ] && continue
-    svcs=$(printf '%s' "$detached" | awk -F'|' -v p="$proj" '$1==p {print $2}' | sort -u | tr '\n' ' ')
+    svcs=$(printf '%s' "$broken" | awk -F'|' -v p="$proj" '$1==p {print $2}' | sort -u | tr '\n' ' ')
     [ -z "$svcs" ] && continue
 
     fargs=()
@@ -144,7 +178,7 @@ while IFS='|' read -r proj dir files; do
         log "ERROR repair failed for project=$proj"
         rc=1
     fi
-done < <(printf '%s' "$detached" | awk -F'|' '!seen[$1]++ {print $1"|"$3"|"$4}')
+done < <(printf '%s' "$broken" | awk -F'|' '!seen[$1]++ {print $1"|"$3"|"$4}')
 
 # ---------------------------------------------------------------------------
 # Verify. A repair that silently did not take is worse than none, because the
@@ -154,18 +188,16 @@ sleep 5
 still=0
 while read -r name; do
     [ -z "$name" ] && continue
-    read -r mode nets <<<"$(docker inspect "$name" --format \
-        '{{.HostConfig.NetworkMode}} {{len .NetworkSettings.Networks}}' 2>/dev/null)"
-    [ "$nets" != "0" ] && continue
-    case "$mode" in host|none|container:*) continue ;; esac
-    log "STILL DETACHED after repair: $name"
+    kind=$(broken_kind "$name")
+    [ -z "$kind" ] && continue
+    log "STILL BROKEN after repair: $name ($kind)"
     still=1
-done < <(docker ps --format '{{.Names}}')
+done < <(docker ps -a --format '{{.Names}}')
 
 if [ "$still" -eq 1 ]; then
-    log "FAILED -- some containers are still detached"
+    log "FAILED -- some containers are still broken"
     exit 1
 fi
 
-log "DONE -- all containers attached"
+log "DONE -- all containers attached and started"
 exit "$rc"

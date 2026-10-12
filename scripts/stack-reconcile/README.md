@@ -1,7 +1,8 @@
 # stack-reconcile
 
-Repairs docker containers that come up **running but attached to zero networks**,
-the state elder-plops landed in after its 2026-08-13 cold start.
+Repairs docker containers that come up **running but attached to zero networks**
+(the state elder-plops landed in after its 2026-08-13 cold start) or that
+**failed to start and stayed exited** (the 2026-10-12 boot, BONE-20).
 
 ## The incident this exists for
 
@@ -25,17 +26,38 @@ and four reported `healthy`, because their healthchecks curl `localhost` *inside
 the container and never cross the network. The only external symptom was the
 farmOS agent's restart loop, which nobody was watching.
 
+## The second incident (2026-10-12, BONE-20)
+
+dockerd started before DHCPv4 had delivered `10.68.155.50`: `network-online`
+was reached on IPv6 alone at 11:02:06, the IPv4 lease arrived at 11:03:53. Six
+containers that publish on that address (`farmos-www-1`, `farmos-flask-1`, their
+`-dev` twins, `plane-proxy-1`, `noodle-mcp`) failed with `failed to bind host
+port ... cannot assign requested address` and stayed **exited**. dockerd does
+not retry a start that fails this way. This script then only enumerated running
+containers, so the timer reported OK while prod farmOS was down.
+
+`docker start` alone does not fix such a container: it comes up detached. The
+repair is the same force-recreate.
+
+Two layers now cover it: `docker-wait-lan-addr.conf` delays dockerd until the
+address exists (prevention), and the script repairs failed starts (cure).
+
 ## Usage
 
 ```bash
 stack-reconcile.sh          # repair
-stack-reconcile.sh --check  # report only; exit 1 if anything is detached
+stack-reconcile.sh --check  # report only; exit 1 if anything is detached or failed to start
 ```
 
 Detection: running containers whose `NetworkSettings.Networks` is empty,
 excluding `host`/`none`/`container:` network modes -- `mushy-bridge-1`
 legitimately runs host-mode for CycloneDDS on wg0, so excluding those is
 required, not an optimisation.
+
+It also picks up **exited** containers whose restart policy is `always` or
+`unless-stopped` and whose `State.Error` is non-empty. The error is what
+separates a failed start from a container someone stopped by hand, which leaves
+`State.Error` empty and is never touched.
 
 Repair: `docker compose up -d --force-recreate --no-deps <svc>` for just the
 broken services, grouped per project. `--no-deps` keeps healthy dependencies
@@ -54,6 +76,7 @@ cd /mnt/slime-kingdom/opt/mushy
 sudo install -m 0755 scripts/stack-reconcile/stack-reconcile.sh /usr/local/bin/stack-reconcile.sh
 sudo install -m 0644 scripts/stack-reconcile/mushy-stack-reconcile.service /etc/systemd/system/
 sudo install -m 0644 scripts/stack-reconcile/mushy-stack-reconcile.timer   /etc/systemd/system/
+sudo install -D -m 0644 scripts/stack-reconcile/docker-wait-lan-addr.conf /etc/systemd/system/docker.service.d/wait-lan-addr.conf
 sudo systemctl daemon-reload
 sudo systemctl enable --now mushy-stack-reconcile.service mushy-stack-reconcile.timer
 systemctl status mushy-stack-reconcile.service --no-pager
@@ -73,6 +96,12 @@ Tested against a throwaway `reconciletest` compose project, not just reasoned ab
 - detached canary is **repaired** (force-recreate, re-verified attached)
 - a canary younger than `RECONCILE_MIN_UPTIME_SEC` is **skipped**, not yanked
 - clean system reports OK and exits 0
+- an existing container whose restart fails on a port bind (exited, error set)
+  is **detected and repaired**; a hand-stopped container and a failed container
+  with restart policy `no` are **left alone** (2026-10-12)
+
+The docker drop-in's wait loop was exercised by hand; the unit itself has not
+been through a real reboot yet.
 
 One measured surprise worth recording: plain `docker compose up -d` **did**
 repair a canary detached via `docker network disconnect` -- compose treated it as
@@ -84,7 +113,7 @@ That is a deploy decision, not a boot repair.
 
 ## Scope
 
-Repairs network detachment only. It does **not** start containers that are
-stopped (`unless-stopped` deliberately keeps a hand-stopped container stopped --
+Repairs network detachment and failed starts. It does **not** start containers
+that someone stopped (`unless-stopped` deliberately keeps a hand-stopped container stopped --
 e.g. `mushy-whisper-transcribe-1`, stopped 2026-07-09 on purpose) and it does not
 converge compose files.

@@ -1,5 +1,5 @@
 [Unit]
-Description=Repair docker containers that came up detached from their networks (cold-start race)
+Description=Repair docker containers that came up detached or failed to start (cold-start races)
 # docker.service must be up before this is useful. The script ALSO waits for
 # dockerd to answer, because "service started" and "daemon accepting API calls"
 # are not the same instant -- that gap is the whole bug this fixes.
