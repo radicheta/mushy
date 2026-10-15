@@ -39,6 +39,7 @@ import re
 
 import farm_agent.farmos.commit_recovery as _recover
 from farm_agent.capture.capture_repo import image_paths_for_captures as _image_paths_for_captures
+from farm_agent.capture.capture_repo import transcripts_for_captures as _transcripts_for_captures
 import farm_agent.farmos.commit_db as _real_db
 import farm_agent.farmos.commits.commit_router as _real_router
 from farm_agent.farmos.assets import find_asset_by_name as _find_asset_by_name
@@ -219,7 +220,13 @@ async def tick_once(
     async def _capture_paths_for(capture_ids):
         return await _image_paths_for_captures(pool, capture_ids)
 
-    ctx = {"capturePathsFor": _capture_paths_for}
+    async def _capture_transcripts_for(capture_ids):
+        return await _transcripts_for_captures(pool, capture_ids)
+
+    ctx = {
+        "capturePathsFor": _capture_paths_for,
+        "captureTranscriptsFor": _capture_transcripts_for,
+    }
     if lock is None:
         lock = asyncio.Lock()
     if csv_rows is None:

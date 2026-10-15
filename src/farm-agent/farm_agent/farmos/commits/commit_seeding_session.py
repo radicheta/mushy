@@ -25,6 +25,7 @@ ASCII-only. No em-dashes. Never-throws at the handler level.
 from __future__ import annotations
 
 import logging
+import urllib.parse
 
 from farm_agent.farmos import assets, logs
 from farm_agent.farmos import group_assets, activity_logs
@@ -35,6 +36,60 @@ from farm_agent.farmos.files import upload_field_attachments
 log = logging.getLogger(__name__)
 
 _COLLISION_MAX = 9
+
+
+async def _write_voice_note_log(
+    client: dict, ctx: dict | None, draft: dict, session_group_id: str, session_name: str
+) -> str | None:
+    """Put the session's voice-note transcript on the session group as an activity log.
+
+    Best-effort, like the photos: a transcript that will not save must never
+    unwind blocks and seeding logs that are otherwise correct. Looked up by name
+    first so a re-commit (e.g. after a partial failure) does not post it twice.
+    Returns the new log id, or None when nothing was written.
+    """
+    lookup = (ctx or {}).get("captureTranscriptsFor")
+    capture_ids = draft.get("source_capture_ids")
+    if not callable(lookup) or not isinstance(capture_ids, list) or not capture_ids:
+        return None
+    try:
+        spoken = await lookup(capture_ids)
+        if not spoken:
+            return None
+        name = session_name + " voice note"
+        existing = await client["get"](
+            "/api/log/activity?filter[name][value]=" + urllib.parse.quote(name, safe="")
+        )
+        if not existing.get("ok") or ((existing.get("body") or {}).get("data") or []):
+            return None
+        notes = "\n\n".join(s["transcript"] for s in spoken)
+        r = await client["post"]("/api/log/activity", {
+            "data": {
+                "type": "log--activity",
+                "attributes": {
+                    "name": name,
+                    "timestamp": spoken[0]["captured_at"],
+                    "status": "done",
+                    "notes": {
+                        "value": notes + "\nmushy:draft:" + str(draft.get("id", "")),
+                        "format": "plain_text",
+                    },
+                },
+                "relationships": {
+                    "asset": {"data": [{"type": "asset--group", "id": session_group_id}]},
+                },
+            }
+        })
+        if not r.get("ok"):
+            log.warning(
+                "[commit_seeding_session] voice note log failed draft=%s status=%s",
+                draft.get("id"), r.get("status"),
+            )
+            return None
+        return ((r.get("body") or {}).get("data") or {}).get("id")
+    except Exception as e:  # noqa: BLE001
+        log.warning("[commit_seeding_session] voice note log error draft=%s: %s", draft.get("id"), e)
+        return None
 
 
 async def _resolve_session_name(
@@ -369,6 +424,11 @@ async def commit_seeding_session(
             else list(created_asset_ids)
         )
         log_ids_out = [membership_res["log_id"], *child_log_ids]
+        voice_log_id = await _write_voice_note_log(
+            client, ctx, draft, session_group_id, session_name
+        )
+        if voice_log_id:
+            log_ids_out.append(voice_log_id)
 
         return {
             "ok": True,

@@ -221,6 +221,16 @@ def make_session_mock_client(
                     }})
             return _ok(404, {"errors": [{"status": "404"}]})
 
+        # Activity log name lookup
+        m = re.search(r"/api/log/activity\?filter\[name\]\[value\]=([^&]+)", path)
+        if m:
+            name = urllib.parse.unquote(m.group(1))
+            hits = [
+                {"id": a["id"]} for a in created["activity_logs"]
+                if a["payload"]["data"]["attributes"].get("name") == name
+            ]
+            return _ok(200, {"data": hits})
+
         return _ok(200, {"data": []})
 
     async def _post(path: str, body: dict, opts=None) -> dict:
@@ -736,6 +746,96 @@ class TestCommitSeedingSessionImageAttach:
             assert "file-uuid-success" in r["file_ids"]
         finally:
             os.unlink(real_page_path)
+
+
+class TestCommitSeedingSessionTranscriptLog:
+    """The session's voice note reaches farmOS as a log on the session group.
+
+    Farmer ask 2026-10-15: the transcript only lived in signal_capture, so the
+    farm record had the blocks but not what was said about them.
+    """
+
+    SPOKEN = [{"capture_id": "cap-audio", "captured_at": 1758552985,
+               "transcript": "Inoculation session for May 22. Eleven bags."}]
+
+    @staticmethod
+    def _ctx(transcripts):
+        async def _for(capture_ids):
+            return transcripts
+        return {"captureTranscriptsFor": _for}
+
+    @staticmethod
+    def _draft(draft_id):
+        return {**_draft_for(MAY22_FIXTURE, draft_id), "source_capture_ids": ["cap-audio"]}
+
+    @staticmethod
+    def _voice_logs(client):
+        return [a for a in client["_created"]["activity_logs"]
+                if a["payload"]["data"]["attributes"]["name"].endswith("voice note")]
+
+    async def test_transcript_becomes_an_activity_log_on_the_session_group(self):
+        client = make_session_mock_client()
+        r = await commit_seeding_session(
+            client, self._draft("d-voice-1"), self._ctx(self.SPOKEN)
+        )
+        assert r["ok"] is True
+
+        voice = self._voice_logs(client)
+        assert len(voice) == 1
+        data = voice[0]["payload"]["data"]
+        assert data["attributes"]["name"] == "inoc 2026-05-22 voice note"
+        assert data["attributes"]["timestamp"] == 1758552985
+        assert data["attributes"]["status"] == "done"
+        assert "Inoculation session for May 22. Eleven bags." in data["attributes"]["notes"]["value"]
+        assert "mushy:draft:d-voice-1" in data["attributes"]["notes"]["value"]
+        session_group_id = client["_created"]["groups"][0]["id"]
+        assert data["relationships"]["asset"]["data"] == [
+            {"type": "asset--group", "id": session_group_id}
+        ]
+        assert voice[0]["id"] in r["log_ids"]
+
+    async def test_no_transcript_no_voice_log(self):
+        client = make_session_mock_client()
+        r = await commit_seeding_session(
+            client, self._draft("d-voice-2"), self._ctx([])
+        )
+        assert r["ok"] is True
+        assert self._voice_logs(client) == []
+
+    async def test_recommit_does_not_duplicate_the_voice_log(self):
+        client = make_session_mock_client()
+        ctx = self._ctx(self.SPOKEN)
+        await commit_seeding_session(client, self._draft("d-voice-3"), ctx)
+        await commit_seeding_session(client, self._draft("d-voice-3"), ctx)
+        assert len(self._voice_logs(client)) == 1
+
+    async def test_voice_log_failure_does_not_fail_the_commit(self):
+        client = make_session_mock_client()
+        orig_post = client["post"]
+
+        async def _post(path, body, opts=None):
+            if (path == "/api/log/activity"
+                    and body["data"]["attributes"]["name"].endswith("voice note")):
+                return _ok(422, {"errors": [{"detail": "validation"}]})
+            return await orig_post(path, body, opts)
+
+        client["post"] = _post
+        r = await commit_seeding_session(
+            client, self._draft("d-voice-4"), self._ctx(self.SPOKEN)
+        )
+        assert r["ok"] is True
+        assert client["_deletes"] == []
+
+    async def test_a_lookup_that_raises_does_not_fail_the_commit(self):
+        async def _boom(capture_ids):
+            raise RuntimeError("db down")
+
+        client = make_session_mock_client()
+        r = await commit_seeding_session(
+            client, self._draft("d-voice-5"), {"captureTranscriptsFor": _boom}
+        )
+        assert r["ok"] is True
+        assert self._voice_logs(client) == []
 
 
 # ---------------------------------------------------------------------------

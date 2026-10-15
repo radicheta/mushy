@@ -210,10 +210,11 @@ async def test_append_continuity_updates_existing_draft():
     assert extras["log_type"] == "harvest"
 
 
-async def test_replace_continuity_reuses_the_draft_without_extending_captures():
+async def test_replace_continuity_reuses_the_draft_and_records_the_new_capture():
     """I-5: the third continuity branch. `replace` supersedes the in-flight draft
-    body on the SAME row, so it keeps the prior source_capture_ids rather than
-    extending them the way `append` does."""
+    body on the SAME row. The new capture still fed that body, so it joins
+    source_capture_ids: commit attaches photos from those ids, and a photo
+    that arrived as the replacing capture was dropped (2026-10-15, inoc 09-22)."""
     pool = FakePool()
     db = FakeDb(in_flight={"id": "existing", "source_capture_ids": ["cap0"],
                            "askback_turns": 1, "updated_at": None})
@@ -235,11 +236,10 @@ async def test_replace_continuity_reuses_the_draft_without_extending_captures():
     assert status == "pending"
     assert extras["draft_json"] == CLEAN
 
-    # ... and source_capture_ids is NOT extended: the raw-SQL write rewrites the
-    # prior list unchanged, where `append` would have written ["cap0", "cap1"].
+    # ... and the replacing capture is recorded alongside the prior ones.
     assert len(pool.calls) == 1
     _sql, params = pool.calls[0]
-    assert params == (["cap0"], "existing")
+    assert params == (["cap0", "cap1"], "existing")
 
 
 async def test_append_persists_source_capture_ids_via_raw_sql():

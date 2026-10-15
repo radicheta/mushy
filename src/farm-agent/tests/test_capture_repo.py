@@ -280,3 +280,62 @@ async def test_mark_expired_soft_expires_old_rows(pool):
 
     assert fetched is not None
     assert fetched[0] is True
+
+
+# ---------------------------------------------------------------------------
+# transcripts_for_captures (2026-10-15: session voice notes reach farmOS)
+# ---------------------------------------------------------------------------
+
+
+class _RowsPool:
+    """Fake pool whose one query returns fixed rows."""
+
+    def __init__(self, rows):
+        self.rows = rows
+        self.params = None
+
+    def connection(self):
+        pool = self
+
+        class _Conn:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def execute(self, _sql, params):
+                pool.params = params
+
+                class _Cur:
+                    async def fetchall(self_inner):
+                        return pool.rows
+
+                return _Cur()
+
+        return _Conn()
+
+
+async def test_transcripts_for_captures_keeps_only_spoken_text_in_order():
+    from farm_agent.capture.capture_repo import transcripts_for_captures
+
+    t0 = datetime.datetime(2026, 9, 22, 14, 56, 25, tzinfo=datetime.timezone.utc)
+    pool = _RowsPool([
+        ("cap-audio", t0, "  Inoculation session for September 22.  "),
+        ("cap-photo", t0 + datetime.timedelta(seconds=8), None),
+        ("cap-blank", t0 + datetime.timedelta(seconds=9), "   "),
+    ])
+    out = await transcripts_for_captures(pool, ["cap-photo", "cap-audio", "cap-blank"])
+    assert out == [{
+        "capture_id": "cap-audio",
+        "captured_at": int(t0.timestamp()),
+        "transcript": "Inoculation session for September 22.",
+    }]
+    assert pool.params == (["cap-photo", "cap-audio", "cap-blank"],)
+
+
+async def test_transcripts_for_captures_fails_open():
+    from farm_agent.capture.capture_repo import transcripts_for_captures
+
+    assert await transcripts_for_captures(FakeRaisingPool(), ["x"]) == []
+    assert await transcripts_for_captures(FakeRaisingPool(), []) == []

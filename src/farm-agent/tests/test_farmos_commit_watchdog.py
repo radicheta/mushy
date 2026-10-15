@@ -570,6 +570,9 @@ async def test_tick_passes_a_ctx_with_capture_paths():
     assert callable(ctx.get("capturePathsFor")), (
         "handlers gate the upload on exactly this key being callable"
     )
+    assert callable(ctx.get("captureTranscriptsFor")), (
+        "the session commit writes the voice-note log only when this is callable"
+    )
 
 
 @pytest.mark.asyncio

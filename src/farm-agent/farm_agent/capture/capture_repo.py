@@ -208,3 +208,41 @@ async def image_paths_for_captures(pool: AsyncConnectionPool, capture_ids: list)
             if isinstance(p, str) and _IMAGE_EXTS.search(p):
                 paths.append(p)
     return paths
+
+
+_TRANSCRIPTS_FOR_CAPTURES_SQL = """
+SELECT id, captured_at, transcript
+  FROM signal_capture
+ WHERE id = ANY(%s)
+ ORDER BY captured_at ASC
+"""
+
+
+async def transcripts_for_captures(pool: AsyncConnectionPool, capture_ids: list) -> list:
+    """The voice-note transcripts on these captures, oldest first.
+
+    Returns [{"capture_id", "captured_at" (epoch seconds), "transcript"}] for the
+    captures that have spoken text. Same NEVER-raises contract as
+    image_paths_for_captures: a missing transcript log must not take down a
+    commit that is otherwise fine.
+    """
+    if not capture_ids:
+        return []
+    try:
+        async with pool.connection() as conn:
+            cur = await conn.execute(_TRANSCRIPTS_FOR_CAPTURES_SQL, (list(capture_ids),))
+            rows = await cur.fetchall()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[capture_repo] transcript lookup failed: %s", e)
+        return []
+
+    out = []
+    for capture_id, captured_at, transcript in rows or []:
+        text = (transcript or "").strip()
+        if text:
+            out.append({
+                "capture_id": capture_id,
+                "captured_at": int(captured_at.timestamp()),
+                "transcript": text,
+            })
+    return out

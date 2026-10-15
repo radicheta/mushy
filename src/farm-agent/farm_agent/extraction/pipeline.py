@@ -528,7 +528,10 @@ def create_extraction_pipeline(
                 draft_id = treat_in_flight["id"]
                 prior_askback_turns = treat_in_flight.get("askback_turns") or 0
             elif continuity == "replace" and treat_in_flight:
-                source_capture_ids = treat_in_flight.get("source_capture_ids") or [capture_id]
+                # The replacing capture fed the new body, so it is a source too;
+                # commit attaches photos from these ids.
+                prior = list(treat_in_flight.get("source_capture_ids") or [])
+                source_capture_ids = prior if capture_id in prior else prior + [capture_id]
                 draft_id = treat_in_flight["id"]
                 prior_askback_turns = treat_in_flight.get("askback_turns") or 0
             else:
