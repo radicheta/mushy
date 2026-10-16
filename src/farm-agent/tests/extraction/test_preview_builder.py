@@ -178,17 +178,35 @@ def test_render_seeding_session_missing_date_fallback():
     assert out.startswith("Inoc session: [?]\n")
 
 
-def test_seeding_session_overflow_more_groups():
+def test_seeding_session_renders_every_group():
+    # The farmer confirms what they see; a hidden row is an unvalidated row.
     groups = [
         {"parent": {"value": f"P{i}"}, "species": {"value": "SHI"}, "qty": {"value": 1}}
         for i in range(7)
     ]
     draft = {"type": "seeding_session", "event_date": "20260101", "groups": groups}
     out = render_seeding_session(draft)
-    lines = out.splitlines()
-    assert "... (2 more groups)" in lines
-    # Only the first 5 groups render as table rows (KEY 1..5); group 6/7 do not.
-    assert "6" not in [ln.split()[0] for ln in lines if ln[:1].isdigit()]
+    keys = [ln.split()[0] for ln in out.splitlines()[2:] if ln[:1].isdigit()]
+    assert keys == ["1", "2", "3", "4", "5", "6", "7"]
+    assert "more groups" not in out
+
+
+def test_seeding_session_summary_counts_distinct_blocks_and_parents():
+    # A mixed-source tub is one row per source sharing a child name.
+    def g(parent, children):
+        return {
+            "parent": {"value": parent}, "species": {"value": "WIN"},
+            "qty": {"value": len(children)}, "child_block_names": {"value": children},
+        }
+    groups = [
+        g("260606_WIN_5", ["260918_WIN_1", "260918_WIN_2", "260918_WIN_3"]),
+        g("260606_WIN_2", ["260918_WIN_4"]),
+        g("260425_WIN_7", ["260918_WIN_4"]),
+        g("260606_WIN_2", ["260918_WIN_5"]),
+    ]
+    draft = {"type": "seeding_session", "event_date": "2026-09-18", "groups": groups}
+    out = render_seeding_session(draft)
+    assert out.splitlines()[1] == "5 blocks across 3 parents"
 
 
 def test_fmt_num_matches_the_chamber_implementation():

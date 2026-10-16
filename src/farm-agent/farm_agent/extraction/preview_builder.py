@@ -298,7 +298,8 @@ def render_seeding_session(draft: dict, *, asset_ref_checks: dict | None = None)
       notebook entry, matching the farmer's paper log).
     - 3+ consecutive same-strain child SEQs collapse to `prefix_FIRST..LAST`.
     - 1-2 children, or non-consecutive, render as comma-joined names.
-    - groups length > 5 renders first 5 + `... (M more groups)` trailing row.
+    - every group renders; the farmer confirms what they see.
+    - the summary counts distinct blocks and parents, not rows.
     - draft["notes"] (free-text) renders as a trailing 'note: {notes}' line
       before the YES/NO/EDIT footer.
     - draft["needs_input"] == "starting_seq" short-circuits to the ask-back
@@ -311,36 +312,43 @@ def render_seeding_session(draft: dict, *, asset_ref_checks: dict | None = None)
 
     groups = draft.get("groups") if isinstance(draft.get("groups"), list) else []
 
-    # Total child count: prefer child_block_names.value.length when array is
-    # present (more authoritative than qty.value when a partial-photo session
-    # has populated names); otherwise fall back to qty.value.
-    total_children = 0
+    # Distinct counts: a mixed-source tub is one row per source sharing a child
+    # name, so rows overcount both blocks and parents. Prefer
+    # child_block_names.value when present (more authoritative than qty.value
+    # when a partial-photo session has populated names); otherwise fall back to
+    # qty.value.
+    child_names: set = set()
+    unnamed_children = 0
+    parent_names: set = set()
+    unnamed_parents = 0
     for g in groups:
         names = ((g or {}).get("child_block_names") or {}).get("value") if g else None
         if isinstance(names, list):
-            total_children += len(names)
+            child_names.update(names)
         else:
             qv = ((g or {}).get("qty") or {}).get("value") if g else None
             if isinstance(qv, (int, float)) and not isinstance(qv, bool):
-                total_children += qv
+                unnamed_children += qv
+        pv = ((g or {}).get("parent") or {}).get("value") if g else None
+        if pv:
+            parent_names.add(pv)
+        else:
+            unnamed_parents += 1
+    total_children = len(child_names) + unnamed_children
+    total_parents = len(parent_names) + unnamed_parents
 
     event_date = draft.get("event_date")
     header = f"Inoc session: {event_date if event_date is not None else '[?]'}"
-    summary = f"{fmt_num(total_children)} blocks across {fmt_num(len(groups))} parents"
-
-    visible = groups[:5]
-    overflow_count = len(groups) - 5
+    summary = f"{fmt_num(total_children)} blocks across {fmt_num(total_parents)} parents"
 
     col_header = ["KEY", "PARENT", "SPECIES", "QTY", "CHILDREN"]
-    data_rows = [_format_session_row(i + 1, g) for i, g in enumerate(visible)]
+    data_rows = [_format_session_row(i + 1, g) for i, g in enumerate(groups)]
 
     widths = _compute_column_widths([col_header, *data_rows])
     header_line = _pad_row(col_header, widths)
     table_lines = [_pad_row(r, widths) for r in data_rows]
 
     lines = [header, summary, "", header_line, *table_lines]
-    if overflow_count > 0:
-        lines.append(f"... ({fmt_num(overflow_count)} more groups)")
     notes = draft.get("notes")
     if notes is not None and str(notes).strip() != "":
         lines.append("")
