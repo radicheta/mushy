@@ -362,7 +362,9 @@ async def commit_seeding_session(
                 child_block_id = child_res["asset_id"]
                 if child_res.get("outcome") == "created":
                     created_asset_ids.append(child_block_id)
-                child_block_ids.append(child_block_id)
+                # A mixed-source tub is one group per source sharing a child.
+                if child_block_id not in child_block_ids:
+                    child_block_ids.append(child_block_id)
                 if audit_logger and callable(audit_logger.get("log_commit")):
                     try:
                         await audit_logger["log_commit"]("upsert_outcome", draft, {

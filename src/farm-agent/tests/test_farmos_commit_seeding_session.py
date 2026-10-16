@@ -395,6 +395,27 @@ class TestCommitSeedingSession:
             {"type": "asset--group", "id": session_group_id}
         ]
 
+    async def test_mixed_source_tub_counts_once_in_membership_log(self):
+        """A tub fed by two jars is two groups sharing one child name; it is one bag."""
+        def g(parent, child):
+            return {
+                "parent": {"value": parent}, "species": {"value": "WIN"},
+                "qty": {"value": 1}, "child_block_names": {"value": [child]},
+            }
+        dj = {"type": "seeding_session", "event_date": "2026-09-18", "groups": [
+            g("260606_WIN_5", "260918_WIN_1"),
+            g("260606_WIN_2", "260918_WIN_6"),
+            g("260425_WIN_7", "260918_WIN_6"),
+        ]}
+        client = make_session_mock_client()
+        ctx, _ = make_audit_ctx()
+        r = await commit_seeding_session(client, _draft_for(dj), ctx)
+
+        assert r["ok"] is True
+        body = client["_created"]["activity_logs"][0]["payload"]
+        assert body["data"]["attributes"]["name"] == "inoc 2026-09-18 (2 bags)"
+        assert len(body["data"]["relationships"]["asset"]["data"]) == 2
+
     async def test_child_parent_is_source_block_only_not_session_group(self):
         """Children carry parent=[sourceBlock] ONLY -- NO session group id on children."""
         client = make_session_mock_client()
