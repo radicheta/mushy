@@ -2,7 +2,14 @@
 # (FC2_RUNTIME_OVERLAY, default /var/lib/fc2-core/runtime_overrides.yaml) is
 # layered on top at launch, last-wins; the node rewrites it on every accepted
 # `ros2 param set`. Floats must stay written as floats (60.0, not 60): the node
-# declares typed parameters and ROS rejects a value of another type.
+# declares typed parameters and ROS rejects a value of another type. Bools must
+# be unquoted (false, not 'false'): a quoted bool is a string.
+#
+# The overlay holds a snapshot of EVERY persisted value, not just the one you
+# set. After any live set, edits to this base file are overridden for every
+# setting except the startup-only valve ones at the bottom. To make a base
+# edit take effect, `ros2 param set` the value live, or delete
+# /var/lib/fc2-core/runtime_overrides.yaml and restart.
 /**:
   ros__parameters:
     # Rule
