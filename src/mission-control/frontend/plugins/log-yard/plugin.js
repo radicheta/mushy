@@ -14,10 +14,10 @@
     var ROOT_ID = { namespace: 'log-yard', key: 'root' };
 
     var MODES = [
-        { key: 0, string: 'weather' },
-        { key: 1, string: 'raining' },
-        { key: 2, string: 'fallback' },
-        { key: 3, string: 'night' }
+        { value: 0, string: 'weather' },
+        { value: 1, string: 'raining' },
+        { value: 2, string: 'fallback' },
+        { value: 3, string: 'night' }
     ];
 
     // key is the bridge topic (FC2_DB_TOPICS in bridge/src/fc2.js).
