@@ -1,0 +1,33 @@
+# FC-2 log-yard sprinklers: base settings. A runtime overlay
+# (FC2_RUNTIME_OVERLAY, default /var/lib/fc2-core/runtime_overrides.yaml) is
+# layered on top at launch, last-wins; the node rewrites it on every accepted
+# `ros2 param set`. Floats must stay written as floats (60.0, not 60): the node
+# declares typed parameters and ROS rejects a value of another type.
+/**:
+  ros__parameters:
+    # Rule
+    rain_threshold_mm: 0.0          # precipitation above this = raining, no watering
+    cool_bursts_per_hour: 1.0       # rate at or below cool_temp_c
+    hot_bursts_per_hour: 6.0        # rate at or above hot_temp_c
+    pulse_sec: 60.0                 # valve-open time per burst
+    fallback_bursts_per_hour: 1.0   # rate with no / stale weather
+    cool_temp_c: 15.0               # PLACEHOLDER, tune on site
+    hot_temp_c: 28.0                # PLACEHOLDER, tune on site
+    max_open_sec: 120.0             # PLACEHOLDER: hard max-on guard per burst (>= pulse_sec)
+    weather_stale_sec: 2700.0       # PLACEHOLDER: older reading -> fallback
+
+    # Night (pending the farmer): off by default; only applies with a synced clock
+    night_enabled: false
+    night_start: '20:00'            # local time, HH:MM
+    night_end: '06:00'
+
+    # Weather (Open-Meteo `current`)
+    weather_poll_sec: 900.0         # matches the model's 15-minute slots
+    latitude: -34.5165641
+    longitude: -55.0982273
+    timezone: America/Montevideo    # for the night window only
+
+    # Valve hardware (startup-only: never changed live, never persisted)
+    valve_gpio_pin: -1              # -1 = unset; must be wired before simulation is turned off
+    valve_active_low: false
+    actuator_simulation_mode: true  # true until the valve is wired
