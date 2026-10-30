@@ -4,7 +4,7 @@
 
 **Goal:** A ROS2 node on a new Pi (FC-2) that pulses a 12 V DC sprinkler valve on a weather-driven schedule, persists its live settings, and shows up in Timescale and Mission Control.
 
-**Architecture:** New package `fc2_core` at `src/outdoor/fc2-core/`. All decisions live in pure modules with no ROS, GPIO or network (`rule`, `scheduler`, `params`, `weather`, `valve`), wrapped by one thin rclpy node `fc2_controller`. The bridge gains an `fc2.js` subscription module; Mission Control gains a history-only `log-yard` plugin. FC-1 is not touched.
+**Architecture:** New package `fc2_core` at `src/outdoor/fc2-core/`. All decisions live in pure modules with no ROS, GPIO or network (`rule`, `scheduler`, `params`, `weather`, `valve`), wrapped by one thin rclpy node `fc2_controller`. The bridge gains an `fc2.js` subscription module; Mission Control gains a `log-yard` plugin with history and live updates. FC-1 is not touched.
 
 **Tech Stack:** Python 3.12, rclpy (ROS2 Jazzy), RPi.GPIO, PyYAML, stdlib `urllib` and `zoneinfo`; Node.js bridge (rclnodejs, jest); OpenMCT plugin.
 
@@ -484,7 +484,7 @@ Also add `'fc2/deploy.sh'` handling where `code()` is used.
 - Produces:
   - `FC2_TOPICS`: array of `{ ros: '/fc2/...', type: 'std_msgs/msg/Float32' | 'std_msgs/msg/Bool' | 'std_msgs/msg/Int32', db: 'fc2.<name>', latched?: true }` covering every topic in Task 6. DB names: `fc2.valve`, `fc2.duty_pct_1h`, `fc2.bursts_per_hour`, `fc2.mode`, `fc2.temperature`, `fc2.humidity`, `fc2.wind`, `fc2.precipitation`, `fc2.et0`, `fc2.weather_age_sec`.
   - `FC2_DB_TOPICS = FC2_TOPICS.map(t => t.db)`
-  - `subscribeFc2(node, { insertTelemetry, transientLocalQos, now = Date.now })` — one subscription per entry. Bool is stored as 1/0. Timestamps use `now()`: these messages have no header. Each subscription passes `{ qos: transientLocalQos }` when `latched`. It does not touch FC-1 liveness or `broadcast`.
+  - `subscribeFc2(node, { insertTelemetry, broadcast, transientLocalQos, now = Date.now })` — one subscription per entry. Bool is stored as 1/0. Timestamps use `now()`: these messages have no header. Each subscription passes `{ qos: transientLocalQos }` when `latched`. Each message is stored **and** sent live as `broadcast({ [db]: value, timestamp })`, keyed by the full `fc2.*` name. Never use bare names like `temperature` or `humidity`: the FC-1 plugin's `onmessage` maps those keys to FC-1 sensors, so FC-2's weather would be drawn on FC-1's chamber plots. It does not touch FC-1 liveness.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -499,22 +499,33 @@ test('every db topic is fc2.-prefixed and unique', () => {
 });
 test('valve is latched and stored as 1/0', async () => {
   const n = fakeNode(); const ins = jest.fn(); const q = { q: 1 };
-  subscribeFc2(n, { insertTelemetry: ins, transientLocalQos: q, now: () => 1000 });
+  const bc = jest.fn();
+  subscribeFc2(n, { insertTelemetry: ins, broadcast: bc, transientLocalQos: q, now: () => 1000 });
   const v = n.subs.find(s => s.topic === '/fc2/valve');
   expect(v.opts).toEqual({ qos: q });
   await v.cb({ data: true });
   expect(ins).toHaveBeenCalledWith('fc2.valve', 1, 1000, 1000 * 1e6);
+  expect(bc).toHaveBeenCalledWith({ 'fc2.valve': 1, timestamp: 1000 });
+});
+test('live broadcast never uses an FC-1 field name', async () => {
+  const FC1_FIELDS = ['humidity', 'temperature', 'co2', 'humidifier', 'humidity_2', 'temperature_2',
+    'humidifier_duty', 'humidity_target', 'pid_output', 'vpd', 'water_vapor'];
+  const n = fakeNode(); const bc = jest.fn();
+  subscribeFc2(n, { insertTelemetry: jest.fn(), broadcast: bc, transientLocalQos: {}, now: () => 1 });
+  for (const s of n.subs) await s.cb({ data: 1 });
+  const keys = bc.mock.calls.flatMap(([m]) => Object.keys(m));
+  expect(keys.some(k => FC1_FIELDS.includes(k))).toBe(false);
 });
 test('float topics store msg.data', async () => {
   const n = fakeNode(); const ins = jest.fn();
-  subscribeFc2(n, { insertTelemetry: ins, transientLocalQos: {}, now: () => 5 });
+  subscribeFc2(n, { insertTelemetry: ins, broadcast: jest.fn(), transientLocalQos: {}, now: () => 5 });
   await n.subs.find(s => s.topic === '/fc2/duty_pct_1h').cb({ data: 1.5 });
   expect(ins).toHaveBeenCalledWith('fc2.duty_pct_1h', 1.5, 5, 5e6);
 });
 ```
 
 - [ ] **Step 2: Run, expect FAIL** — `cd src/mission-control/bridge && npm test -- fc2`
-- [ ] **Step 3: Implement `fc2.js`, wire `index.js`, add the DDS peer**
+- [ ] **Step 3: Implement `fc2.js`, wire `index.js` (pass the existing `broadcast`), add the DDS peer**
 - [ ] **Step 4: Run the full bridge suite, expect PASS** — `npm test`
 - [ ] **Step 5: Commit** — `feat(bridge): store FC-2 telemetry [MUSHY-168]`
 - [ ] **Step 6: Deploy to elder-plops (this is prod)** — `docker compose up -d --build bridge`. Then verify that FC-1 is unaffected: `curl -s localhost:8081/health` shows `fc1.last_msg_age_sec` under 10, and `curl -s "localhost:8081/history/fc2.mode?start=0&end=1"` returns 200 `[]`, not 400.
@@ -528,14 +539,14 @@ test('float topics store msg.data', async () => {
 - Modify: `src/mission-control/frontend/index.html` — script tag beside the fruiting-chamber plugin; `tryInstall(function () { return LogYardPlugin(); })`
 
 **Interfaces:**
-- Consumes: bridge `GET /history/:topic?start&end` with `FC2_DB_TOPICS` (Task 8)
+- Consumes: bridge `GET /history/:topic?start&end` with `FC2_DB_TOPICS`, and the bridge WebSocket broadcasts `{ 'fc2.<name>': value, timestamp }` (Task 8)
 - Produces: OpenMCT namespace `log-yard`, a root folder "FC-2 Log Yard", and one telemetry object per `fc2.*` topic. Each has a `utc` time domain and `value` range, and units: % for duty and humidity, °C, km/h, mm, bursts/h, s. Mode gets an enum format: 0 weather, 1 raining, 2 fallback, 3 night.
 
-History only, no realtime: the provider implements `supportsRequest`/`request` against `/history`, following `plugins/fruiting-chamber/plugin.js` lines ~451–500 (same `historyUrl` option and default). The chart Santi wants (duty % against temperature, humidity and wind) is an Overlay Plot built from these objects in the UI. No test framework exists for the frontend; verify by hand.
+History and live. `request` goes against `/history`; `subscribe` listens on the bridge WebSocket (same `bridgeUrl` option and default as the FC-1 plugin) and passes each message key that matches an `fc2.*` object to that object's callbacks as `{ value, utc: timestamp }`. Follow `plugins/fruiting-chamber/plugin.js` (~349–505), but keep a separate socket and don't send rosbridge `subscribe` ops: the bridge broadcasts to every client. Reconnect on close like the FC-1 plugin. The chart Santi wants (duty % against temperature, humidity and wind) is an Overlay Plot built from these objects in the UI. No test framework exists for the frontend; verify by hand.
 
 - [ ] **Step 1: Write the plugin and index entry**
 - [ ] **Step 2: Rebuild and check the served file** — `docker compose up -d --build openmct`, then `curl -s localhost:8080/plugins/log-yard/plugin.js | head -3` shows the plugin, not a 404 page
-- [ ] **Step 3: Check in a browser** — the "FC-2 Log Yard" folder lists the 10 objects, and opening `fc2.mode` shows an empty plot with no console errors (FC-2 isn't publishing yet)
+- [ ] **Step 3: Check in a browser** — the "FC-2 Log Yard" folder lists the 10 objects, and opening `fc2.mode` shows an empty plot with no console errors (FC-2 isn't publishing yet). FC-1's plots still update live.
 - [ ] **Step 4: Commit** — `feat(mission-control): FC-2 log-yard telemetry plugin [MUSHY-168]`
 
 ---
@@ -548,7 +559,7 @@ No code. Each step is a check with an expected result. Stop at the first failure
 - [ ] **Step 2: OS** — Ubuntu 24.04 + ROS2 Jazzy on the Pi, user `ubuntu`, hostname `fc2`, on `mossrock-wifi`. Clone the repo into `/home/ubuntu/mushroom_farm_ws/mushy-repo` with the workspace `src` pointing at it, as on FC-1. If the board turns out to be Zero-class and Jazzy won't run, stop and raise it.
 - [ ] **Step 3: WireGuard** — `sudo bash wg-setup.sh 172.16.10.6 "FC-2 Pi"`; Santi adds the pfSense peer; from elder-plops `ping -c3 172.16.10.6` succeeds
 - [ ] **Step 4: Bootstrap + deploy** — `sudo bash scripts/pi-deploy/fc2/bootstrap.sh` on the Pi, then `scripts/pi-deploy/fc2/deploy.sh` from elder-plops; `systemctl is-active fc2-core` → `active`
-- [ ] **Step 5: Data flows (sim valve)** — within 2 min, Timescale has `fc2.mode` and `fc2.temperature` rows (`select topic, max(time) from telemetry where topic like 'fc2.%' group by 1;`), and the Mission Control folder plots them
+- [ ] **Step 5: Data flows (sim valve)** — within 2 min, Timescale has `fc2.mode` and `fc2.temperature` rows (`select topic, max(time) from telemetry where topic like 'fc2.%' group by 1;`), and the Mission Control folder plots them. With a plot left open in real-time mode, a new point appears within ~60 s without a reload, and FC-1's temperature plot does not pick up FC-2's weather.
 - [ ] **Step 6: Live setting persists** — `ros2 param set /fc2_controller pulse_sec 45.0` succeeds; `sudo systemctl restart fc2-core`; `ros2 param get` returns 45.0. Then `ros2 param set ... pulse_sec 500.0` is rejected.
 - [ ] **Step 7: Offline start** — with WiFi off (Santi unplugs or disables the AP; never take an interface down over SSH), reboot the Pi. On reconnect, the logs show the node started and `fc2.mode` = 2 (fallback) for the offline period.
 - [ ] **Step 8: Real valve on the bench** — Santi wires the switch and picks a pin whose default pull keeps it off during boot. Set `valve_gpio_pin`, `valve_active_low` and `actuator_simulation_mode: false` in `fc2_config.yaml` (commit, deploy). Then check:
