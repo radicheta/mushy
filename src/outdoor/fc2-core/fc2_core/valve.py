@@ -156,7 +156,8 @@ def valve_off_main() -> None:
 
     Exit 0 on success or when there is nothing to drive (simulation mode,
     pin -1). Exit 1, with the reason on stderr and GPIO untouched, if the
-    config cannot be read or holds a mistyped value; non-zero if GPIO fails. The pin is deliberately not cleaned up: it stays driven off.
+    config cannot be read or holds a mistyped value; non-zero if GPIO fails.
+    The pin is deliberately not cleaned up: it stays driven off.
     """
     try:
         base = os.environ.get('FC2_CONFIG') or _default_config()
