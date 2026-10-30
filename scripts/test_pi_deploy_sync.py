@@ -72,6 +72,7 @@ def test_fc2_unit_closes_valve_on_any_stop():
     u = (HERE / 'fc2' / 'fc2-core.service').read_text()
     assert 'ExecStopPost=' in u and 'fc2_valve_off' in u
     assert 'Restart=always' in u and 'WatchdogSec=' in u and 'NotifyAccess=all' in u
+    assert 'StartLimitIntervalSec=0' in u and 'StartLimitBurst' not in u
 
 
 def test_fc2_dds_peers_and_fc1_dds_untouched():
@@ -90,6 +91,10 @@ def test_fc2_deploy_uses_reset_not_pull():
     assert 'git pull' not in code('fc2/deploy.sh')
 
 
+def test_fc2_bootstrap_enables_unit_and_deploy_does_not():
+    assert 'systemctl enable fc2-core.service' in code('fc2/bootstrap.sh')
+    assert 'systemctl enable' not in code('deploy.sh')
+
 if __name__ == '__main__':
     test_no_git_pull()
     test_syncs_and_guards_dirty_tree()
@@ -99,4 +104,5 @@ if __name__ == '__main__':
     test_fc2_dds_peers_and_fc1_dds_untouched()
     test_deploy_defaults_unchanged_for_fc1()
     test_fc2_deploy_uses_reset_not_pull()
+    test_fc2_bootstrap_enables_unit_and_deploy_does_not()
     print('OK: deploy path syncs to the branch, guards a dirty tree, reconciles units')

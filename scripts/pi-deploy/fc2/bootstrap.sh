@@ -14,4 +14,9 @@ printf '[Manager]\nRuntimeWatchdogSec=15\n' > /etc/systemd/system.conf.d/fc2-wat
 
 install -d -o ubuntu -g ubuntu -m 0755 /var/lib/fc2-core
 
+install -m 644 -o root -g root "${HERE}/fc2-core.service" /etc/systemd/system/fc2-core.service
+systemctl daemon-reload
+# Enable only (starts at boot); deploy.sh starts it.
+systemctl enable fc2-core.service
+
 echo "FC-2 bootstrap done. Reboot (or 'systemctl daemon-reexec') to arm the watchdog."

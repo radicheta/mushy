@@ -2,8 +2,8 @@
 Description=FC-2 log-yard sprinklers
 After=network-online.target wg-quick@wg0.service
 Wants=network-online.target wg-quick@wg0.service
-StartLimitIntervalSec=300
-StartLimitBurst=5
+# No start limit: no water is worse than no telemetry; valve-off runs around every start/stop.
+StartLimitIntervalSec=0
 
 [Service]
 # Type=simple: the node sends WATCHDOG=1 but never READY=1.
