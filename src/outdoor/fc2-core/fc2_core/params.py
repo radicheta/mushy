@@ -19,6 +19,7 @@ _RATES = ('cool_bursts_per_hour', 'hot_bursts_per_hour',
 DEFAULT_OVERLAY_PATH = '/var/lib/fc2-core/runtime_overrides.yaml'
 MAX_OPEN_CEILING_SEC = 600.0
 MAX_OPEN_SEC_PER_HOUR = 1800.0  # 50 % duty
+GUARD_MARGIN_SEC = 2.0  # the control tick is 1 s; a normal burst must close first
 
 
 def params_from_mapping(m: Mapping[str, Any]) -> RuleParams:
@@ -32,10 +33,12 @@ def validate(p: RuleParams) -> Optional[str]:
     for name in _RATES:
         if getattr(p, name) < 0:
             return f'{name} must not be negative'
+    if p.fallback_bursts_per_hour <= 0:
+        return 'fallback_bursts_per_hour must be positive (a dead feed must still water)'
     if p.pulse_sec <= 0:
         return 'pulse_sec must be positive'
-    if p.pulse_sec > p.max_open_sec:
-        return 'pulse_sec must not exceed max_open_sec'
+    if p.max_open_sec < p.pulse_sec + GUARD_MARGIN_SEC:
+        return f'max_open_sec must be at least pulse_sec + {GUARD_MARGIN_SEC:g}'
     if p.max_open_sec > MAX_OPEN_CEILING_SEC:
         return f'max_open_sec must not exceed {MAX_OPEN_CEILING_SEC:g}'
     if max(getattr(p, n) for n in _RATES) * p.pulse_sec > MAX_OPEN_SEC_PER_HOUR:

@@ -13,7 +13,7 @@
     fallback_bursts_per_hour: 1.0   # rate with no / stale weather
     cool_temp_c: 15.0               # PLACEHOLDER, tune on site
     hot_temp_c: 28.0                # PLACEHOLDER, tune on site
-    max_open_sec: 120.0             # PLACEHOLDER: hard max-on guard per burst (>= pulse_sec)
+    max_open_sec: 120.0             # PLACEHOLDER: hard max-on guard per burst (>= pulse_sec + 2)
     weather_stale_sec: 2700.0       # PLACEHOLDER: older reading -> fallback
 
     # Night (pending the farmer): off by default; only applies with a synced clock

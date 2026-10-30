@@ -27,9 +27,19 @@ def test_names_and_startup_only():
     {'hot_bursts_per_hour': 31.0},
     {'cool_bursts_per_hour': -1.0}, {'weather_stale_sec': 0.0},
     {'night_start': '25:00'}, {'night_end': '06:60'}, {'night_end': 'abc'},
+    {'max_open_sec': 60.0}, {'max_open_sec': 61.9},  # pulse 60: guard must clear a 1 s tick
+    {'fallback_bursts_per_hour': 0.0},  # a dead feed must still water
 ])
 def test_rejects(change):
     assert validate(dataclasses.replace(RuleParams(), **change)) is not None
+
+
+@pytest.mark.parametrize('change', [
+    {'max_open_sec': 62.0}, {'fallback_bursts_per_hour': 0.1},
+    {'cool_bursts_per_hour': 0.0},
+])
+def test_accepts_edges(change):
+    assert validate(dataclasses.replace(RuleParams(), **change)) is None
 
 
 def test_overlay_roundtrip(tmp_path):
