@@ -185,6 +185,42 @@ def test_valve_off_main_default_overlay_path(monkeypatch, tmp_path):
     assert calls['setup'][-1] == (17, 'OUT', 'HIGH')  # overlay's active_low honoured
 
 
+@pytest.mark.parametrize('extra', [
+    "    valve_active_low: 'false'\n",
+    "    valve_active_low: 'true'\n",
+    "    actuator_simulation_mode: 'false'\n",
+    "    actuator_simulation_mode: 'true'\n",
+    "    valve_gpio_pin: '17'\n",
+])
+def test_valve_off_main_rejects_mistyped_values_without_gpio(
+        monkeypatch, tmp_path, capsys, extra):
+    # A quoted bool is truthy: bool('false') would invert the off level.
+    calls = install_fake_rpi_gpio(monkeypatch)
+    base, _ = _cfg(tmp_path, '    actuator_simulation_mode: false\n')
+    ov = tmp_path / 'o.yaml'
+    ov.write_text('/**:\n  ros__parameters:\n' + extra)
+    monkeypatch.setenv('FC2_CONFIG', base)
+    monkeypatch.setenv('FC2_RUNTIME_OVERLAY', str(ov))
+    with pytest.raises(SystemExit) as e:
+        valve_off_main()
+    assert e.value.code == 1 and 'ValueError' in capsys.readouterr().err
+    assert calls['setup'] == [] and calls['output'] == [] and 'mode' not in calls
+
+
+@pytest.mark.parametrize('extra', [
+    "    valve_active_low: 'false'\n",
+    "    actuator_simulation_mode: 'true'\n",
+    "    valve_gpio_pin: '17'\n",
+    "    valve_gpio_pin: 17.0\n",
+])
+def test_resolve_valve_config_rejects_mistyped_values(tmp_path, extra):
+    base, _ = _cfg(tmp_path)
+    ov = tmp_path / 'o.yaml'
+    ov.write_text('/**:\n  ros__parameters:\n' + extra)
+    with pytest.raises(ValueError):
+        resolve_valve_config(base, str(ov))
+
+
 def test_real_timer_closes_valve_and_is_not_daemon():
     v = SimValve()
     g = GuardedValve(v, 0.05)

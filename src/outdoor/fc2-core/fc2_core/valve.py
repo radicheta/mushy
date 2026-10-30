@@ -117,9 +117,26 @@ def _resolve(base_path: str, overlay_path: str) -> dict:
     return p
 
 
+def _valve_settings(p: dict) -> Tuple[int, bool, bool]:
+    """(pin, active_low, simulation) with strict types, else ValueError.
+
+    No coercion: bool('false') is True, which would invert the off level.
+    """
+    pin = p['valve_gpio_pin']
+    active_low = p['valve_active_low']
+    sim = p.get('actuator_simulation_mode', False)
+    if type(pin) is not int:
+        raise ValueError(f'valve_gpio_pin must be an int, got {pin!r}')
+    for name, v in (('valve_active_low', active_low),
+                    ('actuator_simulation_mode', sim)):
+        if not isinstance(v, bool):
+            raise ValueError(f'{name} must be an unquoted bool, got {v!r}')
+    return pin, active_low, sim
+
+
 def resolve_valve_config(base_path: str, overlay_path: str) -> Tuple[int, bool]:
-    p = _resolve(base_path, overlay_path)
-    return int(p['valve_gpio_pin']), bool(p['valve_active_low'])
+    pin, active_low, _ = _valve_settings(_resolve(base_path, overlay_path))
+    return pin, active_low
 
 
 def _default_config() -> str:
@@ -136,15 +153,14 @@ def valve_off_main() -> None:
     """fc2_valve_off: drive the valve pin to its off level and exit.
 
     Exit 0 on success or when there is nothing to drive (simulation mode,
-    pin -1). Non-zero, with the reason on stderr, if the config cannot be read
-    or GPIO fails. The pin is deliberately not cleaned up: it stays driven off.
+    pin -1). Exit 1, with the reason on stderr and GPIO untouched, if the
+    config cannot be read or holds a mistyped value; non-zero if GPIO fails. The pin is deliberately not cleaned up: it stays driven off.
     """
     try:
         base = os.environ.get('FC2_CONFIG') or _default_config()
         overlay = os.environ.get('FC2_RUNTIME_OVERLAY', DEFAULT_OVERLAY_PATH)
-        p = _resolve(base, overlay)
-        pin, active_low = int(p['valve_gpio_pin']), bool(p['valve_active_low'])
-        if p.get('actuator_simulation_mode', False) or pin == -1:
+        pin, active_low, sim = _valve_settings(_resolve(base, overlay))
+        if sim or pin == -1:
             sys.exit(0)
         GpioValve(pin, active_low).set_open(False)
     except SystemExit:
