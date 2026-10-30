@@ -17,6 +17,7 @@ const control_persist = require('./control_persist');
 const control_experiment = require('./control_experiment');
 const { markFc1Active, getFc1LastMsgTs, getFc1LastMsgAgeSec } = require('./fc1_liveness');
 const fc_derived = require('./fc_derived');
+const { FC2_DB_TOPICS, subscribeFc2 } = require('./fc2');
 
 // Fail fast if database password is not configured
 if (!process.env.TIMESCALE_PASSWORD) {
@@ -404,7 +405,7 @@ app.get('/farmer/summary', (req, res) => {
 // Allowlist for history endpoint topics — prevents SQL injection via topic param (T-07-04)
 const ALLOWED_TOPICS = ['fc.humidity', 'fc.temperature', 'fc.co2', 'fc.humidifier', 'fc.humidity_2', 'fc.temperature_2',
                          'fc.humidifier_duty', 'fc.humidity_target', 'fc.pid_output', 'fc.probe',
-                         'fc.vpd', 'fc.water_vapor'];
+                         'fc.vpd', 'fc.water_vapor', ...FC2_DB_TOPICS];
 
 // Server-side downsampling: choose bucket interval based on requested time range (D-06)
 // <=2h -> ~1440 pts at 5s; <=24h -> ~1440 pts at 1min; <=7d -> ~1008 pts at 10min; >7d -> 1hr
@@ -940,6 +941,9 @@ rclnodejs.init().then(async () => {
         rclnodejs.QoS.LivelinessPolicy.RMW_QOS_POLICY_LIVELINESS_SYSTEM_DEFAULT,
         false
     );
+
+    // FC-2 outdoor sprinklers: stored as fc2.*, live frames keyed fc2.* (no FC-1 liveness)
+    subscribeFc2(node, { insertTelemetry, broadcast, transientLocalQos });
 
     // Subscribe: fc1/actuators/humidifier -> fc.humidifier  (TRANSIENT_LOCAL — replays last state on restart)
     node.createSubscription(

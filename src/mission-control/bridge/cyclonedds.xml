@@ -16,6 +16,7 @@
             <Peers>
                 <Peer address="172.16.10.3"/>  <!-- elder-plops WG IP -->
                 <Peer address="172.16.10.5"/>  <!-- FC-1 Pi WG IP -->
+                <Peer address="172.16.10.6"/>  <!-- FC-2 Pi WG IP -->
             </Peers>
         </Discovery>
     </Domain>
