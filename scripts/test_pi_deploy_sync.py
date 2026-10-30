@@ -68,9 +68,35 @@ def test_deploy_never_restarts_fc_system_sync():
             f'deploy.sh runs `{forbidden}` -- that reconfigures the network mid-deploy'
 
 
+def test_fc2_unit_closes_valve_on_any_stop():
+    u = (HERE / 'fc2' / 'fc2-core.service').read_text()
+    assert 'ExecStopPost=' in u and 'fc2_valve_off' in u
+    assert 'Restart=always' in u and 'WatchdogSec=' in u and 'NotifyAccess=all' in u
+
+
+def test_fc2_dds_peers_and_fc1_dds_untouched():
+    x = (HERE / 'fc2' / 'cyclonedds.xml').read_text()
+    assert '172.16.10.3' in x and '172.16.10.6' in x and x.count('<NetworkInterface') == 1
+    assert '172.16.10.6' not in (HERE / 'cyclonedds.xml').read_text()
+
+
+def test_deploy_defaults_unchanged_for_fc1():
+    t = code('deploy.sh')
+    for d in ['PI_HOST:-172.16.10.5', 'BRANCH:-fc1/prod', 'SERVICE:-fc-core', 'PACKAGES:-fc_msgs fc_core']:
+        assert d in t
+
+
+def test_fc2_deploy_uses_reset_not_pull():
+    assert 'git pull' not in code('fc2/deploy.sh')
+
+
 if __name__ == '__main__':
     test_no_git_pull()
     test_syncs_and_guards_dirty_tree()
     test_deploy_reconciles_units()
     test_deploy_never_restarts_fc_system_sync()
+    test_fc2_unit_closes_valve_on_any_stop()
+    test_fc2_dds_peers_and_fc1_dds_untouched()
+    test_deploy_defaults_unchanged_for_fc1()
+    test_fc2_deploy_uses_reset_not_pull()
     print('OK: deploy path syncs to the branch, guards a dirty tree, reconciles units')

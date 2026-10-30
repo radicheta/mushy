@@ -7,8 +7,12 @@ PI_USER="${PI_USER:-ubuntu}"
 PI_WS="/home/${PI_USER}/mushroom_farm_ws"
 PI_REPO="${PI_WS}/mushy-repo"
 BRANCH="${BRANCH:-fc1/prod}"
+UNIT_DIR="${UNIT_DIR:-scripts/pi-deploy}"
+UNITS="${UNITS:-fc-core.service fc-update.service fc-system-sync.service}"
+PACKAGES="${PACKAGES:-fc_msgs fc_core}"
+SERVICE="${SERVICE:-fc-core}"
 
-echo "=== Deploying fc_core to ${PI_HOST} (branch: ${BRANCH}) ==="
+echo "=== Deploying ${PACKAGES} to ${PI_HOST} (branch: ${BRANCH}) ==="
 
 # Step 0: Reconcile the repo's unit files onto the Pi.
 # deploy.sh used to deploy CODE but not units: it synced the checkout, built,
@@ -36,8 +40,8 @@ git -C "${REPO_ROOT}" fetch -q origin
 UNITS_CHANGED=0
 STAGE="$(mktemp -d)"
 trap 'rm -rf "${STAGE}"' EXIT
-for unit in fc-core.service fc-update.service fc-system-sync.service; do
-  if ! git -C "${REPO_ROOT}" show "origin/${BRANCH}:scripts/pi-deploy/${unit}" > "${STAGE}/${unit}" 2>/dev/null; then
+for unit in ${UNITS}; do
+  if ! git -C "${REPO_ROOT}" show "origin/${BRANCH}:${UNIT_DIR}/${unit}" > "${STAGE}/${unit}" 2>/dev/null; then
     echo "  ${unit}: not present on origin/${BRANCH} -- skipping"
     continue
   fi
@@ -92,10 +96,10 @@ ssh "${PI_USER}@${PI_HOST}" "
 
 # Step 2: Build on Pi
 echo "[2/3] Building on Pi..."
-ssh "${PI_USER}@${PI_HOST}" "cd ${PI_WS} && source /opt/ros/jazzy/setup.bash && colcon build --packages-select fc_msgs fc_core"
+ssh "${PI_USER}@${PI_HOST}" "cd ${PI_WS} && source /opt/ros/jazzy/setup.bash && colcon build --packages-select ${PACKAGES}"
 
 # Step 3: Restart service
-echo "[3/3] Restarting fc-core service..."
-ssh "${PI_USER}@${PI_HOST}" "sudo systemctl restart fc-core"
+echo "[3/3] Restarting ${SERVICE} service..."
+ssh "${PI_USER}@${PI_HOST}" "sudo systemctl restart ${SERVICE}"
 
-echo "=== Deploy complete. Check status: ssh ${PI_HOST} 'sudo systemctl status fc-core' ==="
+echo "=== Deploy complete. Check status: ssh ${PI_HOST} 'sudo systemctl status ${SERVICE}' ==="

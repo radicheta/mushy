@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- CycloneDDS unicast config for FC-2 over WireGuard VPN (wg0); peers elder-plops and itself only -->
+<!-- IMPORTANT: Only ONE network interface entry — multiple entries break unicast SPDP -->
+<CycloneDDS xmlns="https://cdds.io/config"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="https://cdds.io/config https://raw.githubusercontent.com/eclipse-cyclonedds/cyclonedds/master/etc/cyclonedds.xsd">
+    <Domain Id="any">
+        <General>
+            <Interfaces>
+                <NetworkInterface name="wg0" multicast="false" />
+            </Interfaces>
+            <AllowMulticast>false</AllowMulticast>
+        </General>
+        <Discovery>
+            <Peers>
+                <Peer address="172.16.10.3"/>  <!-- elder-plops WG IP -->
+                <Peer address="172.16.10.6"/>  <!-- FC-2 Pi WG IP (itself) -->
+            </Peers>
+        </Discovery>
+    </Domain>
+</CycloneDDS>

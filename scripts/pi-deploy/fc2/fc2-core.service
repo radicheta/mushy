@@ -1,0 +1,44 @@
+[Unit]
+Description=FC-2 log-yard sprinklers
+After=network-online.target wg-quick@wg0.service
+Wants=network-online.target wg-quick@wg0.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+# Type=simple: the node sends WATCHDOG=1 but never READY=1.
+# NotifyAccess=all: the node is a child of `ros2 launch`, not the main PID.
+Type=simple
+NotifyAccess=all
+WatchdogSec=30
+User=ubuntu
+Environment="ROS_DOMAIN_ID=69"
+Environment="ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET"
+Environment="RMW_IMPLEMENTATION=rmw_cyclonedds_cpp"
+Environment="CYCLONEDDS_URI=file:///etc/cyclonedds.xml"
+Environment="HOME=/home/ubuntu"
+Environment="FC2_RUNTIME_OVERLAY=/var/lib/fc2-core/runtime_overrides.yaml"
+ExecStartPre=/bin/bash -c 'install -d -o ubuntu -g ubuntu -m 0755 /var/lib/fc2-core'
+# Drive the valve pin off at every start, before the launch.
+ExecStartPre=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && source /home/ubuntu/mushroom_farm_ws/install/setup.bash && export FC2_RUNTIME_OVERLAY=/var/lib/fc2-core/runtime_overrides.yaml && ros2 run fc2_core fc2_valve_off'
+ExecStartPre=/bin/bash -c '\
+  echo "fc2-core: waiting for wg0 IPv4..."; \
+  for i in $(seq 1 60); do \
+    if ip -4 addr show wg0 2>/dev/null | grep -q "inet "; then \
+      echo "fc2-core: wg0 has IPv4 (attempt $i)"; \
+      exit 0; \
+    fi; \
+    sleep 1; \
+  done; \
+  echo "fc2-core: wg0 did not acquire IPv4 after 60s -- aborting start"; \
+  exit 1'
+ExecStart=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && source /home/ubuntu/mushroom_farm_ws/install/setup.bash && ros2 launch fc2_core fc2.launch.py'
+# Close the valve on any stop, crash or watchdog kill.
+ExecStopPost=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && source /home/ubuntu/mushroom_farm_ws/install/setup.bash && export FC2_RUNTIME_OVERLAY=/var/lib/fc2-core/runtime_overrides.yaml && ros2 run fc2_core fc2_valve_off'
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
