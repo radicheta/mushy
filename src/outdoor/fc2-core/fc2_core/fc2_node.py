@@ -110,8 +110,8 @@ class Fc2Controller(Node):
                                      self._rule.max_open_sec)
         self.valve = valve
         self.valve.set_open(False)
-        self._open = False
-        self._trip_seen = False
+        self._open = False  # what the scheduler last asked for
+        self._trips_seen = self.valve.trip_count
         self.last_decision = None
         self._scheduler = BurstScheduler(self._now())
 
@@ -152,15 +152,20 @@ class Fc2Controller(Node):
             d = decide(reading, now, local, p)
             self.last_decision = d
             want = self._scheduler.tick(now, d.bursts_per_hour, p.pulse_sec)
+            # A trip closes the valve but leaves self._open alone: the valve
+            # stays closed until the scheduler itself stops wanting it open,
+            # instead of reopening next tick with a fresh max-on window.
+            trips = self.valve.trip_count
+            if trips != self._trips_seen:
+                self._trips_seen = trips
+                self._valve_pub.publish(Bool(data=False))
+                self.get_logger().warning(
+                    f'max-on guard tripped: valve forced closed after '
+                    f'{self.valve.max_open_sec:g}s')
             if want != self._open:
                 self.valve.set_open(want)
                 self._open = want
                 self._valve_pub.publish(Bool(data=want))
-            if self.valve.tripped and not self._trip_seen:
-                self._trip_seen = True
-                self.get_logger().warning(
-                    f'max-on guard tripped: valve forced closed after '
-                    f'{self.valve.max_open_sec:g}s')
         except BaseException:
             self.valve.set_open(False)
             self._open = False

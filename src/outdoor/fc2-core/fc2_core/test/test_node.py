@@ -140,3 +140,115 @@ def test_base_config_declares_every_param_with_its_type():
     assert set(cfg) == set(DEFAULTS)
     for k, v in cfg.items():
         assert type(v) is type(DEFAULTS[k]), k
+
+
+class ManualTimer:
+    """threading.Timer stand-in: fire() runs the guard's trip by hand."""
+
+    def __init__(self, sec, fn):
+        self.sec, self.fn, self.cancelled, self.daemon = sec, fn, False, False
+
+    def start(self):
+        pass
+
+    def cancel(self):
+        self.cancelled = True
+
+    def fire(self):
+        if not self.cancelled:
+            self.fn()
+
+
+class Recorder:
+    def __init__(self):
+        self.sent = []
+
+    def publish(self, msg):
+        self.sent.append(msg.data)
+
+
+class FakeLogger:
+    def __init__(self):
+        self.warnings = []
+
+    def warning(self, msg):
+        self.warnings.append(msg)
+
+    def info(self, msg):
+        pass
+
+
+def _no_reading(*a, **k):
+    return None  # fallback mode: 1 burst/h, a 3600 s gap; nothing logged
+
+
+@pytest.fixture
+def burst_node(node_factory, tmp_path):
+    """A node on a fake monotonic clock, its valve publishes and its timers captured."""
+    t = [1000.0]
+    timers = []
+
+    def timer_factory(sec, fn):
+        timers.append(ManualTimer(sec, fn))
+        return timers[-1]
+    v = GuardedValve(SimValve(), 120.0, timer_factory=timer_factory,
+                     clock=lambda: t[0])
+    n = node_factory(overlay=tmp_path / 'o.yaml', fetch_fn=_no_reading, valve=v,
+                     now_mono=lambda: t[0])
+    n._valve_pub = Recorder()
+    log = FakeLogger()
+    n.get_logger = lambda: log
+    return n, t, timers, log
+
+
+def test_burst_opens_through_control_tick(burst_node):
+    n, t, _, _ = burst_node
+    n.control_tick()
+    assert not n.valve.inner.is_open
+    t[0] += 3601.0
+    n.control_tick()
+    assert n.valve.inner.is_open and n._valve_pub.sent == [True]
+
+
+def test_exception_mid_burst_closes_valve(burst_node, monkeypatch):
+    n, t, _, _ = burst_node
+    t[0] += 3601.0
+    n.control_tick()
+    assert n.valve.inner.is_open
+
+    def boom(*a, **k):
+        raise RuntimeError('rule bug')
+    monkeypatch.setattr('fc2_core.fc2_node.decide', boom)
+    t[0] += 1.0
+    with pytest.raises(RuntimeError):
+        n.control_tick()
+    assert not n.valve.inner.is_open
+
+
+def test_guard_trip_holds_valve_closed_until_scheduler_lets_go(burst_node):
+    n, t, timers, log = burst_node
+    t[0] += 3601.0
+    n.control_tick()
+    assert n.valve.inner.is_open
+    timers[-1].fire()  # stuck burst: the guard closes the valve
+    for _ in range(5):  # the scheduler still wants it open
+        t[0] += 1.0
+        n.control_tick()
+        assert not n.valve.inner.is_open
+    assert n._valve_pub.sent == [True, False]
+    trips = [w for w in log.warnings if 'max-on' in w]
+    assert len(trips) == 1
+    assert len(timers) == 1  # never reopened with a fresh window
+
+    t[0] += 60.0  # burst over: want goes False
+    n.control_tick()
+    assert not n.valve.inner.is_open
+    t[0] += 3601.0  # next burst opens normally, then trips again
+    n.control_tick()
+    assert n.valve.inner.is_open and len(timers) == 2
+    timers[-1].fire()
+    t[0] += 1.0
+    n.control_tick()
+    assert not n.valve.inner.is_open
+    assert n._valve_pub.sent[-2:] == [True, False]
+    assert len([w for w in log.warnings if 'max-on' in w]) == 2

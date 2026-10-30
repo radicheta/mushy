@@ -55,6 +55,7 @@ class GuardedValve:
         self.inner = inner
         self.max_open_sec = max_open_sec
         self.tripped = False
+        self.trip_count = 0
         self.intervals: List[Tuple[float, Optional[float]]] = []
         self._clock = clock
         self._timer_factory = timer_factory
@@ -69,6 +70,7 @@ class GuardedValve:
         with self._lock:
             self._timer = None
             self.tripped = True
+            self.trip_count += 1
             try:
                 self.inner.set_open(False)
             finally:
