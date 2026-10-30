@@ -37,6 +37,18 @@
         return t;
     });
 
+    // The spec's main chart: duty against the weather, with mode. Same shape
+    // OpenMCT's overlay plot gives a newly created one (configuration.series
+    // starts empty and fills in per composed object).
+    var OVERVIEW = {
+        identifier: { namespace: 'log-yard', key: 'fc2.overview' },
+        name: 'FC-2 duty vs weather',
+        type: 'telemetry.plot.overlay',
+        composition: ['fc2.duty_pct_1h', 'fc2.temperature', 'fc2.humidity', 'fc2.wind', 'fc2.mode']
+            .map(function (key) { return { namespace: 'log-yard', key: key }; }),
+        configuration: { series: [] }
+    };
+
     function findTopic(key) {
         return TOPICS.find(function (t) { return t.key === key; });
     }
@@ -62,8 +74,14 @@
                             name: 'FC-2 Log Yard',
                             type: 'folder',
                             location: 'ROOT',
-                            composition: TOPICS.map(function (t) { return t.identifier; })
+                            composition: [OVERVIEW.identifier].concat(
+                                TOPICS.map(function (t) { return t.identifier; }))
                         });
+                    }
+                    if (identifier.key === OVERVIEW.identifier.key) {
+                        return Promise.resolve(Object.assign({}, OVERVIEW, {
+                            location: openmct.objects.makeKeyString(ROOT_ID)
+                        }));
                     }
                     var topic = findTopic(identifier.key);
                     if (!topic) return Promise.resolve(null);
