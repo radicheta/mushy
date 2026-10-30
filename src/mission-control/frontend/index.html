@@ -23,6 +23,9 @@
   <!-- Fruiting chamber telemetry plugin -->
   <script src="plugins/fruiting-chamber/plugin.js"></script>
 
+  <!-- FC-2 log-yard sprinkler telemetry plugin -->
+  <script src="plugins/log-yard/plugin.js"></script>
+
   <script>
     var ONE_MINUTE      = 60 * 1000;
     var FIVE_MINUTES    = 5  * ONE_MINUTE;
@@ -104,6 +107,14 @@
         historyUrl: 'http://' + __mcHost + ':8081/history',
         cameraUrl:  'http://' + __mcHost + ':8081/camera/mjpeg'
     }));
+
+    // ── FC-2 log yard ───────────────────────────────────────────────────────
+    tryInstall(function () {
+        return LogYardPlugin({
+            bridgeUrl:  'ws://'  + __mcHost + ':8081',
+            historyUrl: 'http://' + __mcHost + ':8081/history'
+        });
+    });
 
     // ── Start ───────────────────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', function () {
