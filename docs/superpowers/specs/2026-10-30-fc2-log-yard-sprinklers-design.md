@@ -141,7 +141,7 @@ water). The rule should be structured so this is a contained change.
 - Every burst has a hard maximum on-time, `max_open_sec` (default: builder's
   call, comfortably above `pulse_sec`, e.g. 120). It is enforced independently
   of the scheduling logic, so a bug in the scheduler cannot hold the valve open.
-  A setting change that makes `pulse_sec > max_open_sec` is rejected.
+  A setting change that leaves less than 2 s between `pulse_sec` and `max_open_sec` (`max_open_sec < pulse_sec + 2`, one control tick of margin) is rejected.
 - If the node dies, the valve must close. The normally-closed valve covers loss
   of power but not a process that dies with the GPIO driven on. **Software only
   for v1** (decided): no extra hardware. Use the Pi's hardware watchdog plus a
