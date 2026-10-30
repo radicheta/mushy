@@ -942,9 +942,6 @@ rclnodejs.init().then(async () => {
         false
     );
 
-    // FC-2 outdoor sprinklers: stored as fc2.*, live frames keyed fc2.* (no FC-1 liveness)
-    subscribeFc2(node, { insertTelemetry, broadcast, transientLocalQos });
-
     // Subscribe: fc1/actuators/humidifier -> fc.humidifier  (TRANSIENT_LOCAL — replays last state on restart)
     node.createSubscription(
         'std_msgs/msg/Bool',
@@ -1215,6 +1212,10 @@ rclnodejs.init().then(async () => {
         retention.runPrune(prunerArgs()).catch(e => console.error('[retention] startup tick failed:', e.message));
     }, 60 * 1000);
     console.log('[retention] scheduled — retain ' + RETENTION_DAYS + ' days, grace ' + RETENTION_GRACE_DAYS + ' days');
+
+    // FC-2 outdoor sprinklers: stored as fc2.*, live frames keyed fc2.* (no FC-1 liveness).
+    // Last on purpose: nothing FC-2 may delay or break FC-1 subscriptions.
+    subscribeFc2(node, { insertTelemetry, broadcast, transientLocalQos });
 
     rosReady = true;
     node.spin();

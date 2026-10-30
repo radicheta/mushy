@@ -28,8 +28,12 @@ function subscribeFc2(node, { insertTelemetry, broadcast, transientLocalQos, now
             }
             broadcast({ [t.db]: value, timestamp: ts });
         };
-        if (t.latched) node.createSubscription(t.type, t.ros, { qos: transientLocalQos }, handler);
-        else node.createSubscription(t.type, t.ros, handler);
+        try {
+            if (t.latched) node.createSubscription(t.type, t.ros, { qos: transientLocalQos }, handler);
+            else node.createSubscription(t.type, t.ros, handler);
+        } catch (e) {
+            console.warn(`[fc2] subscribe failed for ${t.ros}: ${e.message}`);
+        }
     }
 }
 

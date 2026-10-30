@@ -31,3 +31,24 @@ test('float topics store msg.data', async () => {
   await n.subs.find(s => s.topic === '/fc2/duty_pct_1h').cb({ data: 1.5 });
   expect(ins).toHaveBeenCalledWith('fc2.duty_pct_1h', 1.5, 5, 5e6);
 });
+test('a createSubscription that throws drops only its own topic', () => {
+  const subs = [];
+  const node = { createSubscription: (type, topic, a, b) => {
+    if (topic === '/fc2/weather/wind') throw new Error('boom');
+    subs.push(topic);
+  } };
+  const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  expect(() => subscribeFc2(node, { insertTelemetry: jest.fn(), broadcast: jest.fn(), transientLocalQos: {} })).not.toThrow();
+  expect(warn).toHaveBeenCalledWith('[fc2] subscribe failed for /fc2/weather/wind: boom');
+  warn.mockRestore();
+  expect(subs.length).toBe(FC2_TOPICS.length - 1);
+  expect(subs).not.toContain('/fc2/weather/wind');
+});
+test('insertTelemetry rejecting still broadcasts', async () => {
+  const n = fakeNode(); const bc = jest.fn();
+  const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  subscribeFc2(n, { insertTelemetry: jest.fn().mockRejectedValue(new Error('db')), broadcast: bc, transientLocalQos: {}, now: () => 7 });
+  await n.subs.find(s => s.topic === '/fc2/mode').cb({ data: 2 });
+  warn.mockRestore();
+  expect(bc).toHaveBeenCalledWith({ 'fc2.mode': 2, timestamp: 7 });
+});
