@@ -75,6 +75,12 @@ def test_fc2_unit_closes_valve_on_any_stop():
     assert 'StartLimitIntervalSec=0' in u and 'StartLimitBurst' not in u
 
 
+def test_fc2_unit_state_dir_made_by_systemd():
+    # ExecStartPre runs as User=ubuntu, which cannot create /var/lib/fc2-core.
+    u = (HERE / 'fc2' / 'fc2-core.service').read_text()
+    assert 'StateDirectory=fc2-core' in u and 'install -d' not in u
+
+
 def test_fc2_dds_peers_and_fc1_dds_untouched():
     x = (HERE / 'fc2' / 'cyclonedds.xml').read_text()
     assert '172.16.10.3' in x and '172.16.10.6' in x and x.count('<NetworkInterface') == 1

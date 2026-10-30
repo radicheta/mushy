@@ -12,13 +12,15 @@ Type=simple
 NotifyAccess=all
 WatchdogSec=30
 User=ubuntu
+# systemd creates /var/lib/fc2-core owned by User= (holds the runtime overlay).
+StateDirectory=fc2-core
+StateDirectoryMode=0755
 Environment="ROS_DOMAIN_ID=69"
 Environment="ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET"
 Environment="RMW_IMPLEMENTATION=rmw_cyclonedds_cpp"
 Environment="CYCLONEDDS_URI=file:///etc/cyclonedds.xml"
 Environment="HOME=/home/ubuntu"
 Environment="FC2_RUNTIME_OVERLAY=/var/lib/fc2-core/runtime_overrides.yaml"
-ExecStartPre=/bin/bash -c 'install -d -o ubuntu -g ubuntu -m 0755 /var/lib/fc2-core'
 # Drive the valve pin off at every start, before the launch.
 ExecStartPre=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && source /home/ubuntu/mushroom_farm_ws/install/setup.bash && export FC2_RUNTIME_OVERLAY=/var/lib/fc2-core/runtime_overrides.yaml && ros2 run fc2_core fc2_valve_off'
 ExecStartPre=/bin/bash -c '\
