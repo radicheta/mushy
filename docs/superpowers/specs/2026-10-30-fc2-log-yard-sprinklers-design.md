@@ -5,8 +5,9 @@ Ticket: MUSHY-168. Status: design, 2026-10-30.
 ## Intent
 
 The outdoor mushroom logs are watered by hand today. FC-2 takes that job: a
-Raspberry Pi and a solenoid valve in a waterproof box by the logs, opening the
-sprinklers in short bursts on a schedule that follows the weather.
+Raspberry Pi in the lab (next to FC-1) driving a solenoid valve at the logs
+over a 15 m cable, opening the sprinklers in short bursts on a schedule that
+follows the weather.
 
 There is no moisture sensor. FC-2 never measures how wet the logs are; it acts
 on weather data alone. The rules start rough and get tuned by hand over weeks,
@@ -51,12 +52,27 @@ These would make it a failure even if it technically works:
 
 ## Constraints and facts
 
-- **Hardware.** Raspberry Pi (currently on the bench) driving a relay that
-  switches a solenoid valve. The valve is normally closed: no power means no
-  water. GPIO pin not yet chosen.
-- **Placement.** Waterproof box at the log yard, on `mossrock-wifi`, the same
-  WiFi FC-1 uses (FC-1 is `10.68.155.56` on it). Verified on FC-1's live
-  `/etc/netplan/` 2026-10-30. The repo's
+- **Hardware.** Raspberry Pi (currently on the bench) driving a switch (relay
+  or logic-level MOSFET module, not chosen yet) that powers a **12 V DC**
+  solenoid valve (coil current to be read off its label, typically 0.3-0.5 A).
+  The valve is normally closed: no power means no water. GPIO pin not yet
+  chosen. FC-2 is its own Pi, separate from FC-1, so a sprinkler bug cannot take
+  the chamber down (decided).
+- **Placement (decided).** The Pi, the switch and a 12 V supply (at least 1 A)
+  sit indoors in the lab, next to FC-1. Only the cable runs out, about 15 m, to
+  the valve at the logs. No waterproof enclosure for electronics.
+- **Valve wiring (decided; for whoever wires it, no code impact).**
+  - Cable: outdoor or direct-burial Cat5e (or indoor cable in conduit), one
+    pair each way, so ~0.6 V drop at 0.5 A. 18 AWG outdoor two-core also works.
+    A single conductor each way (~1.3 V drop) is marginal.
+  - Flyback diode (e.g. 1N4007) across the valve coil, stripe to +.
+  - TVS diode (e.g. P6KE15A) across the pair at the lab end: an outdoor cable
+    enters the lab next to FC-1.
+  - Splice at the valve with gel-filled direct-burial connectors.
+- **Network.** The lab is on `mossrock-wifi`, the WiFi FC-1 uses (FC-1 is
+  `10.68.155.56` on it; FC-1's `eth0` is unused). Verified on FC-1's live
+  `/etc/netplan/` 2026-10-30. FC-2 joins the same WiFi, or a wired port if one
+  is handy (builder's call at install). The repo's
   `scripts/pi-deploy/etc/netplan/60-wifi.yaml.example` still says
   `mossrock-west`: that file is stale, not the live config.
 - **Network to elder-plops.** Kernel WireGuard to pfSense, subnet
@@ -66,7 +82,7 @@ These would make it a failure even if it technically works:
   (`docs/pi-setup/wireguard-setup.md`).
 - **DDS.** CycloneDDS over `wg0`, unicast, with explicit peer lists in
   `scripts/pi-deploy/cyclonedds.xml` and `src/mission-control/bridge/cyclonedds.xml`.
-  Both need `172.16.10.6`. Note the comment in the Pi file: only one
+  Only the bridge's list needs `172.16.10.6` (see Deploy). Note the comment in the Pi file: only one
   `<NetworkInterface>` entry. `ROS_DOMAIN_ID=69`.
 - **No RTC.** FC-1's Pi has no real-time clock (it boots with a wrong clock
   until NTP syncs). Assume the same for FC-2. Burst timing must use a
@@ -130,16 +146,16 @@ water). The rule should be structured so this is a contained change.
   of power but not a process that dies with the GPIO driven on. **Software only
   for v1** (decided): no extra hardware. Use the Pi's hardware watchdog plus a
   supervisor; the exact design is the builder's (see Left to the builder).
-- **Board unknown** (decided: design without it). The Pi model and relay board
-  are not chosen yet, so relay polarity (active-high or active-low) and the
-  pin's state during boot are unknown. Make polarity a setting
+- **Board unknown** (decided: design without it). The Pi model and the switch
+  (relay or MOSFET module) are not chosen yet, so polarity (active-high or
+  active-low) and the pin's state during boot are unknown. Make polarity a setting
   (`valve_active_low`), keep the GPIO layer behind a small interface, and do
   not rely on any particular boot-time pin state. Picking a pin whose default
-  pull keeps the relay off through boot is a wiring-time task (Open questions).
+  pull keeps the switch off through boot is a wiring-time task (Open questions).
   Plan the hardware-free parts (rule, scheduler, settings, bridge, Mission
   Control) first.
-- **WiFi coverage** at the yard is assumed good enough (decided). The timer
-  fallback is for drops, not the normal mode.
+- **Network coverage** in the lab is good enough (FC-1 runs there). The timer
+  fallback is for drops and outages, not the normal mode.
 
 ## Settings (decided)
 
@@ -156,7 +172,7 @@ Writing the overlay differs from FC-1 (my call). On FC-1 a bare
 `ros2 param set` does *not* persist: the overlay is written separately, by the
 bridge's `POST /control/persist` through `fc_buffer`. FC-2 has no `fc_buffer`,
 so the FC-2 node writes its own overlay whenever it accepts a parameter change,
-atomically (write to a temp file, fsync, rename), since the box can lose power
+atomically (write to a temp file, fsync, rename), since the Pi can lose power
 at any moment. A rejected change is not written.
 
 Settings: `rain_threshold_mm`, `cool_temp_c`, `hot_temp_c`,
@@ -226,7 +242,7 @@ unit), not the chamber logic.
 
 - Package name, node structure, file layout.
 - How the "valve closes if the process dies" guarantee is built (e.g. a
-  separate watchdog, a hardware watchdog, a relay that needs a heartbeat).
+  separate watchdog, a hardware watchdog, a switch that needs a heartbeat).
   Say what was chosen.
 - How bursts are scheduled when the rate changes mid-gap (e.g. next burst at
   last burst + new gap). Avoid both a burst storm and a long stall.
@@ -240,7 +256,7 @@ unit), not the chamber logic.
 
 - Night behaviour: ask the farmer.
 - Real values for the cool and hot thresholds: tune from farmer feedback.
-- Which GPIO pin the relay is on, and the relay's polarity: set when it's
+- Which GPIO pin drives the switch, and its polarity: set when it's
   wired. Choose a pin whose default pull keeps the valve closed during boot.
 - Pi model and OS. FC-1 runs Ubuntu 24.04 with ROS2 Jazzy, and FC-2 assumes the
   same; a Pi Zero-class board would put Jazzy in question.
