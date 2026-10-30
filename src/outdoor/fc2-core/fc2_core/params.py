@@ -16,6 +16,7 @@ STARTUP_ONLY = ('valve_gpio_pin', 'valve_active_low', 'actuator_simulation_mode'
 _HHMM = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
 _RATES = ('cool_bursts_per_hour', 'hot_bursts_per_hour',
           'fallback_bursts_per_hour')
+DEFAULT_OVERLAY_PATH = '/var/lib/fc2-core/runtime_overrides.yaml'
 MAX_OPEN_CEILING_SEC = 600.0
 MAX_OPEN_SEC_PER_HOUR = 1800.0  # 50 % duty
 

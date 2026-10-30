@@ -1,8 +1,11 @@
 import sys
+import threading
+import time
 import types
 
 import pytest
 
+from fc2_core import valve as valve_mod
 from fc2_core.valve import (GpioValve, GuardedValve, SimValve,
                             resolve_valve_config, valve_off_main)
 
@@ -166,3 +169,28 @@ def test_valve_off_main_unreadable_config_nonzero(monkeypatch, tmp_path, capsys)
     with pytest.raises(SystemExit) as e:
         valve_off_main()
     assert e.value.code != 0 and 'missing.yaml' in capsys.readouterr().err
+
+
+def test_valve_off_main_default_overlay_path(monkeypatch, tmp_path):
+    calls = install_fake_rpi_gpio(monkeypatch)
+    base, _ = _cfg(tmp_path, '    actuator_simulation_mode: false\n')
+    ov = tmp_path / 'default_ov.yaml'
+    ov.write_text('/**:\n  ros__parameters:\n    valve_active_low: true\n')
+    monkeypatch.setenv('FC2_CONFIG', base)
+    monkeypatch.delenv('FC2_RUNTIME_OVERLAY', raising=False)
+    monkeypatch.setattr(valve_mod, 'DEFAULT_OVERLAY_PATH', str(ov))
+    with pytest.raises(SystemExit) as e:
+        valve_off_main()
+    assert e.value.code == 0
+    assert calls['setup'][-1] == (17, 'OUT', 'HIGH')  # overlay's active_low honoured
+
+
+def test_real_timer_closes_valve_and_is_not_daemon():
+    v = SimValve()
+    g = GuardedValve(v, 0.05)
+    g.set_open(True)
+    assert v.is_open and g._timer.daemon is False
+    deadline = time.monotonic() + 2.0
+    while v.is_open and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert not v.is_open and g.tripped

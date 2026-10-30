@@ -10,7 +10,7 @@ from typing import List, Optional, Tuple
 
 import yaml
 
-from fc2_core.params import usable_overlay
+from fc2_core.params import DEFAULT_OVERLAY_PATH, usable_overlay
 
 HISTORY_SEC = 2 * 3600.0
 
@@ -81,7 +81,9 @@ class GuardedValve:
                 if self._timer is not None:  # already open: window is not extended
                     return
                 timer = self._timer_factory(self.max_open_sec, self._trip)
-                timer.daemon = True
+                # Non-daemon on purpose: interpreter exit must wait for the
+                # guard so a still-open valve is closed within max_open_sec.
+                timer.daemon = False
                 try:
                     self.inner.set_open(True)
                     timer.start()
@@ -139,7 +141,7 @@ def valve_off_main() -> None:
     """
     try:
         base = os.environ.get('FC2_CONFIG') or _default_config()
-        overlay = os.environ.get('FC2_RUNTIME_OVERLAY', '')
+        overlay = os.environ.get('FC2_RUNTIME_OVERLAY', DEFAULT_OVERLAY_PATH)
         p = _resolve(base, overlay)
         pin, active_low = int(p['valve_gpio_pin']), bool(p['valve_active_low'])
         if p.get('actuator_simulation_mode', False) or pin == -1:
