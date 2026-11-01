@@ -2,6 +2,9 @@
 <!-- CycloneDDS unicast config for ROS2 over WireGuard VPN -->
 <!-- Bridge container uses host networking to access wg0 (host-side WG tunnel via pfSense) -->
 <!-- 2026-05-03: switched from tailscale0 to wg0 — Tailscale wireguard-go was 200% CPU on fc1 -->
+<!-- MUSHY-170: this IS the live bridge config. The image COPYs it to /opt/bridge/ and
+     docker-compose.override.yml points CYCLONEDDS_URI at it. Add a peer here, then
+     `docker compose up -d --build bridge`. -->
 <CycloneDDS xmlns="https://cdds.io/config"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:schemaLocation="https://cdds.io/config https://raw.githubusercontent.com/eclipse-cyclonedds/cyclonedds/master/etc/cyclonedds.xsd">

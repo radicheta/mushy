@@ -44,22 +44,13 @@ sudo systemctl daemon-reload && sudo systemctl restart fc-core
 
 ## Switching the Bridge (elder-plops)
 
-The bridge container picks up CycloneDDS config via `docker-compose.override.yml`.
-Edit the `CYCLONEDDS_URI` environment variable and volume mount:
+The bridge's CycloneDDS config is `src/mission-control/bridge/cyclonedds.xml`,
+baked into the image at `/opt/bridge/cyclonedds.xml` (MUSHY-170). To switch,
+edit `<NetworkInterface name=...>` in that file (`wg0` <-> `tailscale0`) and
+rebuild. Do not mount a host file over it in `docker-compose.override.yml`:
+that makes the repo copy dead.
 
-```yaml
-# For Tailscale
-- CYCLONEDDS_URI=file:///etc/cyclonedds-tailscale.xml
-volumes:
-  - /home/santi/.config/cyclonedds-tailscale.xml:/etc/cyclonedds-tailscale.xml:ro
-
-# For WireGuard
-- CYCLONEDDS_URI=file:///etc/cyclonedds.xml
-volumes:
-  - /home/santi/.config/cyclonedds.xml:/etc/cyclonedds.xml:ro
-```
-
-Then: `docker-compose rm -sf bridge && docker-compose up -d bridge`
+Then: `docker compose up -d --build bridge`
 
 ## Connecting Pi to 4G Hotspot
 
