@@ -210,8 +210,11 @@ async def run_multi_confirm(
     config,
     log,
     now_ms=None,
+    source_capture_ids=None,
 ) -> dict:
     _log = log or logger
+    # MUSHY-175: a held batch makes every capture in it a source.
+    source_ids = source_capture_ids or [capture_id]
 
     # Expire prior in-flight once -- a multi-draft capture resets the
     # conversational state, mirroring run_batch_mode's behavior.
@@ -235,7 +238,7 @@ async def run_multi_confirm(
         item = item or {}
         draft = item.get("draft")
         per_field_confidence = item.get("per_field_confidence") or {}
-        draft_id = extraction_db.compute_draft_id([capture_id], i)
+        draft_id = extraction_db.compute_draft_id(source_ids, i)
 
         # Run the FSM with the real configured max_askback_turns; the high-conf
         # path typically produces send_confirm_prompt directly (no ask-back).
@@ -296,7 +299,7 @@ async def run_multi_confirm(
                 "id": draft_id,
                 "sender_e164": sender,
                 "farmos_person": capture_ctx.get("farmos_person"),
-                "source_capture_ids": [capture_id],
+                "source_capture_ids": source_ids,
                 "status": final_status,
                 "log_type": draft.get("type") if draft else None,
                 "draft_json": draft,
@@ -323,7 +326,7 @@ async def run_multi_confirm(
             "farmer_facing_preview": d_extras.get("farmer_facing_preview"),
             "reply_target_kind": capture_ctx.get("reply_target_kind"),
             "group_id": capture_ctx.get("group_id"),
-            "source_capture_ids": [capture_id],
+            "source_capture_ids": source_ids,
             "askback_turns": transition.next_askback_turns or 0,
         }
         for effect in transition.side_effects:

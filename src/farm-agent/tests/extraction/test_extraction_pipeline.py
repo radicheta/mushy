@@ -739,3 +739,65 @@ async def test_without_a_farmos_client_the_gate_is_skipped():
 
     _, _, extras = db.updates[-1]
     assert extras.get("needs_review_reason") != "strain_unknown_pending_confirm"
+
+
+async def test_a_held_batch_is_extracted_in_one_call_and_owns_the_draft():
+    """MUSHY-175: a voice note and the photo after it are read together, asked once."""
+    received = {}
+
+    async def extract(captures, in_flight_draft=None, corpus_context=None,
+                      farmer_correction=None, capture_date_iso=None):
+        received["captures"] = captures
+        return {
+            "ok": True, "drafts": [{"draft": CLEAN, "per_field_confidence": {}}],
+            "draft": CLEAN, "per_field_confidence": {}, "continuity_decision": "start_new",
+            "usage": None,
+        }
+
+    db = FakeDb()
+    d = FakeDispatcher()
+    voice = dict(CTX, capture_id="cap0", text=None, transcripts=["KOS one to eight"])
+    p = _pipeline(db, {"extract": extract}, d)
+    res = await p["enqueue"](dict(CTX, text=None, batch=[voice]))
+
+    assert res["ok"] is True
+    assert [c["capture_id"] for c in received["captures"]] == ["cap0", "cap1"]
+    assert received["captures"][0]["transcript"] == "KOS one to eight"
+    assert db.inserted[0]["source_capture_ids"] == ["cap0", "cap1"]
+    assert db.inserted[0]["id"] == "draft-cap0|cap1"
+    assert len(d.calls) == 1
+
+
+async def test_a_held_batch_appended_to_an_in_flight_draft_keeps_every_source():
+    in_flight = {"id": "d-old", "status": "awaiting_farmer", "source_capture_ids": ["old"],
+                 "askback_turns": 0, "updated_at": _dt_from_ms(999_000)}
+    db = FakeDb(in_flight=in_flight)
+    pool = FakePool()
+    p = _pipeline(db, _extractor({
+        "ok": True, "drafts": [{"draft": CLEAN, "per_field_confidence": {}}],
+        "draft": CLEAN, "per_field_confidence": {}, "continuity_decision": "append",
+        "usage": None,
+    }), pool=pool)
+    res = await p["enqueue"](dict(CTX, batch=[dict(CTX, capture_id="cap0")]))
+
+    assert res["draft_id"] == "d-old"
+    sql_params = [params for sql, params in pool.calls if "source_capture_ids" in sql]
+    assert sql_params == [(["old", "cap0", "cap1"], "d-old")]
+
+
+async def test_a_held_batch_with_several_events_keeps_every_source():
+    """The photo held before a voice note must stay a source, or commit drops it."""
+    hi = {"harvest_batch_id": 0.99, "qty_g": 0.99, "source_block_refs": 0.99,
+          "event_timestamp": 0.99}
+    for drafts, mode in (([{"draft": CLEAN, "per_field_confidence": {}}] * 2, "batch"),
+                         ([{"draft": CLEAN, "per_field_confidence": hi}] * 2, None)):
+        db = FakeDb()
+        p = _pipeline(db, _extractor({
+            "ok": True, "drafts": drafts, "draft": CLEAN, "per_field_confidence": {},
+            "continuity_decision": "start_new", "usage": None,
+        }))
+        res = await p["enqueue"](dict(CTX, batch=[dict(CTX, capture_id="cap0")]))
+        assert res["ok"] is True
+        if mode:
+            assert res["mode"] == mode
+        assert [r["source_capture_ids"] for r in db.inserted] == [["cap0", "cap1"]] * 2

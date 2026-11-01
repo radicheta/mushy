@@ -170,6 +170,8 @@ def create_capture_pipeline(
     """
     _log = log or _LOG
     _repo = capture_repo if capture_repo is not None else _default_capture_repo
+    # MUSHY-175: extraction contexts held for media still to come in this batch.
+    _held: dict[str, list[dict]] = {}
 
     # ---------------------------------------------------------------------------
     # handle(envelope)
@@ -361,29 +363,42 @@ def create_capture_pipeline(
             # not know who sent it, and an unattributed draft cannot be confirmed by
             # anyone. Extraction failures never break capture (this block never raises).
             if (
-                gate_allow_extract
-                and extraction_pipeline is not None
+                extraction_pipeline is not None
                 and farmos_person
                 and farmos_person != "(unassigned)"
             ):
-                try:
-                    await extraction_pipeline["enqueue"]({
-                        "capture_id": capture_id,
-                        "sender": source,
-                        "farmos_person": farmos_person,
-                        "text": text,
-                        "transcripts": [transcript] if transcript else [],
-                        "attachment_paths": attachment_paths,
-                        "reply_target_kind": reply_target_kind,
-                        "group_id": group_id,
-                        "captured_at_ms": captured_at_ms,
-                        "corpus_context": None,   # live captures never set this (T-58-03-04)
-                    })
-                except Exception as exc:  # noqa: BLE001 -- extraction never breaks capture
-                    _log.warning(
-                        "[capture] extraction enqueue failed: sender=%s err=%s",
-                        mask_number(source), exc,
-                    )
+                extraction_ctx = {
+                    "capture_id": capture_id,
+                    "sender": source,
+                    "farmos_person": farmos_person,
+                    "text": text,
+                    "transcripts": [transcript] if transcript else [],
+                    "attachment_paths": attachment_paths,
+                    "reply_target_kind": reply_target_kind,
+                    "group_id": group_id,
+                    "captured_at_ms": captured_at_ms,
+                    "corpus_context": None,   # live captures never set this (T-58-03-04)
+                }
+                # MUSHY-175: the receive loop marks a capture whose batch has more
+                # media from this sender. Hold it and extract it with the last one,
+                # so the farmer is asked once, about everything they sent.
+                if envelope.get("_media_follows"):
+                    if gate_allow_extract:
+                        _held.setdefault(source, []).append(extraction_ctx)
+                else:
+                    batch = _held.pop(source, [])
+                    if gate_allow_extract:
+                        batch.append(extraction_ctx)
+                    if batch:
+                        extraction_ctx = batch.pop()
+                        extraction_ctx["batch"] = batch
+                        try:
+                            await extraction_pipeline["enqueue"](extraction_ctx)
+                        except Exception as exc:  # noqa: BLE001 -- extraction never breaks capture
+                            _log.warning(
+                                "[capture] extraction enqueue failed: sender=%s err=%s",
+                                mask_number(source), exc,
+                            )
 
             # --- Step 5: return CaptureResult and optionally fire Phase 59+ seam ---
             result = {

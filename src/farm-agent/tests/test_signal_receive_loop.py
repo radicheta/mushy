@@ -319,3 +319,54 @@ async def test_text_envelope_still_dispatches():
     await loop.tick()
 
     assert len(dispatched) == 1
+
+
+async def test_capture_followed_by_media_from_same_sender_is_marked():
+    """MUSHY-175: a voice note and a photo dequeued in one receive are one telling.
+
+    The earlier envelope is marked so capture can hold its extraction until the
+    photo is in; asking about the voice note alone sent a question the photo
+    then made moot, and the farmer's answer to it was read as a YES elsewhere.
+    """
+    from farm_agent.signal_io.receive_loop import ReceiveLoop  # noqa: PLC0415
+
+    cfg = _config()
+    farmer, other = cfg.signal_recipient, "+10000000002"
+    dispatched = []
+
+    async def dispatch(env):
+        dispatched.append(env)
+
+    voice = {"envelope": {"source": farmer, "dataMessage": {
+        "message": None, "attachments": [{"id": "v.aac"}]}}}
+    other_photo = {"envelope": {"source": other, "dataMessage": {
+        "message": None, "attachments": [{"id": "o.jpg"}]}}}
+    photo = {"envelope": {"source": farmer, "dataMessage": {
+        "message": None, "attachments": [{"id": "p.jpg"}]}}}
+    client = FakeSignalClient([voice, other_photo, photo])
+    loop = ReceiveLoop(signal_client=client, dispatch=dispatch, config=cfg)
+    await loop.tick()
+
+    assert [d.get("_media_follows", False) for d in dispatched] == [True, False, False]
+
+
+async def test_capture_followed_only_by_text_is_not_marked():
+    """A later text may be a reply that the confirm router consumes; never wait on it."""
+    from farm_agent.signal_io.receive_loop import ReceiveLoop  # noqa: PLC0415
+
+    cfg = _config()
+    farmer = cfg.signal_recipient
+    dispatched = []
+
+    async def dispatch(env):
+        dispatched.append(env)
+
+    voice = {"envelope": {"source": farmer, "dataMessage": {
+        "message": None, "attachments": [{"id": "v.aac"}]}}}
+    captioned = {"envelope": {"source": farmer, "dataMessage": {
+        "message": "YES", "attachments": [{"id": "p.jpg"}]}}}
+    client = FakeSignalClient([voice, _envelope(farmer, text="Yes 1"), captioned])
+    loop = ReceiveLoop(signal_client=client, dispatch=dispatch, config=cfg)
+    await loop.tick()
+
+    assert [d.get("_media_follows", False) for d in dispatched] == [False, False, False]

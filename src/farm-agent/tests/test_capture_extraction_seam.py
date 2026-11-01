@@ -123,3 +123,49 @@ async def test_last_bot_outbound_is_passed_to_the_gate():
     # None is acceptable (no recent outbound in this fixture); the point is that
     # the argument is now sourced, not hard-coded.
     assert len(seen) == 1
+
+
+def _photo_envelope(sender="+59891111111", media_follows=False):
+    env = {"envelope": {"source": sender, "dataMessage": {
+        "message": None, "timestamp": 1_700_000_000_000, "attachments": []}}}
+    if media_follows:
+        env["_media_follows"] = True
+    return env
+
+
+async def test_capture_with_media_following_is_extracted_with_the_next_one():
+    """MUSHY-175: hold a capture whose batch-mate is still coming, then extract both."""
+    xp = FakeExtractionPipeline()
+    gate, _ = _gate()
+    p = create_capture_pipeline(
+        None, FakeSignalClient(), {"transcribe": None}, _config(),
+        capture_repo=FakeRepo(), gate=gate, extraction_pipeline={"enqueue": xp.enqueue})
+
+    first = await p["handle"](_photo_envelope(media_follows=True))
+    assert xp.calls == []
+    second = await p["handle"](_photo_envelope())
+
+    assert len(xp.calls) == 1
+    ctx = xp.calls[0]
+    assert ctx["capture_id"] == second["capture_id"]
+    assert [c["capture_id"] for c in ctx["batch"]] == [first["capture_id"]]
+
+
+async def test_held_capture_is_extracted_even_when_the_last_one_is_gated_out():
+    xp = FakeExtractionPipeline()
+    allow = iter([True, False])
+
+    async def classify(env_ctx, last_bot_outbound, now_ms):
+        a = next(allow)
+        return {"gate": "event" if a else "chitchat", "allow_extract": a, "allow_convo": True}
+
+    p = create_capture_pipeline(
+        None, FakeSignalClient(), {"transcribe": None}, _config(),
+        capture_repo=FakeRepo(), gate={"classify": classify},
+        extraction_pipeline={"enqueue": xp.enqueue})
+    first = await p["handle"](_photo_envelope(media_follows=True))
+    await p["handle"](_photo_envelope())
+
+    assert len(xp.calls) == 1
+    assert xp.calls[0]["capture_id"] == first["capture_id"]
+    assert xp.calls[0]["batch"] == []

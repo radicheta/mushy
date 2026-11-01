@@ -27,6 +27,17 @@ from farm_agent.tenancy.tenant import TenantConfig
 _LOG = logging.getLogger(__name__)
 
 
+def _media_follows(later: list[dict], source: str) -> bool:
+    """True when a later envelope from ``source`` is uncaptioned media."""
+    for env in later:
+        if _router.extract_source(env) != source:
+            continue
+        dm = _router._read_dm(env)
+        if dm.get("attachments") and not dm.get("message"):
+            return True
+    return False
+
+
 class ReceiveLoop:
     """Async poll loop that gates and dispatches inbound Signal envelopes.
 
@@ -93,7 +104,7 @@ class ReceiveLoop:
             return
 
         # Sequential for-loop — NEVER asyncio.gather (attribution-critical)
-        for env in envelopes:
+        for i, env in enumerate(envelopes):
             source = _router.extract_source(env)
             if not source:
                 continue
@@ -120,6 +131,15 @@ class ReceiveLoop:
             dm = _router._read_dm(env)
             if not (dm.get("message") or dm.get("attachments")):
                 continue
+
+            # MUSHY-175: a voice note and a photo dequeued together are one
+            # telling. Extracting the first alone asked a question the second made
+            # moot, and the farmer's answer to it was taken as a YES to another
+            # question. Mark the envelope so capture holds its extraction for the
+            # media still to come. Only uncaptioned media counts: a later text may
+            # be a reply the confirm router consumes, and capture would wait forever.
+            if _media_follows(envelopes[i + 1:], source):
+                env["_media_follows"] = True
 
             # Per-envelope try/except — one bad envelope must not kill the tick
             try:

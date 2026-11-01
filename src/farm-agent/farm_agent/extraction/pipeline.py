@@ -265,7 +265,9 @@ def create_extraction_pipeline(
         outbound_dispatcher["dispatch"] if outbound_dispatcher is not None else _noop_dispatch
     )
 
-    async def _route_multi(*, drafts_arr, capture_ctx, sender, capture_id, now_ms, in_flight):
+    async def _route_multi(
+        *, drafts_arr, capture_ctx, sender, capture_id, now_ms, in_flight, source_capture_ids
+    ):
         # pipeline.js:395-407 routing rule.
         has_seeding_session = any(
             ((item or {}).get("draft") or {}).get("type") == "seeding_session"
@@ -287,8 +289,8 @@ def create_extraction_pipeline(
             log=_log,
         )
         if _should_batch_review(drafts_arr) or has_seeding_session:
-            return await run_batch_mode(source_capture_ids_base=[capture_id], **route_kwargs)
-        return await run_multi_confirm(**route_kwargs)
+            return await run_batch_mode(source_capture_ids_base=source_capture_ids, **route_kwargs)
+        return await run_multi_confirm(source_capture_ids=source_capture_ids, **route_kwargs)
 
     async def _handle_starting_seq_askback(**kwargs):
         # Task 7: seeding_session starting_seq short-circuit (pipeline.js:582-672).
@@ -447,14 +449,19 @@ def create_extraction_pipeline(
 
             # 3. extractor. Load images BEFORE calling extract() -- attachment_paths
             # are filesystem paths, not base64 blocks (2026-05-12 Node bug fix).
-            image_blocks = await _load_image_blocks(capture_ctx.get("attachment_paths"), _log)
-            transcripts = capture_ctx.get("transcripts")
-            captures = [{
-                "capture_id": capture_id,
-                "text": capture_ctx.get("text") or None,
-                "transcript": "\n".join(transcripts) if isinstance(transcripts, list) else None,
-                "images": image_blocks,
-            }]
+            # MUSHY-175: capture hands over the captures held for this one (same
+            # receive, same sender) so the extractor reads them all at once.
+            batch_ctxs = list(capture_ctx.get("batch") or []) + [capture_ctx]
+            batch_ids = [c["capture_id"] for c in batch_ctxs]
+            captures = []
+            for c in batch_ctxs:
+                transcripts = c.get("transcripts")
+                captures.append({
+                    "capture_id": c["capture_id"],
+                    "text": c.get("text") or None,
+                    "transcript": "\n".join(transcripts) if isinstance(transcripts, list) else None,
+                    "images": await _load_image_blocks(c.get("attachment_paths"), _log),
+                })
             try:
                 extract_result = await extractor["extract"](
                     captures,
@@ -515,6 +522,7 @@ def create_extraction_pipeline(
                     capture_id=capture_id,
                     now_ms=now_ms,
                     in_flight=in_flight,
+                    source_capture_ids=batch_ids,
                 )
 
             # 4. resolve continuity
@@ -522,21 +530,19 @@ def create_extraction_pipeline(
             continuity = "start_new" if forced == "start_new" else llm_decision
 
             if continuity == "append" and treat_in_flight:
-                source_capture_ids = list(treat_in_flight.get("source_capture_ids") or []) + [
-                    capture_id
-                ]
+                source_capture_ids = list(treat_in_flight.get("source_capture_ids") or []) + batch_ids
                 draft_id = treat_in_flight["id"]
                 prior_askback_turns = treat_in_flight.get("askback_turns") or 0
             elif continuity == "replace" and treat_in_flight:
                 # The replacing capture fed the new body, so it is a source too;
                 # commit attaches photos from these ids.
                 prior = list(treat_in_flight.get("source_capture_ids") or [])
-                source_capture_ids = prior if capture_id in prior else prior + [capture_id]
+                source_capture_ids = prior + [c for c in batch_ids if c not in prior]
                 draft_id = treat_in_flight["id"]
                 prior_askback_turns = treat_in_flight.get("askback_turns") or 0
             else:
                 # start_new (or forced, or LLM said append/replace but no in-flight existed)
-                source_capture_ids = [capture_id]
+                source_capture_ids = batch_ids
                 draft_id = db.compute_draft_id(source_capture_ids)
                 prior_askback_turns = 0
 
