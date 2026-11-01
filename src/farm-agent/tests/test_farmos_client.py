@@ -142,6 +142,41 @@ async def test_reauth_on_401_calls_login_twice():
 
 
 # ---------------------------------------------------------------------------
+# Test: reauth is sent without the stale session cookie (MUSHY-175)
+# ---------------------------------------------------------------------------
+
+
+async def test_reauth_does_not_send_stale_session_cookie():
+    """Drupal answers a login carrying a session cookie with 403 ("This route
+    can only be accessed by anonymous users"). The shared httpx client keeps
+    the Set-Cookie from the first login in its jar, so a reauth that does not
+    drop it can never succeed -- every write after one 403 then failed."""
+    def login_side_effect(request):
+        if request.headers.get("cookie"):
+            return httpx.Response(
+                403, json={"message": "This route can only be accessed by anonymous users."}
+            )
+        return _auth_response()
+
+    with respx.mock(assert_all_called=False) as mock:
+        mock.post(LOGIN_URL).mock(side_effect=login_side_effect)
+        calls = 0
+
+        def get_side_effect(request):
+            nonlocal calls
+            calls += 1
+            return httpx.Response(401) if calls == 1 else httpx.Response(200, json={"data": []})
+
+        mock.get(f"{FARMOS_URL}/api/asset/fungi").mock(side_effect=get_side_effect)
+        http = httpx.AsyncClient()
+        client = _make_client(http)
+        result = await client["get"]("/api/asset/fungi")
+
+    assert result["ok"] is True, result
+    assert result["status"] == 200
+
+
+# ---------------------------------------------------------------------------
 # Test: Second 401 returns ok=False without infinite loop
 # ---------------------------------------------------------------------------
 

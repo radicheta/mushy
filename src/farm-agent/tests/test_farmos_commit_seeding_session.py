@@ -508,18 +508,20 @@ class TestCommitSeedingSession:
         assert len(client["_created"]["groups"]) == 1
         assert len(client["_created"]["activity_logs"]) == 0  # never reached
 
-        # DELETEs: 8 fungi + 1 session group = 9 total
-        assert len(client["_deletes"]) == 9
-        assert r["farmos_response"]["orphan_attempted_count"] == 9
+        # DELETEs: 3 seeding logs + 8 fungi + 1 session group = 12 total
+        assert len(client["_deletes"]) == 12
+        assert r["farmos_response"]["orphan_attempted_count"] == 12
         assert r["farmos_response"]["orphan_cleanup_failed_count"] == 0
 
         # Session group DELETE is LAST
         session_group_id = client["_created"]["groups"][0]["id"]
         assert client["_deletes"][-1] == "/api/asset/group/" + session_group_id
 
-        # First DELETE is the LAST-created fungi (reverse order)
+        # Logs go first (MUSHY-175), then the LAST-created fungi (reverse order)
+        last_log_id = client["_created"]["logs"][-1]["id"]
+        assert client["_deletes"][0] == "/api/log/seeding/" + last_log_id
         last_fungi_id = client["_created"]["assets"][-1]["id"]
-        assert client["_deletes"][0] == "/api/asset/fungi/" + last_fungi_id
+        assert client["_deletes"][3] == "/api/asset/fungi/" + last_fungi_id
 
         # No orphan_cleanup_failed audit calls
         orphan_calls = [c for c in audit_calls if c["event"] == "orphan_cleanup_failed"]
@@ -536,12 +538,13 @@ class TestCommitSeedingSession:
 
         assert r["ok"] is False
         assert r["reason"] == "partial_commit_failed"
-        assert len(client["_deletes"]) == 9
-        assert r["farmos_response"]["orphan_cleanup_failed_count"] == 9
-        assert len(r["farmos_response"]["orphan_cleanup_failed_ids"]) == 9
+        # 3 logs + 8 fungi; the session group is kept while blocks survive.
+        assert len(client["_deletes"]) == 11
+        assert r["farmos_response"]["orphan_cleanup_failed_count"] == 11
+        assert len(r["farmos_response"]["orphan_cleanup_failed_ids"]) == 11
 
         orphan_calls = [c for c in audit_calls if c["event"] == "orphan_cleanup_failed"]
-        assert len(orphan_calls) == 9
+        assert len(orphan_calls) == 11
         for c in orphan_calls:
             assert len(c["result"]["asset_ids"]) == 1
             assert c["draft_id"] == "d-session-1"
@@ -568,8 +571,8 @@ class TestCommitSeedingSession:
         child_asset_ids = [a["id"] for a in client["_created"]["assets"]
                            if a["name"].startswith("260522_")]
 
-        # Rollback: 16 fungi DELETEs + 1 session group DELETE = 17
-        assert len(client["_deletes"]) == 17
+        # Rollback: 11 seeding logs + 16 fungi + 1 session group = 28
+        assert len(client["_deletes"]) == 28
 
         # Session group DELETE is last
         assert "/api/asset/group/" + session_group_id in client["_deletes"]
@@ -582,6 +585,48 @@ class TestCommitSeedingSession:
         # Session group comes after all fungi
         group_delete_idx = client["_deletes"].index("/api/asset/group/" + session_group_id)
         assert group_delete_idx > 0
+
+    async def test_g_unknown_strain_in_a_later_group_writes_nothing(self):
+        """MUSHY-175: an unknown strain in group 4 of 6 aborted the commit
+        after 19 blocks were already in farmOS. Every strain is checked before
+        the first write, so the session lands whole or not at all."""
+        dj = {**MAY22_FIXTURE, "groups": [*MAY22_FIXTURE["groups"]]}
+        last = dj["groups"][-1]
+        dj["groups"][-1] = {**last, "species": {**last["species"], "value": "AUM"}}
+        client = make_session_mock_client()
+        r = await commit_seeding_session(client, _draft_for(dj), {})
+
+        assert r["ok"] is False
+        assert r["reason"] == "fungi_type_not_found"
+        assert r["farmos_response"]["fungi_type_name"] == "AUM"
+        assert client["_created"] == {"assets": [], "logs": [], "groups": [], "activity_logs": []}
+        assert client["_deletes"] == []
+
+    async def test_h_rollback_deletes_seeding_logs_before_their_blocks(self):
+        """farmOS refuses to delete a block a seeding log still references
+        (403 "referenced by another entity"), so the logs go first."""
+        client = make_session_mock_client(fail_activity_log=True)
+        r = await commit_seeding_session(client, _draft_for(MAY22_FIXTURE), {})
+
+        assert r["reason"] == "partial_commit_failed"
+        log_deletes = [i for i, p in enumerate(client["_deletes"]) if p.startswith("/api/log/seeding/")]
+        fungi_deletes = [i for i, p in enumerate(client["_deletes"]) if p.startswith("/api/asset/fungi/")]
+        assert len(log_deletes) == 11
+        assert len(fungi_deletes) == 16
+        assert max(log_deletes) < min(fungi_deletes)
+
+    async def test_i_group_kept_when_a_block_cannot_be_deleted(self):
+        """The session group holds the page photo. Deleting it while blocks
+        survive leaves those blocks with no session and the photo gone."""
+        client = make_session_mock_client(
+            fail_activity_log=True,
+            delete_response=lambda p: _ok(403, None) if p.startswith("/api/asset/fungi/") else _ok(204, None),
+        )
+        r = await commit_seeding_session(client, _draft_for(MAY22_FIXTURE), {})
+
+        assert r["reason"] == "partial_commit_failed"
+        session_group_id = client["_created"]["groups"][0]["id"]
+        assert "/api/asset/group/" + session_group_id not in client["_deletes"]
 
     async def test_f2_same_day_collision_advances_to_hash_2(self):
         """Existing group with foreign draft id -> handler creates 'inoc 2026-05-22 #2'."""

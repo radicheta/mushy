@@ -651,12 +651,12 @@ async def test_a_correction_does_not_mutate_the_draft_row_in_place():
 
 @pytest.mark.asyncio
 async def test_a_multi_strain_session_is_re_asked_never_silently_confirmed():
-    """Two distinct strains: one code cannot say which to change. Re-ask and
+    """Two unknown strains: one code cannot say which to change. Re-ask and
     keep the draft held rather than ack a correction that did not take effect."""
     from farm_agent.confirm.dispatch import route_confirm_reply  # noqa: PLC0415
 
     fake_repo, fake_signal = FakeConfirmRepoForDispatch(), FakeSignalClient()
-    draft = _make_session_row(["POY", "MAI"])
+    draft = _make_session_row(["POY", "ZZZ", "MAI"])
 
     result = await route_confirm_reply(
         object(), fake_signal, _make_config(), draft, "koy", repo=fake_repo
@@ -669,6 +669,31 @@ async def test_a_multi_strain_session_is_re_asked_never_silently_confirmed():
     body = fake_signal.sends[-1]["body"]
     assert "POY" in body and "MAI" in body
     assert body.isascii(), f"farmer-facing text must be ASCII: {body!r}"
+
+
+@pytest.mark.asyncio
+async def test_a_correction_replaces_the_one_unknown_strain_on_a_mixed_session():
+    """MUSHY-175: the ask-back named AUM and offered "reply ALM". The farmer
+    replied ALM on a KOS/BP/AUM/MAI session. Only AUM was unknown, so the
+    reply is unambiguous: replace AUM, everywhere it is spelled, and nothing else."""
+    from farm_agent.confirm.dispatch import route_confirm_reply  # noqa: PLC0415
+
+    fake_repo, fake_signal = FakeConfirmRepoForDispatch(), FakeSignalClient()
+    draft = _make_session_row(["KOS", "BP", "AUM", "MAI"])
+    aum = draft["draft_json"]["groups"][2]
+    aum["parent"] = {"value": "260922_AUM_7"}
+    aum["child_block_names"] = {"value": ["261101_AUM_20", "261101_AUM_21"]}
+
+    result = await route_confirm_reply(
+        object(), fake_signal, _make_config(), draft, "ALM", repo=fake_repo
+    )
+
+    assert result["action"] == "correction_confirmed"
+    groups = fake_repo.update_calls[-1]["fields"]["draft_json"]["groups"]
+    assert [g["species"]["value"] for g in groups] == ["KOS", "BP", "ALM", "MAI"]
+    assert groups[2]["parent"]["value"] == "260922_ALM_7"
+    assert groups[2]["child_block_names"]["value"] == ["261101_ALM_20", "261101_ALM_21"]
+    assert fake_repo.confirm_calls
 
 
 @pytest.mark.asyncio

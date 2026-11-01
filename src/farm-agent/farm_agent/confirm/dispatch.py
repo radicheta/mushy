@@ -63,6 +63,7 @@ from farm_agent.confirm.state_machine import (
 from farm_agent.confirm.strain_ask_back import (
     apply_strain_correction,
     build_multi_strain_reask,
+    collect_strain_codes,
     get_curated_set as _get_curated_set,
     parse_strain_ask_back_reply,
     render_strain_ask_back,
@@ -174,7 +175,17 @@ async def _handle_strain_intercept(
             # groups[].species.value and the commit path reads them from there.
             # The correction was acked, the draft confirmed, and the stale
             # per-group code was what reached farmOS.
-            remap = apply_strain_correction(draft_row.get("draft_json"), resolved["code"])
+            # MUSHY-175: the ask-back names the one unknown code; when exactly one
+            # code on the draft is unknown, the reply can only mean that one.
+            unknown = [
+                c for c in collect_strain_codes(draft_row.get("draft_json"))
+                if not resolve_strain(c, curated).get("known")
+            ]
+            remap = apply_strain_correction(
+                draft_row.get("draft_json"),
+                resolved["code"],
+                replace_code=unknown[0] if len(unknown) == 1 else None,
+            )
             if not remap.get("ok"):
                 # More than one distinct strain on the session: the reply names a
                 # code but not which one it replaces. Re-ask rather than guess --

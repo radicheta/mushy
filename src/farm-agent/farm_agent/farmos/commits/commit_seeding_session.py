@@ -28,7 +28,7 @@ import logging
 import urllib.parse
 
 from farm_agent.farmos import assets, logs
-from farm_agent.farmos import group_assets, activity_logs
+from farm_agent.farmos import group_assets, activity_logs, fungi_type_cache
 from farm_agent.farmos.activity_logs import epoch_seconds_for_date
 from farm_agent.farmos.commits.attachments import upload_draft_attachments
 from farm_agent.farmos.files import upload_field_attachments
@@ -138,6 +138,7 @@ async def _cleanup(
     audit_logger = (ctx or {}).get("audit_logger") if ctx else None
     membership_log_id = (opts or {}).get("membership_log_id")
     session_group_id_just_created = (opts or {}).get("session_group_id_just_created")
+    created_log_ids = (opts or {}).get("created_log_ids") or []
     attempted = 0
     failed = 0
     failed_ids: list = []
@@ -161,15 +162,29 @@ async def _cleanup(
             failed_ids.append(membership_log_id)
             await _emit_orphan(membership_log_id, r)
 
+    # MUSHY-175: seeding logs first. farmOS refuses to delete a block that a
+    # log still references (403 "referenced by another entity").
+    for log_id in reversed(created_log_ids):
+        attempted += 1
+        r = await client["delete"](f"/api/log/seeding/{log_id}")
+        if not r.get("ok"):
+            failed += 1
+            failed_ids.append(log_id)
+            await _emit_orphan(log_id, r)
+
+    assets_failed = 0
     for asset_id in reversed(created_asset_ids):
         attempted += 1
         r = await assets.delete_fungi_asset(client, asset_id)
         if not r.get("ok"):
             failed += 1
+            assets_failed += 1
             failed_ids.append(asset_id)
             await _emit_orphan(asset_id, r)
 
-    if session_group_id_just_created:
+    # Keep the session group (and the page photo on it) while any block it
+    # was created for survives; deleting it orphans those blocks for good.
+    if session_group_id_just_created and not assets_failed:
         attempted += 1
         r = await group_assets.delete_group_asset(client, session_group_id_just_created)
         if not r.get("ok"):
@@ -221,10 +236,29 @@ async def commit_seeding_session(
             }
 
         created_asset_ids: list = []
+        created_log_ids: list = []
         child_block_ids: list = []
         child_log_ids: list = []
         timestamp = epoch_seconds_for_date(event_date)
         notes = dj.get("notes") if isinstance(dj.get("notes"), str) else ""
+
+        # ---- PREFLIGHT: strains (MUSHY-175) ----
+        # Resolve every group's strain before the first write. Checking per
+        # group aborted an inoc after 19 of 25 blocks were already in farmOS.
+        for g in groups:
+            species = ((g or {}).get("species") or {}).get("value")
+            if not species:
+                continue
+            ft = await fungi_type_cache.ensure_fungi_type_uuid(client, species)
+            if not ft["ok"]:
+                return {
+                    "ok": False,
+                    "reason": ft.get("reason") or "fungi_type_unresolved",
+                    "asset_ids": [],
+                    "log_ids": [],
+                    "file_ids": [],
+                    "farmos_response": {"fungi_type_name": species},
+                }
 
         # ---- PREFLIGHT: session group asset ----
         name_res = await _resolve_session_name(client, event_date, draft_id)
@@ -305,7 +339,8 @@ async def commit_seeding_session(
                 return await _cleanup(
                     client, ctx, draft, created_asset_ids,
                     "invalid_group_shape", child_index,
-                    {"session_group_id_just_created": session_group_id if session_group_just_created else None},
+                    {"session_group_id_just_created": session_group_id if session_group_just_created else None,
+                     "created_log_ids": created_log_ids},
                 )
 
             source_block_id = None
@@ -320,7 +355,8 @@ async def commit_seeding_session(
                     return await _cleanup(
                         client, ctx, draft, created_asset_ids,
                         r.get("reason") or "source_block_upsert_failed", child_index,
-                        {"session_group_id_just_created": session_group_id if session_group_just_created else None},
+                        {"session_group_id_just_created": session_group_id if session_group_just_created else None,
+                     "created_log_ids": created_log_ids},
                     )
                 source_block_id = r["asset_id"]
                 if r.get("outcome") == "created":
@@ -342,7 +378,8 @@ async def commit_seeding_session(
                     return await _cleanup(
                         client, ctx, draft, created_asset_ids,
                         "missing_child_block_name", child_index,
-                        {"session_group_id_just_created": session_group_id if session_group_just_created else None},
+                        {"session_group_id_just_created": session_group_id if session_group_just_created else None,
+                     "created_log_ids": created_log_ids},
                     )
                 # Children carry parent=[sourceBlock] ONLY -- NO session group edge.
                 parent_ids = [source_block_id] if source_block_id else []
@@ -357,7 +394,8 @@ async def commit_seeding_session(
                     return await _cleanup(
                         client, ctx, draft, created_asset_ids,
                         child_res.get("reason") or "child_block_upsert_failed", child_index,
-                        {"session_group_id_just_created": session_group_id if session_group_just_created else None},
+                        {"session_group_id_just_created": session_group_id if session_group_just_created else None,
+                     "created_log_ids": created_log_ids},
                     )
                 child_block_id = child_res["asset_id"]
                 if child_res.get("outcome") == "created":
@@ -387,9 +425,12 @@ async def commit_seeding_session(
                     return await _cleanup(
                         client, ctx, draft, created_asset_ids,
                         log_res.get("reason") or "seeding_log_upsert_failed", child_index,
-                        {"session_group_id_just_created": session_group_id if session_group_just_created else None},
+                        {"session_group_id_just_created": session_group_id if session_group_just_created else None,
+                     "created_log_ids": created_log_ids},
                     )
                 child_log_ids.append(log_res["log_id"])
+                if log_res.get("outcome") == "created":
+                    created_log_ids.append(log_res["log_id"])
                 if audit_logger and callable(audit_logger.get("log_commit")):
                     try:
                         await audit_logger["log_commit"]("upsert_outcome", draft, {
@@ -416,7 +457,8 @@ async def commit_seeding_session(
             return await _cleanup(
                 client, ctx, draft, created_asset_ids,
                 "membership_log_create_failed", child_index,
-                {"session_group_id_just_created": session_group_id if session_group_just_created else None},
+                {"session_group_id_just_created": session_group_id if session_group_just_created else None,
+                     "created_log_ids": created_log_ids},
             )
 
         # Build success return shape.

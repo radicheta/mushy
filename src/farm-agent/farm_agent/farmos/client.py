@@ -87,6 +87,17 @@ def create_farmos_client(
         Does NOT log password or credentials (T-62-04).
         """
         url = f"{farmos_url}/user/login?_format=json"
+        # MUSHY-175: the shared httpx client keeps the last login's Set-Cookie in
+        # its jar, and Drupal answers a login that carries a session cookie with
+        # 403 "only accessible by anonymous users". Drop this host's cookies so a
+        # reauth can actually log in again.
+        # (cookiejar files a dotless host such as "farmos" under "farmos.local".)
+        host = httpx.URL(farmos_url).host
+        for domain in (host, host + ".local"):
+            try:
+                http.cookies.jar.clear(domain)
+            except KeyError:
+                pass
         try:
             resp = await http.post(
                 url,

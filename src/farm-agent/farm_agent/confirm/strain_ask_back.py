@@ -266,7 +266,7 @@ def collect_strain_codes(draft: object) -> list[str]:
     return list(dict.fromkeys(codes))  # DISTINCT, insertion-ordered: one batched ask
 
 
-def apply_strain_correction(draft: object, new_code: str) -> dict:
+def apply_strain_correction(draft: object, new_code: str, replace_code: str | None = None) -> dict:
     """Rewrite every place a strain code lives on the draft (MUSHY-108).
 
     Flat shapes carry the code at the top level; a seeding_session carries it
@@ -280,6 +280,13 @@ def apply_strain_correction(draft: object, new_code: str) -> dict:
     held: acking a correction that did not take effect is the silent
     misattribution this whole loop exists to prevent.
 
+    replace_code (MUSHY-175): when the caller knows which code is being
+    corrected -- the one unknown code the ask-back named -- only groups
+    carrying it change, so a mixed session is no longer ambiguous. The code
+    is also rewritten inside those groups' parent and child block names
+    (260922_AUM_7 -> 260922_ALM_7), or the commit would mint blocks under the
+    old spelling.
+
     Returns:
       {"ok": True, "draft": dict, "groups_changed": int}
       {"ok": False, "reason": "multi_strain_session", "codes": [str, ...]}
@@ -290,7 +297,7 @@ def apply_strain_correction(draft: object, new_code: str) -> dict:
 
     if has_groups:
         codes = collect_strain_codes(out)
-        if len(codes) > 1:
+        if len(codes) > 1 and not replace_code:
             return {"ok": False, "reason": "multi_strain_session", "codes": codes}
         new_groups = []
         changed = 0
@@ -300,7 +307,12 @@ def apply_strain_correction(draft: object, new_code: str) -> dict:
                 continue
             species = g.get("species")
             if isinstance(species, dict) and isinstance(species.get("value"), str):
+                old_code = species["value"].upper().strip()
+                if replace_code and old_code != replace_code:
+                    new_groups.append(g)
+                    continue
                 g = {**g, "species": {**species, "value": new_code}}
+                g = _rename_block_code(g, old_code, new_code)
                 changed += 1
             new_groups.append(g)
         out["groups"] = new_groups
@@ -312,9 +324,25 @@ def apply_strain_correction(draft: object, new_code: str) -> dict:
     # the other spellings are rewritten only so no stale code is left behind
     # to contradict it on a receipt.
     for key in ("species", "strain", "fungi_type"):
-        if isinstance(out.get(key), str):
+        if isinstance(out.get(key), str) and (not replace_code or out[key].upper().strip() == replace_code):
             out[key] = new_code
     if not has_groups or isinstance(out.get("species_code"), str):
-        out["species_code"] = new_code
+        if not replace_code or str(out.get("species_code", "")).upper().strip() in ("", replace_code):
+            out["species_code"] = new_code
 
     return {"ok": True, "draft": out, "groups_changed": changed}
+
+
+def _rename_block_code(group: dict, old_code: str, new_code: str) -> dict:
+    """Swap the _OLD_ segment of a group's parent and child block names."""
+    def swap(name: object) -> object:
+        return name.replace(f"_{old_code}_", f"_{new_code}_") if isinstance(name, str) else name
+
+    out = dict(group)
+    parent = out.get("parent")
+    if isinstance(parent, dict) and isinstance(parent.get("value"), str):
+        out["parent"] = {**parent, "value": swap(parent["value"])}
+    children = out.get("child_block_names")
+    if isinstance(children, dict) and isinstance(children.get("value"), list):
+        out["child_block_names"] = {**children, "value": [swap(n) for n in children["value"]]}
+    return out
