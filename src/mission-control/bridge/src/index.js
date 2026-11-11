@@ -9,6 +9,7 @@ const { decideSource } = require('./snapshot_helpers');
 const retention = require('./retention');
 const migration = require('./schema_migration');
 const { validateHistoryParams } = require('./history_validate');
+const { bucketInterval, TELEMETRY_MAX_RANGE_MS } = require('./history_buckets');
 const { validateFrameParams } = require('./frame_validate');
 const { burnBar, formatBarText } = require('./burn_bar');
 const buffer_replay = require('./buffer_replay');
@@ -407,16 +408,6 @@ const ALLOWED_TOPICS = ['fc.humidity', 'fc.temperature', 'fc.co2', 'fc.humidifie
                          'fc.humidifier_duty', 'fc.humidity_target', 'fc.pid_output', 'fc.probe',
                          'fc.vpd', 'fc.water_vapor', ...FC2_DB_TOPICS];
 
-// Server-side downsampling: choose bucket interval based on requested time range (D-06)
-// <=2h -> ~1440 pts at 5s; <=24h -> ~1440 pts at 1min; <=7d -> ~1008 pts at 10min; >7d -> 1hr
-function bucketInterval(rangeMs) {
-    const ONE_HOUR = 3600000;
-    if (rangeMs <= 2  * ONE_HOUR)  return '5 seconds';
-    if (rangeMs <= 24 * ONE_HOUR)  return '1 minute';
-    if (rangeMs <= 7  * 24 * ONE_HOUR) return '10 minutes';
-    return '1 hour';
-}
-
 // History endpoint — returns downsampled time-series for OpenMCT request() (D-04)
 app.get('/history/:topic', async (req, res) => {
     const { topic } = req.params;
@@ -432,10 +423,9 @@ app.get('/history/:topic', async (req, res) => {
         return res.status(400).json({ error: 'start and end query params required (ms epoch)' });
     }
 
-    // Cap max range at 30 days to prevent unbounded queries (T-07-05 mitigation)
-    const MAX_RANGE = 30 * 24 * 3600000;
-    if (end - start > MAX_RANGE) {
-        return res.status(400).json({ error: 'Max range is 30 days' });
+    // Cap max range to prevent unbounded queries (T-07-05 mitigation)
+    if (end - start > TELEMETRY_MAX_RANGE_MS) {
+        return res.status(400).json({ error: 'Max range is 1 year' });
     }
 
     if (!dbReady) {
