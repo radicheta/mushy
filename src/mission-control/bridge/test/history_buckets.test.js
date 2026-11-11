@@ -32,3 +32,42 @@ describe('bucketInterval', () => {
         expect(bucketInterval(range)).toBe(expected);
     });
 });
+
+describe('historyQuery (MUSHY-182)', () => {
+    const { historyQuery } = require('../src/history_buckets');
+    const start = Date.parse('2026-10-01T00:00:00Z');
+
+    test('7 days or less reads raw telemetry', () => {
+        const q = historyQuery('fc.humidity', start, start + 7 * D);
+        expect(q.text).toMatch(/FROM telemetry\b/);
+        expect(q.text).not.toMatch(/telemetry_hourly/);
+        expect(q.values).toEqual(['10 minutes', 'fc.humidity', new Date(start), new Date(start + 7 * D)]);
+    });
+
+    test('over 7 days reads the hourly aggregate, weighted by count', () => {
+        const q = historyQuery('fc.humidity', start, start + 42 * D);
+        expect(q.text).toMatch(/FROM telemetry_hourly\b/);
+        expect(q.text).toMatch(/SUM\(sum\)\s*\/\s*SUM\(n\)/);
+        expect(q.values).toEqual(['1 hour', 'fc.humidity', new Date(start), new Date(start + 42 * D)]);
+    });
+
+    test('over 6 months uses 3 h steps from the aggregate', () => {
+        const q = historyQuery('fc.co2', start - 200 * D, start);
+        expect(q.text).toMatch(/FROM telemetry_hourly\b/);
+        expect(q.values[0]).toBe('3 hours');
+    });
+});
+
+describe('telemetry_hourly DDL (MUSHY-182)', () => {
+    const { HOURLY_DDL } = require('../src/history_buckets');
+    test('boot never backfills: the view is created WITH NO DATA', () => {
+        expect(HOURLY_DDL[0]).toMatch(/WITH NO DATA\s*$/);
+        expect(HOURLY_DDL[0]).toMatch(/IF NOT EXISTS/);
+    });
+    test('reads stay correct before materialization (real-time aggregation on)', () => {
+        expect(HOURLY_DDL[0]).toMatch(/materialized_only = false/);
+    });
+    test('policy is idempotent', () => {
+        expect(HOURLY_DDL[1]).toMatch(/if_not_exists\s*=>\s*TRUE/);
+    });
+});

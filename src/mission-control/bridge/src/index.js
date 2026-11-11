@@ -9,7 +9,7 @@ const { decideSource } = require('./snapshot_helpers');
 const retention = require('./retention');
 const migration = require('./schema_migration');
 const { validateHistoryParams } = require('./history_validate');
-const { bucketInterval, TELEMETRY_MAX_RANGE_MS } = require('./history_buckets');
+const { historyQuery, ensureTelemetryHourly, TELEMETRY_MAX_RANGE_MS } = require('./history_buckets');
 const { validateFrameParams } = require('./frame_validate');
 const { burnBar, formatBarText } = require('./burn_bar');
 const buffer_replay = require('./buffer_replay');
@@ -264,6 +264,14 @@ async function initDb() {
             await migration.applyTelemetryUniqueConstraint(pool);
             console.log('[db] telemetry_topic_time_unique constraint ensured');
         }
+        // MUSHY-182: own try so a failure here cannot skip the schema below.
+        // Without the aggregate, /history over 7 days returns 500.
+        try {
+            await ensureTelemetryHourly(pool);
+            console.log('[db] telemetry_hourly aggregate + refresh policy ensured');
+        } catch (err) {
+            console.error('[db] telemetry_hourly setup failed:', err.message);
+        }
         await pool.query(`
             CREATE TABLE IF NOT EXISTS snapshots (
                 captured_at TIMESTAMPTZ NOT NULL,
@@ -432,21 +440,8 @@ app.get('/history/:topic', async (req, res) => {
         return res.status(503).json({ error: 'Database not available' });
     }
 
-    const rangeMs  = end - start;
-    const interval = bucketInterval(rangeMs);
-
     try {
-        const result = await pool.query(
-            `SELECT time_bucket($1::interval, time) AS bucket,
-                    AVG(value) AS value
-             FROM telemetry
-             WHERE topic = $2
-               AND time >= $3
-               AND time <= $4
-             GROUP BY bucket
-             ORDER BY bucket ASC`,
-            [interval, topic, new Date(start), new Date(end)]
-        );
+        const result = await pool.query(historyQuery(topic, start, end));
         const datums = result.rows.map(row => ({
             value: parseFloat(row.value),
             utc:   new Date(row.bucket).getTime()
