@@ -48,6 +48,8 @@ describe('historyQuery (MUSHY-182)', () => {
         const q = historyQuery('fc.humidity', start, start + 42 * D);
         expect(q.text).toMatch(/FROM telemetry_hourly\b/);
         expect(q.text).toMatch(/SUM\(sum\)\s*\/\s*SUM\(n\)/);
+        // the hour starting at `end` lies wholly after the window
+        expect(q.text).toMatch(/bucket < \$4/);
         expect(q.values).toEqual(['1 hour', 'fc.humidity', new Date(start), new Date(start + 42 * D)]);
     });
 

@@ -32,15 +32,15 @@ function historyQuery(topic, start, end) {
             values,
         };
     }
-    // bucket >= the hour holding $3, so the first partial hour is kept as the
-    // raw query keeps it.
+    // Keep every hour that overlaps [$3, $4]: from the hour holding $3, up to
+    // but not including an hour that starts at $4 (it lies after the window).
     return {
         text: `SELECT time_bucket($1::interval, bucket) AS bucket,
                       SUM(sum) / SUM(n) AS value
                FROM telemetry_hourly
                WHERE topic = $2
                  AND bucket >= time_bucket('1 hour', $3::timestamptz)
-                 AND bucket <= $4
+                 AND bucket < $4
                GROUP BY 1
                ORDER BY 1 ASC`,
         values,
