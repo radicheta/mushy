@@ -1,5 +1,5 @@
 const express = require('express');
-const { registerRoutes, validateQuery, singleDayUtc } = require('../src/routes');
+const { registerRoutes, validateQuery, singleLocalDay } = require('../src/routes');
 
 function makeApp({ pool, jobs, runComposition, db, healthState }) {
     const app = express();
@@ -25,7 +25,7 @@ function findRoute(app, path) {
 
 describe('validateQuery', () => {
     test('rejects bad camera_id', () => {
-        const v = validateQuery({ from: '2026-04-25T00:00:00Z', to: '2026-04-25T23:59:59.999Z', camera_id: '../etc' });
+        const v = validateQuery({ from: '2026-04-25T03:00:00Z', to: '2026-04-26T02:59:59.999Z', camera_id: '../etc' });
         expect(v.ok).toBe(false); expect(v.status).toBe(400);
     });
     test('rejects bad date', () => {
@@ -41,18 +41,23 @@ describe('validateQuery', () => {
         expect(v.ok).toBe(false);
     });
     test('accepts a one-day range', () => {
-        const v = validateQuery({ from: '2026-04-25T00:00:00Z', to: '2026-04-25T23:59:59.999Z', camera_id: 'fc1' });
+        const v = validateQuery({ from: '2026-04-25T03:00:00Z', to: '2026-04-26T02:59:59.999Z', camera_id: 'fc1' });
         expect(v.ok).toBe(true);
     });
 });
 
-describe('singleDayUtc', () => {
-    test('detects a calendar-day range', () => {
-        expect(singleDayUtc(new Date('2026-04-25T00:00:00Z'), new Date('2026-04-25T23:59:59.999Z')))
+describe('singleLocalDay', () => {
+    const MVD = 'America/Montevideo';
+    test('detects a local calendar-day range (inclusive end)', () => {
+        expect(singleLocalDay(new Date('2026-04-25T03:00:00Z'), new Date('2026-04-26T02:59:59.999Z'), MVD))
             .toBe('2026-04-25');
     });
-    test('returns null for non-day range', () => {
-        expect(singleDayUtc(new Date('2026-04-25T01:00:00Z'), new Date('2026-04-25T23:59:59.999Z')))
+    test('detects a local calendar-day range (exclusive end)', () => {
+        expect(singleLocalDay(new Date('2026-04-25T03:00:00Z'), new Date('2026-04-26T03:00:00Z'), MVD))
+            .toBe('2026-04-25');
+    });
+    test('a UTC day is not a local day', () => {
+        expect(singleLocalDay(new Date('2026-04-25T00:00:00Z'), new Date('2026-04-25T23:59:59.999Z'), MVD))
             .toBeNull();
     });
 });
@@ -68,12 +73,13 @@ describe('GET /timelapse', () => {
         const app = makeApp({ pool, jobs, runComposition, db, healthState });
         const handler = findRoute(app, '/timelapse');
 
-        const req = reqMock({ from: '2026-04-25T00:00:00Z', to: '2026-04-25T23:59:59.999Z', camera_id: 'fc1' });
+        const req = reqMock({ from: '2026-04-25T03:00:00Z', to: '2026-04-26T02:59:59.999Z', camera_id: 'fc1' });
         const res = resMock();
         await handler(req, res);
 
         expect(res._status).toBe(200);
         expect(res._body).toEqual({ file_path: '/data/timelapse/fc1/2026-04-25.mp4', duration_sec: 8.3 });
+        expect(db.lookupTimelapse).toHaveBeenCalledWith(pool, 'fc1', '2026-04-25');
         expect(runComposition).not.toHaveBeenCalled();
     });
 
@@ -87,7 +93,7 @@ describe('GET /timelapse', () => {
         const app = makeApp({ pool, jobs, runComposition, db, healthState });
         const handler = findRoute(app, '/timelapse');
 
-        const req = reqMock({ from: '2026-04-25T00:00:00Z', to: '2026-04-25T23:59:59.999Z', camera_id: 'fc1' });
+        const req = reqMock({ from: '2026-04-25T03:00:00Z', to: '2026-04-26T02:59:59.999Z', camera_id: 'fc1' });
         const res = resMock();
         await handler(req, res);
 
@@ -106,7 +112,7 @@ describe('GET /timelapse', () => {
         const app = makeApp({ pool, jobs, runComposition, db, healthState });
         const handler = findRoute(app, '/timelapse');
 
-        const req = reqMock({ from: '2026-04-25T00:00:00Z', to: '2026-04-25T23:59:59.999Z', camera_id: '../etc' });
+        const req = reqMock({ from: '2026-04-25T03:00:00Z', to: '2026-04-26T02:59:59.999Z', camera_id: '../etc' });
         const res = resMock();
         await handler(req, res);
 

@@ -35,11 +35,12 @@ function baseDeps(overrides = {}) {
     const runFfmpeg = jest.fn(async () => {});
     const burnOverlay = jest.fn(async (buf) => Buffer.concat([buf, Buffer.from('-burned')]));
     const db = {
-        fetchRhForDay: jest.fn(async () => []),
-        nearestRh: jest.fn(() => 88.5),
+        fetchTelemetry: jest.fn(async (pool, topic) => [{ topic }]),
+        nearestValue: jest.fn((rows) => ({ 'fc.humidity': 88.5, 'fc.temperature': 19.4, 'fc.co2': 603 })[rows[0].topic]),
         insertTimelapse: jest.fn(async () => {}),
     };
-    return { fs, runFfmpeg, burnOverlay, db, log: noopLog, ...overrides };
+    const meanLuma = jest.fn(async () => 120);
+    return { fs, runFfmpeg, burnOverlay, meanLuma, db, log: noopLog, ...overrides };
 }
 
 describe('composeDay', () => {
@@ -152,4 +153,68 @@ describe('composeDay', () => {
         const content = filelistEntry[1].toString();
         expect(content).toMatch(/^file '\/tmp\/w\/fc1\/2026-04-25\/frame_0001\.jpg'\nfile '\/tmp\/w\/fc1\/2026-04-25\/frame_0002\.jpg'\nfile '\/tmp\/w\/fc1\/2026-04-25\/frame_0003\.jpg'\n$/);
     });
+
+    // MUSHY-188 ---------------------------------------------------------------
+    const threeRows = () => [
+        { captured_at: new Date('2026-11-11T21:00:00Z'), file_path: '/x/a.jpg' },
+        { captured_at: new Date('2026-11-11T21:01:00Z'), file_path: '/x/b.jpg' },
+        { captured_at: new Date('2026-11-11T21:02:00Z'), file_path: '/x/c.jpg' },
+    ];
+
+    test('selects snapshots by LOCAL day bounds', async () => {
+        const pool = makePool(threeRows());
+        await composeDay('2026-11-11', 'fc1', pool, { deps: baseDeps(), timezone: 'America/Montevideo' });
+        const snapCall = pool.query.mock.calls.find(([sql]) => /FROM snapshots/.test(sql));
+        expect(snapCall[1]).toEqual(['fc1', '2026-11-11T03:00:00.000Z', '2026-11-12T03:00:00.000Z']);
+    });
+
+    test('fetches RH, T and CO2 over the same local day', async () => {
+        const pool = makePool(threeRows());
+        const deps = baseDeps();
+        await composeDay('2026-11-11', 'fc1', pool, { deps, timezone: 'America/Montevideo' });
+        const topics = deps.db.fetchTelemetry.mock.calls.map((c) => [c[1], c[2], c[3]]);
+        expect(topics).toEqual([
+            ['fc.humidity', '2026-11-11T03:00:00.000Z', '2026-11-12T03:00:00.000Z'],
+            ['fc.temperature', '2026-11-11T03:00:00.000Z', '2026-11-12T03:00:00.000Z'],
+            ['fc.co2', '2026-11-11T03:00:00.000Z', '2026-11-12T03:00:00.000Z'],
+        ]);
+    });
+
+    test('burns local time + label + readings', async () => {
+        const pool = makePool(threeRows());
+        const deps = baseDeps();
+        await composeDay('2026-11-11', 'fc1', pool, { deps, timezone: 'America/Montevideo', tzLabel: 'UYT' });
+        expect(deps.burnOverlay.mock.calls[0][1]).toEqual({
+            text: '2026-11-11 18:00 UYT  RH 88.5%  T 19.4°C  CO₂ 603 ppm',
+        });
+    });
+
+    test('drops frames darker than minLuma before burning', async () => {
+        const rows = [...threeRows(), { captured_at: new Date('2026-11-11T21:03:00Z'), file_path: '/x/dark.jpg' }];
+        const pool = makePool(rows);
+        const deps = baseDeps();
+        deps.fs.promises.readFile = jest.fn(async (p) => Buffer.from(p));
+        deps.meanLuma = jest.fn(async (buf) => (buf.toString() === '/x/dark.jpg' ? 8 : 120));
+        const r = await composeDay('2026-11-11', 'fc1', pool, { deps, minLuma: 50 });
+        expect(deps.burnOverlay).toHaveBeenCalledTimes(3);
+        expect(r.frames_used).toBe(3);
+        expect(r.frames_dark).toBe(1);
+    });
+
+    test('an all-dark day is skipped, not encoded', async () => {
+        const pool = makePool(threeRows());
+        const deps = baseDeps({ meanLuma: jest.fn(async () => 3) });
+        const r = await composeDay('2026-11-11', 'fc1', pool, { deps, minLuma: 50 });
+        expect(r).toMatchObject({ skipped: true, reason: 'too_few_usable_frames' });
+        expect(deps.runFfmpeg).not.toHaveBeenCalled();
+    });
+
+    test('minLuma 0 keeps every frame and never measures', async () => {
+        const pool = makePool(threeRows());
+        const deps = baseDeps({ meanLuma: jest.fn(async () => 0) });
+        const r = await composeDay('2026-11-11', 'fc1', pool, { deps, minLuma: 0 });
+        expect(r.frames_used).toBe(3);
+        expect(deps.meanLuma).not.toHaveBeenCalled();
+    });
 });
+

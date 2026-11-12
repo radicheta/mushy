@@ -21,17 +21,20 @@ function validateQuery({ from, to, camera_id }) {
     return { ok: true, fromD, toD, days };
 }
 
-// Returns 'YYYY-MM-DD' if [from, to] is a single calendar UTC day; null otherwise.
-function singleDayUtc(fromD, toD) {
-    const fromIso = fromD.toISOString();
-    const toIso = toD.toISOString();
-    if (!fromIso.endsWith('T00:00:00.000Z')) return null;
-    const expectedTo = fromIso.slice(0, 10) + 'T23:59:59.999Z';
-    if (toIso !== expectedTo) return null;
-    return fromIso.slice(0, 10);
+const { localDayBounds, localDateOf } = require('./localday');
+
+// MUSHY-188: 'YYYY-MM-DD' if [from, to] is exactly one LOCAL calendar day
+// (to may be the next midnight or 1 ms before it); null otherwise.
+function singleLocalDay(fromD, toD, timeZone) {
+    const date = localDateOf(fromD, timeZone);
+    const [start, end] = localDayBounds(date, timeZone);
+    if (fromD.getTime() !== Date.parse(start)) return null;
+    const endMs = Date.parse(end);
+    if (toD.getTime() !== endMs && toD.getTime() !== endMs - 1) return null;
+    return date;
 }
 
-function registerRoutes(app, { pool, jobs, runComposition, db, healthState, log = console }) {
+function registerRoutes(app, { pool, jobs, runComposition, db, healthState, timezone = 'America/Montevideo', log = console }) {
     app.get('/health', (req, res) => {
         res.json({
             status: 'ok',
@@ -45,7 +48,7 @@ function registerRoutes(app, { pool, jobs, runComposition, db, healthState, log 
         if (!v.ok) return res.status(v.status).json({ error: v.error });
 
         const cameraId = req.query.camera_id;
-        const dayKey = singleDayUtc(v.fromD, v.toD);
+        const dayKey = singleLocalDay(v.fromD, v.toD, timezone);
         if (dayKey) {
             const existing = await db.lookupTimelapse(pool, cameraId, dayKey);
             if (existing) {
@@ -67,4 +70,4 @@ function registerRoutes(app, { pool, jobs, runComposition, db, healthState, log 
     });
 }
 
-module.exports = { registerRoutes, validateQuery, singleDayUtc, SAFE_CAMERA_ID, MAX_RANGE_DAYS };
+module.exports = { registerRoutes, validateQuery, singleLocalDay, SAFE_CAMERA_ID, MAX_RANGE_DAYS };

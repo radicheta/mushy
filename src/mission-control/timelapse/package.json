@@ -8,8 +8,8 @@
     "test:watch": "node --experimental-vm-modules node_modules/.bin/jest --watch"
   },
   "dependencies": {
+    "@napi-rs/canvas": "1.0.13",
     "express": "^5.2.1",
-    "jimp": "^1.6.1",
     "node-cron": "^4.2.1",
     "pg": "^8.20.0"
   },

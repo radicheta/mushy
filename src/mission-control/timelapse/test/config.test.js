@@ -18,11 +18,18 @@ describe('config.load', () => {
         expect(cfg.timescaleHost).toBe('timescale');
         expect(cfg.cameraId).toBe('fc1');
         expect(cfg.fps).toBe(12);
-        expect(cfg.timezone).toBe('America/Toronto');
+        expect(cfg.timezone).toBe('America/Montevideo');
+        expect(cfg.tzLabel).toBe('UYT');
+        expect(cfg.minLuma).toBe(50);
         expect(cfg.port).toBe(8888);
         expect(cfg.snapshotDir).toBe('/data/snapshots');
         expect(cfg.timelapseDir).toBe('/data/timelapse');
         expect(cfg.cronSchedule).toBe('30 0 * * *');
+    });
+
+    test('TIMELAPSE_MIN_LUMA overrides default', () => {
+        const cfg = load({ TIMESCALE_PASSWORD: 'x', TIMELAPSE_MIN_LUMA: '0' });
+        expect(cfg.minLuma).toBe(0);
     });
 
     test('TIMELAPSE_FPS overrides default and parses to int', () => {

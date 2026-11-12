@@ -13,6 +13,7 @@ const config = require('./config').load();
 const db = require('./db');
 const { composeDay } = require('./composer');
 const { registerRoutes } = require('./routes');
+const { localDateOf } = require('./localday');
 
 const pool = new Pool({
     host: config.timescaleHost,
@@ -26,17 +27,23 @@ const jobs = new Map();
 const healthState = { last_nightly_at: null, last_nightly_status: null };
 const DB_RETRY_MS = 5000;
 
+// MUSHY-188: local days, local stamps, lights-off frames dropped.
+const composeOpts = {
+    fps: config.fps,
+    timelapseDir: config.timelapseDir,
+    timezone: config.timezone,
+    tzLabel: config.tzLabel,
+    minLuma: config.minLuma,
+};
+
 async function runComposition(jobId, { from, to, camera_id }) {
     const job = jobs.get(jobId);
     if (!job) return;
     job.status = 'running';
     try {
         // On-demand handles single-day ranges (D-03). Multi-day stitch is future work.
-        const date = new Date(from).toISOString().slice(0, 10);
-        const r = await composeDay(date, camera_id, pool, {
-            fps: config.fps,
-            timelapseDir: config.timelapseDir,
-        });
+        const date = localDateOf(from, config.timezone);
+        const r = await composeDay(date, camera_id, pool, composeOpts);
         if (r.skipped) {
             job.status = 'failed';
             job.error = `skipped: ${r.reason}`;
@@ -79,16 +86,13 @@ async function main() {
     console.log('[db] Schema initialized');
 
     const app = express();
-    registerRoutes(app, { pool, jobs, runComposition, db, healthState });
+    registerRoutes(app, { pool, jobs, runComposition, db, healthState, timezone: config.timezone });
 
     cron.schedule(config.cronSchedule, async () => {
         const date = previousDayInTz(config.timezone);
         console.log(`[cron] firing for ${date}`);
         try {
-            const r = await composeDay(date, config.cameraId, pool, {
-                fps: config.fps,
-                timelapseDir: config.timelapseDir,
-            });
+            const r = await composeDay(date, config.cameraId, pool, composeOpts);
             healthState.last_nightly_at = new Date().toISOString();
             healthState.last_nightly_status = r.skipped ? `skipped: ${r.reason}` : 'ok';
         } catch (e) {

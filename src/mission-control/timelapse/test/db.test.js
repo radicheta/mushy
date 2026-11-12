@@ -44,17 +44,18 @@ describe('lookupTimelapse', () => {
     });
 });
 
-describe('fetchRhForDay', () => {
-    test("queries topic='fc.humidity' (NOT 'fc1/humidity')", async () => {
+describe('fetchTelemetry', () => {
+    test('queries one topic over [start, end) padded by the match tolerance', async () => {
         const pool = makeMockPool();
-        await db.fetchRhForDay(pool, '2026-04-25');
-        expect(pool.calls[0].sql).toMatch(/topic = 'fc\.humidity'/);
-        expect(pool.calls[0].sql).not.toMatch(/fc1\/humidity/);
-        expect(pool.calls[0].params[0]).toBe('2026-04-25T00:00:00Z');
+        await db.fetchTelemetry(pool, 'fc.co2', '2026-11-11T03:00:00.000Z', '2026-11-12T03:00:00.000Z');
+        expect(pool.calls[0].sql).toMatch(/FROM telemetry/);
+        expect(pool.calls[0].params).toEqual([
+            'fc.co2', '2026-11-11T02:30:00.000Z', '2026-11-12T03:30:00.000Z',
+        ]);
     });
 });
 
-describe('nearestRh', () => {
+describe('nearestValue', () => {
     const rows = [
         { captured_at: new Date('2026-04-25T12:00:00Z'), value: 80 },
         { captured_at: new Date('2026-04-25T12:05:00Z'), value: 82 },
@@ -62,13 +63,13 @@ describe('nearestRh', () => {
     ];
     test('picks nearest by abs delta', () => {
         const ts = new Date('2026-04-25T12:06:00Z').getTime();
-        expect(db.nearestRh(rows, ts)).toBe(82);
+        expect(db.nearestValue(rows, ts)).toBe(82);
     });
     test('returns null when nearest > 30min', () => {
         const ts = new Date('2026-04-25T15:00:00Z').getTime();
-        expect(db.nearestRh(rows, ts)).toBeNull();
+        expect(db.nearestValue(rows, ts)).toBeNull();
     });
     test('empty rows -> null', () => {
-        expect(db.nearestRh([], 0)).toBeNull();
+        expect(db.nearestValue([], 0)).toBeNull();
     });
 });
