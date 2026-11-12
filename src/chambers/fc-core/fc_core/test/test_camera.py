@@ -585,5 +585,83 @@ class TestIdleToActiveRecovery(unittest.TestCase):
         node.destroy_node()
 
 
+class TestCameraRotation(unittest.TestCase):
+    """MUSHY-188: camera_rotation rotates every frame before JPEG encode, read live."""
+
+    def _run(self, rotation, frames=1, change_to=None):
+        fc_camera = _load_fc_camera()
+        mock_cap = MagicMock()
+        mock_cap.isOpened.return_value = True
+        raw = MagicMock(name='raw_frame')
+        mock_cap.read.return_value = (True, raw)
+        fake_buf = MagicMock()
+        fake_buf.tobytes.return_value = b'jpeg'
+        mock_cv2 = MagicMock()
+        mock_cv2.VideoCapture.return_value = mock_cap
+        mock_cv2.imencode.return_value = (True, fake_buf)
+        mock_cv2.ROTATE_90_CLOCKWISE = 'R90'
+        mock_cv2.ROTATE_180 = 'R180'
+        mock_cv2.ROTATE_90_COUNTERCLOCKWISE = 'R270'
+        mock_cv2.rotate.side_effect = lambda f, code: ('rotated', code)
+        with patch.dict(sys.modules, {'cv2': mock_cv2}):
+            with _patch_params({'camera_simulation_mode': False, 'camera_rotation': rotation}):
+                node = fc_camera.FcCamera()
+                node.capture_and_publish()
+                if change_to is not None:
+                    node._params['camera_rotation'] = change_to
+                    node.capture_and_publish()
+        node.destroy_node()
+        return raw, mock_cv2
+
+    def test_rotation_parameter_declared_with_default_zero(self):
+        fc_camera = _load_fc_camera()
+        mock_cv2 = MagicMock()
+        with patch.dict(sys.modules, {'cv2': mock_cv2}):
+            with _patch_param('camera_simulation_mode', True):
+                node = fc_camera.FcCamera()
+        self.assertEqual(node.get_parameter('camera_rotation').value, 0)
+        node.destroy_node()
+
+    def test_rotation_restricted_to_quarter_turns(self):
+        """The descriptor makes ROS reject e.g. 45 at `ros2 param set` time."""
+        fc_camera = _load_fc_camera()
+        captured = {}
+        original = FakeNode.declare_parameters
+
+        def spy(self_node, namespace, parameters):
+            for item in parameters:
+                if item[0] == 'camera_rotation':
+                    captured['item'] = item
+            original(self_node, namespace, parameters)
+
+        with patch.dict(sys.modules, {'cv2': MagicMock()}):
+            with patch.object(FakeNode, 'declare_parameters', spy):
+                node = fc_camera.FcCamera()
+        rng = captured['item'][2].integer_range[0]
+        self.assertEqual((rng.from_value, rng.to_value, rng.step), (0, 270, 90))
+        node.destroy_node()
+
+    def test_zero_rotation_encodes_raw_frame(self):
+        raw, cv2 = self._run(0)
+        cv2.rotate.assert_not_called()
+        self.assertIs(cv2.imencode.call_args[0][1], raw)
+
+    def test_180_rotation_encodes_rotated_frame(self):
+        raw, cv2 = self._run(180)
+        cv2.rotate.assert_called_once_with(raw, 'R180')
+        self.assertEqual(cv2.imencode.call_args[0][1], ('rotated', 'R180'))
+
+    def test_90_and_270_map_to_clockwise_and_counterclockwise(self):
+        _, cv2 = self._run(90)
+        self.assertEqual(cv2.rotate.call_args[0][1], 'R90')
+        _, cv2 = self._run(270)
+        self.assertEqual(cv2.rotate.call_args[0][1], 'R270')
+
+    def test_rotation_change_applies_to_next_frame(self):
+        """`ros2 param set` updates the value; the next capture must use it."""
+        raw, cv2 = self._run(0, change_to=180)
+        cv2.rotate.assert_called_once_with(raw, 'R180')
+
+
 if __name__ == '__main__':
     unittest.main()

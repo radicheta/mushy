@@ -11,8 +11,12 @@ Verify: python3 -c "import cv2; print(cv2.__version__)"
 import time
 
 import rclpy
+from rcl_interfaces.msg import IntegerRange, ParameterDescriptor
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage
+
+# MUSHY-188: camera_rotation (degrees clockwise) -> cv2 rotate code attribute.
+_ROTATE_CODES = {90: 'ROTATE_90_CLOCKWISE', 180: 'ROTATE_180', 270: 'ROTATE_90_COUNTERCLOCKWISE'}
 
 
 class FcCamera(Node):
@@ -36,6 +40,11 @@ class FcCamera(Node):
                 # 999.24: re-open VideoCapture on stuck cap.read() failures
                 ('camera_reopen_threshold', 5),  # consecutive failures before reopen attempt
                 ('camera_reopen_max_backoff_sec', 60.0),
+                # MUSHY-188: rotate frames to match how the camera is mounted.
+                # Read every frame, so `ros2 param set` applies to the next capture.
+                ('camera_rotation', 0, ParameterDescriptor(
+                    description='Clockwise rotation applied before encoding (0/90/180/270)',
+                    integer_range=[IntegerRange(from_value=0, to_value=270, step=90)])),
             ]
         )
 
@@ -193,6 +202,10 @@ class FcCamera(Node):
                 )
             self._consecutive_read_failures = 0
             self._reopen_backoff_sec = 1.0
+
+            code = _ROTATE_CODES.get(self.get_parameter('camera_rotation').value)
+            if code is not None:
+                frame = cv2.rotate(frame, getattr(cv2, code))
 
             ok, buf = cv2.imencode(
                 '.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality]
