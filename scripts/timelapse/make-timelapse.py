@@ -11,9 +11,16 @@ rotation, so it always reads upright.
     # stamp + RH / T / CO2 from Timescale, image rotated 180
     scripts/timelapse/make-timelapse.py 2026-11-11T15:00 2026-11-11T21:00 \
         --telemetry --rotate 180 -o out.mp4
+    # drop night frames (grow light off) by mean brightness
+    scripts/timelapse/make-timelapse.py 2026-11-11T16:00 2026-11-12T11:10 \
+        --telemetry --rotate 180 --min-luma 50 -o out.mp4
     # then e.g.: scp out.mp4 gumbald:Desktop/
 
-Needs ffmpeg built with libass. --telemetry needs the mushy-timescale-1
+Night frames can't be dropped by file size: dim dawn frames (~16 KB) are
+larger than foggy lit ones (~14 KB). Mean luma is cleanly bimodal on fc1
+(dark < 20, lit >= 90 of 255), so --min-luma 50 splits them.
+
+Needs ffmpeg built with libass; --min-luma needs Pillow. --telemetry needs the mushy-timescale-1
 container (run on elder-plops).
 """
 import argparse
@@ -91,12 +98,20 @@ def main():
     ap.add_argument('--fps', type=int, default=15)
     ap.add_argument('--rotate', type=int, choices=[0, 90, 180, 270], default=0)
     ap.add_argument('--telemetry', action='store_true', help='add RH / T / CO2 to the overlay')
+    ap.add_argument('--min-luma', type=float, default=0,
+                    help='drop frames darker than this mean luma (0-255), e.g. 50 for lights-off')
     ap.add_argument('--no-stamp', action='store_true', help='no overlay at all')
     args = ap.parse_args()
 
     start = datetime.fromisoformat(args.start).replace(tzinfo=LOCAL)
     end = datetime.fromisoformat(args.end).replace(tzinfo=LOCAL)
     frames = list_frames(Path(args.snapshots) / args.camera, start, end)
+    if args.min_luma:
+        from PIL import Image, ImageStat
+        kept = [(t, p) for t, p in frames
+                if ImageStat.Stat(Image.open(p).convert('L')).mean[0] >= args.min_luma]
+        print(f'--min-luma {args.min_luma}: dropped {len(frames) - len(kept)} dark frames')
+        frames = kept
     if not frames:
         raise SystemExit('no frames in range')
     print(f'{len(frames)} frames, {len(frames) / args.fps:.1f}s at {args.fps} fps')
