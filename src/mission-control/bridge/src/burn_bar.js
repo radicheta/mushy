@@ -45,7 +45,7 @@ function formatBarText({ capturedAt, rh, temp, co2, hum }) {
 }
 
 // Bottom-bar layout: height = max(32, 10% of image), black @ 0.55 opacity, white text.
-// Font starts at 40% of the bar height and shrinks until the text fits the width.
+// Font starts at 25% of the bar height and shrinks until the text fits the width.
 async function burnBar(inputBuffer, barText) {
     const img = await loadImage(inputBuffer);
     const { width, height } = img;
@@ -59,7 +59,7 @@ async function burnBar(inputBuffer, barText) {
     ctx.fillRect(0, barY, width, barH);
 
     const pad = 8;
-    let size = Math.round(barH * 0.4);
+    let size = Math.round(barH * 0.25);
     ctx.font = `${size}px ${FONT_FAMILY}`;
     while (size > 8 && ctx.measureText(barText).width > width - 2 * pad) {
         size -= 1;
