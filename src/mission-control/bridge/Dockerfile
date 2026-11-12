@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     build-essential \
     python3-dev \
+    fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20 LTS

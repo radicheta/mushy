@@ -8,8 +8,8 @@
     "test": "node --experimental-vm-modules node_modules/.bin/jest"
   },
   "dependencies": {
+    "@napi-rs/canvas": "1.0.13",
     "express": "^5.2.1",
-    "jimp": "^1.6.1",
     "pg": "^8.20.0",
     "rclnodejs": "^1.9.0",
     "ws": "^8.16.0"
