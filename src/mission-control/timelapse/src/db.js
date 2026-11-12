@@ -33,29 +33,29 @@ async function lookupTimelapse(pool, camera_id, date) {
     return r.rows[0] || null;
 }
 
-// Source: bridge inserts telemetry with topic 'fc.humidity' (dot, not slash).
-// RESEARCH.md Pitfall 1 corrects CONTEXT.md D-11.
-// Telemetry table uses 'time' column (not 'captured_at') — aliased as captured_at for
-// compatibility with nearestRh and composer.js callers.
-async function fetchRhForDay(pool, date) {
+// 30-minute tolerance per D-11.
+const TOLERANCE_MS = 30 * 60 * 1000;
+
+// Rows for one telemetry topic over [start, end), padded by the match tolerance
+// so frames at the day edges still find a neighbour. Topics are dotted
+// ('fc.humidity'); the table's time column is aliased captured_at for nearestValue.
+async function fetchTelemetry(pool, topic, start, end) {
+    const from = new Date(new Date(start).getTime() - TOLERANCE_MS).toISOString();
+    const to = new Date(new Date(end).getTime() + TOLERANCE_MS).toISOString();
     const result = await pool.query(
         `SELECT time AS captured_at, value FROM telemetry
-         WHERE topic = 'fc.humidity'
-           AND time >= $1 AND time < $2
+         WHERE topic = $1 AND time >= $2 AND time < $3
          ORDER BY time ASC`,
-        [`${date}T00:00:00Z`, `${date}T23:59:59.999Z`]
+        [topic, from, to]
     );
     return result.rows;
 }
 
-// 30-minute tolerance per D-11.
-const RH_TOLERANCE_MS = 30 * 60 * 1000;
-
-function nearestRh(rhRows, frameTsMs, toleranceMs = RH_TOLERANCE_MS) {
-    if (!rhRows || rhRows.length === 0) return null;
+function nearestValue(rows, frameTsMs, toleranceMs = TOLERANCE_MS) {
+    if (!rows || rows.length === 0) return null;
     let bestVal = null;
     let bestDelta = Infinity;
-    for (const row of rhRows) {
+    for (const row of rows) {
         const rowMs = row.captured_at instanceof Date
             ? row.captured_at.getTime()
             : new Date(row.captured_at).getTime();
@@ -66,4 +66,4 @@ function nearestRh(rhRows, frameTsMs, toleranceMs = RH_TOLERANCE_MS) {
     return bestDelta <= toleranceMs ? bestVal : null;
 }
 
-module.exports = { initDb, insertTimelapse, lookupTimelapse, fetchRhForDay, nearestRh, RH_TOLERANCE_MS };
+module.exports = { initDb, insertTimelapse, lookupTimelapse, fetchTelemetry, nearestValue, TOLERANCE_MS };

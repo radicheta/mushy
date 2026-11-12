@@ -8,6 +8,9 @@ function buildArgs(filelistPath, outputPath, fps = 12) {
         '-f', 'concat',
         '-safe', '0',
         '-i', filelistPath,
+        // MUSHY-188: re-time stills to one per output frame. The concat demuxer's
+        // default per-image duration made `-r` drop ~half the frames.
+        '-vf', `setpts=N/${fps}/TB`,
         '-c:v', 'libx264',
         '-crf', '23',
         '-preset', 'fast',

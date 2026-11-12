@@ -77,7 +77,7 @@ services:
       - TIMELAPSE_DIR=/data/timelapse
       - CAMERA_ID=fc1
       - TIMELAPSE_FPS=${TIMELAPSE_FPS:-12}
-      - TZ=America/Toronto
+      - TZ=America/Montevideo   # MUSHY-188: local days, stamps, file names and cron
       - PORT=8888
     volumes:
       - /data/snapshots:/data/snapshots:ro
