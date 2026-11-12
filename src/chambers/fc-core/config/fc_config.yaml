@@ -91,6 +91,7 @@
     camera_jpeg_quality: 65         # 0-100 (D-06: 60-70% default)
     camera_active_fps: 1.0            # FPS when Mission Control viewers are connected (Phase 12 D-01)
     camera_subscriber_grace_sec: 5.0  # Seconds before dropping to idle after last viewer disconnects (Phase 12 D-07)
+    camera_rotation: 180            # MUSHY-188: clockwise 0/90/180/270 to match the mount; fc1 hangs upside down since 2026-11-11. Live: ros2 param set /fc_camera camera_rotation N
 
 # Phase 999.1: edge buffer (fc_buffer node) — local SQLite ring + HTTP /telemetry/since
 fc_buffer:
