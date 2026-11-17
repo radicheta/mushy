@@ -40,6 +40,8 @@ function registerRoutes(app, { pool, jobs, runComposition, db, healthState, time
             status: 'ok',
             last_nightly_at: healthState.last_nightly_at,
             last_nightly_status: healthState.last_nightly_status,
+            last_recap_at: healthState.last_recap_at ?? null,
+            last_recap_status: healthState.last_recap_status ?? null,
         });
     });
 

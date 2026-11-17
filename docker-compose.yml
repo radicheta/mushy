@@ -79,6 +79,13 @@ services:
       - TIMELAPSE_FPS=${TIMELAPSE_FPS:-12}
       - TZ=America/Montevideo   # MUSHY-188: local days, stamps, file names and cron
       - PORT=8888
+      # MUSHY-192: daily cumulative recap on Signal (20:30 local). Off unless
+      # RECAP_START and RECAP_RECIPIENT are set in .env. signal-cli is on host
+      # loopback (the override runs this service host-networked).
+      - RECAP_START=${RECAP_START:-}
+      - RECAP_RECIPIENT=${RECAP_RECIPIENT:-}
+      - SIGNAL_API_URL=${SIGNAL_API_URL:-http://localhost:8085}
+      - SIGNAL_SENDER=${SIGNAL_SENDER:-}
     volumes:
       - /data/snapshots:/data/snapshots:ro
       - /data/timelapse:/data/timelapse
