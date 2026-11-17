@@ -20,6 +20,14 @@ function load(env = process.env) {
         minLuma:           parseFloat(env.TIMELAPSE_MIN_LUMA ?? '50'),
         port:              parseInt(env.PORT  || '8888', 10),
         cronSchedule:      env.TIMELAPSE_CRON || '30 0 * * *',
+        // MUSHY-192: daily cumulative recap on Signal. Off unless RECAP_START
+        // (ISO instant with offset) and RECAP_RECIPIENT are both set.
+        recapStart:        env.RECAP_START     || null,
+        recapRecipient:    env.RECAP_RECIPIENT || null,
+        recapCron:         env.RECAP_CRON      || '30 20 * * *',
+        recapSeconds:      parseFloat(env.RECAP_SECONDS || '5'),
+        signalApiUrl:      env.SIGNAL_API_URL  || 'http://localhost:8085',
+        signalSender:      env.SIGNAL_SENDER   || null,
     };
 }
 module.exports = { load };

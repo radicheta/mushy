@@ -14,6 +14,7 @@ const db = require('./db');
 const { composeDay } = require('./composer');
 const { registerRoutes } = require('./routes');
 const { localDateOf } = require('./localday');
+const { runRecap } = require('./recap');
 
 const pool = new Pool({
     host: config.timescaleHost,
@@ -102,6 +103,23 @@ async function main() {
         }
     }, { timezone: config.timezone });
     console.log(`[cron] scheduled at "${config.cronSchedule}" TZ=${config.timezone}`);
+
+    // MUSHY-192: daily cumulative recap on Signal.
+    if (config.recapStart && config.recapRecipient && config.signalSender) {
+        cron.schedule(config.recapCron, async () => {
+            try {
+                await runRecap(config, pool);
+                healthState.last_recap_status = 'ok';
+            } catch (e) {
+                healthState.last_recap_status = `failed: ${e.message}`;
+                console.error('[recap] failed:', e.message);
+            }
+            healthState.last_recap_at = new Date().toISOString();
+        }, { timezone: config.timezone });
+        console.log(`[recap] scheduled at "${config.recapCron}" TZ=${config.timezone}, from ${config.recapStart}`);
+    } else {
+        console.log('[recap] disabled (needs RECAP_START, RECAP_RECIPIENT, SIGNAL_SENDER)');
+    }
 
     app.listen(config.port, () => {
         console.log(`[http] listening on ${config.port}`);
